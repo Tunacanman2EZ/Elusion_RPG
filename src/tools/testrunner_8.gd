@@ -3102,7 +3102,7 @@ func _test_the_phone_screen_is_the_games() -> void:
 	var bar_rect: Rect2 = nav.get_global_rect()
 	var on_bar: Array = row.get_children().filter(func(c: Node) -> bool: return (c as Control).visible).map(func(c: Node) -> String: return String(c.name))
 	check("the HUD makes the touch menu, folded off with a mouse: the bar's buttons all there",
-		menu != null and not bool(menu.call("is_folded")) and on_bar.size() == 8 and is_equal_approx(nav.scale.x, 1.0), on_bar)
+		menu != null and not bool(menu.call("is_folded")) and on_bar.size() == 9 and is_equal_approx(nav.scale.x, 1.0), on_bar)
 	MenuScript.pixel_ratio_for_test = 2.0
 	TouchControls.set_active(true)
 	await get_tree().process_frame
@@ -3153,7 +3153,7 @@ func _test_the_phone_screen_is_the_games() -> void:
 	TouchControls.set_active(false)
 	await get_tree().process_frame
 	var back: Array = row.get_children().filter(func(c: Node) -> bool: return (c as Control).visible).map(func(c: Node) -> String: return String(c.name))
-	check("a key back: the bar as the scene made it, all eight buttons, Menu its own words",
+	check("a key back: the bar as the scene made it, all nine buttons, Menu its own words",
 		back == on_bar and nav.get_global_rect().is_equal_approx(bar_rect) and is_equal_approx(nav.scale.x, 1.0)
 		and menu_button.text == "Menu", [back, nav.get_global_rect(), menu_button.text])
 	menu_button.pressed.emit()
@@ -3580,10 +3580,14 @@ func _test_the_endless_run() -> void:
 		unmatched.is_empty(), unmatched.slice(0, 4))
 	area.free()
 	var town: Node = (load(AreaRegistry.AREAS["elusion"]) as PackedScene).instantiate()
-	var down: Node = town.get_node_or_null("ysortworld/interactables/endlessladder")
-	check("a ladder in the town square goes down to it, to its corridor",
-		down != null and str(down.get("destination_scene_path")) == str(AreaRegistry.AREAS["endless"])
-		and str(down.get("target_spawn_id")) == "endless_entrance")
+	# THE WAY IN IS THE BAR'S MINIGAMES (0.93.3, _test_minigames()): the owner,
+	# "we need to get rid of ladder".
+	var down: Array = []
+	for n in town.find_children("*", "", true, false):
+		if "destination_scene_path" in n and str(n.get("destination_scene_path")) == str(AreaRegistry.AREAS["endless"]):
+			down.append(String(n.name))
+	check("no ladder in the town square goes down to it: the way in is the bar's Minigames",
+		down.is_empty() and town.get_node_or_null("ysortworld/interactables/endlessladder") == null, down)
 	town.free()
 
 	# ---- the swarm ----
@@ -3644,6 +3648,45 @@ func _test_the_endless_run() -> void:
 	var mean_turn: float = turned / maxf(1.0, float(turns))
 	check("  it walks, it does not shake: round a still player one turns %.2f rad a step on average (under 0.3)" % mean_turn,
 		turns > 1000 and mean_turn < 0.3)
+	# The owner, of his video: "seems like the slimes are glitching when they
+	# jump" (0.93.3). Drawn back to front: the buffer's feet, in order, never
+	# go back up the screen.
+	calm.call("_write_buffer")
+	var drawn: PackedFloat32Array = calm.get("_buffer")
+	var drawn_count: int = (calm.get("_order") as PackedInt32Array).size()
+	var back_to_front: bool = drawn_count == int(calm.get("alive"))
+	for k in range(1, drawn_count):
+		if drawn[k * 16 + 7] < drawn[(k - 1) * 16 + 7]:
+			back_to_front = false
+			break
+	check("  it is drawn back to front, every one once (%d), as y-sorting draws everything standing" % drawn_count,
+		drawn_count > 500 and back_to_front)
+	# And they stand apart: a crowd of 160 round a still player. Not the same
+	# every run - the sway follows the clock (swarm.gd, WANDER_RATE) - so the
+	# bar is under 40, against 147 before: 8 to 26 were seen over a dozen runs,
+	# and under 24 failed one full run in 0.93.3.
+	var ranks: Node2D = SwarmScript.new()
+	ranks.set("arena", Rect2(0, 0, 1400, 1000))
+	add_child(ranks)
+	await get_tree().process_frame
+	ranks.process_mode = Node.PROCESS_MODE_DISABLED
+	ranks.set("speed", 70.0)
+	ranks.call("spawn", 160, Vector2(700, 500))
+	for k in 300:
+		ranks.call("_step", Vector2(700, 500), true)
+	var rx: PackedFloat32Array = ranks.get("px")
+	var ry: PackedFloat32Array = ranks.get("py")
+	var on_top: int = 0
+	for i in 160:
+		var closest: float = INF
+		for j in 160:
+			if i != j:
+				closest = minf(closest, Vector2(rx[i], ry[i]).distance_to(Vector2(rx[j], ry[j])))
+		if closest < 6.0:
+			on_top += 1
+	check("  160 round a still player stand apart: %d of them within 6 px of another (147 before 0.93.3), and %d still touch the player" % [on_top, int(ranks.get("_touching"))],
+		on_top < 40 and int(ranks.get("_touching")) >= 3)
+	ranks.queue_free()
 	# The owner: "bleed damage is spreading". A stand-in keeps its swarmling.
 	var keeper := Node2D.new()
 	keeper.add_to_group(&"player")
@@ -3823,3 +3866,831 @@ func _endless_body_script() -> GDScript:
 	script.source_code = "extends Node2D\nvar hp: int = 0\n"
 	script.reload()
 	return script
+
+
+# =============================================================================
+# THE PARTY'S RUN (0.93.3)
+# =============================================================================
+# The owner: "we need a 4 player party plan but can play solo duo or 3 or 4",
+# then "lets do it". Three games' runs in one tree, each with a stand-in
+# presence link that passes "en" to the others as the server does (JSON and
+# back, "go" and "need" to the leader alone, "to" to one).
+
+func _party_link_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = """extends Node
+signal run_received(from_id: int, data: Dictionary)
+signal lead_changed(area: String, leader_id: int, sharers: int)
+var me: int = 1
+var leader: int = 1
+var others: int = 1
+var bodies: Dictionary = {}
+var peers: Array = []
+var sent: Array = []
+var open: bool = true
+func runs() -> bool:
+	return open
+func my_id() -> int:
+	return me
+func leader_for(_area: String) -> int:
+	return leader
+func sharers() -> int:
+	return others
+func remotes() -> Dictionary:
+	return bodies
+func send_run(data: Dictionary, to: int = -1) -> void:
+	sent.append([data.duplicate(true), to])
+	var wire: Variant = JSON.parse_string(JSON.stringify(data))
+	for peer in peers:
+		if to >= 0 and peer.me != to:
+			continue
+		if to < 0 and (data.has("go") or data.has("need")) and peer.me != leader:
+			continue
+		peer.run_received.emit(me, (wire as Dictionary).duplicate(true))
+"""
+	script.reload()
+	return script
+
+
+func _party_game(Run: GDScript, link: Node, at: Vector2) -> Array:
+	"""One game: an area holder with the run's door, the run, its party on
+	`link`, and its player standing at `at`. [holder, run, party, player]."""
+	const PartyScript := preload("res://src/world/endless/endlessparty.gd")
+	var holder := Node2D.new()
+	var props := Node2D.new()
+	props.name = "props"
+	var ysort := Node2D.new()
+	ysort.name = "ysortworld"
+	holder.add_child(ysort)
+	ysort.add_child(props)
+	var door: Node = (load("res://scene/crypt/door.tscn") as PackedScene).instantiate()
+	door.name = "rundoor"
+	props.add_child(door)
+	var run: Node = Run.new()
+	run.name = "endlessrun"
+	run.set("arena_rect", Rect2(9, 34, 1518, 1344))
+	run.set("corridor_rect", Rect2(694, 1030, 148, 376))
+	run.set("start_rect", Rect2(729, 975, 78, 52))
+	run.set("wake_spot", Vector2(768, 1240))
+	var party: Node = PartyScript.new()
+	party.name = "party"
+	party.set("link", link)
+	party.set("run", run)
+	run.set("party", party)
+	run.add_child(party)
+	var player := Node2D.new()
+	player.set_script(_endless_body_script())
+	holder.add_child(player)
+	player.global_position = at
+	run.set("player_override", player)
+	holder.add_child(run)
+	holder.process_mode = Node.PROCESS_MODE_DISABLED
+	add_child(holder)
+	return [holder, run, party, player]
+
+
+func _party_frames(games: Array, seconds: float, step: float = 0.05) -> void:
+	"""Every game's run and party, frame by frame, as one tree would."""
+	var t: float = 0.0
+	while t < seconds:
+		for g in games:
+			(g[1] as Node).call("_process", step)
+			(g[2] as Node).call("_process", step)
+		t += step
+
+
+func _same_swarm(a: Node, b: Node) -> Array:
+	"""Where two copies of the swarm differ: slots alive in one and not the
+	other, or alive in both with another batch, spot or health."""
+	var out: Array = []
+	var high: int = maxi(int(a.get("_high")), int(b.get("_high")))
+	var sa: PackedByteArray = a.get("state")
+	var sb: PackedByteArray = b.get("state")
+	for i in high:
+		var la: bool = sa[i] == 1
+		var lb: bool = sb[i] == 1
+		if la != lb:
+			out.append("slot %d alive %s / %s" % [i, la, lb])
+		elif la and ((a.get("gen") as PackedInt32Array)[i] != (b.get("gen") as PackedInt32Array)[i]
+				or not is_equal_approx((a.get("px") as PackedFloat32Array)[i], (b.get("px") as PackedFloat32Array)[i])
+				or not is_equal_approx((a.get("py") as PackedFloat32Array)[i], (b.get("py") as PackedFloat32Array)[i])
+				or not is_equal_approx((a.get("hp") as PackedFloat32Array)[i], (b.get("hp") as PackedFloat32Array)[i])):
+			out.append("slot %d differs" % i)
+		if out.size() > 4:
+			break
+	return out
+
+
+func _test_the_party_run() -> void:
+	section("THE PARTY'S RUN - one countdown, one clock, one swarm, the door at each stage, a fall, a late arrival, a new leader (0.93.3)")
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	check("a party's scaling: more slimes, a little tougher, more elites, much tougher bosses - alone, as ever",
+		Run.party_crowd(1) == 1.0 and Run.party_crowd(4) == 2.5 and is_equal_approx(Run.party_health(2), 1.2)
+		and Run.party_elites(1) == 0 and Run.party_elites(4) == 3 and is_equal_approx(Run.party_boss(4), 3.25)
+		and Run.crowd_for(1, 1) == Run.stage_crowd(1) and Run.crowd_for(1, 2) == 90
+		and Run.crowd_for(30, 4) == SwarmScript.MOST)
+
+	var LinkScript: GDScript = _party_link_script()
+	var la: Node = LinkScript.new()
+	var lb: Node = LinkScript.new()
+	la.set("me", 1)
+	lb.set("me", 2)
+	for l in [la, lb]:
+		l.set("leader", 1)
+		l.set("others", 1)
+		add_child(l)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	var a: Array = _party_game(Run, la, Vector2(760, 1200))
+	var b: Array = _party_game(Run, lb, Vector2(780, 1200))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	la.set("bodies", {2: b[3]})
+	lb.set("bodies", {1: a[3]})
+	var run_a: Node = a[1]
+	var run_b: Node = b[1]
+	var swarm_a: Node = run_a.get("swarm")
+	var swarm_b: Node = run_b.get("swarm")
+	check("two games in a party's arena share the run: the first in leads, the other follows",
+		bool(run_a.call("shared")) and bool(run_a.call("leading")) and bool(run_b.call("shared"))
+		and not bool(run_b.call("leading")))
+
+	# ---- through the door: one countdown, the door held ----
+	(b[3] as Node2D).global_position = Vector2(768, 1000)
+	_party_frames([a, b], 0.3)
+	var door_a: Node = (a[0] as Node).get_node("ysortworld/props/rundoor")
+	var door_b: Node = (b[0] as Node).get_node("ysortworld/props/rundoor")
+	check("the follower steps through first: the leader starts the countdown, and both games count",
+		int(run_a.get("state")) == 3 and int(run_b.get("state")) == 3
+		and float(run_b.get("countdown_left")) > 4.0, [run_a.get("state"), run_b.get("state")])
+	check("  the door is held open on both screens while it counts", bool(door_a.get("held"))
+		and bool(door_b.get("held")) and bool(door_a.call("is_open")) and bool(door_b.call("is_open")))
+	(a[3] as Node2D).global_position = Vector2(700, 800)
+	(b[3] as Node2D).global_position = Vector2(840, 800)
+	_party_frames([a, b], 5.0)
+	check("at zero the clock starts on both, the door shuts, and the run is scaled for two",
+		int(run_a.get("state")) == 1 and int(run_b.get("state")) == 1 and int(run_a.get("players")) == 2
+		and int(run_b.get("players")) == 2 and not bool(door_a.get("held")) and bool(door_a.get("locked"))
+		and bool(door_b.get("locked")), [run_a.get("state"), run_b.get("state"), run_a.get("players")])
+
+	# ---- one swarm ----
+	_party_frames([a, b], 2.0)
+	var alive_a: int = int(swarm_a.get("alive"))
+	var differ: Array = _same_swarm(swarm_a, swarm_b)
+	check("the leader's slimes are born on both screens: the same slots, batches, spots and health (%d)" % alive_a,
+		alive_a > 40 and int(swarm_b.get("alive")) == alive_a and differ.is_empty(), differ)
+	check("  only the leader made them: the follower spawned none of its own, and its batches came by the wire",
+		int(swarm_b.get("batch")) == int(swarm_a.get("batch")) and int(swarm_a.get("batch")) > 1)
+	var target: int = -1
+	var sb: PackedByteArray = swarm_b.get("state")
+	for i in int(swarm_b.get("_high")):
+		if sb[i] == 1:
+			target = i
+			break
+	var number: int = (swarm_b.get("gen") as PackedInt32Array)[target]
+	swarm_b.call("hurt", target, 5.0)
+	_party_frames([a, b], 0.3)
+	var hp_a: float = (swarm_a.get("hp") as PackedFloat32Array)[target]
+	var hp_b: float = (swarm_b.get("hp") as PackedFloat32Array)[target]
+	check("a hit landed on one screen is taken on the other: the same slime, the same health",
+		is_equal_approx(hp_a, hp_b) and hp_a < float(run_a.call("stage_health", 1)) * 1.2 - 4.0, [hp_a, hp_b])
+	swarm_b.call("hurt", target, 10000.0)
+	_party_frames([a, b], 0.3)
+	check("  and the blow that kills it kills it on both, yours on the screen that struck it",
+		not bool(swarm_a.call("is_alive", target)) and not bool(swarm_b.call("is_alive", target))
+		and int(swarm_b.get("my_slain")) == 1 and int(swarm_a.get("my_slain")) == 0
+		and int(swarm_a.get("slain")) == 1)
+	var other: int = -1
+	var sa: PackedByteArray = swarm_a.get("state")
+	for i in int(swarm_a.get("_high")):
+		if sa[i] == 1:
+			other = i
+			break
+	var other_hp: float = (swarm_a.get("hp") as PackedFloat32Array)[other]
+	var other_gen: int = (swarm_a.get("gen") as PackedInt32Array)[other]
+	check("  a hit meant for a slime of another batch - its slot born again since - takes nothing",
+		not bool(swarm_a.call("hurt_remote", target, number, 5))
+		and not bool(swarm_a.call("hurt_remote", other, other_gen + 1000, 5))
+		and is_equal_approx((swarm_a.get("hp") as PackedFloat32Array)[other], other_hp))
+	check("  the other players are where this game's slimes look for the nearest",
+		(swarm_a.get("others") as PackedVector2Array).size() == 1
+		and (swarm_a.get("others") as PackedVector2Array)[0] == (b[3] as Node2D).global_position)
+
+	# ---- the door at each stage, a fall ----
+	run_a.set("elapsed", 60.2)
+	_party_frames([a, b], 0.2)
+	check("a new stage holds the door open on every screen, for whoever is in the corridor",
+		int(run_a.get("stage")) == 2 and int(run_b.get("stage")) == 2 and bool(door_a.get("held"))
+		and bool(door_b.get("held")), [run_a.get("stage"), run_b.get("stage")])
+	_party_frames([a, b], 3.2)
+	check("  and lets go after %d seconds" % int(Run.DOOR_OPEN_SECONDS), not bool(door_a.get("held"))
+		and not bool(door_b.get("held")))
+	var caught: bool = bool(run_b.call("knock_out", b[3]))
+	_party_frames([a, b], 0.3)
+	check("one falls: they wake in the corridor, a step apart from where another would, and the run goes on for the party",
+		caught and (b[3] as Node2D).global_position == run_b.call("wake_for")
+		and run_b.call("wake_for") != run_a.call("wake_for")
+		and (run_b.get("corridor_rect") as Rect2).has_point(run_b.call("wake_for")) and int(run_a.get("state")) == 1
+		and int(run_b.get("state")) == 1 and not bool(run_b.get("my_in")))
+
+	# ---- somebody walks in mid-run ----
+	var lc: Node = LinkScript.new()
+	lc.set("me", 3)
+	lc.set("leader", 1)
+	lc.set("others", 2)
+	add_child(lc)
+	la.set("others", 2)
+	lb.set("others", 2)
+	la.set("peers", [lb, lc])
+	lb.set("peers", [la, lc])
+	lc.set("peers", [la, lb])
+	var c: Array = _party_game(Run, lc, Vector2(768, 1200))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	lc.set("bodies", {1: a[3], 2: b[3]})
+	_party_frames([a, b, c], 0.3)
+	var swarm_c: Node = (c[1] as Node).get("swarm")
+	var differ_c: Array = _same_swarm(swarm_a, swarm_c)
+	check("a game that walks in mid-run is sent everything: the clock, the stage and every slime as it stands (%d)"
+		% int(swarm_c.get("alive")), int((c[1] as Node).get("state")) == 1 and int((c[1] as Node).get("stage")) == 2
+		and int(swarm_c.get("alive")) == int(swarm_a.get("alive")) and int(swarm_c.get("alive")) > 40, differ_c)
+
+	# ---- the leader goes ----
+	for l in [lb, lc]:
+		l.set("leader", 2)
+		l.set("others", 1)
+	lb.set("peers", [lc])
+	lc.set("peers", [lb])
+	lb.set("bodies", {3: c[3]})
+	lc.set("bodies", {2: b[3]})
+	(c[3] as Node2D).global_position = Vector2(700, 700)
+	var batch_before: int = int(swarm_b.get("batch"))
+	# A stage on, so the crowd is short and the new leader has slimes to make.
+	run_b.set("elapsed", 120.3)
+	_party_frames([b, c], 2.0)
+	check("the leader leaves: the next in line runs the run from where it stands, and its slimes reach the other",
+		bool(run_b.call("leading")) and int(run_b.get("state")) == 1 and int(swarm_b.get("batch")) > batch_before
+		and int(swarm_c.get("batch")) == int(swarm_b.get("batch")), [batch_before, swarm_b.get("batch"), swarm_c.get("batch")])
+
+	# ---- nobody in: over ----
+	var c_fell: bool = bool((c[1] as Node).call("knock_out", c[3]))
+	_party_frames([b, c], 0.5)
+	check("when nobody is in the run is over, one result for the party and your own kills",
+		c_fell and int(run_b.get("state")) == 2 and int((c[1] as Node).get("state")) == 2
+		and str(run_b.call("result_line")).begins_with("The party lasted")
+		and str(run_b.call("result_line")).contains("yours"), [run_b.get("state"), run_b.call("result_line")])
+
+	# ---- the wire, and the elites ----
+	var wire: Array = (load("res://src/world/endless/endlessparty.gd") as GDScript).batch_wire(7, 99, 30, 2,
+		PackedVector2Array([Vector2(10, 20)]), PackedInt32Array([4, 5]))
+	check("a batch on the wire is whole numbers: number, seed, health, land, the points kept clear of, the slots",
+		wire == [7, 99, 30, 2, 1, 10, 20, 4, 5])
+	var run_src: String = _code_src("res://src/world/endless/endlessrun.gd")
+	var base_src: String = _code_src("res://src/enemies/baseenemy.gd")
+	var id_body: String = _func_body(base_src, "func get_enemy_id(")
+	check("a run's elites and bosses carry the run's mark (shared, never paid), not the owner's stress mark",
+		_func_body(run_src, "func _bring(").contains("set_meta(RUN_MARK, true)") and not run_src.contains("STRESS_MARK")
+		and id_body.contains("&\"run_extra\"") and _func_body(base_src, "func net_props(").contains("\"rx\"")
+		and _func_body(base_src, "func net_apply_props(").contains("set_meta(&\"run_extra\", true)"))
+	var presence_src: String = _code_src("res://src/systems/presence.gd")
+	check("the presence link says it speaks the run, and counts health itself where nothing is booked",
+		presence_src.contains("\"en\": RUN_VERSION") and _func_body(presence_src, "func books(").contains("_lead_books")
+		and _func_body(presence_src, "func server_health(").contains("_lead_books"))
+	for g in [a, b, c]:
+		(g[0] as Node).queue_free()
+	for l in [la, lb, lc]:
+		l.queue_free()
+	await get_tree().process_frame
+	print("  the party runs together")
+
+
+# =============================================================================
+# FEWER CLICKS (0.93.3)
+# =============================================================================
+# The owner: "making the UI more easy to navigate (less clicks to get done
+# what the user wants to get done)". Measured first: selling took the Sell
+# tab, the row and Sell; a loot bag, interact and then the mouse to Take
+# all; banking the day's gold, typing the number; and nothing but a pet's
+# tooltip said a right-click uses an item.
+
+func _test_fewer_clicks() -> void:
+	section("FEWER CLICKS - sell from the bag, interact takes all, Deposit all, every item says how it is used (0.93.3)")
+
+	# ---- the shop buys by a double-click in the bag ----
+	const T := ItemData.Type
+	var potion: ItemData = _menu_item("zz_quick_potion", T.CONSUMABLE, 0, 20)
+	potion.tier = 1
+	var chest: ItemData = _menu_item("zz_quick_chest", T.ARMOR, ItemData.EquipSlot.CHEST)
+	chest.tier = 5
+	var coin: ItemData = _menu_item("zz_quick_coin", T.CURRENCY, 0, 99)
+	for item in [potion, chest, coin]:
+		ItemRegistry._items[item.item_id] = item
+	var bag := InventoryContainer.new()
+	bag.is_carry = true
+	add_child(bag)
+	bag.load_save_array([{"item_id": "zz_quick_potion", "quantity": 6}, {"item_id": "zz_quick_chest", "quantity": 1},
+		{"item_id": "zz_quick_coin", "quantity": 40}])
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.inventory_override = bag
+	panel.shop_id = "generalstore"
+	var sent: Array = []
+	var answer: Array = [{"ok": true, "status": 200, "data": {"item_id": "zz_quick_potion", "quantity": 1,
+		"total_received": 10, "gold": 510, "inventory": [{"item_id": "zz_quick_potion", "quantity": 5},
+		{"item_id": "zz_quick_chest", "quantity": 1}, {"item_id": "zz_quick_coin", "quantity": 40}]}}]
+	panel.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		return answer[0]
+	panel.show_catalogue({"display_name": "Kingdom Supplies", "sell_multiplier": 0.05, "stock": [],
+		"sell_prices": {"zz_quick_potion": 10, "zz_quick_chest": 1464}})
+	panel.visible = true
+	panel.call("_wire_bag", true)
+	check("with the shop open, the bag's double-click (and a finger held) is the shop's",
+		bag.held_is_double_click and bag.slot_double_clicked.is_connected(Callable(panel, "_on_bag_double_clicked")))
+	var shop_src: String = _code_src("res://src/ui/shop/shopinventory.gd")
+	check("  wired when it opens and let go when it closes, or is hidden any other way",
+		_func_body(shop_src, "func open_for_shop(").contains("_wire_bag(true)")
+		and _func_body(shop_src, "func close_shop(").contains("_wire_bag(false)")
+		and _func_body(shop_src, "func _notification(").contains("_wire_bag(false)"))
+	bag.slot_double_clicked.emit(bag.slots[0])
+	await get_tree().process_frame
+	check("a double-click on a stack sells one of it, by its cell",
+		sent.size() == 1 and sent[0][0] == "/api/shop/sell" and sent[0][1].get("position") == 0
+		and sent[0][1].get("item_id") == "zz_quick_potion" and sent[0][1].get("quantity") == 1, sent)
+	check("  and the panel says what was sold", str(panel.notice_label.text).begins_with("Sold"), panel.notice_label.text)
+	bag.slot_double_clicked.emit(bag.slots[1])
+	await get_tree().process_frame
+	check("a legendary piece asks again first, and nothing is sent",
+		sent.size() == 1 and str(panel.notice_label.text).begins_with("Double-click it again"), panel.notice_label.text)
+	answer[0] = {"ok": true, "status": 200, "data": {"item_id": "zz_quick_chest", "quantity": 1,
+		"total_received": 1464, "gold": 1974, "inventory": [{"item_id": "zz_quick_potion", "quantity": 5}, null,
+		{"item_id": "zz_quick_coin", "quantity": 40}]}}
+	bag.slot_double_clicked.emit(bag.slots[1])
+	await get_tree().process_frame
+	check("  and the second double-click sells it", sent.size() == 2 and sent[1][1].get("item_id") == "zz_quick_chest")
+	bag.slot_double_clicked.emit(bag.slots[2])
+	await get_tree().process_frame
+	check("what the shop does not buy is said, not sent",
+		sent.size() == 2 and str(panel.notice_label.text).contains("does not buy"), panel.notice_label.text)
+	panel.visible = false
+	check("hidden, the bag's double-click means nothing again",
+		not bag.held_is_double_click and not bag.slot_double_clicked.is_connected(Callable(panel, "_on_bag_double_clicked")))
+	bag.held_is_double_click = true
+	panel.visible = true
+	panel.call("_wire_bag", true)
+	check("  and if the bank already holds the bag, the shop leaves it alone",
+		not bag.slot_double_clicked.is_connected(Callable(panel, "_on_bag_double_clicked")))
+	bag.held_is_double_click = false
+	panel.queue_free()
+	bag.queue_free()
+	for item in [potion, chest, coin]:
+		ItemRegistry._items.erase(item.item_id)
+
+	# ---- a loot bag: interact again takes all ----
+	var bag_src: String = _code_src("res://src/world/lootbag.gd")
+	var process: String = _func_body(bag_src, "func _process(")
+	check("a second press of interact on an open loot bag takes all - after the nearest-bag gate, before opening",
+		process.find("_is_nearest_candidate()") != -1
+		and process.find("_is_nearest_candidate()") < process.find("_take_all_open()")
+		and process.find("_take_all_open()") < process.find("_try_open()")
+		and _func_body(bag_src, "func _take_all_open(").contains("\"take_all\""))
+	var loot: Node = (load("res://scene/ui/lootbag/lootbaginventory.tscn") as PackedScene).instantiate()
+	add_child(loot)
+	var here := Node2D.new()
+	var there := Node2D.new()
+	loot.set("_world_bag", here)
+	loot.visible = true
+	check("  and only on that bag's own panel", loot.call("showing", here) and not loot.call("showing", there))
+	check("  and Take all says the key does it too",
+		str(loot.call("take_all_hint")).begins_with("Or press ") and str(loot.call("take_all_hint")).ends_with(" again"))
+	loot.set("_world_bag", null)
+	loot.queue_free()
+	here.free()
+	there.free()
+
+	# ---- the bank: Deposit with nothing typed banks it all ----
+	var bank: Node = (load("res://scene/ui/bank/bankinventory.tscn") as PackedScene).instantiate()
+	add_child(bank)
+	var deposit: Button = bank.get_node("%depositbuttons")
+	var amount: LineEdit = bank.get_node("%goldinput")
+	var empty_text: String = deposit.text
+	amount.text = "250"
+	amount.text_changed.emit("250")
+	var typed_text: String = deposit.text
+	check("the bank's Deposit says \"Deposit all\" with nothing typed, \"Deposit\" with an amount",
+		empty_text == "Deposit all" and typed_text == "Deposit", [empty_text, typed_text])
+	var bank_src: String = _code_src("res://src/ui/bank/bankinventory.gd")
+	var deposit_body: String = _func_body(bank_src, "func _on_deposit_pressed(")
+	var withdraw_body: String = _func_body(bank_src, "func _on_withdraw_pressed(")
+	check("  and with nothing typed it banks all the gold carried; Withdraw still takes a number",
+		deposit_body.contains("amount = int(p.gold)") and not withdraw_body.contains("get_bank_gold()\n\tif amount <= 0")
+		and not withdraw_body.contains("amount = CharacterData.get_bank_gold()"))
+	bank.queue_free()
+
+	# ---- every item says how it is used ----
+	var sword: ItemData = _menu_item("zz_quick_sword", T.WEAPON, ItemData.EquipSlot.WEAPON)
+	var pet_item: ItemData = _menu_item("zz_quick_pet", T.PET)
+	check("every kind of item with a use says how, in its tooltip",
+		ItemTooltip.use_line(sword) == ItemTooltip.GEAR_USE_LINE
+		and ItemTooltip.use_line(chest) == ItemTooltip.GEAR_USE_LINE
+		and ItemTooltip.use_line(potion) == ItemTooltip.CONSUMABLE_USE_LINE
+		and ItemTooltip.use_line(coin) == ItemTooltip.CURRENCY_USE_LINE
+		and ItemTooltip.use_line(pet_item) == ItemTooltip.PET_USE_LINE,
+		[ItemTooltip.use_line(sword), ItemTooltip.use_line(potion), ItemTooltip.use_line(coin)])
+	check("  on a touch screen, hold; on the doll, it comes off",
+		ItemTooltip.use_line(sword, true).begins_with("Hold") and ItemTooltip.use_line(potion, true).begins_with("Hold")
+		and ItemTooltip.use_line(sword, false, true) == ItemTooltip.WORN_USE_LINE)
+	var tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(tip)
+	await get_tree().process_frame
+	ItemRegistry._items[sword.item_id] = sword
+	tip.show_for_stack(ItemStack.new(sword, 1), null)
+	var in_bag: String = tip.description_label.text
+	var square := EquipmentSlot.new()
+	tip.show_for_stack(ItemStack.new(sword, 1), square)
+	var on_doll: String = tip.description_label.text
+	check("  the tooltip over a sword in the bag says put it on; over the same sword worn, take it off",
+		in_bag.contains(ItemTooltip.GEAR_USE_LINE) and on_doll.contains(ItemTooltip.WORN_USE_LINE)
+		and not on_doll.contains(ItemTooltip.GEAR_USE_LINE), [in_bag, on_doll])
+	ItemRegistry._items.erase(sword.item_id)
+	square.free()
+	tip.queue_free()
+	await get_tree().process_frame
+	print("  fewer clicks: selling, looting, banking and using")
+
+
+func _test_minigames() -> void:
+	section("MINIGAMES - the bar's button, the Endless once a day by the server's clock, a door one way in (0.93.3)")
+	var Card: GDScript = load("res://src/ui/minigames/minigamescard.gd") as GDScript
+	check("the Minigames card loads", Card != null and Card.can_instantiate())
+	if Card == null:
+		return
+	check("it says a wait as the server does", Card.wait_text(48000) == "Back in 13h 20m" and Card.wait_text(3600) == "Back in 1h"
+		and Card.wait_text(2700) == "Back in 45m" and Card.wait_text(59) == "Back in under a minute",
+		[Card.wait_text(48000), Card.wait_text(3600), Card.wait_text(2700), Card.wait_text(59)])
+
+	# ---- the bar ----
+	var was_touch: bool = TouchControls.active
+	TouchControls.set_active(false)
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var row: Array = hud.get_node("%navbuttons").get_children().map(func(c: Node) -> String: return String(c.name))
+	var button: Button = hud.get_node("%minigamesbutton")
+	check("Minigames is on the bar, between Social and Menu, in the bar's own size",
+		row.slice(-3) == ["socialbutton", "minigamesbutton", "menubutton"] and button.text == "Minigames"
+		and button.focus_mode == Control.FOCUS_NONE, row)
+	check("  and in the touch screen's grid, after the bar's own",
+		Array(preload("res://src/ui/touchmenu.gd").ITEMS).find("minigamesbutton") == 6)
+	var card: Node = hud.get("minigames_card")
+	check("the HUD makes its card, shut", card != null and not (card as Control).visible)
+	if card == null:
+		hud.queue_free()
+		TouchControls.set_active(was_touch)
+		return
+	var asked: Array = []
+	var sent: Array = []
+	var went: Array = []
+	var area: Array = ["elusion"]
+	var listing: Array = [{"ok": true, "status": 200, "data": {"games": [{"id": "endless", "name": "The Endless",
+		"wait_seconds": 86400, "entered_at": 0, "ready_in": 0}], "skips_wait": false}}]
+	var entering: Array = [{"ok": true, "status": 200, "data": {"ok": true, "game": "endless", "entered_at": 1, "ready_in": 86400}}]
+	card.list_request = func(path: String, _timeout: float) -> Dictionary:
+		asked.append(path)
+		return listing[0]
+	card.enter_request = func(path: String, body: Dictionary, _timeout: float) -> Dictionary:
+		sent.append([path, body])
+		return entering[0]
+	card.travel = func(area_id: String, spawn_id: String) -> void:
+		went.append([area_id, spawn_id])
+	card.area_now = func() -> String:
+		return area[0]
+	var status: Label = card.get("status")
+	var go: Button = card.get("go_button")
+
+	button.pressed.emit()
+	await get_tree().process_frame
+	var drawn: Rect2 = (card as Control).get_global_rect()
+	var under: Rect2 = button.get_global_rect()
+	check("the button opens it, asks the server, and it says Ready beside Go",
+		(card as Control).visible and asked == ["/api/minigames"] and status.text == "Ready" and go.text == "Go"
+		and not go.disabled, [asked, status.text, go.text, go.disabled])
+	check("  above the button, its right edge on the button's", drawn.end.y <= under.position.y
+		and absf(drawn.end.x - under.end.x) <= 1.0, [drawn, under])
+	button.pressed.emit()
+	check("  pressed again it shuts", not (card as Control).visible)
+
+	# ---- the day ----
+	listing[0]["data"]["games"][0]["ready_in"] = 48000
+	button.pressed.emit()
+	await get_tree().process_frame
+	check("within the day it says how long is left, and Go waits", status.text == "Back in 13h 20m" and go.disabled,
+		[status.text, go.disabled])
+	hud.call("toggle_nav_menu", "socialbutton")
+	check("  a dropdown opened shuts it, as the bar's menus shut each other",
+		not (card as Control).visible and (hud.get_node("%socialmenu") as Control).visible)
+	button.pressed.emit()
+	check("  and opening it shuts the dropdown", (card as Control).visible
+		and not (hud.get_node("%socialmenu") as Control).visible)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = Vector2(4, 4)
+	hud.call("_click_outside_nav_menus", click)
+	check("  a click elsewhere shuts it", not (card as Control).visible)
+
+	# ---- Go ----
+	listing[0]["data"]["games"][0]["ready_in"] = 0
+	button.pressed.emit()
+	await get_tree().process_frame
+	go.pressed.emit()
+	await get_tree().process_frame
+	check("Go asks the server first, then takes you to the Endless's corridor, and the card shuts",
+		sent == [["/api/minigames/enter", {"game": "endless"}]] and went == [["endless", "endless_entrance"]]
+		and not (card as Control).visible, [sent, went])
+	entering[0] = {"ok": false, "status": 409, "data": {"error": "Conflict", "ready_in": 7200,
+		"message": "The Endless opens for you again in 2h."}}
+	button.pressed.emit()
+	await get_tree().process_frame
+	go.pressed.emit()
+	await get_tree().process_frame
+	check("  the server's day says no: nowhere to go, how long is left, and Go waits",
+		went.size() == 1 and (card as Control).visible and status.text == "Back in 2h" and go.disabled,
+		[went, status.text, go.disabled])
+	entering[0] = {"ok": false, "status": 0, "data": {}}
+	(card as Control).call("take_listing", listing[0])
+	go.pressed.emit()
+	await get_tree().process_frame
+	check("  no answer at all: it says so and Go can be pressed again",
+		went.size() == 1 and status.text == "Could not reach the server - try again." and not go.disabled,
+		[went, status.text, go.disabled])
+	(card as Control).call("take_listing", {"ok": false, "status": 0})
+	await get_tree().process_frame
+	check("  and so it says when the card could not ask, with Go there - the server decides at Go",
+		status.text == "Could not reach the server - try again." and not go.disabled, [status.text, go.disabled])
+	hud.call("close_nav_menus")
+
+	# ---- Leave ----
+	area[0] = "endless"
+	var asked_before: int = asked.size()
+	button.pressed.emit()
+	await get_tree().process_frame
+	check("in the Endless it asks nothing and says Leave", asked.size() == asked_before
+		and status.text == "You are in the Endless." and go.text == "Leave" and not go.disabled, [status.text, go.text])
+	go.pressed.emit()
+	check("  Leave goes up to town, the server not asked, and the card shuts",
+		went.back() == ["elusion", ""] and sent.size() == 3 and not (card as Control).visible, [went, sent.size()])
+	hud.queue_free()
+	TouchControls.set_active(was_touch)
+	await get_tree().process_frame
+
+	# ---- the door, one way in ----
+	var door: Node2D = (load("res://scene/crypt/door.tscn") as PackedScene).instantiate()
+	door.position = Vector2(-4000, -4000)
+	add_child(door)
+	await get_tree().process_frame
+	door.call("_show", true, false)
+	door.call("one_way", true)
+	door.call("one_way", true)
+	var walker := CharacterBody2D.new()
+	walker.motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	var round_shape := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 7.0
+	round_shape.shape = circle
+	walker.add_child(round_shape)
+	walker.collision_layer = 4
+	walker.collision_mask = 19
+	add_child(walker)
+	walker.global_position = door.global_position + Vector2(0, 30)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var up: KinematicCollision2D = walker.move_and_collide(Vector2(0, -70))
+	var above: float = walker.global_position.y - door.global_position.y
+	var down_hit: KinematicCollision2D = walker.move_and_collide(Vector2(0, 70))
+	var after: float = walker.global_position.y - door.global_position.y
+	check("the Endless's door, open, lets a player in from below and not back out from above",
+		up == null and above <= -39.0 and down_hit != null and after <= -16.0, [up != null, above, after])
+	walker.global_position = door.global_position + Vector2(0, 30)
+	walker.move_and_collide(Vector2(0, -12))
+	var half_back: KinematicCollision2D = walker.move_and_collide(Vector2(0, 30))
+	check("  half way through and back is allowed: you are not in till you are past it", half_back == null,
+		walker.global_position.y - door.global_position.y)
+	walker.collision_layer = 8
+	walker.collision_mask = 3
+	walker.global_position = door.global_position + Vector2(0, -40)
+	var monster_hit: KinematicCollision2D = walker.move_and_collide(Vector2(0, 80))
+	check("  only a player: a monster's body goes through it as before", monster_hit == null)
+	var edges: int = door.find_children("oneway", "StaticBody2D", true, false).size()
+	check("  one edge, however often it is asked for, and it comes off", edges == 1)
+	door.call("one_way", false)
+	await get_tree().process_frame
+	check("  ...when switched off", door.find_children("oneway", "StaticBody2D", true, false).is_empty())
+	walker.queue_free()
+	door.queue_free()
+	var run_src: String = _code_only(FileAccess.get_file_as_string("res://src/world/endless/endlessrun.gd"))
+	check("the run makes its door one way when it starts",
+		run_src.contains("_one_way_door.call_deferred()") and run_src.contains("door.call(\"one_way\", true)"))
+	await get_tree().process_frame
+	print("  minigames: a button, a day, a door one way")
+
+
+# =============================================================================
+# FEEL EACH LAND, AND MORE ELITES (0.93.3)
+# =============================================================================
+# The owner: "we need to spawn more elites in as time progresses also we need
+# to really feel each elements effect", then soaked a defence cut, freeze a
+# real freeze, dark double damage, and wind's shove a path of spikes that hits
+# three times. The effects' own checks are in testrunner_7's boss section.
+
+func _land_body_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar hp: int = 100\nvar taken: Array = []\n" \
+		+ "func take_damage(amount: int, element: int = 0) -> void:\n\ttaken.append([amount, element])\n"
+	script.reload()
+	return script
+
+
+func _test_feel_each_land() -> void:
+	section("FEEL EACH LAND - the swarm's touch carries the land's effect, wind's spike paths, the floor's tint, more elites (0.93.3)")
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var SpikePath: GDScript = load("res://src/world/endless/spikepath.gd") as GDScript
+	var SwarmScript: GDScript = load("res://src/world/endless/swarm.gd") as GDScript
+	const FX := preload("res://src/characters/statuseffects.gd")
+	check("the run, the swarm and the spike path load", Run != null and SpikePath != null and SwarmScript != null
+		and SpikePath.can_instantiate())
+	if Run == null or SpikePath == null or SwarmScript == null:
+		return
+
+	# ---- what each land does ----
+	var felt: Dictionary = {}
+	for land in Run.STAGE_LANDS:
+		felt[Element.name_for(land)] = Run.touch_effect_for(land)
+	check("the touch carries each land's effect - none in wind, whose spikes shove", felt == {
+		Element.name_for(Element.Type.LIGHT): FX.DAZZLE, Element.name_for(Element.Type.WIND): &"",
+		Element.name_for(Element.Type.WATER): FX.SOAKED, Element.name_for(Element.Type.ICE): FX.CHILL,
+		Element.name_for(Element.Type.EARTH): FX.ROOT, Element.name_for(Element.Type.FIRE): FX.BURN,
+		Element.name_for(Element.Type.DARK): FX.WITHER}, felt)
+	var said: bool = true
+	var tinted: bool = true
+	for land in Run.STAGE_LANDS:
+		said = said and str(Run.LAND_FELT.get(land, "")) != ""
+		tinted = tinted and Run.floor_tint_for(land).a > 0.0
+	check("  each land says what it does, and tints the floor", said and tinted)
+
+	# ---- the touch ----
+	var victim := Node2D.new()
+	victim.set_script(_land_body_script())
+	add_child(victim)
+	victim.global_position = Vector2(-3000, -3000)
+	victim.reset_physics_interpolation()
+	var fx: Node = FX.attach(victim)
+	fx.set_physics_process(false)
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("touch_effect", FX.CHILL)
+	var first: bool = bool(swarm.call("touch_effect_on", victim, 10))
+	var again: bool = bool(swarm.call("touch_effect_on", victim, 10))
+	swarm.set("_effect_left", 0.0)
+	var later: bool = bool(swarm.call("touch_effect_on", victim, 10))
+	check("a touch that hurts puts the land's effect on you, at most once every %.1f s" % SwarmScript.EFFECT_GAP,
+		first and not again and later and fx.started.count(FX.CHILL) == 1 and int(fx.chill_stacks) == 2,
+		[first, again, later, fx.chill_stacks])
+	swarm.set("touch_effect", &"")
+	swarm.set("_effect_left", 0.0)
+	check("  and none where the land has none", not bool(swarm.call("touch_effect_on", victim, 10)))
+	swarm.free()
+	fx.call("clear_all")
+
+	# ---- wind's spike paths ----
+	var path: Node2D = SpikePath.new()
+	path.set("direction", Vector2.RIGHT)
+	path.set("count", 6)
+	path.set("damage", 9)
+	path.set("target", victim)
+	add_child(path)
+	path.global_position = victim.global_position + Vector2(-60, 4)
+	path.reset_physics_interpolation()
+	path.set_physics_process(false)
+	var spikes: Array = path.get("spikes")
+	path.call("advance", SpikePath.WARN_SECONDS - 0.05)
+	var warned: bool = int(path.get("hits")) == 0 and is_equal_approx((spikes[0] as Sprite2D).modulate.a, SpikePath.WARN_ALPHA) \
+		and (spikes[0] as Sprite2D).texture == SpikePath.FRAMES[0]
+	path.call("advance", 0.1)
+	var after_one: int = (victim.get("taken") as Array).size()
+	path.call("advance", SpikePath.TICK_SECONDS)
+	path.call("advance", SpikePath.TICK_SECONDS)
+	check("a spike path warns first (the down picture, faint), then rises down, half, up, the spike door's own pictures",
+		warned and after_one == 1 and (spikes[0] as Sprite2D).texture == SpikePath.FRAMES[2]
+		and spikes.size() == 6 and SpikePath.FRAMES[1].resource_path == "res://art/doors/spikeshalf.png")
+	check("  stuck in the path, all three ticks hit and push you along it",
+		int(path.get("hits")) == 3 and victim.get("taken") == [[9, Element.Type.WIND], [9, Element.Type.WIND], [9, Element.Type.WIND]]
+		and fx.started.count(FX.SHOVE) == 3 and float(fx.shove_velocity.x) > 0.0 and is_zero_approx(float(fx.shove_velocity.y)),
+		[path.get("hits"), victim.get("taken"), fx.shove_velocity])
+	path.call("advance", SpikePath.TICK_SECONDS + SpikePath.SINK_SECONDS + 0.05)
+	await get_tree().process_frame
+	check("  then it sinks and is gone", not is_instance_valid(path))
+	var aside: Node2D = SpikePath.new()
+	aside.set("direction", Vector2.RIGHT)
+	aside.set("count", 6)
+	aside.set("target", victim)
+	add_child(aside)
+	aside.global_position = victim.global_position + Vector2(-60, 40)
+	aside.reset_physics_interpolation()
+	aside.set_physics_process(false)
+	aside.call("advance", SpikePath.WARN_SECONDS + SpikePath.TICK_SECONDS * 3.0)
+	check("  stepped out of it on the warning, none land", int(aside.get("hits")) == 0)
+	aside.queue_free()
+
+	# ---- the run ----
+	var run: Node = Run.new()
+	run.set("arena_rect", Rect2(9, 34, 1518, 1344))
+	run.set("corridor_rect", Rect2(694, 1030, 148, 376))
+	add_child(run)
+	await get_tree().process_frame
+	run.set("state", 1)
+	run.call("_enter_stage", 4)
+	var hud: Node = run.get("_hud")
+	check("a stage of ice: the swarm's touch chills, the banner says the cold freezes you",
+		(run.get("swarm") as Node).get("touch_effect") == FX.CHILL
+		and str((hud.get("banner_line") as Label).text) == "The cold freezes you"
+		and (hud.get("banner_line") as Label).visible, (hud.get("banner_line") as Label).text)
+	run.call("_ease_floor", 10.0)
+	var wash: ColorRect = run.get("floor_wash")
+	check("  and a wash of ice's colour comes over the floor, added, under the swarm",
+		wash.is_inside_tree() and wash.color.is_equal_approx(Run.floor_tint_for(Element.Type.ICE))
+		and (wash.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and wash.z_index < SwarmScript.DRAW_Z, wash.color)
+	run.call("_enter_stage", 2)
+	check("a stage of wind: no touch effect - its spikes shove", (run.get("swarm") as Node).get("touch_effect") == &"")
+	victim.global_position = Vector2(768, 600)
+	victim.reset_physics_interpolation()
+	var raised: Node2D = run.call("raise_spikes", victim)
+	var on_floor: bool = raised != null
+	var near: bool = false
+	if raised != null:
+		for spike in raised.get("spikes"):
+			on_floor = on_floor and bool(run.call("in_arena", (spike as Sprite2D).global_position))
+		var local: Vector2 = victim.global_position - raised.global_position
+		var dir: Vector2 = raised.get("direction")
+		near = absf(local.dot(dir.orthogonal())) <= Run.SPIKE_MISS + 0.01 and local.dot(dir) >= 0.0
+		raised.queue_free()
+	check("  each one near you, starting behind you, every spike on the arena's floor",
+		on_floor and near and int(raised.get("count")) >= 3 if raised != null else false)
+	run.set("state", 2)
+	run.call("_ease_floor", 10.0)
+	check("  and the floor is plain again once the run is over", is_zero_approx(wash.color.a))
+
+	# ---- more elites ----
+	var per_minute: float = 60.0 / Run.elite_gap(10) * float(Run.elites_at(10))
+	check("elite waves come faster and bigger: about %.0f a minute at stage 10 (8 before)" % per_minute,
+		is_equal_approx(Run.elite_gap(2), 28.0) and is_equal_approx(Run.elite_gap(10), Run.ELITE_GAP_MIN)
+		and Run.elites_at(1) == 0 and Run.elites_at(10) == 6 and per_minute >= 20.0, per_minute)
+	var standing := Node2D.new()
+	var falling := Node2D.new()
+	var dying_script := GDScript.new()
+	dying_script.source_code = "extends Node2D\nvar is_dying: bool = true\n"
+	dying_script.reload()
+	falling.set_script(dying_script)
+	var gone := Node2D.new()
+	add_child(standing)
+	add_child(falling)
+	run.set("_extras", [standing, falling, gone])
+	gone.free()
+	check("  never more than %d alive (+%d for each other player), counting only those standing"
+		% [Run.ELITES_ALIVE, Run.ELITES_ALIVE_EACH],
+		Run.elites_alive_cap(1) == 40 and Run.elites_alive_cap(4) == 70 and int(run.call("elites_alive")) == 1,
+		run.call("elites_alive"))
+	var run_src: String = _code_src("res://src/world/endless/endlessrun.gd")
+	check("  a wave waits while the arena is full", run_src.contains("for i in mini(wave, room):")
+		and run_src.contains("if wave > 0 and room <= 0:"))
+	run.set("_extras", [])
+	standing.queue_free()
+	falling.queue_free()
+	if is_instance_valid(run.get("swarm")):
+		(run.get("swarm") as Node).queue_free()
+	run.queue_free()
+	await get_tree().process_frame
+	check("  the wash goes with the run", not is_instance_valid(wash))
+
+	# ---- frozen, you ----
+	var me: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	me.set_physics_process(false)
+	add_child(me)
+	var mine: Node = FX.of(me)
+	for k in FX.CHILL_TO_FREEZE:
+		mine.apply(FX.CHILL)
+	var sprite: AnimatedSprite2D = me.get_node("animatedsprite2d")
+	sprite.speed_scale = 1.0
+	var still: bool = bool(me.call("effects_still_sprite", sprite))
+	check("frozen, your character cannot attack and its animation stops on its frame",
+		not me.effects_let_attack() and still and is_zero_approx(sprite.speed_scale))
+	mine.advance(FX.FROZEN_SECONDS + 0.01)
+	check("  and thawed, both come back", me.effects_let_attack() and not bool(me.call("effects_still_sprite", sprite)))
+	var healer_src: String = _code_src("res://src/characters/healer.gd")
+	check("  the healer's held beam asks too", _func_body(healer_src, "func _is_attack_input_held(").contains("effects_let_attack()"))
+	me.queue_free()
+	victim.queue_free()
+	await get_tree().process_frame
+	print("  each land felt, wind's spikes, more elites")
+

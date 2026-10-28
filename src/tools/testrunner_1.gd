@@ -5081,7 +5081,9 @@ func _test_a_pet_says_how_to_summon_it() -> void:
 		ItemTooltip.use_line(pet) if pet != null else "no petsniper")
 	# The sword's icon is in the private art pack, and ItemRegistry turns away
 	# an item whose icon is missing - so in a clone there is no sword to ask.
-	check_needs_pack("  and an item that is not a pet has none", sword != null and ItemTooltip.use_line(sword) == "")
+	# A sword says how it is put on, since 0.93.3 (_test_fewer_clicks).
+	check_needs_pack("  and a sword says how it is put on instead", sword != null
+		and ItemTooltip.use_line(sword) == ItemTooltip.GEAR_USE_LINE)
 	var pets_seen := 0
 	var silent: Array = []
 	for item in ItemRegistry.get_all_items():

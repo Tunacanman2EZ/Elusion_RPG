@@ -71,6 +71,15 @@
 # every mirror, lowers the leader's own monsters to it, and kills what it
 # says is dead on every screen - so a leader can still move the monsters, but
 # can no longer heal one past the hits that landed or kill one they did not.
+#
+# THE RUN BETWEEN A PARTY (0.93.3). In the Endless a party has an arena of its
+# own (the server seats it there - ONE ARENA A PARTY in presence.py), and the
+# games in it pass the run between them as "en" messages: the leader's clock
+# and its slimes born, everybody's hits on the swarm, who is in the run. This
+# says "en" in its hello, and run_received hands each message to the run's
+# endlessparty.gd. Nothing in a party's arena is booked: its lead message says
+# so ("b": 0), and then books() and server_health() are false there - the
+# leader's game counts the elites' health, as before 0.87.0.
 extends Node
 
 # Their aim on the wire, stepped to this many degrees (aim_degrees_of()).
@@ -86,6 +95,8 @@ const TICK_ATTACKS := 1
 # monster's health, and takes a death the count makes (THE SERVER OWNS THEIR
 # HEALTH, below).
 const SERVER_HEALTH := 1
+# Said in the hello (0.93.3): this game speaks the party's run ("en").
+const RUN_VERSION := 1
 
 # Who runs this area's monsters: the leader's account id, -1 for nobody (or no
 # link at all), and how many other games share them.
@@ -108,6 +119,9 @@ signal health_received(rows: Array, dead: Array)
 ## watch_damage(true) - its room's hits the books counted, and who dealt them
 ## (damagemeter.gd). Only an owner's or co-owner's game is sent any.
 signal damage_meter(report: Dictionary)
+## THE RUN BETWEEN A PARTY (0.93.3): another game's part of the party's run in
+## the Endless - its "en" message, without "t" and "id" - for endlessparty.gd.
+signal run_received(from_id: int, data: Dictionary)
 
 const RemotePlayer := preload("res://src/characters/remoteplayer.gd")
 
@@ -192,6 +206,11 @@ var _server_books: bool = false
 # Whether the server passes on attacks and levers (its welcome's "x").
 var _server_relays: bool = false
 var _server_health: bool = false
+# Said in the welcome (0.93.3): the server passes the party's run on.
+var _server_runs: bool = false
+# Said in the lead (0.93.3): whether the server books this area's monsters
+# (a party's arena it does not). True until a lead says otherwise.
+var _lead_books: bool = true
 # Attack pictures waiting for the next send: [kind, ts, ox, oy, tx, ty, delay ms, flags].
 var _attacks: Array = []
 var _lever_rule: RegEx = RegEx.create_from_string(LEVER_PATTERN)
@@ -267,14 +286,34 @@ func shares() -> bool:
 
 func books() -> bool:
 	"""True while the link is open to a server that keeps books on the
-	monsters: the leader sends its world even alone, its own hits inside."""
-	return shares() and _server_books
+	monsters: the leader sends its world even alone, its own hits inside.
+	Never in an area its lead says is not booked (a party's arena, 0.93.3)."""
+	return shares() and _server_books and _lead_books
 
 
 func server_health() -> bool:
 	"""True while the link is open to a server that owns the monsters' health
-	(0.87.0): every game draws its count, and a monster it says is dead is."""
-	return shares() and _server_health
+	(0.87.0): every game draws its count, and a monster it says is dead is.
+	Never where its lead says nothing is booked: no count comes there."""
+	return shares() and _server_health and _lead_books
+
+
+func runs() -> bool:
+	"""True while the link is open to a server that passes a party's run
+	between the games in its arena (0.93.3)."""
+	return shares() and _server_runs
+
+
+func send_run(data: Dictionary, to: int = -1) -> void:
+	"""THE RUN BETWEEN A PARTY: this game's part of it, to the other games in
+	the arena (or one, `to`). The server checks it and passes it on."""
+	if not runs() or data.is_empty():
+		return
+	var message: Dictionary = data.duplicate()
+	message["t"] = "en"
+	if to >= 0:
+		message["to"] = to
+	_send(message)
 
 
 func relays() -> bool:
@@ -395,6 +434,7 @@ func _lose_lead() -> void:
 	_lead_area = ""
 	_leader_id = -1
 	_lead_sharers = 0
+	_lead_books = true
 	if had:
 		lead_changed.emit(area, -1, 0)
 
@@ -469,9 +509,11 @@ func _pump(delta: float, player: Node) -> void:
 		_server_books = false
 		_server_relays = false
 		_server_health = false
+		_server_runs = false
+		_lead_books = true
 		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
-			"sh": SERVER_HEALTH})
+			"sh": SERVER_HEALTH, "en": RUN_VERSION})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
@@ -661,6 +703,7 @@ func handle_message(message: Dictionary) -> void:
 			_server_books = typeof(message.get("books")) == TYPE_BOOL and bool(message["books"])
 			_server_relays = int(message.get("x", 0)) >= 1
 			_server_health = int(message.get("sh", 0)) >= SERVER_HEALTH
+			_server_runs = int(message.get("en", 0)) >= RUN_VERSION
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":
@@ -686,6 +729,8 @@ func handle_message(message: Dictionary) -> void:
 				print("[PRESENCE] the server said goodbye: %s" % str(message.get("why", "")))
 		"lead":
 			_lead_area = str(message.get("a", ""))
+			# A server from before 0.93.3 sends no "b": it books, as it did.
+			_lead_books = int(message.get("b", 1)) != 0
 			_leader_id = int(message.get("id", -1))
 			_lead_sharers = maxi(int(message.get("n", 0)), 0)
 			lead_changed.emit(_lead_area, _leader_id, _lead_sharers)
@@ -715,6 +760,13 @@ func handle_message(message: Dictionary) -> void:
 			voice_message.emit(message)
 		"dm":
 			damage_meter.emit(message)
+		"en":
+			var sender: int = int(message.get("id", -1))
+			if sender >= 0 and sender != _my_id:
+				var run: Dictionary = message.duplicate()
+				run.erase("t")
+				run.erase("id")
+				run_received.emit(sender, run)
 
 
 func _hear_attacks(id: int, attacks: Variant) -> void:

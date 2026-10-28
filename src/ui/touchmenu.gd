@@ -25,7 +25,7 @@ const PadScript := preload("res://src/ui/touchpad.gd")
 # Social's, then Menu's.
 const ITEMS := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton", "chatbutton",
-	"friendsbutton", "playersbutton", "partybutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
+	"minigamesbutton", "friendsbutton", "playersbutton", "partybutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
 const COLUMNS := 3

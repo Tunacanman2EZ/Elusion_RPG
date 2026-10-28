@@ -14,7 +14,11 @@ var plate: PanelContainer = null
 var title: Label = null
 var detail: Label = null
 var banner: Label = null
+# A smaller line under the banner: what the stage's land does to you (0.93.3).
+var banner_line: Label = null
 var _banner_left: float = 0.0
+# The countdown's last number said (-1: none yet this countdown).
+var _count_said: int = -1
 
 
 func _init() -> void:
@@ -49,6 +53,11 @@ func _ready() -> void:
 	banner.add_theme_constant_override("outline_size", 8)
 	banner.visible = false
 	add_child(banner)
+	banner_line = _label(16, COLOUR_HINT)
+	banner_line.add_theme_color_override("font_outline_color", Color(0.08, 0.05, 0.05))
+	banner_line.add_theme_constant_override("outline_size", 6)
+	banner_line.visible = false
+	add_child(banner_line)
 
 
 func _label(size: int, colour: Color) -> Label:
@@ -64,23 +73,38 @@ func _process(delta: float) -> void:
 	if run == null or plate == null:
 		return
 	var state: int = int(run.get("state"))
+	if state != 3:
+		_count_said = -1
 	var slain: int = int(run.swarm.get("slain")) if run.swarm != null else 0
+	var shared: bool = bool(run.call("shared"))
 	if state == 1:
 		var land: String = str(run.LAND_NAMES.get(run.land_of(int(run.get("stage"))), ""))
 		title.text = "Stage %d  ·  %s  ·  %s" % [int(run.get("stage")), land,
 			run.clock_text(float(run.get("elapsed")))]
 		detail.text = "%s slain  ·  %s in the arena" % [GameConstants.commas(slain),
 			GameConstants.commas(int(run.swarm.get("alive")))]
+		if shared:
+			detail.text += "  ·  " + party_text()
+	elif state == 3:
+		var count: int = ceili(float(run.get("countdown_left")))
+		title.text = "The Endless  ·  party of %d" % int(run.party.call("members"))
+		detail.text = "The run starts in %d - come through the door" % count
+		# THE COUNT, ONCE A SECOND, in the middle of the screen.
+		if count != _count_said and count > 0:
+			_count_said = count
+			announce("The run starts in %d" % count)
 	elif state == 0:
-		title.text = "The Endless"
+		title.text = "The Endless" if not shared else "The Endless  ·  party of %d" % int(run.party.call("members"))
 		detail.text = "Open the door and step through to begin." if str(run.call("result_line")) == "" \
 			else str(run.call("result_line"))
 	_place()
 	if _banner_left > 0.0:
 		_banner_left -= delta
 		banner.modulate.a = clampf(_banner_left / 0.6, 0.0, 1.0)
+		banner_line.modulate.a = banner.modulate.a
 		if _banner_left <= 0.0:
 			banner.visible = false
+			banner_line.visible = false
 
 
 func _place() -> void:
@@ -90,15 +114,35 @@ func _place() -> void:
 	if banner.visible:
 		banner.reset_size()
 		banner.position = Vector2(floorf((screen.x - banner.size.x) / 2.0), floorf(screen.y * 0.3))
+		if banner_line.visible:
+			banner_line.reset_size()
+			banner_line.position = Vector2(floorf((screen.x - banner_line.size.x) / 2.0),
+				banner.position.y + banner.size.y)
 
 
-func announce(text: String) -> void:
+func announce(text: String, line: String = "") -> void:
 	banner.text = text
 	banner.visible = true
 	banner.modulate.a = 1.0
+	banner_line.text = line
+	banner_line.visible = line != ""
+	banner_line.modulate.a = 1.0
 	_banner_left = BANNER_SECONDS
 
 
 func show_result(text: String, best_text: String) -> void:
-	announce("You fell")
+	announce("The party fell" if text.begins_with("The party") else "You fell")
 	detail.text = "%s  ·  best %s" % [text, best_text]
+
+
+func party_text() -> String:
+	"""A party run: how many are in, or - for one who fell - when the door
+	opens again (each new stage, endlessrun.gd)."""
+	var members: int = int(run.party.call("members"))
+	if bool(run.get("my_in")):
+		var in_now: int = int(run.call("line")[7]) if bool(run.call("leading")) else int(run.get("party_in"))
+		return "%d of %d in" % [clampi(in_now, 1, members), members]
+	if bool(run.get("door_open")):
+		return "the door is open - come in"
+	var next_at: float = float(int(run.get("stage"))) * float(run.STAGE_SECONDS)
+	return "resting - the door opens in %s" % run.clock_text(maxf(0.0, next_at - float(run.get("elapsed"))))

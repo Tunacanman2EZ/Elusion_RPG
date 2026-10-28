@@ -164,8 +164,6 @@ func _process(_delta: float) -> void:
 	if _in_spawn_grace():
 		return
 
-	if _is_open:
-		return
 	if _player_nearby == null:
 		return
 	if not Input.is_action_just_pressed("interact"):
@@ -189,7 +187,25 @@ func _process(_delta: float) -> void:
 		return
 	_press_claimed_frame = frame
 
+	# PRESS AGAIN, TAKE ALL (0.93.3). The owner: "less clicks to get done what
+	# the user wants to get done" - walk up, press interact, and the bag
+	# opened; emptying it was the mouse, to Take all. A second press on the
+	# open bag is that button: the same walk over the cells, its full-bag skips
+	# and its stops (lootbaginventory.gd, take_all()).
+	if _is_open:
+		_take_all_open()
+		return
+
 	_try_open()
+
+
+func _take_all_open() -> void:
+	"""Take all on this bag's panel, if it is this bag's panel on screen."""
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	var panel: Node = hud.get("lootbag_panel") if hud != null and "lootbag_panel" in hud else null
+	if panel != null and is_instance_valid(panel) and panel.has_method("showing") \
+			and bool(panel.call("showing", self)):
+		panel.call("take_all")
 
 
 # Shared by every bag. See the comment in _process() for what it guards.

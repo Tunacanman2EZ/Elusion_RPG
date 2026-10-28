@@ -33,6 +33,9 @@ const CLOSE_AFTER := 0.5
 const RECHECK_SECONDS := 0.25
 # What may stand in the gap: players (layer 3) and monsters (layer 4).
 const GAP_MASK := 4 | 8
+# ONE WAY's edge (one_way() below) is on layer 5, which only a player's body
+# looks for (its mask is 19): a shot or a monster goes through as before.
+const ONE_WAY_LAYER := 16
 
 @export var starts_open: bool = false
 
@@ -40,6 +43,13 @@ const GAP_MASK := 4 | 8
 # interact key does nothing, until unlocked. Locking an open door shuts it as
 # soon as nobody stands in the gap.
 var locked: bool = false
+# HELD OPEN (0.93.3, a party's run): open, and it does not shut itself - not
+# when the player walks off, and not on somebody else's pull - until let go.
+# The run holds it while the party comes through, and at each new stage.
+var held: bool = false
+# ONE WAY (0.93.3, the Endless's door): the edge one_way() lays across the
+# gap, or null.
+var one_way_body: StaticBody2D = null
 
 var _open: bool = false
 var _player_nearby: Node = null
@@ -78,8 +88,8 @@ func _process(delta: float) -> void:
 
 func work() -> void:
 	"""The local player opened or shut it: everyone else in the area is told.
-	It does not shut on somebody standing in the gap."""
-	if locked:
+	It does not shut on somebody standing in the gap, nor while held."""
+	if locked or (held and _open):
 		return
 	if _open and gap_taken():
 		return
@@ -92,7 +102,10 @@ func work() -> void:
 func follow_pull(on: bool) -> void:
 	"""Somebody else worked this door (presence.gd), now or before this game
 	walked in. It moves as if worked here, and is told to nobody - and a shut
-	waits, like one here, while somebody stands in the gap."""
+	waits, like one here, while somebody stands in the gap. Held, it stays
+	open."""
+	if held and not on:
+		return
 	if on:
 		_close_in = -1.0
 	if on == _open:
@@ -125,7 +138,7 @@ func _close_later(seconds: float, tells: bool) -> void:
 func _close_now() -> void:
 	"""The countdown ran out: shut, unless the player came back or the gap is
 	taken - then look again shortly. A shut of this game's own is told."""
-	if not _open:
+	if not _open or held:
 		return
 	if not locked and _close_tells and _player_nearby != null and is_instance_valid(_player_nearby):
 		return
@@ -144,8 +157,59 @@ func is_open() -> bool:
 func lock(on: bool) -> void:
 	"""Locked: shut (once the gap is clear) and deaf to the interact key."""
 	locked = on
+	if on:
+		held = false
 	if on and _open:
 		_close_later(0.0, true)
+
+
+func hold(on: bool) -> void:
+	"""Held open, or let go (see `held`): holding opens it now, unlocked and
+	told to the area; let go, it shuts once nobody stands in the gap, as when
+	the player walks off."""
+	if on == held:
+		return
+	held = on
+	if on:
+		locked = false
+		_close_in = -1.0
+		if not _open:
+			_show(true, true)
+			if is_inside_tree():
+				Presence.tell_lever(self, true)
+	elif _open:
+		_close_later(CLOSE_AFTER, true)
+
+
+func one_way(on: bool) -> void:
+	"""ONE WAY (0.93.3, the Endless's door - endlessrun.gd). The owner: "the
+	door needs to be 1 way entry also". In from below (the corridor), never
+	back out from above (the arena): an edge across the gap, open door or
+	shut, that Godot's one-way collision makes solid only to a body moving
+	down onto it. Half way through and back is still allowed - a player is
+	not in until they are past it. Only players are stopped (ONE_WAY_LAYER).
+	"""
+	if not on:
+		if one_way_body != null:
+			one_way_body.queue_free()
+			one_way_body = null
+		return
+	if one_way_body != null:
+		return
+	var gap: Vector2 = (shut_shape.shape as RectangleShape2D).size
+	var edge := RectangleShape2D.new()
+	edge.size = gap
+	var shape := CollisionShape2D.new()
+	shape.name = "edge"
+	shape.shape = edge
+	shape.position = shut_shape.position
+	shape.one_way_collision = true
+	one_way_body = StaticBody2D.new()
+	one_way_body.name = "oneway"
+	one_way_body.collision_layer = ONE_WAY_LAYER
+	one_way_body.collision_mask = 0
+	one_way_body.add_child(shape)
+	add_child(one_way_body)
 
 
 func _show(open: bool, animate: bool) -> void:

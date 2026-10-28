@@ -119,6 +119,8 @@ func _wire_gold_input() -> void:
 		return
 	gold_input.text_changed.connect(_on_gold_input_changed)
 	gold_input.text_submitted.connect(_on_gold_input_submitted)
+	gold_input.text_changed.connect(_label_deposit.unbind(1))
+	_label_deposit()
 
 
 func _wire_bank_container() -> void:
@@ -539,6 +541,25 @@ func _update_gold_ui() -> void:
 		carry_label.text = "carrying %s" % GameConstants.commas(_carry_gold())
 	if gold_input != null:
 		gold_input.text = ""
+	_label_deposit()
+
+
+# DEPOSIT WITH NO AMOUNT BANKS IT ALL (0.93.3). The owner: "less clicks to
+# get done what the user wants to get done" - and what a player at the bank
+# most wants is the day's gold out of death's reach: it was type the number,
+# then Deposit. With the box empty the button says "Deposit all" and does it.
+# NOT WITHDRAW: a stray Withdraw with an empty box would put the whole bank
+# in the pocket a full death empties, so Withdraw still takes a number.
+const DEPOSIT_ALL_TEXT := "Deposit all"
+const DEPOSIT_TEXT := "Deposit"
+
+
+func _label_deposit() -> void:
+	if deposit_btn == null:
+		return
+	var all: bool = gold_input == null or gold_input.text.is_empty()
+	deposit_btn.text = DEPOSIT_ALL_TEXT if all else DEPOSIT_TEXT
+	deposit_btn.tooltip_text = "Bank all the gold you carry" if all else "Bank the amount typed"
 
 
 func _on_gold_input_changed(new_text: String) -> void:
@@ -616,7 +637,10 @@ func _on_deposit_pressed() -> void:
 	if p == null:
 		return
 
+	# Nothing typed is everything carried (_label_deposit()).
 	var amount: int = _typed_amount()
+	if amount <= 0 and (gold_input == null or gold_input.text.is_empty()):
+		amount = int(p.gold)
 	if amount <= 0:
 		return
 

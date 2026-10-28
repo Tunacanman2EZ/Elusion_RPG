@@ -2149,8 +2149,11 @@ func _test_the_bosses_are_seven_fights() -> void:
 		is_equal_approx(one, 0.8) and is_equal_approx(two, 0.6) and fx.speed_scale() == 0.0
 		and fx.started.has(FX.FROZEN), [one, two, fx.speed_scale()])
 	check("  held, you cannot sprint either", not fx.can_sprint())
+	check("  frozen solid (0.93.3): no attacking, and pale ice-blue", not fx.can_attack() and fx.is_frozen()
+		and fx.tint() == FX.TINTS[FX.FROZEN] and FX.TINTS[FX.FROZEN].b > 1.0, fx.tint())
 	fx.advance(FX.FROZEN_SECONDS + 0.01)
-	check("  for %.1f s, then free" % FX.FROZEN_SECONDS, is_equal_approx(fx.speed_scale(), 1.0), fx.speed_scale())
+	check("  for %.1f s, then free" % FX.FROZEN_SECONDS, is_equal_approx(fx.speed_scale(), 1.0) and fx.can_attack(),
+		fx.speed_scale())
 	for k in 4:
 		fx.apply(FX.CHILL)
 	check("  and nothing holds you again for %.0f s: chilled four times over, you are slowed, never frozen" % FX.HOLD_IMMUNITY,
@@ -2190,10 +2193,12 @@ func _test_the_bosses_are_seven_fights() -> void:
 	check("  and out %.0f s after the last hit: ten ticks in all" % FX.BURN_SECONDS,
 		body.taken.size() == 10 and fx.burn_left == 0.0, body.taken.size())
 	fx.apply(FX.SOAKED)
-	var soaked: bool = not fx.can_sprint()
+	var soaked: float = fx.defence_scale()
+	var soaked_sprint: bool = fx.can_sprint()
 	fx.advance(FX.SOAKED_SECONDS + 0.01)
-	check("soaked: no sprint for %.0f s, and walking as ever" % FX.SOAKED_SECONDS,
-		soaked and fx.can_sprint() and is_equal_approx(fx.speed_scale(), 1.0))
+	check("soaked (0.93.3): your defence at half for %.0f s, sprinting and walking as ever" % FX.SOAKED_SECONDS,
+		is_equal_approx(soaked, 0.5) and soaked_sprint and is_equal_approx(fx.defence_scale(), 1.0)
+		and is_equal_approx(fx.speed_scale(), 1.0), soaked)
 	fx.apply(FX.SHOVE, 1, Targets.body_point(body) + Vector2(-10, 0))
 	var push: Vector2 = fx.push_velocity()
 	var carried: float = 0.0
@@ -2214,11 +2219,13 @@ func _test_the_bosses_are_seven_fights() -> void:
 	check("dazzle: %.0f s, one soft flash however many orbs land (at most one every %.0f s)" % [FX.DAZZLE_SECONDS, FX.DAZZLE_FLASH_GAP],
 		flashed > 0.0 and fx._flash_left < flashed and FX.FLASH_ALPHA <= 0.5 and fx.started.count(FX.DAZZLE) == 1)
 	fx.apply(FX.WITHER)
-	check("wither: healing halved while it lasts", is_equal_approx(fx.heal_scale(), 0.5))
+	check("wither (0.93.3): healing halved and the damage you take doubled while it lasts",
+		is_equal_approx(fx.heal_scale(), 0.5) and is_equal_approx(fx.damage_scale(), 2.0))
 	fx.advance(FX.WITHER_SECONDS + 0.01)
-	check("  for %.0f s" % FX.WITHER_SECONDS, is_equal_approx(fx.heal_scale(), 1.0))
+	check("  for %.0f s" % FX.WITHER_SECONDS, is_equal_approx(fx.heal_scale(), 1.0) and is_equal_approx(fx.damage_scale(), 1.0))
 	var longest: float = maxf(maxf(FX.CHILL_SECONDS, FX.BURN_SECONDS), maxf(FX.SOAKED_SECONDS, maxf(FX.DAZZLE_SECONDS, FX.WITHER_SECONDS)))
-	check("nothing lasts longer than 3 s", longest <= 3.0 and FX.FROZEN_SECONDS < 1.0 and FX.ROOT_SECONDS < 1.0, longest)
+	check("nothing lasts longer than 3 s, and nothing holds you longer than 1 s", longest <= 3.0
+		and FX.FROZEN_SECONDS <= 1.0 and FX.ROOT_SECONDS < 1.0, longest)
 	body.is_dying = true
 	check("a dying body takes no effects", not fx.apply(FX.CHILL) and not fx.apply(FX.BURN, 50))
 	body.is_dying = false
@@ -2429,13 +2436,20 @@ func _test_the_bosses_are_seven_fights() -> void:
 	check("your character carries effects from the moment it is made", mine != null and me.status_effects == mine)
 	mine.apply(FX.CHILL)
 	check("  chilled, it walks slower", is_equal_approx(me.effects_speed_scale(), 0.8), me.effects_speed_scale())
+	var dry_hit: int = int(me.damage_taken(200))
 	mine.apply(FX.SOAKED)
-	check("  soaked, it cannot sprint", not me.effects_let_sprint())
+	var wet_hit: int = int(me.damage_taken(200))
+	check("  soaked, a hit gets more through its defence, and it can still sprint (0.93.3)",
+		wet_hit > dry_hit and me.effects_let_sprint(), [dry_hit, wet_hit])
+	mine.clear_all()
 	me.set("max_hp", 400)
 	me.set("hp", 100)
 	mine.apply(FX.WITHER)
 	me.heal(40)
 	check("  withered, a heal of 40 is 20", int(me.get("hp")) == 120, me.get("hp"))
+	check("  and a hit is twice as big (0.93.3)", absi(int(me.damage_taken(200)) - 2 * dry_hit) <= 1,
+		[me.damage_taken(200), dry_hit])
+	mine.clear_all()
 	var player_src := FileAccess.get_file_as_string("res://src/characters/player.gd")
 	var tank_src := FileAccess.get_file_as_string("res://src/characters/tank.gd")
 	check("both walks ask: the shared loop and the tank's own",

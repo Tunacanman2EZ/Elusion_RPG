@@ -3209,6 +3209,11 @@ func get_enemy_id() -> String:
 	# not have expected.
 	if has_meta(&"stress_copy"):
 		return ""
+	# A PARTY RUN'S ELITES AND BOSSES (0.93.3, endlessrun.gd's RUN_MARK): shared
+	# with the party like any monster, and worth nothing yet - the run is paid
+	# for, if at all, by its chest.
+	if has_meta(&"run_extra"):
+		return ""
 	return enemy_data.enemy_id
 
 
@@ -3626,7 +3631,7 @@ func net_props() -> Dictionary:
 	"""What a game needs, before this monster's _ready(), to build the same
 	one: its profile, its element, its leash, whether it is behind a gate, and
 	where home is."""
-	return {
+	var props: Dictionary = {
 		"ed": enemy_data.resource_path if enemy_data != null else "",
 		"eo": element_override,
 		"lr": leash_range,
@@ -3634,6 +3639,12 @@ func net_props() -> Dictionary:
 		"hx": snappedf(spawn_position.x, 0.1),
 		"hy": snappedf(spawn_position.y, 0.1),
 	}
+	# A party run's elite (0.93.3): every copy is one, worth nothing, and
+	# notices the whole arena should its game come to run it.
+	if has_meta(&"run_extra"):
+		props["rx"] = 1
+		props["nr"] = notice_range
+	return props
 
 
 func net_apply_props(props: Dictionary) -> void:
@@ -3646,6 +3657,9 @@ func net_apply_props(props: Dictionary) -> void:
 	element_override = int(props.get("eo", element_override))
 	leash_range = float(props.get("lr", leash_range))
 	gated = bool(props.get("g", gated))
+	if int(props.get("rx", 0)) == 1:
+		set_meta(&"run_extra", true)
+		notice_range = float(props.get("nr", notice_range))
 
 
 func net_take_remote_hit(amount: int, element: int = Element.Type.NONE) -> void:

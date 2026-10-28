@@ -1976,7 +1976,7 @@ func _test_the_game_says_its_version() -> void:
 
 
 func _test_the_first_five_minutes() -> void:
-	section("FIRST FIVE MINUTES - eight buttons, a Controls card, a welcome, the right name")
+	section("FIRST FIVE MINUTES - nine buttons, a Controls card, a welcome, the right name")
 
 	# Day 1, played as a brand-new player: fourteen small buttons on the bar,
 	# nothing anywhere saying what a key does or where the Field is, a login
@@ -1988,9 +1988,9 @@ func _test_the_first_five_minutes() -> void:
 	for child in hud.get_node("%navbuttons").get_children():
 		if child is Button:
 			row.append(str(child.name))
-	check("the bar is eight buttons, the everyday windows first",
+	check("the bar is nine buttons, the everyday windows first (Minigames since 0.93.3)",
 		row == ["inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
-			"chatbutton", "socialbutton", "menubutton"], row)
+			"chatbutton", "socialbutton", "minigamesbutton", "menubutton"], row)
 	var held := func(menu_name: String) -> Array[String]:
 		var out: Array[String] = []
 		for b in hud.get_node("%" + menu_name).find_children("*", "Button", true, false):
@@ -2158,7 +2158,7 @@ func _test_the_first_five_minutes() -> void:
 	check("Character Stats: LEVEL sits at the top of its box, Mana at the bottom",
 		top_gap <= 16.0 and bottom_gap <= 16.0 and absf(top_gap - bottom_gap) <= 4.0, [top_gap, bottom_gap])
 	stats.queue_free()
-	print("  first five minutes: eight buttons, every key on a card, a welcome once, Enter Elusion")
+	print("  first five minutes: nine buttons, every key on a card, a welcome once, Enter Elusion")
 
 
 func _test_staff_panel() -> void:

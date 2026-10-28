@@ -156,6 +156,11 @@ func _process(_delta: float) -> void:
 # PUBLIC API
 # =============================================================================
 
+# The slot this tooltip is over (or null), for the use line: on the doll a
+# right-click takes the piece off rather than putting it on.
+var _shown_for: Node = null
+
+
 func show_for_stack(stack: ItemStack, source_slot: Node, on_the_shelf: bool = false) -> void:
 	# THE SLOT IS READ NOW, for one question: is this the piece being worn? A
 	# square on the equipment doll compares with nothing - it IS what everything
@@ -167,6 +172,7 @@ func show_for_stack(stack: ItemStack, source_slot: Node, on_the_shelf: bool = fa
 	# hold their items now, so there is no link to explain and it is gone.
 	if stack == null or not stack.is_valid():
 		return
+	_shown_for = source_slot
 
 	# ON THE SHELF, A PIECE OF GEAR'S STATS ARE "?": the shop rolls what it
 	# hands over (the owner, 5 Oct: "item stats say ? and are revealed upon
@@ -269,7 +275,8 @@ func _populate_labels(stack: ItemStack, unrevealed: bool = false) -> void:
 		# inventory"). On a touch screen it says hold, which is the right-click
 		# there (inventoryslot.gd, 0.55.0).
 		var touch: Node = get_node_or_null(^"/root/TouchControls")
-		var how: String = use_line(stack.data, touch != null and bool(touch.get("active")))
+		var how: String = use_line(stack.data, touch != null and bool(touch.get("active")),
+			_shown_for is EquipmentSlot)
 		if how != "":
 			if desc != "":
 				desc += "\n"
@@ -592,14 +599,38 @@ static func is_smith_material(item_id: String) -> bool:
 
 const PET_USE_LINE := "Right-click in your bag to summon it, and again to put it away"
 const PET_USE_LINE_TOUCH := "Hold it in your bag to summon it, and again to put it away"
+# EVERY ITEM THAT HAS A USE SAYS HOW (0.93.3). The owner: "making the UI more
+# easy to navigate". A right-click in the bag is how everything is used
+# (inventoryscreen.gd's use_item(), by type) and only a pet's tooltip said so;
+# the rest was in Options > Controls. On the doll a right-click takes the
+# piece off (equipmentpanel.gd), and the line there says that instead.
+const GEAR_USE_LINE := "Right-click in your bag to put it on"
+const GEAR_USE_LINE_TOUCH := "Hold it in your bag to put it on"
+const WORN_USE_LINE := "Right-click to take it off"
+const WORN_USE_LINE_TOUCH := "Hold it to take it off"
+const CONSUMABLE_USE_LINE := "Right-click in your bag to use it, or drag it to a hotbar key"
+const CONSUMABLE_USE_LINE_TOUCH := "Hold it in your bag to use it, or drag it to a hotbar key"
+const CURRENCY_USE_LINE := "Right-click in your bag to cash it in"
+const CURRENCY_USE_LINE_TOUCH := "Hold it in your bag to cash it in"
 
-static func use_line(data: ItemData, touch: bool = false) -> String:
-	"""The one line saying how an item is used, for the items whose use is not
-	obvious from what they are. A pet only, for now: inventoryscreen.gd's
-	_use_pet() is what a right-click does with one, summon or dismiss - and
-	what a finger held on it does on a touch screen."""
-	if data != null and int(data.type) == int(ItemData.Type.PET):
-		return PET_USE_LINE_TOUCH if touch else PET_USE_LINE
+static func use_line(data: ItemData, touch: bool = false, worn: bool = false) -> String:
+	"""The one line saying how an item is used: what a right-click does with
+	it (inventoryscreen.gd's use_item(), by type) - or a finger held, on a
+	touch screen - and on the doll (`worn`), that it comes off. Nothing for
+	an item with no use."""
+	if data == null:
+		return ""
+	match int(data.type):
+		ItemData.Type.PET:
+			return PET_USE_LINE_TOUCH if touch else PET_USE_LINE
+		ItemData.Type.WEAPON, ItemData.Type.ARMOR:
+			if worn:
+				return WORN_USE_LINE_TOUCH if touch else WORN_USE_LINE
+			return GEAR_USE_LINE_TOUCH if touch else GEAR_USE_LINE
+		ItemData.Type.CONSUMABLE:
+			return CONSUMABLE_USE_LINE_TOUCH if touch else CONSUMABLE_USE_LINE
+		ItemData.Type.CURRENCY:
+			return CURRENCY_USE_LINE_TOUCH if touch else CURRENCY_USE_LINE
 	return ""
 
 

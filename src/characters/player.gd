@@ -714,7 +714,8 @@ func _physics_process(_delta):
 		# now: movement (velocity/position) still happens every frame, but
 		# the ANIMATION stays on the attack swing until it finishes, then
 		# reverts to reflecting walk/idle normally.
-		if has_node("animatedsprite2d") and not is_attacking:
+		if has_node("animatedsprite2d") and not is_attacking \
+				and not effects_still_sprite($animatedsprite2d):
 			$animatedsprite2d.play(get_walk_animation(direction))
 			$animatedsprite2d.speed_scale = sprint_speed_multiplier if _is_sprinting else 1.0
 		last_direction = direction
@@ -723,7 +724,8 @@ func _physics_process(_delta):
 	else:
 		velocity = Vector2.ZERO
 		_stop_sprint()
-		if has_node("animatedsprite2d") and not is_attacking:
+		if has_node("animatedsprite2d") and not is_attacking \
+				and not effects_still_sprite($animatedsprite2d):
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
 
@@ -1762,7 +1764,9 @@ func _poll_attack_pressed() -> bool:
 	var left_edge: bool = (left_now and not _left_click_was_held) or _left_click_came
 	_left_click_came = false
 	_left_click_was_held = left_now
-	return Input.is_action_just_pressed("attack") or left_edge
+	# FROZEN, NO ATTACK (0.93.3) - after the edges above are taken, so a
+	# press while frozen is used up, not saved for the thaw.
+	return (Input.is_action_just_pressed("attack") or left_edge) and effects_let_attack()
 
 
 # =============================================================================
@@ -1936,8 +1940,34 @@ func effects_speed_scale() -> float:
 
 
 func effects_let_sprint() -> bool:
-	"""Soaked, frozen or rooted, you cannot sprint."""
+	"""Frozen or rooted, you cannot sprint."""
 	return bool(status_effects.call(&"can_sprint")) if status_effects != null else true
+
+
+func effects_let_attack() -> bool:
+	"""Frozen, you cannot attack (0.93.3)."""
+	return bool(status_effects.call(&"can_attack")) if status_effects != null else true
+
+
+func effects_still_sprite(sprite: AnimatedSprite2D) -> bool:
+	"""FROZEN (0.93.3): the sprite stops on the frame it was on - no walk, no
+	turn - until the ice lets go. True while it is held so; the walk and idle
+	code leave the sprite alone then."""
+	if status_effects == null or not bool(status_effects.call(&"is_frozen")):
+		return false
+	if sprite != null:
+		sprite.speed_scale = 0.0
+	return true
+
+
+func effects_defence_scale() -> float:
+	"""Soaked, your defence counts for half (0.93.3)."""
+	return float(status_effects.call(&"defence_scale")) if status_effects != null else 1.0
+
+
+func effects_damage_scale() -> float:
+	"""Withered, the damage you take is doubled (0.93.3)."""
+	return float(status_effects.call(&"damage_scale")) if status_effects != null else 1.0
 
 
 func effects_push() -> Vector2:
@@ -3212,12 +3242,17 @@ func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
 	# lands harder, and resistance to it counts for more - still held to
 	# RESIST_CAP. Both 1 for every other element, and for every hit when
 	# nothing stirs.
-	var reduction: float = _get_defense_tier()["reduction"]
-	var armour: float = PlayerStats.armour_reduction(armour_total())
+	#
+	# SOAKED AND WITHERED (0.93.3, statuseffects.gd): soaked, the defence
+	# tier's share and the armour's count for half; withered, the hit lands
+	# twice as big. Both 1 with no effect on.
+	var defence: float = effects_defence_scale()
+	var reduction: float = _get_defense_tier()["reduction"] * defence
+	var armour: float = PlayerStats.armour_reduction(armour_total()) * defence
 	var resist_percent: float = minf(float(equipped_resistance(element)) * Lands.resist_scale(element),
 		float(GameConstants.RESIST_CAP))
 	var resisted: float = resist_percent / 100.0
-	var landing: float = float(amount) * Lands.hit_scale(element)
+	var landing: float = float(amount) * Lands.hit_scale(element) * effects_damage_scale()
 	return maxi(1, int(landing * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
 
 

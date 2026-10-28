@@ -141,6 +141,11 @@ func _ready() -> void:
 	visible = false
 
 
+func take_all_hint() -> String:
+	"""Said on Take all: the key does it too (0.93.3), named as bound."""
+	return "Or press %s again" % ControlsPanel.action_key("interact")
+
+
 # =============================================================================
 # OPEN / CLOSE
 # =============================================================================
@@ -173,6 +178,8 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 		loot_container.set_slot_type("lootbag")
 
 	visible = true
+	if take_all_button != null:
+		take_all_button.tooltip_text = take_all_hint()
 
 	# snap the panel's size to its real content (header + 6-slot grid) instead
 	# of whatever fixed size was last set in the editor. only works correctly
@@ -187,6 +194,12 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 	if _world_bag != null and _world_bag.has_signal("player_left_range"):
 		if not _world_bag.player_left_range.is_connected(_on_close_pressed):
 			_world_bag.player_left_range.connect(_on_close_pressed)
+
+
+func showing(world_bag: Node) -> bool:
+	"""Whether this panel is on screen for `world_bag` - lootbag.gd asks
+	before a second press of interact takes all (0.93.3)."""
+	return visible and world_bag != null and _world_bag == world_bag
 
 
 func close_panel() -> void:

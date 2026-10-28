@@ -251,7 +251,8 @@ func _is_attack_input_held() -> bool:
 	# class (player.gd's left_click_attack_held(): only a click no window took
 	# starts it, so a click on the bag or the chat must not drain the mana) -
 	# right-click drops THE AURA.
-	return Input.is_action_pressed("attack") or left_click_attack_held()
+	# Frozen, it holds no beam either (0.93.3, effects_let_attack()).
+	return (Input.is_action_pressed("attack") or left_click_attack_held()) and effects_let_attack()
 
 
 # =============================================================================

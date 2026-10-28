@@ -1632,11 +1632,11 @@ func _test_economy_rules_on_the_client() -> void:
 	# The Sell list needs something in the bag the shop will buy - the real
 	# potion, which a clone without the art pack does not have.
 	check_needs_pack("the Sell list's share is the one in force, in words: 10%",
-		panel.notice_label.text == "The shop pays 10% of what things are worth.", panel.notice_label.text)
+		panel.notice_label.text.begins_with("The shop pays 10% of what things are worth."), panel.notice_label.text)
 	EconomyRules.adopt({"shop_sell_multiplier": 0.2})
 	panel.show_catalogue({"display_name": "General Store", "stock": [], "sell_prices": {"tinyhealthpotion": 40}})
 	check_needs_pack("  and for an answer without one, the holder's",
-		panel.notice_label.text == "The shop pays 20% of what things are worth.", panel.notice_label.text)
+		panel.notice_label.text.begins_with("The shop pays 20% of what things are worth."), panel.notice_label.text)
 	panel.set_mode("buy")
 	panel.show_catalogue({"shop_id": "generalstore", "display_name": "General Store", "price_multiplier": 1.0,
 		"sell_multiplier": 0.05, "stock": [{"item_id": "tinyhealthpotion", "display_name": "Tiny Health Potion",

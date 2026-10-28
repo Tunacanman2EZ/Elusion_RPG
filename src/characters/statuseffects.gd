@@ -8,17 +8,26 @@
 # its bullets and, for the ones that belong to the ground, its puddles:
 #
 #   chill    ice     20% slower a hit, 40% at two; a third hit freezes you
-#   frozen           held where you stand for FROZEN_SECONDS
+#   frozen           frozen solid for FROZEN_SECONDS: no moving, no
+#                    attacking, your animation stopped on its frame, pale
+#                    ice-blue (0.93.3)
 #   burn     fire    damage over BURN_SECONDS - another hit refreshes it, it
 #                    never stacks
-#   soaked   water   no sprint for SOAKED_SECONDS
+#   soaked   water   your defence halved for SOAKED_SECONDS - the defence
+#                    tier's share and the armour's (0.93.3; it was no sprint)
 #   shove    wind    knocked back along the hit
 #   pull     wind    (its phase-three vortex) drawn toward the boss, slower
 #                    than you walk
 #   root     earth   held where you stand for ROOT_SECONDS
 #   dazzle   light   a flash, and the edges of the screen go dark for
 #                    DAZZLE_SECONDS
-#   wither   dark    your healing is halved for WITHER_SECONDS
+#   wither   dark    your healing is halved and the damage you take doubled
+#                    for WITHER_SECONDS (0.93.3; it was healing alone)
+#
+# THE OWNER, 28 Oct (0.93.3): "soaked needs to change to defense reduction,
+# freeze needs to actually freeze player with an effect like players color
+# simulates being frozen i think dark should be healing halved and 2x damage".
+# The bosses carry the same three, so their water, ice and dark changed too.
 #
 # CLEARABLE IS THE RULE EVERY ONE OF THEM IS HELD TO. The owner: "each boss
 # needs to be a challenge but also clearable". So:
@@ -27,7 +36,8 @@
 #     seconds - nothing can hold you twice in a row;
 #   - nothing lasts longer than 3 s, and every one of them refreshes rather
 #     than stacks, except chill, whose stacks are the point and are capped;
-#   - you can always attack, held or not;
+#   - you can always attack while rooted - frozen is the one exception
+#     (0.93.3), and it lasts FROZEN_SECONDS;
 #   - a puddle can chill but never freeze (GROUND): standing on ice slows you,
 #     being hit by it is what freezes.
 #
@@ -93,7 +103,7 @@ const CHILL_STEP := 0.2
 const SLOW_FLOOR := 0.6
 const CHILL_SECONDS := 2.0
 const CHILL_TO_FREEZE := 3
-const FROZEN_SECONDS := 0.8
+const FROZEN_SECONDS := 1.0
 
 # --- root, and the immunity after either hold ---------------------------------
 const ROOT_SECONDS := 0.6
@@ -108,6 +118,9 @@ const BURN_SHARE := 0.08
 
 # --- soaked -------------------------------------------------------------------
 const SOAKED_SECONDS := 3.0
+# What your defence is worth while soaked: the defence tier's share and the
+# armour's of each hit are multiplied by this (player.gd damage_taken()).
+const SOAKED_DEFENCE := 0.5
 
 # --- shove and pull -----------------------------------------------------------
 # A shove leaves at SHOVE_SPEED and slows evenly to nothing over SHOVE_SECONDS:
@@ -132,8 +145,10 @@ const DAZZLE_DARKEST := 0.8
 const DAZZLE_RAMP := 0.15
 
 # --- wither -------------------------------------------------------------------
-const WITHER_SECONDS := 3.0
+const WITHER_SECONDS := 2.0
 const WITHER_HEAL := 0.5
+# The damage you take while withered is multiplied by this.
+const WITHER_DAMAGE := 2.0
 
 # The word over your head when one starts. Refreshing one says nothing.
 const WORDS := {
@@ -149,7 +164,9 @@ const WORD_ELEMENT := {
 # The tint on your sprite, the strongest effect's when there are several.
 const TINT_ORDER := [FROZEN, ROOT, BURN, CHILL, SOAKED, WITHER, DAZZLE]
 const TINTS := {
-	FROZEN: Color(0.55, 0.78, 1.0),
+	# Pale ice-blue, past white in blue: the sprite looks frosted, not just
+	# tinted (0.93.3, "players color simulates being frozen").
+	FROZEN: Color(0.95, 1.3, 2.0),
 	ROOT: Color(0.86, 0.74, 0.52),
 	BURN: Color(1.0, 0.72, 0.5),
 	CHILL: Color(0.74, 0.88, 1.0),
@@ -372,7 +389,26 @@ func speed_scale() -> float:
 
 
 func can_sprint() -> bool:
-	return soaked_left <= 0.0 and speed_scale() > 0.0
+	return speed_scale() > 0.0
+
+
+func can_attack() -> bool:
+	"""Frozen, you cannot attack (0.93.3); rooted, you still can."""
+	return frozen_left <= 0.0
+
+
+func is_frozen() -> bool:
+	return frozen_left > 0.0
+
+
+func defence_scale() -> float:
+	"""Soaked, your defence counts for SOAKED_DEFENCE of itself."""
+	return SOAKED_DEFENCE if soaked_left > 0.0 else 1.0
+
+
+func damage_scale() -> float:
+	"""Withered, every hit on you is WITHER_DAMAGE times as big."""
+	return WITHER_DAMAGE if wither_left > 0.0 else 1.0
 
 
 func heal_scale() -> float:

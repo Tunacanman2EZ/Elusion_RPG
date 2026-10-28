@@ -15,6 +15,7 @@ extends CanvasLayer
 const ApiScript := preload("res://src/systems/api.gd")
 # The menu bar under a thumb (0.91.0): Menu alone, opening every window.
 const TouchMenu := preload("res://src/ui/touchmenu.gd")
+const MinigamesCard := preload("res://src/ui/minigames/minigamescard.gd")
 # The way to the first fight, until the first kill (0.92.0).
 const GuideScript := preload("res://src/ui/guide.gd")
 # "Bram wants to trade with you", with See offer and No thanks (0.93.0).
@@ -321,6 +322,7 @@ func _ready() -> void:
 	# AND THE BAR FOLDED INTO MENU while the touch screen is in use (0.91.0).
 	touch_menu = TouchMenu.attach(self)
 	trade_prompt = TradePrompt.attach(self)
+	minigames_card = MinigamesCard.attach(self)
 	# THE WAY TO THE FIRST FIGHT (0.92.0, guide.gd), under every window: just
 	# after the pad, which is the HUD's first child.
 	guide = GuideScript.new()
@@ -814,6 +816,12 @@ func _wire_nav_buttons() -> void:
 		if toggle != null:
 			toggle.pressed.connect(toggle_nav_menu.bind(toggle_name))
 
+	# MINIGAMES (0.93.3): its card above it (minigamescard.gd), opened and shut
+	# like the dropdowns beside it.
+	var minigames: Button = _nav_button("minigamesbutton")
+	if minigames != null:
+		minigames.pressed.connect(_on_minigames_pressed)
+
 	# THE KEY IN THE HINT, read from the input map like the Controls card reads
 	# it, so a rebound key is never advertised wrong - and read again whenever
 	# a key is changed (0.8.0).
@@ -844,7 +852,7 @@ func _paint_nav_key_hints() -> void:
 # Every button the bar owns, on the bar or in a dropdown.
 const NAV_BUTTON_NAMES := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
-	"chatbutton", "socialbutton", "menubutton",
+	"chatbutton", "socialbutton", "minigamesbutton", "menubutton",
 	"friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton", "kingdombutton", "killsbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
@@ -900,6 +908,8 @@ var touch_menu: Control = null
 var guide: Control = null
 # The card a trade offered to you shows (tradeprompt.gd), made in _ready().
 var trade_prompt: Control = null
+# The Minigames button's card (minigamescard.gd, 0.93.3), made in _ready().
+var minigames_card: Control = null
 
 
 func toggle_nav_menu(toggle_name: String) -> void:
@@ -928,10 +938,21 @@ func toggle_nav_menu(toggle_name: String) -> void:
 			menu.get_viewport_rect().size)
 
 
+func _on_minigames_pressed() -> void:
+	if minigames_card == null:
+		return
+	var was_open: bool = minigames_card.visible
+	close_nav_menus()
+	if not was_open:
+		minigames_card.call("open")
+
+
 func close_nav_menus() -> bool:
-	"""Shuts both dropdowns, and the touch screen's grid. True when one was
-	open."""
+	"""Shuts both dropdowns, the Minigames card and the touch screen's grid.
+	True when one was open."""
 	var was_open: bool = touch_menu != null and bool(touch_menu.call("close"))
+	if minigames_card != null and bool(minigames_card.call("close")):
+		was_open = true
 	for toggle_name in NAV_GROUPS:
 		var menu: Control = _nav_menu(toggle_name)
 		if menu != null and menu.visible:
@@ -973,6 +994,11 @@ func _click_outside_nav_menus(event: InputEvent) -> void:
 			or (toggle != null and toggle.get_global_rect().has_point(click.position))
 		if not inside:
 			menu.visible = false
+	if minigames_card != null and minigames_card.visible:
+		var opener: Button = _nav_button("minigamesbutton")
+		if not minigames_card.get_global_rect().has_point(click.position) \
+				and not (opener != null and opener.is_visible_in_tree() and opener.get_global_rect().has_point(click.position)):
+			minigames_card.call("close")
 
 
 func _paint_group_dots() -> void:

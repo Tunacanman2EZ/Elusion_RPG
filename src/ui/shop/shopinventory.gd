@@ -103,6 +103,13 @@ var _redraw_queued: bool = false
 var _window: PanelWindow
 
 
+func _notification(what: int) -> void:
+	# However the panel goes - its x, Escape, walking away - the bag's
+	# double-click stops meaning "sell" with it.
+	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		_wire_bag(false)
+
+
 func _ready() -> void:
 	_window = PanelWindow.attach(self, "shop")
 	close_button.pressed.connect(close_shop)
@@ -132,6 +139,8 @@ func _build_mode_row() -> void:
 		button.custom_minimum_size = Vector2(0, 26)
 		button.add_theme_font_size_override("font_size", 12)
 		button.pressed.connect(set_mode.bind(spec[2]))
+		if spec[2] == "sell":
+			button.tooltip_text = DOUBLE_CLICK_HINT
 		row.add_child(button)
 		_mode_buttons[spec[2]] = button
 	column.add_child(row)
@@ -171,12 +180,14 @@ func open_for_shop(id: String, player: Node) -> void:
 		(_mode_buttons[key] as Button).set_pressed_no_signal(key == mode)
 	_refresh_gold()
 	_watch_bag()
+	_wire_bag(true)
 	# Read once a login, if the login did not already (EconomyRules).
 	EconomyRules.ensure()
 	await _load_catalogue()
 
 
 func close_shop() -> void:
+	_wire_bag(false)
 	visible = false
 	shop_id = ""
 	_player = null
@@ -702,8 +713,8 @@ func show_sell_list() -> void:
 	# THE SHARE IN FORCE: the answer's, which is the owner's where set; for an
 	# answer without one, EconomyRules' (0.74.0).
 	var share: float = float(_catalogue.get("sell_multiplier", EconomyRules.number("shop_sell_multiplier")))
-	_set_notice("The shop pays %s of what things are worth." % EconomyRulesScript.percent_text(share)
-		if share > 0.0 else "", false)
+	_set_notice(("The shop pays %s of what things are worth. " % EconomyRulesScript.percent_text(share)
+		if share > 0.0 else "") + DOUBLE_CLICK_HINT, false)
 
 
 # THE LIST FOLLOWS THE BAG. Drag a stack, drink a potion or pick something
@@ -785,6 +796,61 @@ func _build_sell_row(index: int, stack: ItemStack, price: int) -> Control:
 	return row
 
 
+# =============================================================================
+# SELLING FROM THE BAG (0.93.3)
+# =============================================================================
+# THE BAG'S OWN RULE, kept by the shop too. With a window open beside the bag,
+# a double-click in the bag sends the item to it: the bank deposits it, a
+# trade offers it, and now the shop buys it (the owner: "less clicks to get
+# done what the user wants to get done"). The Sell list was the only way - the
+# Sell tab, the item's row in it, Sell. One at a time from a stack, so a
+# double-click never sells a whole stack of potions (the list's Sell all
+# still does); a legendary, mythic or Perfect piece asks twice, as on the
+# list. Wired only while the shop is on screen - the bank's rule, and the
+# trade's: if either already holds the bag, the shop leaves it alone - and a
+# finger held is that double-click, for as long.
+const DOUBLE_CLICK_HINT := "Double-click an item in your bag to sell it."
+
+var _bag: Node = null
+
+
+func _wire_bag(on: bool) -> void:
+	var carry: Node = _player_inventory_container() if on else _bag
+	if on and carry == _bag:
+		return
+	if _bag != null and is_instance_valid(_bag):
+		if _bag.slot_double_clicked.is_connected(_on_bag_double_clicked):
+			_bag.slot_double_clicked.disconnect(_on_bag_double_clicked)
+		_bag.set("held_is_double_click", false)
+	_bag = null
+	if not on or carry == null or not carry.has_signal("slot_double_clicked"):
+		return
+	if carry.get("held_is_double_click") == true:
+		return
+	_bag = carry
+	_bag.set("held_is_double_click", true)
+	_bag.slot_double_clicked.connect(_on_bag_double_clicked)
+
+
+func _on_bag_double_clicked(slot: Node) -> void:
+	if slot == null or not visible or shop_id == "" or slot.call("is_empty"):
+		return
+	var stack: Variant = slot.get("stack")
+	if stack == null or stack.data == null:
+		return
+	await sell_from_bag(int(slot.get("slot_index")), stack)
+
+
+func sell_from_bag(index: int, stack: ItemStack) -> void:
+	"""One of what is in the bag's cell `index` sold, as the Sell list's Sell
+	would - or why not, on the panel."""
+	var data: ItemData = stack.data
+	if int(sell_prices.get(data.catalogue_id(), 0)) <= 0 or free_ids.has(data.item_id):
+		_set_notice("The shop does not buy %s." % data.display_name, true)
+		return
+	await _on_sell_pressed(index, data.item_id, 1, null)
+
+
 func _sell_button(node_name: String, label: String, index: int, item_id: String, quantity: int) -> Button:
 	var button := Button.new()
 	button.name = node_name
@@ -815,9 +881,10 @@ func _on_sell_pressed(index: int, item_id: String, quantity: int, button: Button
 	var key: String = "%d:%s:%d" % [index, item_id, quantity]
 	if asks_twice(data) and _armed != key:
 		_armed = key
-		button.text = "Sure?"
-		_set_notice("Click again to sell %s for %s." % [
-			data.display_name, GameConstants.gold_text(int(sell_prices.get(data.catalogue_id(), 0)) * quantity)], false)
+		if button != null:
+			button.text = "Sure?"
+		_set_notice("%s again to sell %s for %s." % [
+			"Click" if button != null else "Double-click it", data.display_name, GameConstants.gold_text(int(sell_prices.get(data.catalogue_id(), 0)) * quantity)], false)
 		return
 	_armed = ""
 	_busy = true
@@ -869,10 +936,14 @@ func _apply_sale(data: Dictionary, acting_player: Node) -> void:
 	var sold: ItemData = ItemRegistry.get_item(str(data.get("item_id", "")))
 	var label: String = sold.display_name if sold != null else str(data.get("item_id", ""))
 	var count: int = int(data.get("quantity", 1))
-	_notify(acting_player, "Sold %s%s for %s." % [
-		label, " ×%d" % count if count > 1 else "", GameConstants.gold_text(int(data.get("total_received", 0)))])
+	var line: String = "Sold %s%s for %s." % [
+		label, " ×%d" % count if count > 1 else "", GameConstants.gold_text(int(data.get("total_received", 0)))]
+	_notify(acting_player, line)
 	if mode == "sell":
 		show_sell_list()
+	# Said on the panel too: a sale from the bag in Buy mode has no row to
+	# redraw, and the line is the only sign on the window it happened.
+	_set_notice(line, false)
 
 
 # =============================================================================

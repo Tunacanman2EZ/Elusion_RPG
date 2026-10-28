@@ -158,8 +158,9 @@ func _ready() -> void:
 		var enemy := node as Node2D
 		if enemy == null:
 			continue
-		# The owner's stress copies bring themselves back (stresscrowd.gd).
-		if enemy.has_meta(&"stress_copy"):
+		# The owner's stress copies bring themselves back (stresscrowd.gd), and
+		# a party run's elites never come back (endlessrun.gd).
+		if enemy.has_meta(&"stress_copy") or enemy.has_meta(&"run_extra"):
 			continue
 
 		# An enemy placed by hand is an instantiated scene and knows its own

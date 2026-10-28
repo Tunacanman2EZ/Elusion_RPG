@@ -453,7 +453,7 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 		_sprint_tick(delta)
 
 	# animation + speed scale for sprint visual polish
-	if _sprite != null:
+	if _sprite != null and not effects_still_sprite(_sprite):
 		_sprite.play(get_walk_animation(direction))
 		_sprite.speed_scale = sprint_speed_multiplier if _is_sprinting else 1.0
 
@@ -467,7 +467,7 @@ func _handle_idle() -> void:
 	# lerp velocity to zero for smooth stop (no sudden halt)
 	velocity = velocity.lerp(Vector2.ZERO, 0.3)
 	_stop_sprint()
-	if _sprite != null:
+	if _sprite != null and not effects_still_sprite(_sprite):
 		_sprite.play(get_idle_animation())
 		_sprite.speed_scale = 1.0
 

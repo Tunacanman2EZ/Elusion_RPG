@@ -1969,6 +1969,41 @@ server; tradepanel.gd's header has the list.
 local server (the second a script): the card, See offer, the window beside the
 bag, their potions arriving, two of ours given from the bag.
 
+### Fewer clicks (0.93.3)
+
+The owner: "making the UI more easy to navigate (less clicks to get done what
+the user wants to get done)". Measured before changing anything; the rule
+the bag already kept - with a window open beside it, a double-click in the
+bag sends the item there (the bank deposits, a trade offers; a right-click
+uses, on the doll takes off) - is now kept by every window it fits.
+
+- **The shop buys by a double-click in the bag** (`shopinventory.gd`,
+  `_wire_bag()` / `sell_from_bag()`): it was the Sell tab, the item's row,
+  Sell. One from a stack at a time, so a double-click never sells a stack
+  of potions (the list's Sell all still does); a legendary, mythic or
+  Perfect piece asks twice ("Double-click it again..."). Wired only while
+  the shop is on screen - unwired by `close_shop()` and by
+  `_notification()` on any hide - and never over the bank's or a trade's
+  hold on the bag. A finger held is the double-click there, so on a phone
+  a hold in the bag with the shop open sells rather than uses. The sale is
+  said on the panel too.
+- **Interact again takes all** (`lootbag.gd` `_take_all_open()`, after the
+  nearest-bag gate; `lootbaginventory.gd` `showing()`): the second press on
+  an open loot bag is Take all, the same walk with the same skips and
+  stops. Its tooltip names the key.
+- **Deposit with nothing typed banks it all** (`bankinventory.gd`
+  `_label_deposit()`): the button reads "Deposit all" with the box empty.
+  Not Withdraw - a stray press would put the whole bank in the pocket a
+  full death empties.
+- **Every item with a use says how** (`ItemTooltip.use_line()`): gear "put
+  it on", on the doll "take it off" (the tooltip knows its slot,
+  `_shown_for`), consumables "use it, or drag it to a hotbar key",
+  currency "cash it in", pets as before; "Hold" on a touch screen. Only a
+  pet's said anything before.
+
+`_test_fewer_clicks()`. Next, the owner's own UI animation scripts, for
+feedback on these actions (equipping is silent and nothing moves).
+
 ### The Endless: a corridor, a door, and a horde of thousands (0.93.0)
 
 The owner: "a endless type map where monsters increase difficulty as time
@@ -1985,8 +2020,8 @@ party and the server's chest are the next two.
   walls, door, candelabras and bones (scene/crypt/), a ladder. No new art.
   A 1,536 x 1,408 arena with the corridor walled into its foot; the
   corridor's crypt door opens on the arena and its ladder goes up to town.
-  **A ladder in the town square** (`endlessladder`, at 330, 880) comes down
-  to the corridor (`endless_entrance`). Root script field.gd with
+  The way down is the bar's **Minigames** (0.93.3, section below); the town
+  square's ladder (`endlessladder`, at 330, 880) is gone. Root script field.gd with
   `bullet_zone` on and `tells_story` off (the opening story is the fields').
   Rebuilding the map from the tool loses anything changed by hand.
 - **Walled all round, symmetrical, nothing overlapping (0.93.2)** - the
@@ -2021,7 +2056,7 @@ party and the server's chest are the next two.
   again): the crowd fills toward `stage_crowd()` (60, growing, held at 3,000)
   at a rate, each new swarmling at `stage_health()` (24, a fifth more each
   stage - what keeps climbing once the crowd stops), `stage_speed()` and
-  `stage_touch()`. Every `ELITE_SECONDS` (30) from stage 2, `elites_at()` real
+  `stage_touch()`. Every `elite_gap()` (0.93.3; it was 30 s) from stage 2, `elites_at()` real
   monsters of the land; every `BOSS_EVERY` (5) stages, its boss. All of them
   wear the stress-copy mark: no kill report, never shared, never counted.
 - **A fall is not a death.** `Player.take_damage()` asks
@@ -2074,12 +2109,185 @@ party and the server's chest are the next two.
   monster with both is still hit once (the warrior's swing and the axe
   already read both). A new area weapon goes through it too; the check in
   testrunner_7 names the files.
-- **Measured in the container** (software drawing, so the frame is not the
+- **Drawn back to front, each with room of its own (0.93.3).** The owner,
+  with a video: "seems like the slimes are glitching when they jump". A
+  MultiMesh draws in buffer order, and the buffer was in slot order, so a
+  slime's hop was drawn over or under its neighbours by chance; and with
+  the "crowded" nudge gone (0.93.1) they stood on each other in columns.
+  - `_order` holds every swarmling not gone, sorted by its feet each write
+    (`_sort_order()`: an insertion sort, about one pass on an order a step
+    old - 0.6 ms for 3,000 here), and `_write_buffer()` writes in that
+    order, so the nearer is drawn over the one behind, as y-sorting does.
+    Each once: a slot freed and born again between two writes is listed
+    twice, and the sort drops the second.
+  - In a cell with others each is eased from their middle (`SPREAD`, from
+    `_sum_x`/`_sum_y`), and past `CROWD_ROOM` (2) in its cell it stops
+    pressing on toward the player.
+  - Within `ROOM_REACH` (260) of the player - the crowd on screen - every
+    slime keeps `ROOM` (15) px from every other (`_make_room()`, a hash of
+    15 px cells built each step for the near ones alone; all 3,000 pair by
+    pair would cost a frame in GDScript). Two on one spot part along their
+    phases, the same way each step. 160 round a still player: 147 within
+    6 px of another before, about 16 after, and 4 still touching the
+    player (the touch counts at most 5).
+- **What it costs** (measured in the container, a slower machine than the
   owner's): a step of 3,000 about 3.7 ms, the buffer 1.3 ms, choosing the
   stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's.
 
 `_test_the_endless_run()`. The map's area is in `data/gamedata.json` (no
 monsters placed); copy it to the API with the next export.
+
+### The Endless for a party: one countdown, one clock, one swarm (0.93.3)
+
+The owner: "we need a 4 player party plan but can play solo duo or 3 or 4",
+then "lets do it start upgrade as needed". The plan is the Docs page "The
+Endless: party plan"; this is what was built. Alone, nothing changes.
+
+- **An arena per party, chosen by the server.** The game says "endless" as
+  ever; presence.py seats a party in a room of its own (`endless#p<id>`,
+  `endless#u<id>` with no party) and never tells the game which - the plan
+  had the game name its room, and a game could have named somebody else's.
+  Joining or leaving a party moves you within a sweep (5 s).
+- **"en" carries the run** (`Presence.send_run()`, `run_received`), said in
+  the hello and the welcome. `src/world/endless/endlessparty.gd` - a child
+  of the run, made in its `_ready()` - is the whole conversation; its header
+  has the wire. `active()` is true with somebody else in the arena: then
+  the game that leads the arena (Presence.leader_for, the earliest in) runs
+  the run and the others follow its line (`endlessrun.gd line()`,
+  `follow_line()`), every `TICK_SECONDS`.
+- **One countdown** (`State.COUNTDOWN`, appended so the wire's numbers hold):
+  the first through the door - anybody's, a follower's says `go` - starts
+  `COUNTDOWN_SECONDS` (5) on every screen, and the door is held open
+  (`cryptdoor.gd hold()`: open, no shutting itself, nobody's pull shuts
+  it). At zero the clock starts; nobody through, no run.
+- **One swarm, never its positions.** The leader picks the slots
+  (`swarm.take_slots()`) and a seed; `spawn_batch()` places each slime from
+  the seed alone, so every copy makes the same slime in the same slot. Each
+  slot remembers its batch (`gen`). A blow here is `struck` and told as
+  `[slot, batch, damage]`; one from elsewhere is `hurt_remote()`, only on
+  that batch's slime. Every copy takes every hit, so each slime dies on
+  every screen; `my_slain` is the ones your blows finished. Damage is whole
+  points (`hurt()` rounds, at least 1) so every copy subtracts the same.
+- **Each slime goes for the nearest player** (`swarm.others`, the party as
+  presence draws them, on the arena's floor). Only this game's player is
+  hurt here - by the slimes on its own screen.
+- **A game walking in mid-run** asks `need`; the leader sends `full`: its
+  line and every slime (`export_alive()`, six numbers each, in parts of
+  `PART_SLIMES`), and it `import_alive()`s them. It waits in the corridor
+  for the next stage's door.
+- **The door at each stage**: `DOOR_OPEN_SECONDS` (3) held open, so the late
+  and the fallen walk back in.
+- **A fall** wakes you in the corridor as alone, and the run goes on while
+  anybody says they are in (`me`). **Back in on what resting brought back**:
+  the plan said half health, but a heal the game gives itself is what the
+  server's healing check takes back, so the corridor heals nobody -
+  regeneration is 1.67% a second, about half in 30 s. The HUD says when the
+  door opens.
+- **Over when nobody is in**: "The party lasted ... · N yours" on every
+  screen. `START_GRACE` (2 s) after a start or a change of leader, before
+  anybody has had time to say they are in.
+- **A new leader** (the old one left) takes the run where it stands
+  (`take_over()`, from the run's own frame, before anything is judged):
+  `rebuild_free()` and on.
+- **Elites and bosses are shared** (`RUN_MARK`, `run_extra`): numbered and
+  sent by monstersync.gd like any monster, `get_enemy_id()` "" so nothing
+  pays, `net_props()` carries the mark (and a notice the size of the
+  arena) to every copy. **Nothing in a party's arena is booked** - its lead
+  says `"b": 0`, and `Presence.books()` and `server_health()` are false
+  there, so the leader's game counts their health as before 0.87.0.
+- **Scaling** (`party_crowd()` x1.5/2/2.5, `party_health()` x1.2/1.4/1.6,
+  `party_elites()` +1/2/3, `party_boss()` x1.75/2.5/3.25 for 2/3/4 - the
+  plan's table, to tune by playing). `players` is fixed at the start and
+  only grows. Touch damage does not scale.
+- **What it adds on the wire**: one "en" a game every `TICK_SECONDS` (0.2):
+  a game already sends ten states, ten attack pictures and ten monster
+  messages a second, against the server's 40.
+
+`_test_the_party_run()`: three games in one tree, each on a stand-in link
+that passes "en" as the server does (JSON and back). Played with two games
+against the local server (zz/partyrun.gd).
+
+### Minigames: a button on the bar, the Endless once a day, a door one way in (0.93.3)
+
+The owner: "we need to get rid of ladder and make this a button in hud that
+says minigames this dungeon will have a 1 day wait timer for players"; the
+day starts when you press Go; and "the door needs to be 1 way entry also".
+
+- **The town square's ladder down is gone** (`endlessladder` and its
+  ladderdown.tscn instance out of elusion.tscn). `_test_the_endless_run()`
+  fails on anything in town that leads to endless.tscn.
+- **Minigames is the bar's eighth button of nine**, between Social and Menu
+  (`%minigamesbutton`; `NAV_BUTTON_NAMES`; the touch grid's `ITEMS` after
+  the bar's own). It opens a card above it, right edges lined up
+  (`src/ui/minigames/minigamescard.gd`, made by the HUD's `_ready()` with
+  `MinigamesCard.attach(self)`; no class_name): the Endless, its line, and
+  Ready / "Back in 13h 20m" / "Could not reach the server - try again." beside
+  Go. It shuts and is shut like the dropdowns (`close_nav_menus()`,
+  `_click_outside_nav_menus()`, `_on_minigames_pressed()`).
+- **The day is the server's** (the API's `minigames/`): opening asks GET
+  /api/minigames, Go asks POST /api/minigames/enter and only then travels
+  (`GameState.next_spawn_id` "endless_entrance", `AreaRegistry.go_to`); a
+  409 shows the server's `ready_in`, counted down while the card is open.
+  The listing failing leaves Go pressable - the server decides at Go. Per
+  account; the owner skips it. Seams for the suite: `list_request`,
+  `enter_request`, `travel`, `area_now`.
+- **Inside the Endless the button is Leave**, to town with no request - the
+  door no longer lets anybody back to the corridor's ladder.
+- **The door is one way** (`cryptdoor.gd one_way()`, switched on by
+  endlessrun.gd `_one_way_door()`, deferred from `_ready()`): a StaticBody2D
+  "oneway" with the gap's shape and Godot's `one_way_collision`, solid only
+  to a body moving down onto it - in from the corridor, never back out of
+  the arena, open or shut. Half way through and back is allowed. Layer 5
+  (`ONE_WAY_LAYER` 16), which only a player's body looks for (mask 19), so
+  shots and monsters pass as before.
+
+`_test_minigames()`: the bar and the grid, the card on stand-in seams (Ready,
+the wait, a dropdown and a click shutting it, Go's request and travel, a 409,
+no answer, Leave), and a physics probe of the door (a 7 px circle up through
+it, stopped coming back, half way and back allowed, a monster's body through).
+
+### Feel each land, and more elites (0.93.3)
+
+The owner, 28 Oct: "we need to spawn more elites in as time progresses also
+we need to really feel each elements effect", then "soaked needs to change to
+defense reduction, freeze needs to actually freeze player with an effect like
+players color simulates being frozen i think dark should be healing halved
+and 2x damage", and for wind "a 3 animation of earth spike however each one of
+those ticks should push player back and damage so player gets hit 3 times if
+stuck in the pathway". Part 1 of the Docs page "The Endless: loot, elites,
+elements and the record"; the loot and the record are parts 2 and 3.
+
+- **The effects changed** (`statuseffects.gd`, so the bosses' too): soaked is
+  `defence_scale()` 0.5 on the defence tier's share and the armour's
+  (`player.gd damage_taken()`), and no longer stops a sprint; frozen is
+  `FROZEN_SECONDS` 1.0, `can_attack()` false (`_poll_attack_pressed()` and the
+  healer's held beam ask `effects_let_attack()`), the sprite stopped on its
+  frame (`effects_still_sprite()`, in both walks) and tinted `TINTS[FROZEN]`,
+  past white in blue; wither is `WITHER_SECONDS` 2.0 with `damage_scale()` 2
+  on every hit. The clearable rules otherwise hold (40% slow floor, nothing
+  holds twice in a row, nothing over 3 s).
+- **The swarm's touch carries the land's effect** (`swarm.gd touch_effect`,
+  set each stage from `endlessrun.gd touch_effect_for()`), on a touch that
+  hurts, at most once every `EFFECT_GAP` (1.5 s). None in wind.
+- **Wind's spike paths** (`src/world/endless/spikepath.gd`, built in code, the
+  spike door's own three pictures from art/doors): in a wind stage, one near
+  this game's player every `SPIKE_GAP` (3.5 s; the first `SPIKE_FIRST` in),
+  `raise_spikes()`: up to `SPIKE_COUNT` spikes at a random angle, from
+  `SPIKE_LEAD` behind the player, passing within `SPIKE_MISS`, cut at the
+  arena's edge. A faint warning (`WARN_SECONDS`), then down, half and up, each
+  a tick that shoves along the path (the effects' SHOVE) and hits for
+  `stage_touch()` x `SPIKE_HIT` as wind - stay in it and all three land. Each
+  game raises its own for its own player; nothing is sent.
+- **The land shows**: an added wash of its colour over the arena
+  (`floor_wash`, a ColorRect at `WASH_Z` -9, `FLOOR_WASH` 0.12, eased in and
+  out) - the underground floor is too dark for a multiplied tint - and the
+  stage banner's second line (`endlesshud.gd banner_line`, `LAND_FELT`).
+- **More elites**: a wave every `elite_gap()` (32 - 2 x stage s, never under
+  15) of `elites_at()` (1 + stage/2) plus the party's; never more than
+  `elites_alive_cap()` alive (40, +10 each other player), a wave waiting while
+  the arena is full. About 24 a minute at stage 10 alone, 8 before.
+
+`_test_feel_each_land()`; testrunner_7's effect checks hold the changed three.
 
 ### Deleting inert code is how you find out what it was for
 
@@ -8254,6 +8462,12 @@ never looks again while its target is valid).
 | Earth | gate, triwall, rake | BOULDER: its stalagmite thrown where you stood | root |
 | Fire | cross, spiral, carpet | PINCER: orbs that shut on your spot and burn it | burn |
 | Crowned | ring, cage, gate + stalkers | the other six's, more each phase | wither |
+
+Since 0.93.3 three of those effects are harder (the owner, for the Endless,
+and the bosses carry the same ones): soaked halves your defence instead of
+stopping a sprint, frozen is a real freeze (1 s, no attacking, the sprite
+stopped and ice-blue), and wither doubles the damage you take as well as
+halving healing, for 2 s. "Feel each land" has it.
 
 - **One stalagmite clock** (`_on_spike_timer` / `_cast_spike_pattern`) raises
   the kit's shapes: the first two from the start, the third from phase two
