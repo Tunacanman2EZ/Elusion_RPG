@@ -5,6 +5,8 @@
 # AT the enemy instead of at the attacker, and targets "enemies" not "player".
 extends Area2D
 
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -68,7 +70,8 @@ func _on_frame_changed() -> void:
 
 
 func _apply_damage_to_overlapping_enemies() -> void:
-	for body in get_overlapping_bodies():
+	# Bodies and hurtboxes, once each (Targets.touching(), 0.93.1).
+	for body in Targets.touching(self, StringName(target_group)):
 		if body.is_in_group(target_group) and body.has_method("take_damage"):
 			body.take_damage(damage)
 

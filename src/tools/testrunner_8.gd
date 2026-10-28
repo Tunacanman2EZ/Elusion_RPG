@@ -3548,6 +3548,78 @@ func _test_the_endless_run() -> void:
 			outside += 1
 	check("  it never walks into the corridor or off the floor, even after someone standing at the corridor's door",
 		in_corridor == 0 and outside == 0, [in_corridor, outside])
+	# The owner: "the enemies are kind of wobbly". Round a still player, how
+	# far each one turns from one step to the next (radians, on average): 0.65
+	# when each step obeyed the crowd's counts at once, about 0.17 carried.
+	var calm: Node2D = SwarmScript.new()
+	calm.set("arena", Rect2(0, 0, 800, 600))
+	add_child(calm)
+	await get_tree().process_frame
+	calm.set("speed", 70.0)
+	var crowd: int = int(calm.call("spawn", 600, Vector2(400, 300)))
+	for k in 80:
+		calm.call("_step", Vector2(400, 300), true)
+	var turned: float = 0.0
+	var turns: int = 0
+	var was := PackedVector2Array()
+	was.resize(crowd)
+	for k in 12:
+		var ox: PackedFloat32Array = (calm.get("px") as PackedFloat32Array).duplicate()
+		var oy: PackedFloat32Array = (calm.get("py") as PackedFloat32Array).duplicate()
+		calm.call("_step", Vector2(400, 300), true)
+		var nx: PackedFloat32Array = calm.get("px")
+		var ny: PackedFloat32Array = calm.get("py")
+		for i in crowd:
+			var moved := Vector2(nx[i] - ox[i], ny[i] - oy[i])
+			if k > 0 and moved.length() > 0.5 and was[i].length() > 0.5:
+				turned += absf(moved.angle_to(was[i]))
+				turns += 1
+			was[i] = moved
+	var mean_turn: float = turned / maxf(1.0, float(turns))
+	check("  it walks, it does not shake: round a still player one turns %.2f rad a step on average (under 0.3)" % mean_turn,
+		turns > 1000 and mean_turn < 0.3)
+	# The owner: "bleed damage is spreading". A stand-in keeps its swarmling.
+	var keeper := Node2D.new()
+	keeper.add_to_group(&"player")
+	add_child(keeper)
+	keeper.global_position = Vector2(400, 300)
+	calm.call("_place_proxies")
+	var held_before: PackedInt32Array = (calm.get("_held") as PackedInt32Array).duplicate()
+	for k in 6:
+		calm.call("_step", Vector2(400, 300), true)
+		calm.call("_place_proxies")
+	var held_after: PackedInt32Array = calm.get("_held")
+	var kept: int = 0
+	var could: int = 0
+	var cstate: PackedByteArray = calm.get("state")
+	for p in held_before.size():
+		if held_before[p] >= 0 and cstate[held_before[p]] == 1:
+			could += 1
+			if held_after[p] == held_before[p]:
+				kept += 1
+	check("a stand-in keeps its swarmling from step to step while it lives and is near (%d of %d)" % [kept, could],
+		could > 50 and kept == could)
+	var stand_in: Node = null
+	for child in calm.get_children():
+		if child.is_in_group(&"enemies") and int(child.get("slot")) >= 0:
+			stand_in = child
+			break
+	var wound := Node2D.new()
+	stand_in.add_child(wound)
+	stand_in.set_meta(&"bleed_wound", wound.get_instance_id())
+	var first_slot: int = int(stand_in.get("slot"))
+	stand_in.call("stand_on", first_slot, Vector2(5, 5))
+	var stays: bool = not wound.is_queued_for_deletion()
+	stand_in.call("stand_on", -1, Vector2.ZERO)
+	var sheet_src: String = FileAccess.get_file_as_string("res://src/world/endless/swarm.gdshader")
+	check("  and it walks at the Field's small slime's pace, 5 frames a second, not faster",
+		sheet_src.contains("uniform float walk_speed = 5.0;"))
+	check("  and a wound on it ends when it lets go, so it never bites the next slime",
+		stays and wound.is_queued_for_deletion() and not stand_in.has_meta(&"bleed_wound")
+		and stand_in.get_node_or_null("hurtbox") != null)
+	keeper.queue_free()
+	calm.queue_free()
+	await get_tree().process_frame
 	var proxies: Array = []
 	var proxies_right: bool = true
 	for child in swarm.get_children():

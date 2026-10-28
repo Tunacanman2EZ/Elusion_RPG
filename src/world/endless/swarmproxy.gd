@@ -49,6 +49,8 @@ func _init() -> void:
 
 
 func stand_on(index: int, at: Vector2) -> void:
+	if index != slot:
+		_drop_wounds()
 	slot = index
 	if index < 0:
 		if visible:
@@ -69,6 +71,17 @@ func take_damage(amount: float, _element: int = 0) -> void:
 	if not bool(swarm.call("is_alive", slot)):
 		# Dead under this blow: the next hit of the same swing finds nothing.
 		stand_on(-1, Vector2.ZERO)
+
+
+func _drop_wounds() -> void:
+	"""ANYTHING PUT ON IT - a bleed (bleed.gd is a child of what it bites) -
+	was put on the swarmling it stood on, so it ends when it moves to
+	another. Left on, it bit the next slime, and the next."""
+	for child in get_children():
+		if child != _box and not child.is_queued_for_deletion():
+			child.queue_free()
+	if has_meta(&"bleed_wound"):
+		remove_meta(&"bleed_wound")
 
 
 func can_be_aimed_at() -> bool:

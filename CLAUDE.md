@@ -2026,6 +2026,30 @@ party and the server's chest are the next two.
   They carry the stress-copy mark, so nothing that numbers, counts or
   respawns monsters sees them; aiming may pick them, which is how a spike, a
   pet or the touch aim lands on the swarm.
+- **A stand-in keeps its swarmling (0.93.1)** while it lives and is within
+  `PROXY_REACH`; only a free one takes the nearest not held. The owner:
+  "bleed damage is spreading" - a bleed (`bleed.gd`) is a child of what it
+  bites, and a stand-in moved to whichever slimes were nearest each step
+  carried the wound from slime to slime. And a stand-in that lets go drops
+  whatever was put on it (`_drop_wounds()`).
+- **It walks, it does not shake (0.93.1).** The owner: "the enemies are
+  kind of wobbly". Each step a swarmling moves only `STEER` (0.25) of the
+  way from how it was going (`vx`, `vy`) to how the crowd's counts say;
+  its sway is `WANDER` (0.12 of a stride, slow); its facing changes only
+  when the other axis leads by `FACE_LEAD` (1.35); against the player it is
+  shoved half as hard; and the "crowded" nudge of its own is gone. Its walk
+  plays at the small slime's 5 frames a second (it was 9). Round a still
+  player the average turn a step went 0.65 rad -> 0.16, facing flips about
+  4,200 -> 1,100 over 20 steps of 600.
+- **Every blast, ring and spike reads hurtboxes too (0.93.1).** The owner:
+  "tanks aura is doing no damage to these mobs". The swarm is hurtboxes
+  alone, and the tank's ring, dynamite, the meteor, the spike circle, the
+  burning crater, the pet vine and the pet boss's spike read
+  `get_overlapping_bodies()` alone. They all ask `Targets.touching(area)`
+  now: bodies and hurtboxes' owners in the group, one entry each, so a
+  monster with both is still hit once (the warrior's swing and the axe
+  already read both). A new area weapon goes through it too; the check in
+  testrunner_7 names the files.
 - **Measured in the container** (software drawing, so the frame is not the
   owner's): a step of 3,000 about 3.7 ms, the buffer 1.3 ms, choosing the
   stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's.

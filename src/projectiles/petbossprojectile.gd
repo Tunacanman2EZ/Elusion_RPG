@@ -43,6 +43,7 @@ const RISE_ANIM := &"projectile"
 #
 # Safe to preload: petpoisonpuddle.tscn runs acidpuddle.gd, not this script, so
 # there is no cycle of the kind Puddles.gd exists to avoid.
+const Targets := preload("res://src/shared/targets.gd")
 const PUDDLE_SCENE := preload("res://scene/projectiles/petpoisonpuddle.tscn")
 
 
@@ -209,10 +210,10 @@ func _on_frame_changed() -> void:
 
 
 func _apply_damage_to_overlapping_enemies() -> void:
-	# Mirrors petvine.gd exactly, including using bodies rather than areas: an
-	# enemy that carries both a body and a hurtbox would otherwise be hit twice
-	# by one spike.
-	for body in get_overlapping_bodies():
+	# Mirrors petvine.gd: bodies and hurtboxes, one entry per enemy
+	# (Targets.touching(), 0.93.1) - an enemy with both is hit once, and the
+	# Endless's swarm, hurtboxes alone, is hit at all.
+	for body in Targets.touching(self, StringName(target_group)):
 		if body.is_in_group(target_group) and body.has_method("take_damage"):
 			body.take_damage(damage)
 

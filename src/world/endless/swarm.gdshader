@@ -31,7 +31,10 @@ uniform vec2 sheet = vec2(432.0, 1824.0);
 uniform vec4 walk_rows = vec4(1152.0, 1344.0, 1536.0, 1728.0);
 uniform float cell = 48.0;
 uniform float walk_frames = 9.0;
-uniform float walk_speed = 9.0;
+// Frames a second: the Field's small slime walks at 5 (its smallwalk rows).
+// At 9 the crowd squashed and stretched twice as fast as any slime, which
+// read as wobbling.
+uniform float walk_speed = 5.0;
 uniform float death_frames = 5.0;
 // A little brighter than drawn: the crypt is dark, and a crowd of small
 // slimes in it read as a shadow.

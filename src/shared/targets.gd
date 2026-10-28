@@ -16,6 +16,31 @@
 extends RefCounted
 
 
+static func touching(area: Area2D, group: StringName = &"enemies") -> Array:
+	"""What a player's blow, blast or ring touches: the bodies AND the
+	hurtboxes' owners in `group`, one entry each (0.93.1). A monster has both
+	- read alone, a blast would hit it twice - and the Endless's swarm has
+	only hurtboxes (swarmproxy.gd), so a weapon that read bodies alone did
+	nothing to it: the owner, "tanks aura is doing no damage to these mobs".
+	spinningaxe.gd and the warrior's swing read both their own way."""
+	var seen: Dictionary = {}
+	var found: Array = []
+	if area == null:
+		return found
+	var touched: Array = area.get_overlapping_bodies()
+	for box in area.get_overlapping_areas():
+		touched.append((box as Node).get_parent())
+	for thing in touched:
+		if thing == null or not is_instance_valid(thing) or not (thing as Node).is_in_group(group):
+			continue
+		var id: int = thing.get_instance_id()
+		if seen.has(id):
+			continue
+		seen[id] = true
+		found.append(thing)
+	return found
+
+
 static func all(tree: SceneTree) -> Array:
 	"""Every body a monster may chase: the local player, and each remote
 	player whose game shares monsters and who is not playing their death."""

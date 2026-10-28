@@ -706,7 +706,9 @@ func _deal_aura_damage() -> void:
 
 	# NO XP HERE - see the class comment. Attack trains at the kill, on the
 	# server; this loop only hurts things.
-	for body in _aura.get_overlapping_bodies():
+	# BODIES AND HURTBOXES, each once (Targets.touching(), 0.93.1): the
+	# Endless's swarm is hurtboxes alone, and the ring read bodies alone.
+	for body in Targets.touching(_aura):
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):

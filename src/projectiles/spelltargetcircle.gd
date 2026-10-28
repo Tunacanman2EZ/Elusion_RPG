@@ -373,7 +373,7 @@ func _apply_area_damage() -> void:
 	# enter the area AFTER this frame are not hit (instant AoE, no DoT).
 	if cosmetic:
 		return
-	for body in get_overlapping_bodies():
+	for body in Targets.touching(self):  # bodies and hurtboxes, once (0.93.1)
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):

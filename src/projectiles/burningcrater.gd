@@ -267,7 +267,7 @@ func _burn() -> void:
 	if cosmetic:
 		return
 	var bite: int = burn_damage()
-	for body in get_overlapping_bodies():
+	for body in Targets.touching(self):  # bodies and hurtboxes, once (0.93.1)
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
 			continue
 		# Not past a wall from the middle of the fire (0.69.1, Targets).

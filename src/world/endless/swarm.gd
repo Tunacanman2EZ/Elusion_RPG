@@ -52,6 +52,17 @@ const CELL := 24.0
 # How hard a thick cell pushes, in px a second for each swarmling more than
 # its neighbour has.
 const PUSH := 14.0
+# HOW QUICKLY ONE TURNS: each step it moves this much of the way from how it
+# was going to how it wants to go. The crowd's counts jump from step to step,
+# and a swarmling that obeyed them at once shook on the spot (the owner: "the
+# enemies are kind of wobbly"); carried, the jumps even out into a walk.
+const STEER := 0.25
+# Its own sideways wander, a fraction of its stride, and how slowly it sways.
+const WANDER := 0.12
+const WANDER_RATE := 0.0011
+# Which way it faces changes only once the other way leads by this much, so
+# one going diagonally does not flip between rows every step.
+const FACE_LEAD := 1.35
 # How close one comes to the player before it stops: it is touching them.
 const TOUCH := 14.0
 const TOUCH_SECONDS := 0.5
@@ -85,6 +96,8 @@ var px := PackedFloat32Array()
 var py := PackedFloat32Array()
 var bx := PackedFloat32Array()      # where it stood a step ago
 var by := PackedFloat32Array()
+var vx := PackedFloat32Array()      # how it is going, px a step
+var vy := PackedFloat32Array()
 var hp := PackedFloat32Array()
 var timer := PackedFloat32Array()   # dying: seconds into it
 var flash := PackedFloat32Array()
@@ -120,6 +133,8 @@ func _init() -> void:
 	py.resize(MOST)
 	bx.resize(MOST)
 	by.resize(MOST)
+	vx.resize(MOST)
+	vy.resize(MOST)
 	hp.resize(MOST)
 	timer.resize(MOST)
 	flash.resize(MOST)
@@ -226,6 +241,8 @@ func spawn(count: int, avoid: Vector2) -> int:
 		py[i] = spot.y
 		bx[i] = spot.x
 		by[i] = spot.y
+		vx[i] = 0.0
+		vy[i] = 0.0
 		hp[i] = max_hp
 		timer[i] = 0.0
 		flash[i] = 0.0
@@ -357,13 +374,15 @@ func _step(target: Vector2, chasing: bool) -> void:
 		var d: float = sqrt(dx * dx + dy * dy)
 		var mx: float = 0.0
 		var my: float = 0.0
+		var against: bool = false
 		if chasing:
 			if d <= TOUCH:
 				touching += 1
+				against = true
 			elif d > 0.001:
-				# A little sideways wander, its own, so a crowd does not
-				# march in ruled lines.
-				var wobble: float = sin(phase[i] * 40.0 + float(Time.get_ticks_msec()) * 0.003) * 0.35
+				# A little sideways wander, its own and slow, so a crowd does
+				# not march in ruled lines.
+				var wobble: float = sin(phase[i] * 40.0 + float(Time.get_ticks_msec()) * WANDER_RATE) * WANDER
 				var nx: float = dx / d
 				var ny: float = dy / d
 				mx = (nx - ny * wobble) * stride
@@ -376,10 +395,16 @@ func _step(target: Vector2, chasing: bool) -> void:
 			var r: int = _grid[gy2 * gw + gx2 + 1] if gx2 < gw - 1 else here
 			var u: int = _grid[(gy2 - 1) * gw + gx2] if gy2 > 0 else here
 			var dn: int = _grid[(gy2 + 1) * gw + gx2] if gy2 < gh - 1 else here
-			mx += float(l - r) * push
-			my += float(u - dn) * push
-			# Crowded with nowhere better: a nudge of its own.
-			mx += (phase[i] - 0.5) * push * float(here)
+			# Against the player it is shoved half as hard: the ring round
+			# them settles instead of churning.
+			var shove: float = push * (0.5 if against else 1.0)
+			mx += float(l - r) * shove
+			my += float(u - dn) * shove
+		# Carried from the last step, never a full turn at once.
+		mx = lerpf(vx[i], mx, STEER)
+		my = lerpf(vy[i], my, STEER)
+		vx[i] = mx
+		vy[i] = my
 		x = clampf(x + mx, left, right)
 		y = clampf(y + my, top, bottom)
 		for rect in keep_out:
@@ -401,7 +426,12 @@ func _step(target: Vector2, chasing: bool) -> void:
 				else:
 					y = rect.end.y + 0.5
 		if absf(mx) > 0.2 or absf(my) > 0.2:
-			if absf(mx) >= absf(my):
+			var sideways: bool = facing[i] <= 1
+			if sideways and absf(my) > absf(mx) * FACE_LEAD:
+				sideways = false
+			elif not sideways and absf(mx) > absf(my) * FACE_LEAD:
+				sideways = true
+			if sideways:
 				facing[i] = 0 if mx > 0.0 else 1
 			else:
 				facing[i] = 2 if my > 0.0 else 3
@@ -447,33 +477,55 @@ func _write_buffer() -> void:
 # =============================================================================
 
 func _place_proxies() -> void:
-	"""Which swarmlings the stand-ins stand on: those nearest the player, chosen
-	once a step. Nearest by distance bands, not a sort - a sort of three
-	thousand is the cost this file exists to avoid. _move_proxies() keeps each
-	on its swarmling every physics tick."""
+	"""Which swarmlings the stand-ins stand on, once a step. A STAND-IN KEEPS
+	ITS SWARMLING while it lives and is within PROXY_REACH: what was put on
+	one - a bleed biting it - belongs to that swarmling, and a stand-in moved
+	to the nearest each step carried a wound from slime to slime (the owner:
+	"bleed damage is spreading"). Only a free one takes the nearest not held,
+	by distance bands, not a sort - a sort of three thousand is the cost this
+	file exists to avoid. _move_proxies() keeps each on its swarmling every
+	physics tick."""
 	var player: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
-	_held.clear()
 	if player == null or alive == 0:
 		_park_proxies()
 		return
 	var at: Vector2 = player.global_position
-	var bands: Array = [[], [], [], [], [], []]
-	var band_size: float = PROXY_REACH / float(bands.size())
 	var reach2: float = PROXY_REACH * PROXY_REACH
-	for i in _high:
-		if state[i] != 1:
-			continue
-		var dx: float = px[i] - at.x
-		var dy: float = py[i] - at.y
-		var d2: float = dx * dx + dy * dy
-		if d2 > reach2:
-			continue
-		(bands[mini(bands.size() - 1, int(sqrt(d2) / band_size))] as Array).append(i)
-	for band in bands:
-		for i in band:
-			if _held.size() >= _proxies.size():
-				break
-			_held.append(i)
+	if _held.size() != _proxies.size():
+		_held.resize(_proxies.size())
+		_held.fill(-1)
+	var taken := {}
+	var empty: int = 0
+	for p in _held.size():
+		var i: int = _held[p]
+		if i >= 0 and state[i] == 1:
+			var hx: float = px[i] - at.x
+			var hy: float = py[i] - at.y
+			if hx * hx + hy * hy <= reach2:
+				taken[i] = true
+				continue
+		_held[p] = -1
+		empty += 1
+	if empty > 0:
+		var bands: Array = [[], [], [], [], [], []]
+		var band_size: float = PROXY_REACH / float(bands.size())
+		for i in _high:
+			if state[i] != 1 or taken.has(i):
+				continue
+			var dx: float = px[i] - at.x
+			var dy: float = py[i] - at.y
+			var d2: float = dx * dx + dy * dy
+			if d2 > reach2:
+				continue
+			(bands[mini(bands.size() - 1, int(sqrt(d2) / band_size))] as Array).append(i)
+		var p: int = 0
+		for band in bands:
+			for i in band:
+				while p < _held.size() and _held[p] >= 0:
+					p += 1
+				if p >= _held.size():
+					break
+				_held[p] = i
 	_move_proxies()
 
 
@@ -483,14 +535,15 @@ func _move_proxies() -> void:
 	var blend: float = clampf(1.0 - _step_left / STEP, 0.0, 1.0)
 	for p in _proxies.size():
 		var proxy: Node2D = _proxies[p]
-		if p < _held.size() and state[_held[p]] == 1:
-			var i: int = _held[p]
+		var i: int = _held[p] if p < _held.size() else -1
+		if i >= 0 and state[i] == 1:
 			proxy.call("stand_on", i, Vector2(lerpf(bx[i], px[i], blend), lerpf(by[i], py[i], blend)))
 		else:
 			proxy.call("stand_on", -1, Vector2.ZERO)
 
 
 func _park_proxies() -> void:
-	_held.clear()
+	_held.resize(_proxies.size())
+	_held.fill(-1)
 	for proxy in _proxies:
 		(proxy as Node2D).call("stand_on", -1, Vector2.ZERO)

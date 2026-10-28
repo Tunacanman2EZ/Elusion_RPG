@@ -408,7 +408,7 @@ func _impact() -> void:
 func _apply_damage() -> int:
 	# Every enemy inside the hit, once. Returns how many, for the tests.
 	var hit := 0
-	for body in get_overlapping_bodies():
+	for body in Targets.touching(self):  # bodies and hurtboxes, once (0.93.1)
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
 			continue
 		# Not past a wall from where it came down (0.69.1, Targets).

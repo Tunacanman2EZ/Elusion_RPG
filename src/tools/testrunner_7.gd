@@ -219,6 +219,54 @@ func _test_attacks_stop_at_walls() -> void:
 	tank.call("_deal_aura_damage")
 	check("  and burns only this side", ring_past.get("taken").is_empty() and not ring_here.get("taken").is_empty(),
 		[ring_past.get("taken"), ring_here.get("taken")])
+	# THE RING READS HURTBOXES TOO (0.93.1): the Endless's swarm is hurtboxes
+	# alone (swarmproxy.gd) - the owner: "tanks aura is doing no damage to
+	# these mobs" - and a monster with a body AND a hurtbox burns once a tick.
+	var both_box := Area2D.new()
+	both_box.collision_layer = 8
+	both_box.collision_mask = 0
+	both_box.monitoring = false
+	var both_shape := CollisionShape2D.new()
+	var both_circle := CircleShape2D.new()
+	both_circle.radius = 6.0
+	both_shape.shape = both_circle
+	both_box.add_child(both_shape)
+	ring_here.add_child(both_box)
+	var ring_swarm: Node2D = (load("res://src/world/endless/swarm.gd") as GDScript).new()
+	ring_swarm.set("arena", Rect2(tank.global_position - Vector2(400, 400), Vector2(800, 800)))
+	arena.add_child(ring_swarm)
+	ring_swarm.process_mode = Node.PROCESS_MODE_DISABLED
+	ring_swarm.set("max_hp", 500.0)
+	ring_swarm.call("spawn", 1, tank.global_position)
+	var ring_slime: int = int(ring_swarm.get("_high")) - 1
+	var ring_proxy: Node = null
+	for child in ring_swarm.get_children():
+		if child.is_in_group(&"enemies"):
+			ring_proxy = child
+			break
+	# The swarm is held still (no player to chase here), its stand-in not:
+	# a disabled hurtbox leaves the physics world.
+	ring_proxy.process_mode = Node.PROCESS_MODE_ALWAYS
+	ring_proxy.call("stand_on", ring_slime, tank.global_position + Vector2(-20.0, 0.0))
+	for i in 3:
+		await get_tree().physics_frame
+	ring_here.get("taken").clear()
+	tank.call("_deal_aura_damage")
+	var slime_hp: float = (ring_swarm.get("hp") as PackedFloat32Array)[ring_slime]
+	check("the ring burns the Endless's swarm through its stand-ins, and a monster with a body and a hurtbox once a tick",
+		slime_hp < 500.0 and ring_here.get("taken").size() == 1, [slime_hp, ring_here.get("taken")])
+	ring_swarm.queue_free()
+	both_box.queue_free()
+	var body_only: Array = []
+	for weapon in ["res://src/characters/tank.gd", "res://src/projectiles/dynamite.gd",
+			"res://src/projectiles/meteor.gd", "res://src/projectiles/spelltargetcircle.gd",
+			"res://src/projectiles/burningcrater.gd", "res://src/projectiles/petvine.gd",
+			"res://src/projectiles/petbossprojectile.gd"]:
+		var weapon_src: String = _code_src(weapon)
+		if weapon_src.contains("get_overlapping_bodies()") or not weapon_src.contains("Targets.touching("):
+			body_only.append(weapon.get_file())
+	check("  and every blast, ring and spike of the players' reads both through Targets.touching()",
+		body_only.is_empty(), body_only)
 	var landing: Vector2 = tank.call("dynamite_landing", Vector2(thin_x + 600.0, base.y - 120.0))
 	check("dynamite thrown at a wall comes down this side of it", landing.y > base.y + 1.0, landing)
 	ring_here.get("taken").clear()
