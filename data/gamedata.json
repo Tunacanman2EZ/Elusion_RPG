@@ -3811,6 +3811,290 @@
 		"xp_base": 1250.0,
 		"xp_growth": 1.27
 	},
+	"endless": {
+		"alive_most": 70,
+		"boss_every": 5,
+		"bosses": [
+			"boss",
+			"earthboss",
+			"fireboss",
+			"iceboss",
+			"lightboss",
+			"waterboss",
+			"windboss"
+		],
+		"elites": [
+			"bushmage",
+			"darkbushmage",
+			"darkbushsniper",
+			"darkfiresprite",
+			"darksprite",
+			"earthbushsniper",
+			"earthfiresprite",
+			"earthsprite",
+			"firebushmage",
+			"firesprite",
+			"icebushmage",
+			"icebushsniper",
+			"icefiresprite",
+			"icesprite",
+			"lightbushmage",
+			"lightbushsniper",
+			"lightfiresprite",
+			"lightsprite",
+			"waterbushmage",
+			"waterbushsniper",
+			"waterfiresprite",
+			"watersprite",
+			"windbushmage",
+			"windbushsniper",
+			"windfiresprite",
+			"windsprite"
+		],
+		"stage_seconds": 60,
+		"stages": [
+			{
+				"gap": 30,
+				"wave": 0
+			},
+			{
+				"gap": 28,
+				"wave": 5
+			},
+			{
+				"gap": 26,
+				"wave": 5
+			},
+			{
+				"gap": 24,
+				"wave": 6
+			},
+			{
+				"gap": 22,
+				"wave": 6
+			},
+			{
+				"gap": 20,
+				"wave": 7
+			},
+			{
+				"gap": 18,
+				"wave": 7
+			},
+			{
+				"gap": 16,
+				"wave": 8
+			},
+			{
+				"gap": 15,
+				"wave": 8
+			},
+			{
+				"gap": 15,
+				"wave": 9
+			},
+			{
+				"gap": 15,
+				"wave": 9
+			},
+			{
+				"gap": 15,
+				"wave": 10
+			},
+			{
+				"gap": 15,
+				"wave": 10
+			},
+			{
+				"gap": 15,
+				"wave": 11
+			},
+			{
+				"gap": 15,
+				"wave": 11
+			},
+			{
+				"gap": 15,
+				"wave": 12
+			},
+			{
+				"gap": 15,
+				"wave": 12
+			},
+			{
+				"gap": 15,
+				"wave": 13
+			},
+			{
+				"gap": 15,
+				"wave": 13
+			},
+			{
+				"gap": 15,
+				"wave": 14
+			},
+			{
+				"gap": 15,
+				"wave": 14
+			},
+			{
+				"gap": 15,
+				"wave": 15
+			},
+			{
+				"gap": 15,
+				"wave": 15
+			},
+			{
+				"gap": 15,
+				"wave": 16
+			},
+			{
+				"gap": 15,
+				"wave": 16
+			},
+			{
+				"gap": 15,
+				"wave": 17
+			},
+			{
+				"gap": 15,
+				"wave": 17
+			},
+			{
+				"gap": 15,
+				"wave": 18
+			},
+			{
+				"gap": 15,
+				"wave": 18
+			},
+			{
+				"gap": 15,
+				"wave": 19
+			},
+			{
+				"gap": 15,
+				"wave": 19
+			},
+			{
+				"gap": 15,
+				"wave": 20
+			},
+			{
+				"gap": 15,
+				"wave": 20
+			},
+			{
+				"gap": 15,
+				"wave": 21
+			},
+			{
+				"gap": 15,
+				"wave": 21
+			},
+			{
+				"gap": 15,
+				"wave": 22
+			},
+			{
+				"gap": 15,
+				"wave": 22
+			},
+			{
+				"gap": 15,
+				"wave": 23
+			},
+			{
+				"gap": 15,
+				"wave": 23
+			},
+			{
+				"gap": 15,
+				"wave": 24
+			},
+			{
+				"gap": 15,
+				"wave": 24
+			},
+			{
+				"gap": 15,
+				"wave": 25
+			},
+			{
+				"gap": 15,
+				"wave": 25
+			},
+			{
+				"gap": 15,
+				"wave": 26
+			},
+			{
+				"gap": 15,
+				"wave": 26
+			},
+			{
+				"gap": 15,
+				"wave": 27
+			},
+			{
+				"gap": 15,
+				"wave": 27
+			},
+			{
+				"gap": 15,
+				"wave": 28
+			},
+			{
+				"gap": 15,
+				"wave": 28
+			},
+			{
+				"gap": 15,
+				"wave": 29
+			},
+			{
+				"gap": 15,
+				"wave": 29
+			},
+			{
+				"gap": 15,
+				"wave": 30
+			},
+			{
+				"gap": 15,
+				"wave": 30
+			},
+			{
+				"gap": 15,
+				"wave": 31
+			},
+			{
+				"gap": 15,
+				"wave": 31
+			},
+			{
+				"gap": 15,
+				"wave": 32
+			},
+			{
+				"gap": 15,
+				"wave": 32
+			},
+			{
+				"gap": 15,
+				"wave": 33
+			},
+			{
+				"gap": 15,
+				"wave": 33
+			},
+			{
+				"gap": 15,
+				"wave": 34
+			}
+		]
+	},
 	"enemies": [
 		{
 			"attack_xp_reward": 239,

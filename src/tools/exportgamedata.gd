@@ -221,6 +221,9 @@ func _run() -> void:
 	# come back, and the numbers that bound how hard a character can hit.
 	var areas: Dictionary = _export_areas()
 	var combat: Dictionary = _export_combat(items)
+	# THE ENDLESS'S SCHEDULE (0.93.4): after _annotate_placement(), which maps
+	# every enemy scene to its enemy_id.
+	var endless: Dictionary = _export_endless()
 
 	if items.is_empty():
 		_fail("found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
@@ -242,6 +245,7 @@ func _run() -> void:
 		"shops": shops,
 		"areas": areas,
 		"combat": combat,
+		"endless": endless,
 	}
 
 	if not _validate(constants, items, enemies, classes):
@@ -1813,6 +1817,46 @@ func _split_yield(scene_path: String) -> int:
 const AREA_REGISTRY := "res://src/systems/arearegistry.gd"
 const RESPAWNER_SCRIPT := "res://src/world/enemyrespawner.gd"
 const ENEMY_SCENES := "res://scene/enemy/"
+
+
+# =============================================================================
+# THE ENDLESS'S SCHEDULE (0.93.4)
+# =============================================================================
+# The server pays an Endless elite's or boss's loot into the killer's chest
+# (POST /api/minigames/kill), and holds the kills reported since the account's
+# Go to what a run could have sent by then. This is that run, from
+# endlessrun.gd's own schedule(): every stage's wave gap and size at the biggest
+# party, the most elites alive, a boss every so many stages, and which monsters
+# it sends - scene names turned into enemy ids here, as the placement count
+# turns them. A scene that maps to no enemy fails the export: a monster the
+# server does not know the run sends is a kill it would refuse.
+
+const EndlessRunScript := preload("res://src/world/endless/endlessrun.gd")
+
+
+func _export_endless() -> Dictionary:
+	var made: Dictionary = EndlessRunScript.schedule()
+	var ids: Dictionary = {"elites": [], "bosses": []}
+	for pair in [["elite_scenes", "elites"], ["boss_scenes", "bosses"]]:
+		for scene_name in made.get(pair[0], []):
+			var path: String = "%s%s.tscn" % [ENEMY_SCENES, scene_name]
+			var enemy_id: String = String(_scene_to_enemy.get(path, ""))
+			if enemy_id == "":
+				_fail("the Endless sends %s, which maps to no enemy_id - the server would refuse its kills." % path)
+				continue
+			if not (ids[pair[1]] as Array).has(enemy_id):
+				(ids[pair[1]] as Array).append(enemy_id)
+		(ids[pair[1]] as Array).sort()
+	print("    endless: %d elites, %d bosses, %d stages written for the server's ceiling"
+		% [(ids["elites"] as Array).size(), (ids["bosses"] as Array).size(), (made.get("stages", []) as Array).size()])
+	return {
+		"stage_seconds": int(made.get("stage_seconds", 60)),
+		"boss_every": int(made.get("boss_every", 5)),
+		"alive_most": int(made.get("alive_most", 0)),
+		"stages": made.get("stages", []),
+		"elites": ids["elites"],
+		"bosses": ids["bosses"],
+	}
 
 
 func _export_areas() -> Dictionary:

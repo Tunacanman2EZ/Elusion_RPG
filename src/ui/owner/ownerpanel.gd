@@ -1011,7 +1011,10 @@ func teleport(action: String, username: String) -> void:
 		elif status == 404:
 			_set_teleport_status("[GM] no account called '%s' - or out of your reach." % username)
 		else:
-			_set_teleport_status("[GM] refused (%d): %s" % [status, str(res.get("error", ""))])
+			# The server's own words when it gave some: a 409 says who is not
+			# online (0.93.4).
+			var said: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+			_set_teleport_status("[GM] %s" % str(said.get("message", "refused (%d): %s" % [status, str(res.get("error", ""))])))
 		return
 
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}

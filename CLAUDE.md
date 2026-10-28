@@ -419,8 +419,16 @@ it with `SafeSpot.find(me, them, 1)`, and gives up after `MEET_SECONDS` (10)
 with a notice over your head rather than moving you later. No presence server,
 or they are not drawn: you arrive at the area's entrance, as before 0.7.4.
 
-**"Bring everyone" is armed-then-confirmed**, like a ban. It moves every account
-on the server and posts a broadcast; it is the widest button on the panel.
+**"Bring everyone" is armed-then-confirmed**, like a ban. It moves everyone
+online and posts a broadcast; it is the widest button on the panel.
+
+**A teleport waits two minutes, for somebody online (0.93.4).** The owner: "i
+teleported player then another player logged in and they were ported". A
+waiting move never expired and "everyone" queued one for every account, so
+whoever signed in next, days later, was moved on arrival. The server now moves
+only players online, refuses Bring here on somebody away with a 409 the panel
+shows in the server's words, and forgets a move not collected in two minutes
+(the API's CLAUDE.md, "A teleport waits two minutes").
 `_button_for()` has an `"everyone"` entry so `_disarm()` can put the label back —
 without it the button reads `Confirm?` for ever after a timeout, which is the
 trap `ARM_SECONDS` exists to prevent.
@@ -2190,8 +2198,9 @@ Endless: party plan"; this is what was built. Alone, nothing changes.
   (`take_over()`, from the run's own frame, before anything is judged):
   `rebuild_free()` and on.
 - **Elites and bosses are shared** (`RUN_MARK`, `run_extra`): numbered and
-  sent by monstersync.gd like any monster, `get_enemy_id()` "" so nothing
-  pays, `net_props()` carries the mark (and a notice the size of the
+  sent by monstersync.gd like any monster, `get_enemy_id()` "" so no
+  ordinary kill (since 0.93.4 they pay into the chest - "The Endless's
+  chest"), `net_props()` carries the mark (and a notice the size of the
   arena) to every copy. **Nothing in a party's arena is booked** - its lead
   says `"b": 0`, and `Presence.books()` and `server_health()` are false
   there, so the leader's game counts their health as before 0.87.0.
@@ -2288,6 +2297,51 @@ elements and the record"; the loot and the record are parts 2 and 3.
   the arena is full. About 24 a minute at stage 10 alone, 8 before.
 
 `_test_feel_each_land()`; testrunner_7's effect checks hold the changed three.
+
+### The Endless's chest: elites and bosses pay into it, loot only (0.93.4)
+
+The owner, 28 Oct: "the goal is to acquire gold so every elite and boss has
+chance for drops from the table", and of XP: "Loot only". Part 2 of the Docs
+page "The Endless: loot, elites, elements and the record".
+
+- **A run's elite or boss reports to the chest, not the kill route.**
+  `BaseEnemy._die()`: a monster with `run_extra` (endlessrun.gd `RUN_MARK`)
+  still says "" to `get_enemy_id()`, so no ordinary kill, and calls
+  `Combat.report_endless_kill(enemy_data.enemy_id, ...)`: `POST
+  /api/minigames/kill` through the same `kill_post` seam. The server rolls
+  the monster's own table - gold, gear, materials, its pet and mythic odds,
+  no XP - into this character's chest. The answer's `used` goes to every node
+  in `endless_chest` (`note_win()`); a mythic is `celebrate_mythic()`, a pet
+  and a full chest are said. In a party, the game whose player hit it reports
+  (`_should_report_kill()`), as in the Field.
+- **The chest** (`src/world/endless/endlesschest.gd`, made by the run's
+  `_ready()` at `chest_spot`, in the corridor beside the ladder) is the bank
+  chest's picture (its frames borrowed from bankchest.tscn) with how many
+  cells hold something over the lid. Interact asks `GET /api/loot/chest` and
+  opens the loot window on it; again is Take all. It answers the window as a
+  bag does (`get_bag_id()` "chest:endless:<slot>", `get_contents()` by
+  position, `set_contents()`, `notify_panel_closed()`, `despawn_now()` - here
+  the lid shuts) plus `panel_cells`, `panel_columns`, `panel_title`.
+- **The loot window sizes itself** (lootbaginventory.gd `_cells`,
+  `_columns`, `resize_grid()`): a chest is 36 cells, six wide, "Your chest";
+  a bag is nine, three wide, "Loot Bag". Takes go to `/api/loot/take` with
+  the chest's id, which the server reads as the chest.
+- **Kept until your next Go** (the server empties it then). Leave on the
+  Minigames card with loot in the chest asks twice (`_leave_armed`,
+  `chest_count` seam): "Your chest holds N. Leave it and your next Go empties
+  it."
+- **The server holds kills to the run's schedule**: `EndlessRun.schedule()`
+  - each stage's wave gap and size at `PARTY_MOST` players, the most elites
+  alive, the bosses' rhythm, which scenes it sends - written into
+  gamedata.json's `"endless"` by exportgamedata.gd (`_export_endless()`,
+  scene names to enemy ids, the dark boss is `boss`). **Change a wave, the
+  gap, the cap alive or a land's monsters: re-export and copy gamedata.json
+  to the API**, or the server holds kills to the old run.
+
+`_test_endless_chest()`: gamedata.json against `schedule()`, a run's elite
+posting to the chest route (and an ordinary one not), the chest's read and
+count, the window on it, Take all by its id, a bag after it, an empty chest,
+Leave asking twice, and the run placing it.
 
 ### Deleting inert code is how you find out what it was for
 

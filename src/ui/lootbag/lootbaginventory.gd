@@ -68,6 +68,15 @@ const TAKE_TIMEOUT := 4.0
 # one piece of gear and a coin is one row tall, not two with a blank under it.
 const LOOT_COLUMNS := 3
 
+# A CHEST IS SHOWN HERE TOO (0.93.4): the Endless's chest in its corridor
+# (endlesschest.gd) is a world "bag" whose panel_cells, panel_columns and
+# panel_title say its size and name - 36 cells, six wide, "Your chest" - and
+# whose id, "chest:endless:0", /api/loot/take reads as the chest's. A world bag
+# without them is a loot bag: LOOT_SIZE, LOOT_COLUMNS, "Loot Bag".
+const BAG_TITLE := "Loot Bag"
+var _cells: int = LOOT_SIZE
+var _columns: int = LOOT_COLUMNS
+
 # While Take all is walking the bag, so a second press cannot start a second
 # walk over the same cells.
 var _taking_all: bool = false
@@ -167,6 +176,14 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 		# deserves better than clicking at it and wondering.
 		push_warning("LootBagInventory: bag has no server id — every take will be refused")
 
+	_cells = int(world_bag.get("panel_cells")) if "panel_cells" in world_bag else LOOT_SIZE
+	_columns = int(world_bag.get("panel_columns")) if "panel_columns" in world_bag else LOOT_COLUMNS
+	if loot_container.has_method("resize_grid"):
+		loot_container.resize_grid(_columns, ceili(float(_cells) / float(maxi(_columns, 1))))
+	var header: Label = get_node_or_null("mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/headerlabel")
+	if header != null:
+		header.text = str(world_bag.get("panel_title")) if "panel_title" in world_bag else BAG_TITLE
+
 	_loading = true
 	_load_contents(world_bag.get_contents())
 	_loading = false
@@ -251,9 +268,9 @@ func _load_contents(contents: Array) -> void:
 	# sent, so it would be the player clicking one item and being handed a
 	# different one.
 	var resolved: Array = []
-	resolved.resize(LOOT_SIZE)
+	resolved.resize(_cells)
 
-	for i in range(mini(contents.size(), LOOT_SIZE)):
+	for i in range(mini(contents.size(), _cells)):
 		var entry = contents[i]
 		if not (entry is Dictionary):
 			continue
@@ -290,16 +307,16 @@ func _load_contents(contents: Array) -> void:
 				"quantity": maxi(int(entry.get("quantity", 1)), 1),
 			}
 
-	if contents.size() > LOOT_SIZE:
+	if contents.size() > _cells:
 		# The server caps a bag at LOOT_BAG_CAPACITY for exactly this reason. If
 		# this ever fires, the two capacities have drifted apart and there is
 		# loot sitting behind a cell the player has no way to reach.
 		push_warning("LootBagInventory: bag has %d cells, the panel shows %d" % [
-			contents.size(), LOOT_SIZE
+			contents.size(), _cells
 		])
 
 	loot_container.load_save_array(resolved)
-	_show_rows(rows_needed(resolved, LOOT_COLUMNS))
+	_show_rows(rows_needed(resolved, _columns))
 
 
 static func rows_needed(cells: Array, columns: int) -> int:
@@ -318,7 +335,7 @@ func _show_rows(rows: int) -> void:
 	# shrinks the window round what is left.
 	for slot in loot_container.get_children():
 		if slot is InventorySlot:
-			slot.visible = slot.slot_index < rows * LOOT_COLUMNS
+			slot.visible = slot.slot_index < rows * _columns
 
 
 # =============================================================================

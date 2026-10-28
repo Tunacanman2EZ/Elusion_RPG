@@ -225,6 +225,38 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 		])
 
 
+# THE ENDLESS'S CHEST (0.93.4). An Endless run's elite or boss (endlessrun.gd's
+# RUN_MARK) reports here from BaseEnemy._die(), not to /api/combat/kill: the
+# server rolls the monster's own loot - gold, gear, materials, its pet and
+# mythic odds, and no XP (the owner: "Loot only") - into this character's chest
+# in the corridor (endlesschest.gd), held to what the run could have sent since
+# the Go. Nothing drops on the floor; the chest's count goes up, a mythic is
+# celebrated as one found in the Field is, and a pet is said.
+func report_endless_kill(enemy_id: String, killer: Node) -> void:
+	if enemy_id == "" or not Api.is_logged_in() or Api.is_known_offline():
+		return
+	var body: Dictionary = {"game": "endless", "slot": CharacterData.active_character_index, "enemy_id": enemy_id}
+	var res: Dictionary = await kill_post.call("/api/minigames/kill", body, KILL_TIMEOUT)
+	var target: Node = _reward_target(killer)
+	if not res.get("ok", false):
+		if OS.is_debug_build():
+			print("[KILL] endless %s unpaid (%d) - %s" % [enemy_id, int(res.get("status", 0)), res.get("error", "")])
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	if is_inside_tree():
+		get_tree().call_group(&"endless_chest", "note_win", data)
+	var mythic: String = str(data.get("mythic", ""))
+	if mythic != "":
+		celebrate_mythic(mythic, target)
+	elif bool(data.get("pet_won", false)):
+		_notify(target, "A pet - it is in your chest.")
+	if not (data.get("cut", []) as Array).is_empty():
+		_notify(target, "Your chest is full - the least of it made room.")
+	if OS.is_debug_build():
+		print("[KILL] endless %s - %d item(s) into the chest, %d cells held" % [
+			enemy_id, _array(data.get("added", [])).size(), _int(data.get("used", 0))])
+
+
 # =============================================================================
 # REWARDS
 # =============================================================================

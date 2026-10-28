@@ -20,7 +20,8 @@
 # AND THE WAY OUT. The Endless's door lets you in and not back (cryptdoor.gd
 # one_way(), the owner: "the door needs to be 1 way entry also"), so inside the
 # Endless the card's button is Leave, to town - from the arena as from the
-# corridor, whose ladder still goes up.
+# corridor, whose ladder still goes up. With loot in the chest (0.93.4) Leave
+# asks twice: the chest waits on the server, and the next Go empties it.
 #
 # Built by the HUD (attach()), no class_name, so a fresh checkout needs no
 # editor rescan.
@@ -46,6 +47,9 @@ var list_request: Callable = Callable(Api, "get_json")
 var enter_request: Callable = Callable(Api, "post")
 var travel: Callable = Callable(self, "_travel")
 var area_now: Callable = Callable(AreaRegistry, "current_area_id")
+# How many cells of the Endless's chest hold something (0.93.4): the chest in
+# the corridor's own count (endlesschest.gd `used`). A seam for the suite.
+var chest_count: Callable = Callable(self, "_chest_count")
 
 var hud: Node = null
 var title: Label = null
@@ -62,6 +66,10 @@ var _busy: bool = false
 # The server did not answer (the listing or Go): said until it does, and Go
 # may be pressed - the server decides at Go anyway.
 var _failed: bool = false
+# LEAVE WITH LOOT IN THE CHEST ASKS TWICE (0.93.4): the chest waits on the
+# server until the next Go - which empties it - so leaving it is losing it.
+# The first press says so; the second leaves. Opening the card again forgets.
+var _leave_armed: bool = false
 
 
 static func attach(on_hud: Node) -> Control:
@@ -152,6 +160,7 @@ func close() -> bool:
 
 
 func open() -> void:
+	_leave_armed = false
 	visible = true
 	move_to_front()
 	_known = false
@@ -207,9 +216,14 @@ static func wait_text(seconds: int) -> String:
 func paint() -> void:
 	"""The status line and the button, from what is known now."""
 	if inside_endless():
-		status.text = "You are in the Endless."
-		status.add_theme_color_override("font_color", COLOUR_HINT)
-		go_button.text = "Leave"
+		var held: int = chest_held()
+		if held > 0:
+			status.text = "Your chest holds %d. Leave it and your next Go empties it." % held
+			status.add_theme_color_override("font_color", COLOUR_WAIT)
+		else:
+			status.text = "You are in the Endless."
+			status.add_theme_color_override("font_color", COLOUR_HINT)
+		go_button.text = "Leave anyway" if _leave_armed and held > 0 else "Leave"
 		go_button.tooltip_text = "Back up to town"
 		go_button.disabled = _busy
 		return
@@ -270,6 +284,12 @@ func _on_go() -> void:
 	if _busy:
 		return
 	if inside_endless():
+		if chest_held() > 0 and not _leave_armed:
+			_leave_armed = true
+			paint()
+			_place()
+			return
+		_leave_armed = false
 		close()
 		travel.call(TOWN, "")
 		return
@@ -294,6 +314,15 @@ func _on_go() -> void:
 		return
 	_failed = true
 	paint()
+
+
+func chest_held() -> int:
+	return maxi(0, int(chest_count.call())) if chest_count.is_valid() else 0
+
+
+func _chest_count() -> int:
+	var chest: Node = get_tree().get_first_node_in_group(&"endless_chest") if is_inside_tree() else null
+	return int(chest.get("used")) if chest != null and "used" in chest else 0
 
 
 func _travel(area_id: String, spawn_id: String) -> void:

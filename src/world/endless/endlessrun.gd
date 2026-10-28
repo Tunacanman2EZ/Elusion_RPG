@@ -30,11 +30,13 @@
 # (which allows regeneration and nothing it cannot explain) has nothing to
 # clamp.
 #
-# THE ELITES AND BOSSES ARE WORTH NOTHING YET: they carry RUN_MARK, so they
-# report no kill and are never respawned; since 0.93.3 they are shared with a
-# party like any monster (monstersync.gd), where they carried the owner's
-# stress-copy mark and were this game's alone. Paying for a run - the chest -
-# is the server's, and comes later.
+# THE ELITES AND BOSSES PAY INTO YOUR CHEST (0.93.4): they carry RUN_MARK, so
+# they report no ordinary kill and are never respawned, and are shared with a
+# party like any monster (monstersync.gd, 0.93.3). Their death is reported to
+# POST /api/minigames/kill instead (BaseEnemy._die(), Combat.report_endless_kill()):
+# the server rolls the monster's own loot - no XP, the owner's "Loot only" - into
+# this character's chest in the corridor (endlesschest.gd, made here at
+# chest_spot), held to what schedule() says a run could have sent since the Go.
 #
 # A PARTY (0.93.3). The owner: "we need a 4 player party plan but can play
 # solo duo or 3 or 4". With others in the arena (the party's own -
@@ -58,6 +60,7 @@
 extends Node
 
 const SwarmScript := preload("res://src/world/endless/swarm.gd")
+const ChestScript := preload("res://src/world/endless/endlesschest.gd")
 const PartyScript := preload("res://src/world/endless/endlessparty.gd")
 const SpikePath := preload("res://src/world/endless/spikepath.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
@@ -109,6 +112,11 @@ const LAND_FELT := {
 	Element.Type.DARK: "The dark doubles every hit",
 }
 const BOSS_EVERY := 5
+# How many stages schedule() writes for the server (gamedata.json "endless").
+# The server believes fewer (minigames/services.py STAGES_BELIEVED).
+const SCHEDULE_STAGES := 60
+# The biggest party, which the server's ceiling assumes.
+const PARTY_MOST := 4
 # How many swarmlings a second may come in, at stage 1 and for each stage more.
 const SPAWN_RATE := 25.0
 const SPAWN_RATE_STEP := 15.0
@@ -155,6 +163,8 @@ enum State { WAITING, RUNNING, OVER, COUNTDOWN }
 @export var corridor_rect: Rect2 = Rect2(690, 980, 160, 420)
 @export var start_rect: Rect2 = Rect2(729, 930, 78, 52)
 @export var wake_spot: Vector2 = Vector2(768, 1240)
+# The chest (0.93.4), in the corridor beside the ladder up.
+@export var chest_spot: Vector2 = Vector2(804, 1300)
 @export var door_path: NodePath = NodePath("../ysortworld/props/rundoor")
 
 var state: int = State.WAITING
@@ -169,6 +179,7 @@ var _spike_rng := RandomNumberGenerator.new()
 # The wash of the land's colour over the arena's floor, and what it eases
 # toward (floor_tint_for()); clear outside a run.
 var floor_wash: ColorRect = null
+var chest: Node2D = null
 var floor_goal: Color = Color(0, 0, 0, 0)
 var _extras: Array = []
 var _hud: Node = null
@@ -219,6 +230,12 @@ func _ready() -> void:
 		party.name = "party"
 		party.set("run", self)
 		add_child(party)
+	# THE CHEST (0.93.4): what the elites and bosses paid, kept on the server.
+	chest = ChestScript.new()
+	chest.name = "endlesschest"
+	chest.position = chest_spot
+	var props: Node = get_parent().get_node_or_null("ysortworld/interactables")
+	(props if props != null else get_parent()).add_child.call_deferred(chest)
 	# ONE WAY IN (0.93.3): the owner, "the door needs to be 1 way entry also".
 	# The way out is the Minigames card's Leave (minigamescard.gd), or the
 	# corridor's ladder for anybody who never went through.
@@ -301,6 +318,36 @@ static func party_elites(count: int) -> int:
 
 static func party_boss(count: int) -> float:
 	return 1.0 + 0.75 * float(clampi(count, 1, 4) - 1)
+
+
+# THE SCHEDULE THE SERVER HOLDS A KILL TO (0.93.4). The server cannot see a run,
+# so it holds the kills reported since the Go to what this schedule could have
+# sent by then, at the biggest party (minigames/services.py). It is written into
+# gamedata.json by exportgamedata.gd, which turns the scene names into enemy
+# ids - so after changing the waves, the gap, the cap alive or which monsters a
+# land sends, re-export and copy the file to the API. _test_endless_chest()
+# fails when gamedata.json no longer says what this does.
+static func schedule(stages: int = SCHEDULE_STAGES) -> Dictionary:
+	var rows: Array = []
+	for stage_number in range(1, maxi(1, stages) + 1):
+		var wave: int = elites_at(stage_number) + (party_elites(PARTY_MOST) if stage_number >= 2 else 0)
+		rows.append({"gap": int(ceilf(elite_gap(stage_number))), "wave": wave})
+	var elite_scenes: Array = []
+	for land in ELITES.keys():
+		for scene_name in ELITES[land]:
+			if not elite_scenes.has(scene_name):
+				elite_scenes.append(scene_name)
+	elite_scenes.sort()
+	var boss_scenes: Array = BOSSES.values()
+	boss_scenes.sort()
+	return {
+		"stage_seconds": int(STAGE_SECONDS),
+		"boss_every": BOSS_EVERY,
+		"alive_most": elites_alive_cap(PARTY_MOST),
+		"stages": rows,
+		"elite_scenes": elite_scenes,
+		"boss_scenes": boss_scenes,
+	}
 
 
 static func crowd_for(stage_number: int, count: int) -> int:

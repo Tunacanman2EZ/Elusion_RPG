@@ -3210,8 +3210,8 @@ func get_enemy_id() -> String:
 	if has_meta(&"stress_copy"):
 		return ""
 	# A PARTY RUN'S ELITES AND BOSSES (0.93.3, endlessrun.gd's RUN_MARK): shared
-	# with the party like any monster, and worth nothing yet - the run is paid
-	# for, if at all, by its chest.
+	# with the party like any monster, and paid for by the chest instead
+	# (0.93.4, _die() -> Combat.report_endless_kill()).
 	if has_meta(&"run_extra"):
 		return ""
 	return enemy_data.enemy_id
@@ -3400,6 +3400,11 @@ func _die() -> void:
 	# monster was chasing, which can be somebody else's picture now.
 	if _should_report_kill():
 		Combat.report_kill(get_enemy_id(), global_position, _local_player())
+		# AN ENDLESS RUN'S ELITE OR BOSS (0.93.4) reports no ordinary kill -
+		# get_enemy_id() is "" for it - and pays into the killer's chest in the
+		# corridor instead: its own loot, rolled by the server, no XP.
+		if has_meta(&"run_extra") and enemy_data != null and enemy_data.grants_rewards:
+			Combat.report_endless_kill(enemy_data.enemy_id, _local_player())
 
 	# BEFORE queue_free(), and through the autoload rather than a player node
 	# on this enemy. audio.gd's header is about exactly this case: a player

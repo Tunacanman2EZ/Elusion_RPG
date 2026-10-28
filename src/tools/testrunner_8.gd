@@ -4694,3 +4694,261 @@ func _test_feel_each_land() -> void:
 	await get_tree().process_frame
 	print("  each land felt, wind's spikes, more elites")
 
+
+
+# =============================================================================
+# THE ENDLESS'S CHEST (0.93.4)
+# =============================================================================
+
+func _test_endless_chest() -> void:
+	section("THE ENDLESS'S CHEST - elites and bosses pay into it, loot only, held to the run's schedule (0.93.4)")
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var Chest: GDScript = load("res://src/world/endless/endlesschest.gd") as GDScript
+	var Card: GDScript = load("res://src/ui/minigames/minigamescard.gd") as GDScript
+	check("the chest loads", Chest != null and Chest.can_instantiate())
+	if Chest == null or Run == null or Card == null:
+		return
+
+	# ---- the schedule the server holds a kill to ----
+	var enemy_id_of := func(scene_name: String) -> String:
+		var node: Node = (load("res://scene/enemy/%s.tscn" % scene_name) as PackedScene).instantiate()
+		var data: Variant = node.get("enemy_data")
+		if data == null and node.get_script() != null:
+			data = (node.get_script() as Script).get_script_constant_map().get("ENEMY_DATA")
+		node.free()
+		return str(data.enemy_id) if data != null else ""
+	var made: Dictionary = Run.schedule()
+	var ids: Dictionary = {"elite_scenes": [], "boss_scenes": []}
+	for key in ids.keys():
+		for scene_name in made[key]:
+			var eid: String = enemy_id_of.call(String(scene_name))
+			if not (ids[key] as Array).has(eid):
+				(ids[key] as Array).append(eid)
+		(ids[key] as Array).sort()
+	var file := FileAccess.open("res://data/gamedata.json", FileAccess.READ)
+	var parsed: Variant = JSON.parse_string(file.get_as_text()) if file != null else null
+	var exported: Dictionary = (parsed as Dictionary).get("endless", {}) if parsed is Dictionary else {}
+	var stages: Array = made["stages"]
+	var written: Array = exported.get("stages", [])
+	var same: bool = written.size() == stages.size()
+	for i in mini(written.size(), stages.size()):
+		same = same and int(written[i].get("gap", -1)) == int(stages[i]["gap"]) \
+			and int(written[i].get("wave", -1)) == int(stages[i]["wave"])
+	var listed := func(key: String) -> Array:
+		var out: Array = []
+		for each in exported.get(key, []):
+			out.append(str(each))
+		return out
+	check("gamedata.json carries the run's schedule as endlessrun.gd makes it (change a wave: re-export, copy to the API)",
+		same and int(exported.get("alive_most", -1)) == int(made["alive_most"])
+		and int(exported.get("boss_every", -1)) == Run.BOSS_EVERY
+		and int(exported.get("stage_seconds", -1)) == int(Run.STAGE_SECONDS)
+		and listed.call("elites") == ids["elite_scenes"] and listed.call("bosses") == ids["boss_scenes"],
+		[written.size(), stages.size(), exported.get("alive_most"), listed.call("bosses"), ids["boss_scenes"]])
+	check("  every monster it sends is a known enemy - the dark boss is 'boss' - at the biggest party's waves",
+		not (ids["elite_scenes"] as Array).has("") and (ids["boss_scenes"] as Array).has("boss")
+		and int(stages[0]["wave"]) == 0 and int(stages[1]["wave"]) == 1 + 1 + 3 and int(stages[9]["wave"]) == 1 + 5 + 3
+		and int(stages[9]["gap"]) == 15 and int(made["alive_most"]) == 70, [stages[1], stages[9]])
+
+	# ---- a run's elite pays into the chest, not the kill route ----
+	var stand := GDScript.new()
+	stand.source_code = "extends Node2D\nvar notices: Array = []\n" \
+		+ "func show_notice(message: String) -> void:\n\tnotices.append(message)\n"
+	stand.reload()
+	var player: Node2D = Node2D.new()
+	player.set_script(stand)
+	player.add_to_group("player")
+	add_child(player)
+	var chest: Node2D = Chest.new()
+	var reads: Array = []
+	var answer: Array = [{"ok": true, "status": 200, "data": {"bag_id": "chest:endless:0", "cells": 36, "columns": 6,
+		"contents": [{"position": 0, "item_id": "coppercoin", "quantity": 40},
+			{"position": 7, "item_id": "ironsword", "quantity": 1}]}}]
+	chest.chest_request = func(game: String, slot: int) -> Dictionary:
+		reads.append([game, slot])
+		await get_tree().process_frame
+		return answer[0]
+	chest.slot_now = func() -> int:
+		return 0
+	add_child(chest)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var contents: Array = chest.get_contents()
+	check("the chest asks the server what is in it, and lays the cells out by position, its count over the lid",
+		reads == [["endless", 0]] and int(chest.get("used")) == 2 and chest.cells_text() == "×2"
+		and contents.size() == 36 and contents[7] is Dictionary and str(contents[7]["item_id"]) == "ironsword"
+		and contents[1] == null, [reads, chest.get("used"), chest.cells_text()])
+
+	var kept_post: Callable = Combat.kill_post
+	var kept_token: String = Api.token
+	var kept_known: bool = Api.reachability_known
+	var kept_online: bool = Api.server_online
+	Api.token = "test-not-a-real-token"
+	Api.reachability_known = true
+	Api.server_online = true
+	var posts: Array = []
+	Combat.kill_post = func(path: String, body: Dictionary, _timeout: float) -> Dictionary:
+		posts.append([path, body.duplicate()])
+		await get_tree().process_frame
+		return {"ok": true, "status": 200, "data": {"used": 3, "added": [{"item_id": "petmage", "quantity": 1}],
+			"cut": [], "mythic": "", "pet_won": true, "chest_id": "chest:endless:0"}}
+	var elite: Node = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
+	elite.set_meta(&"run_extra", true)
+	add_child(elite)
+	await get_tree().process_frame
+	# AS IF THE SERVER HAD ANSWERED, right before the kill: a request the suite
+	# makes elsewhere, to no server, can mark it known offline meanwhile.
+	Api.reachability_known = true
+	Api.server_online = true
+	elite.call("_die")
+	for i in 6:
+		await get_tree().process_frame
+	check("a run's elite reports to /api/minigames/kill with its own id - never /api/combat/kill",
+		posts.size() == 1 and str(posts[0][0]) == "/api/minigames/kill"
+		and posts[0][1].get("enemy_id") == "lightsprite" and posts[0][1].get("game") == "endless", posts)
+	check("  the chest's count follows the answer, and a pet is said",
+		int(chest.get("used")) == 3 and (player.get("notices") as Array).has("A pet - it is in your chest."),
+		[chest.get("used"), player.get("notices")])
+	posts.clear()
+	var plain: Node = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
+	add_child(plain)
+	await get_tree().process_frame
+	check("  an ordinary monster never reports to the chest", plain.call("get_enemy_id") == "lightsprite")
+	plain.queue_free()
+	Combat.kill_post = kept_post
+	Api.token = kept_token
+	Api.reachability_known = kept_known
+	Api.server_online = kept_online
+
+	# ---- the loot window on the chest ----
+	var hud_script := GDScript.new()
+	hud_script.source_code = "extends Node\nvar lootbag_panel: Node = null\n" \
+		+ "func open_lootbag(bag: Node, who: Node) -> void:\n" \
+		+ "\tif lootbag_panel == null:\n" \
+		+ "\t\tlootbag_panel = (load(\"res://scene/ui/lootbag/lootbaginventory.tscn\") as PackedScene).instantiate()\n" \
+		+ "\t\tadd_child(lootbag_panel)\n" \
+		+ "\tlootbag_panel.open_for_bag(bag, who)\n"
+	hud_script.reload()
+	var stand_hud: Node = Node.new()
+	stand_hud.set_script(hud_script)
+	stand_hud.add_to_group("hud")
+	add_child(stand_hud)
+	chest.set("player_nearby", player)
+	chest.call("press")
+	for i in 3:
+		await get_tree().process_frame
+	var panel: Node = stand_hud.get("lootbag_panel")
+	var grid: Node = panel.get_node_or_null("%lootcontainer") if panel != null else null
+	var header: Label = panel.get_node_or_null("mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/headerlabel") \
+		if panel != null else null
+	var shown: int = 0
+	if grid != null:
+		for cell in grid.get_children():
+			shown += 1 if (cell as Control).visible else 0
+	check("interact opens the loot window on the chest: 'Your chest', six wide, 36 cells, the rows its items reach",
+		panel != null and (panel as Control).visible and header != null and header.text == "Your chest"
+		and int(grid.get("capacity")) == 36 and int(grid.get("columns")) == 6 and shown == 12
+		and grid.call("get_stack_at", 7) != null and bool(panel.call("showing", chest)) and bool(chest.get("is_open")),
+		[header.text if header != null else "", grid.get("capacity") if grid != null else -1, shown])
+	var takes: Array = []
+	panel.set("take_request", func(bag_id: String, cell: int) -> Dictionary:
+		takes.append([bag_id, cell])
+		return {"ok": false, "status": 503, "error": "Service Unavailable", "data": {}})
+	chest.call("press")
+	for i in 3:
+		await get_tree().process_frame
+	check("  interact again is Take all, taken from the chest by its id", takes.size() >= 1
+		and takes[0] == ["chest:endless:0", 0], takes)
+	panel.call("close_panel")
+	check("  closing the window shuts the lid", not bool(chest.get("is_open")))
+	var bag_script := GDScript.new()
+	bag_script.source_code = "extends Node2D\nfunc get_bag_id() -> String:\n\treturn \"abc\"\n" \
+		+ "func get_contents() -> Array:\n\treturn [{\"item_id\": \"coppercoin\", \"quantity\": 3}]\n"
+	bag_script.reload()
+	var bag: Node2D = Node2D.new()
+	bag.set_script(bag_script)
+	add_child(bag)
+	panel.call("open_for_bag", bag, player)
+	check("  a loot bag after it is a bag again: 'Loot Bag', nine cells, three wide",
+		header.text == "Loot Bag" and int(grid.get("capacity")) == 9 and int(grid.get("columns")) == 3,
+		[header.text, grid.get("capacity")])
+	panel.call("close_panel")
+	answer[0] = {"ok": true, "status": 200, "data": {"bag_id": "chest:endless:0", "cells": 36, "columns": 6, "contents": []}}
+	(player.get("notices") as Array).clear()
+	chest.call("press")
+	for i in 3:
+		await get_tree().process_frame
+	check("  an empty chest says so, opens nothing, and shuts its lid",
+		not (panel as Control).visible and not bool(chest.get("is_open")) and chest.cells_text() == ""
+		and (player.get("notices") as Array).size() == 1 and str(player.get("notices")[0]).begins_with("Your chest is empty"),
+		player.get("notices"))
+
+	# ---- Leave with loot in it asks twice ----
+	var card_host: Control = Control.new()
+	add_child(card_host)
+	var card: Node = Card.attach(card_host)
+	var went: Array = []
+	var held: Array = [3]
+	card.list_request = func(_path: String, _timeout: float) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"games": [], "skips_wait": false}}
+	card.travel = func(area_id: String, spawn_id: String) -> void:
+		went.append([area_id, spawn_id])
+	card.area_now = func() -> String:
+		return "endless"
+	card.chest_count = func() -> int:
+		return held[0]
+	card.call("open")
+	await get_tree().process_frame
+	var status: Label = card.get("status")
+	var go: Button = card.get("go_button")
+	var said: String = status.text
+	card.call("_on_go")
+	var armed: String = go.text
+	var stayed: bool = went.is_empty()
+	card.call("_on_go")
+	check("Leave with loot in the chest says what is lost, asks again, and goes on the second press",
+		said.begins_with("Your chest holds 3") and armed == "Leave anyway" and stayed and went == [["elusion", ""]],
+		[said, armed, went])
+	went.clear()
+	held[0] = 0
+	card.call("open")
+	await get_tree().process_frame
+	card.call("_on_go")
+	check("  with the chest empty, Leave goes at once", went == [["elusion", ""]] and go.text == "Leave", went)
+
+	# ---- the arena makes its chest ----
+	# The map read, not played (its field and guide want a world); the run
+	# itself made under a stand-in with the arena's props.
+	var area: Node = (load("res://scene/endless.tscn") as PackedScene).instantiate()
+	var scene_run: Node = area.get_node_or_null("endlessrun")
+	var corridor: Rect2 = scene_run.get("corridor_rect") if scene_run != null else Rect2()
+	var spot: Vector2 = scene_run.get("chest_spot") if scene_run != null else Vector2.INF
+	var ladder: Node2D = area.get_node_or_null("ysortworld/interactables/ladderup") as Node2D
+	var clear: bool = true
+	for wall in _endless_wall_rects(area):
+		clear = clear and not (wall as Rect2).intersects(Rect2(spot - Vector2(12, 6), Vector2(24, 18)))
+	var place: Node2D = Node2D.new()
+	var ysort: Node2D = Node2D.new()
+	ysort.name = "ysortworld"
+	var props: Node2D = Node2D.new()
+	props.name = "interactables"
+	ysort.add_child(props)
+	place.add_child(ysort)
+	var run_node: Node = Run.new()
+	place.add_child(run_node)
+	add_child(place)
+	for i in 3:
+		await get_tree().process_frame
+	var made_chest: Node2D = props.get_node_or_null("endlesschest") as Node2D
+	check("the run puts its chest in the corridor, clear of its walls, beside the ladder up",
+		made_chest != null and made_chest.position == spot and corridor.has_point(spot) and clear
+		and made_chest.is_in_group(&"endless_chest") and ladder != null and spot.distance_to(ladder.position) < 80.0,
+		[spot, corridor, clear, ladder.position if ladder != null else null])
+	area.free()
+
+	for node in [place, card_host, bag, stand_hud, chest, player]:
+		if is_instance_valid(node):
+			node.queue_free()
+	await get_tree().process_frame
+	print("  the chest: the schedule, a run's kill, the window, Leave and the corridor")

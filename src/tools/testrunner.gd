@@ -189,6 +189,7 @@ func _run_all() -> void:
 	await _test_fewer_clicks()
 	await _test_minigames()
 	await _test_feel_each_land()
+	await _test_endless_chest()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()
