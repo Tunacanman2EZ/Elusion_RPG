@@ -10,7 +10,7 @@
 # the crypt pieces in scene/crypt/ the Big Field is built from, and the way
 # out is the ladder.
 #
-#   +--------------------------------------------------+
+#   +==================================================+
 #   |  candelabras along the back wall                 |
 #   |                                                  |
 #   |                 THE ARENA                        |
@@ -20,10 +20,16 @@
 #   |                    | corr-|                      |
 #   |                    | idor |                      |
 #   |                    | ladder                      |
-#   +--------------------------------------------------+
+#   +==================================================+
 #
 # The corridor is walled into the arena's south side: its door opens on the
 # arena, and the ladder at its foot goes up to town.
+#
+# WALLED ALL ROUND (0.93.1; the owner: "we need walls around the whole map
+# now"): the crypt's back wall along the top, its side walls down both sides
+# and its front wall along the foot, with its four corner pieces, laid the
+# way the Big Field's crypt chambers lay them (_outer_walls()). The arena's
+# floor for the swarm (arena_rect) stops at their faces.
 extends Node
 
 const OUT := "res://scene/endless.tscn"
@@ -32,12 +38,39 @@ const TILE := 16
 # The plateau, in tiles: 96 x 88 (1,536 x 1,408 px).
 const COLS := 96
 const ROWS := 88
-const CORRIDOR_LEFT := 698.0
-const CORRIDOR_RIGHT := 838.0
-const DOOR_Y := 1012.0
-const BACK := 1376.0
+# The corridor's side walls' centre lines, under its two pillars, and the
+# door's foot: six tall side pieces (58) down to the front wall's top.
+const CORRIDOR_LEFT := 694.5
+const CORRIDOR_RIGHT := 841.5
+const DOOR_Y := 1030.0
 const AMBIENCE := Color(0.5, 0.5, 0.62)
 const ARRIVAL := Vector2(768, 1290)
+# The outer walls (0.93.2), by their feet: the back wall's along the top (its
+# top at the map's edge), the front wall's along the foot, and the side walls'
+# centre lines (each 9 wide, flush with the map's sides). Chosen so every run
+# is laid end to end with nothing over anything: the sides are 22 tall pieces
+# and one short (58 x 22 + 36 = 1,312), the corridor's six tall.
+const WALL_BACK := 28.0
+const WALL_FRONT := 1406.0
+const SIDE_LEFT := 4.5
+const SIDE_RIGHT := 1531.5
+# The arena's foot: the front wall's face.
+const BACK := WALL_FRONT - 28.0
+# THE WALLS ALONG, AS WIDTHS, MIRRORED (the owner: "please make symmetrical no
+# overlapping"): 101 the four-piece run, 51 the two, 26 the one, 17 a pillar.
+# Each half is three runs, a pillar, three runs, a pillar and a short run;
+# the back wall's middle is one-two-one (1,485 between its corners - the
+# back right corner is a pixel narrower than the left, as drawn), the
+# front's two-two (1,484).
+const WALL_HALF := [101, 101, 101, 17, 101, 101, 101, 17, 51]
+const BACK_MIDDLE := [26, 51, 26]
+const FRONT_MIDDLE := [51, 51]
+const WALL_PIECES := {101: "res://scene/crypt/wallrun4.tscn", 51: "res://scene/crypt/wallrun2.tscn",
+	26: "res://scene/crypt/wallrun1.tscn", 17: "res://scene/crypt/pillar.tscn"}
+# How far down the swarm keeps from the back wall's foot: it draws under
+# everything standing, so one pressed to the wall would be half hidden by it.
+# Still within touching reach of a player standing against the wall.
+const SWARM_BACK_GAP := 6.0
 
 var _root: Node2D = null
 
@@ -91,6 +124,7 @@ func build() -> int:
 	_own(above, world)
 
 	_walls(props)
+	_outer_walls(props)
 	_decorate(props)
 	var door: Node = _place("res://scene/crypt/door.tscn", props, Vector2(768, DOOR_Y), "rundoor")
 	door.set("starts_open", false)
@@ -122,7 +156,8 @@ func build() -> int:
 	var run := Node.new()
 	run.name = "endlessrun"
 	run.set_script(load("res://src/world/endless/endlessrun.gd"))
-	run.set("arena_rect", Rect2(24, 24, COLS * TILE - 48, BACK - 24))
+	var swarm_top: float = WALL_BACK + SWARM_BACK_GAP
+	run.set("arena_rect", Rect2(SIDE_LEFT + 4.5, swarm_top, (SIDE_RIGHT - 4.5) - (SIDE_LEFT + 4.5), BACK - swarm_top))
 	# The corridor as the swarm keeps out of it: from the wall's top (the
 	# crypt walls stand 28 px over their foot) to the arena's foot.
 	run.set("corridor_rect", Rect2(CORRIDOR_LEFT - 8, DOOR_Y - 32, CORRIDOR_RIGHT - CORRIDOR_LEFT + 16, BACK - DOOR_Y + 32))
@@ -145,31 +180,22 @@ func build() -> int:
 # =============================================================================
 
 func _paint(ground: TileMapLayer) -> void:
-	"""The plateau: its rim along the top and sides, the brick face along the
-	foot, and the plain floor between in its twelve variants."""
+	"""The plain floor in its twelve variants, edge to edge: the walls are
+	the room's edges now (0.93.2), not the plateau's rim. The last row is left
+	bare - the front wall stands over it, and below the wall is the dark."""
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 94
-	for y in ROWS:
+	for y in ROWS - 1:
 		for x in COLS:
-			var col: int = 0 if x == 0 else (5 if x == COLS - 1 else rng.randi_range(1, 4))
-			var row: int
-			if y == 0:
-				row = 0
-			elif y == ROWS - 2:
-				row = 4
-			elif y == ROWS - 1:
-				row = 5
-			else:
-				row = rng.randi_range(1, 3)
-			ground.set_cell(Vector2i(x, y), 1, Vector2i(col, row))
+			ground.set_cell(Vector2i(x, y), 1, Vector2i(rng.randi_range(1, 4), rng.randi_range(1, 3)))
 
 
 func _nav_polygon() -> NavigationPolygon:
 	"""The arena's floor, the corridor cut out: three convex pieces sharing
 	their edges."""
-	var left: float = 24.0
-	var right: float = COLS * TILE - 24.0
-	var top: float = 24.0
+	var left: float = SIDE_LEFT + 4.5
+	var right: float = SIDE_RIGHT - 4.5
+	var top: float = WALL_BACK + 2.0
 	var cut: float = DOOR_Y - 30.0
 	var bottom: float = BACK - 8.0
 	var a: float = CORRIDOR_LEFT - 10.0
@@ -194,13 +220,72 @@ func _walls(props: Node) -> void:
 	and its two long sides down to the brick at the arena's foot."""
 	_place("res://scene/crypt/wallrun1.tscn", props, Vector2(716, DOOR_Y))
 	_place("res://scene/crypt/wallrun1.tscn", props, Vector2(820, DOOR_Y))
-	_place("res://scene/crypt/pillar.tscn", props, Vector2(CORRIDOR_LEFT - 2, DOOR_Y + 2))
-	_place("res://scene/crypt/pillar.tscn", props, Vector2(CORRIDOR_RIGHT + 2, DOOR_Y + 2))
+	# A pillar caps each side, end to end with the short run beside it.
+	_place("res://scene/crypt/pillar.tscn", props, Vector2(CORRIDOR_LEFT, DOOR_Y))
+	_place("res://scene/crypt/pillar.tscn", props, Vector2(CORRIDOR_RIGHT, DOOR_Y))
+	# Down to the front wall's top, closed: they stopped 18 px short of the
+	# floor's foot, a gap a player could walk out of the corridor through,
+	# round the door (0.93.1).
 	for side in [CORRIDOR_LEFT, CORRIDOR_RIGHT]:
-		var y: float = DOOR_Y + 58.0
-		while y <= BACK + 10.0:
-			_place("res://scene/crypt/wallsidetall.tscn", props, Vector2(side, y))
-			y += 58.0
+		_wall_side(props, side, DOOR_Y, WALL_FRONT - 28.0)
+
+
+func _outer_walls(props: Node) -> void:
+	"""The whole map walled in, as a crypt chamber is (bigfield.tscn's
+	walls_chambers): a back corner each side 8 px below the back wall's foot,
+	the back wall between them, the side walls down from the corners, the
+	front corners whose legs meet the side walls, and the front wall between
+	them - every piece end to end, the left half the right's mirror."""
+	var back_corner_y: float = WALL_BACK + 8.0
+	# Each corner's outer edge on the side wall's (13 and 12.5 from its middle).
+	_place("res://scene/crypt/wallcornerbackleft.tscn", props, Vector2(SIDE_LEFT + 8.5, back_corner_y))
+	_place("res://scene/crypt/wallcornerbackright.tscn", props, Vector2(SIDE_RIGHT - 8.0, back_corner_y))
+	_place("res://scene/crypt/wallcornerfrontleft.tscn", props, Vector2(SIDE_LEFT + 8.5, WALL_FRONT))
+	_place("res://scene/crypt/wallcornerfrontright.tscn", props, Vector2(SIDE_RIGHT - 8.5, WALL_FRONT))
+	_wall_run(props, SIDE_LEFT + 21.5, SIDE_RIGHT - 20.5, WALL_BACK, wall_widths(BACK_MIDDLE))
+	_wall_run(props, SIDE_LEFT + 21.5, SIDE_RIGHT - 21.5, WALL_FRONT, wall_widths(FRONT_MIDDLE))
+	# A front corner's leg stands 30 px, from 28 over its foot to 58.
+	for side in [SIDE_LEFT, SIDE_RIGHT]:
+		_wall_side(props, side, back_corner_y, WALL_FRONT - 58.0)
+
+
+static func wall_widths(middle: Array) -> Array:
+	"""A wall's pieces left to right: the half, the middle, the half again
+	backwards - the same either way you read it."""
+	var widths: Array = WALL_HALF.duplicate()
+	widths.append_array(middle)
+	var back_half: Array = WALL_HALF.duplicate()
+	back_half.reverse()
+	widths.append_array(back_half)
+	return widths
+
+
+func _wall_run(props: Node, from_x: float, to_x: float, foot_y: float, widths: Array) -> void:
+	"""The pieces in `widths`, end to end from from_x. They must come out at
+	to_x exactly - a piece laid over its neighbour is what this replaced."""
+	var x: float = from_x
+	for width in widths:
+		_place(WALL_PIECES[int(width)], props, Vector2(x + float(width) / 2.0, foot_y))
+		x += float(width)
+	if absf(x - to_x) > 0.01:
+		push_error("buildendless: the wall at y %s ends at %s, not %s" % [foot_y, x, to_x])
+
+
+func _wall_side(props: Node, x: float, from_y: float, to_y: float) -> void:
+	"""A side wall down from_y to to_y (the feet of what it joins): the tall
+	piece (58) while it fits, then one short one (36 or 35) to end flush - or
+	an error, rather than one laid over another."""
+	var y: float = from_y
+	while to_y - y >= 58.0 - 0.01:
+		y += 58.0
+		_place("res://scene/crypt/wallsidetall.tscn", props, Vector2(x, y))
+	var left: float = to_y - y
+	if absf(left - 36.0) < 0.01:
+		_place("res://scene/crypt/wallsidea.tscn", props, Vector2(x, to_y))
+	elif absf(left - 35.0) < 0.01:
+		_place("res://scene/crypt/wallsideb.tscn", props, Vector2(x, to_y))
+	elif left > 0.01:
+		push_error("buildendless: the side wall at x %s is %s short of %s" % [x, left, to_y])
 
 
 func _decorate(props: Node) -> void:

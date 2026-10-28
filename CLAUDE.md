@@ -1989,6 +1989,30 @@ party and the server's chest are the next two.
   to the corridor (`endless_entrance`). Root script field.gd with
   `bullet_zone` on and `tells_story` off (the opening story is the fields').
   Rebuilding the map from the tool loses anything changed by hand.
+- **Walled all round, symmetrical, nothing overlapping (0.93.2)** - the
+  owner: "we need walls around the whole map now", then "please make
+  symmetrical no overlapping". The plateau ended in a lip of tile collision
+  and black; the floor is now plain edge to edge (its last row bare, under
+  the front wall) and `_outer_walls()` lays the crypt's back wall (foot at
+  `WALL_BACK` 28, its top on the map's edge), side walls flush with the
+  map's sides (`SIDE_LEFT` 4.5, `SIDE_RIGHT` 1,531.5), the front wall (foot
+  `WALL_FRONT` 1,406) and the four corners, as the Big Field's chambers lay
+  them. **Every piece is laid end to end from a list of widths**
+  (`WALL_HALF`, mirrored by `wall_widths()`; 101, 51, 26 the runs, 17 a
+  pillar): the back wall's middle is 26-51-26 and the front's 51-51,
+  because the back right corner is drawn a pixel narrower than the left.
+  The sides are 22 tall pieces and one short (1,312 px); the numbers were
+  chosen so they come out exact, and `_wall_run()` / `_wall_side()` push
+  an error rather than lay a piece over another. The corridor moved to fit:
+  its door at `DOOR_Y` 1,030 and six tall side pieces each side down to the
+  front wall (they stopped 18 px short - a gap round the door), its sides
+  under its two pillars (694.5 and 841.5). `arena_rect` and the navigation
+  stop at the walls' faces, the top 6 px clear of the back wall so a slime
+  pressed to it is not hidden under it. The suite reads the scene: 812
+  probes round the walls and down the corridor all in a wall
+  (`_endless_wall_rects()`), no two wall pictures overlapping
+  (`_endless_wall_pictures()`), and every piece with its mirror twin
+  across x = 768 (within a pixel, for the back wall).
 - **The run** (`src/world/endless/endlessrun.gd`): WAITING in the corridor;
   stepping through the door into `start_rect` starts the clock and locks the
   door (`cryptdoor.gd` `lock()` - the interact key does nothing, and an open

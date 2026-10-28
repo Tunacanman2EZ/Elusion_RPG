@@ -3512,6 +3512,72 @@ func _test_the_endless_run() -> void:
 		arena.encloses(Rect2(corridor.position, Vector2(corridor.size.x, arena.end.y - corridor.position.y)))
 		and not corridor.intersects(start) and arena.encloses(start) and corridor.has_point(run_node.get("wake_spot"))
 		and corridor.has_point((door as Node2D).position + Vector2(0, 10)))
+	# WALLED ALL ROUND (0.93.1; the owner: "we need walls around the whole
+	# map now"). Every point along the four walls, and down both sides of
+	# the corridor to the front wall, stands in a wall's collision.
+	const Build := preload("res://src/tools/buildendless.gd")
+	var walls: Array = _endless_wall_rects(area)
+	var gaps: Array = []
+	var probes: Array = []
+	var x: float = Build.SIDE_LEFT + 9.0
+	while x <= Build.SIDE_RIGHT - 9.0:
+		probes.append(Vector2(x, Build.WALL_BACK - 10.0))
+		probes.append(Vector2(x, Build.WALL_FRONT - 10.0))
+		x += 8.0
+	var y: float = Build.WALL_BACK + 4.0
+	while y <= Build.WALL_FRONT - 4.0:
+		probes.append(Vector2(Build.SIDE_LEFT, y))
+		probes.append(Vector2(Build.SIDE_RIGHT, y))
+		y += 8.0
+	y = Build.DOOR_Y + 4.0
+	while y <= Build.WALL_FRONT - 20.0:
+		probes.append(Vector2(Build.CORRIDOR_LEFT, y))
+		probes.append(Vector2(Build.CORRIDOR_RIGHT, y))
+		y += 8.0
+	for probe in probes:
+		var held: bool = false
+		for wall in walls:
+			if (wall as Rect2).grow(0.01).has_point(probe):
+				held = true
+				break
+		if not held:
+			gaps.append(probe)
+	check("  it is walled all round, and the corridor's sides run down to the front wall: %d points, no gap" % probes.size(),
+		probes.size() > 700 and gaps.is_empty(), gaps.slice(0, 6))
+	check("  and the swarm's floor stops at the walls' faces",
+		arena.position.x >= Build.SIDE_LEFT + 4.5 and arena.end.x <= Build.SIDE_RIGHT - 4.5
+		and arena.position.y >= Build.WALL_BACK and arena.end.y <= Build.WALL_FRONT - 28.0)
+	# The owner: "please make symmetrical no overlapping". No wall piece's
+	# picture lies over another's, and every piece has its mirror twin across
+	# the middle (the back wall's within a pixel - its right corner is drawn a
+	# pixel narrower than its left).
+	var pictures: Array = _endless_wall_pictures(area)
+	var overlaps: Array = []
+	for i in pictures.size():
+		for j in range(i + 1, pictures.size()):
+			var both: Rect2 = (pictures[i][1] as Rect2).intersection(pictures[j][1] as Rect2)
+			if both.get_area() > 0.01:
+				overlaps.append("%s / %s" % [pictures[i][0], pictures[j][0]])
+	check("  and its %d wall pieces are laid end to end: none drawn over another" % pictures.size(),
+		pictures.size() > 100 and overlaps.is_empty(), overlaps.slice(0, 4))
+	var unmatched: Array = []
+	var mirror_of := {"wallcornerbackleft": "wallcornerbackright", "wallcornerbackright": "wallcornerbackleft",
+		"wallcornerfrontleft": "wallcornerfrontright", "wallcornerfrontright": "wallcornerfrontleft"}
+	for piece in _endless_walls(area):
+		var kind: String = (piece as Node).scene_file_path.get_file().get_basename()
+		var twin_kind: String = mirror_of.get(kind, kind)
+		var at: Vector2 = (piece as Node2D).position
+		var found: bool = false
+		for other in _endless_walls(area):
+			var other_at: Vector2 = (other as Node2D).position
+			if (other as Node).scene_file_path.get_file().get_basename() == twin_kind \
+					and absf(other_at.y - at.y) < 0.01 and absf(other_at.x + at.x - 1536.0) <= 1.01:
+				found = true
+				break
+		if not found:
+			unmatched.append("%s %s" % [kind, at])
+	check("  and the walls are symmetrical: every piece has its mirror twin across the middle",
+		unmatched.is_empty(), unmatched.slice(0, 4))
 	area.free()
 	var town: Node = (load(AreaRegistry.AREAS["elusion"]) as PackedScene).instantiate()
 	var down: Node = town.get_node_or_null("ysortworld/interactables/endlessladder")
@@ -3686,6 +3752,63 @@ func _test_the_endless_run() -> void:
 	crypt_door.queue_free()
 	await get_tree().process_frame
 	print("  the endless runs")
+
+
+func _endless_wall_rects(area: Node) -> Array:
+	"""Every wall's and pillar's collision in the Endless's props, as a
+	rectangle in the area: the piece's place, its body's and its shape's
+	(none of them turned or scaled). Read out of the tree, so no global_."""
+	var rects: Array = []
+	var props: Node = area.get_node_or_null("ysortworld/props")
+	if props == null:
+		return rects
+	for piece in props.get_children():
+		if not (piece is Node2D):
+			continue
+		for body in piece.get_children():
+			if not (body is StaticBody2D):
+				continue
+			for shape_node in body.get_children():
+				if not (shape_node is CollisionShape2D) or not ((shape_node as CollisionShape2D).shape is RectangleShape2D):
+					continue
+				var size: Vector2 = ((shape_node as CollisionShape2D).shape as RectangleShape2D).size
+				var middle: Vector2 = (piece as Node2D).position + (body as Node2D).position + (shape_node as Node2D).position
+				rects.append(Rect2(middle - size / 2.0, size))
+	return rects
+
+
+func _endless_walls(area: Node) -> Array:
+	"""The Endless's wall pieces and pillars (the crypt's wall*.tscn and
+	pillar.tscn) - not its door, candles or bones."""
+	var found: Array = []
+	var props: Node = area.get_node_or_null("ysortworld/props")
+	if props == null:
+		return found
+	for piece in props.get_children():
+		var file: String = (piece as Node).scene_file_path.get_file()
+		if file.begins_with("wall") or file == "pillar.tscn":
+			found.append(piece)
+	return found
+
+
+func _endless_wall_pictures(area: Node) -> Array:
+	"""[name, rectangle] for every picture of a wall piece, a pillar and the
+	door, in the area: the piece's place, the sprite's, its offset and its
+	region, scaled (the door's are drawn twice size)."""
+	var found: Array = []
+	var pieces: Array = _endless_walls(area)
+	var door: Node = area.get_node_or_null("ysortworld/props/rundoor")
+	if door != null:
+		pieces.append(door)
+	for piece in pieces:
+		for sprite in (piece as Node).get_children():
+			if not (sprite is Sprite2D) or not ((sprite as Sprite2D).texture is AtlasTexture):
+				continue
+			var picture := sprite as Sprite2D
+			var size: Vector2 = (picture.texture as AtlasTexture).region.size * picture.scale
+			var middle: Vector2 = (piece as Node2D).position + picture.position + picture.offset * picture.scale
+			found.append(["%s %s" % [(piece as Node).name, (piece as Node2D).position], Rect2(middle - size / 2.0, size)])
+	return found
 
 
 func _endless_arrival(area: Node) -> bool:
