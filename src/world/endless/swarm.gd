@@ -269,7 +269,22 @@ func _build_mesh() -> void:
 	_mesh.material = _material
 	_mesh.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_mesh.z_index = DRAW_Z
+	# NOT PHYSICS-INTERPOLATED (0.93.5). The owner, with a video: "they are
+	# litterally zipping accross the field", "when they jump their graphics
+	# split accross the screen". The project interpolates physics, and Godot
+	# then draws a MultiMesh's instance k between where instance k was in the
+	# last buffer and where it is in this one - by INDEX. Since 0.93.3 each
+	# write is sorted by the feet (_sort_order()), so instance k is a
+	# different slime from one write to the next, and every slain or new one
+	# shifts all behind it: each step about two in three drawn slimes slid
+	# from another slime's spot, half of them over 200 px, for a physics tick
+	# (zz/swarmzip, 400 slimes in a fight). The walk between steps is the
+	# shader's own (`blend`, from bx/by), so there is nothing for the engine
+	# to blend: off on the node and on the MultiMesh, as bulletfield.gd's
+	# orbs (12 Oct).
+	_mesh.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(_mesh)
+	RenderingServer.multimesh_set_physics_interpolated(multi.get_rid(), false)
 
 
 func set_arena(rect: Rect2) -> void:

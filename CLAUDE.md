@@ -2138,6 +2138,24 @@ party and the server's chest are the next two.
     phases, the same way each step. 160 round a still player: 147 within
     6 px of another before, about 16 after, and 4 still touching the
     player (the touch counts at most 5).
+- **Never blended by the engine (0.93.5).** The owner, with a video: "they
+  are litterally zipping accross the field", "when they jump their graphics
+  split accross the screen". With physics interpolation on (the project's
+  setting) Godot draws a MultiMesh's instance k, for a tick after each
+  write, between where instance k was in the last buffer and where it is
+  now - by INDEX. The 0.93.3 sort makes instance k a different slime from
+  write to write, and each one slain or born shifts all behind it: in a
+  400-slime fight about two in three drawn slimes slid from another's spot
+  each step, half over 200 px, the worst 1,491 (zz/swarmzip). Rendered at
+  144 fps, 55 of 143 frames had slimes where none had been, up to 54,000
+  pixels; after, only slimes walking in at the screen's edge.
+  `_build_mesh()` turns it off on the node and on the MultiMesh, as
+  bulletfield.gd did for its orbs on 12 Oct; the walk between steps was
+  always the shader's (`blend`). A stand-in moved to another swarmling
+  resets its interpolation (swarmproxy.gd `stand_on()`). **A MultiMesh
+  whose buffer is rewritten in another order must not be interpolated** -
+  the suite fails on any `MultiMeshInstance2D.new()` in src/ without both
+  switches.
 - **What it costs** (measured in the container, a slower machine than the
   owner's): a step of 3,000 about 3.7 ms, the buffer 1.3 ms, choosing the
   stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's.

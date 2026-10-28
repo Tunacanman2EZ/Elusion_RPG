@@ -49,6 +49,7 @@ func _init() -> void:
 
 
 func stand_on(index: int, at: Vector2) -> void:
+	var slot_was: int = slot
 	if index != slot:
 		_drop_wounds()
 	slot = index
@@ -57,8 +58,13 @@ func stand_on(index: int, at: Vector2) -> void:
 			visible = false
 			global_position = Vector2(-100000, -100000)
 		return
+	var moved: bool = not visible or index != slot_was
 	visible = true
 	global_position = at
+	# A new swarmling may stand across the arena: placed, not moved, so
+	# anything put on it is not drawn sliding from the last one (0.93.5).
+	if moved:
+		reset_physics_interpolation()
 	if swarm != null:
 		hp = float(swarm.hp[index])
 		max_hp = float(swarm.max_hp)

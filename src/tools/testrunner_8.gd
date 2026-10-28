@@ -3753,6 +3753,29 @@ func _test_the_endless_run() -> void:
 		and not bool(swarm.call("is_alive", last)) and int(proxy.get("slot")) == -1)
 	swarm.call("clear")
 	check("  and the run's end empties it", int(swarm.get("alive")) == 0 and int(swarm.get("_high")) == 0)
+	# NEVER BLENDED BY THE ENGINE (0.93.5; the owner: "they are litterally
+	# zipping accross the field", "when they jump their graphics split accross
+	# the screen"). With physics interpolation the renderer draws instance k
+	# between its last buffer and this one, and the swarm's buffer is in a new
+	# order every write, so slimes were drawn sliding from other slimes' spots.
+	var swarm_mesh: MultiMeshInstance2D = swarm.get("_mesh") as MultiMeshInstance2D
+	check("  drawn where they stand, never blended by the engine between two buffers in different orders",
+		swarm_mesh != null and swarm_mesh.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
+		and not swarm_mesh.is_physics_interpolated_and_enabled())
+	var blended: Array = []
+	for script_path in _all_gd_under("res://src"):
+		if _is_suite_script(script_path):
+			continue
+		var code: String = _code_src(script_path)
+		if code.contains("MultiMeshInstance2D.new()") and not (code.contains("PHYSICS_INTERPOLATION_MODE_OFF")
+				and code.contains("multimesh_set_physics_interpolated(")):
+			blended.append(script_path.get_file())
+	check("  every MultiMesh the game builds is drawn as written, off on the node and on the MultiMesh", blended.is_empty(), blended)
+	var proxy_code: String = _code_src("res://src/world/endless/swarmproxy.gd")
+	var stand_at: int = proxy_code.find("func stand_on(")
+	var stand_end: int = proxy_code.find("\nfunc ", stand_at + 1)
+	check("  a stand-in moved to another swarmling is placed, not slid there",
+		stand_at >= 0 and proxy_code.substr(stand_at, stand_end - stand_at).contains("reset_physics_interpolation()"))
 	swarm.queue_free()
 	check("one MultiMesh draws them, under everything standing, from the small slime's own sheet",
 		_code_src("res://src/world/endless/swarm.gd").contains("MultiMeshInstance2D.new()")
