@@ -3252,7 +3252,9 @@ func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
 	var resist_percent: float = minf(float(equipped_resistance(element)) * Lands.resist_scale(element),
 		float(GameConstants.RESIST_CAP))
 	var resisted: float = resist_percent / 100.0
-	var landing: float = float(amount) * Lands.hit_scale(element) * effects_damage_scale()
+	# EVERY HIT AT HALF (0.93.6, PlayerStats.HIT_TAKEN): the owner's "take
+	# more hits".
+	var landing: float = float(amount) * Lands.hit_scale(element) * effects_damage_scale() * PlayerStats.HIT_TAKEN
 	return maxi(1, int(landing * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
 
 

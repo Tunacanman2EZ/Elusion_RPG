@@ -317,8 +317,8 @@ func _test_stirring_lands() -> void:
 	Lands.apply(fire)
 	var stirred_fire: int = body.damage_taken(1000, Element.Type.FIRE)
 	check("fire stirring: a fire hit lands 25%% harder, and 10%% fire resistance counts as 15%% (%d, calm %d)" % [stirred_fire, calm_fire],
-		stirred_fire == maxi(1, int(1250.0 * (1.0 - reduction) * (1.0 - armour) * 0.85))
-		and calm_fire == maxi(1, int(1000.0 * (1.0 - reduction) * (1.0 - armour) * 0.90)), [stirred_fire, calm_fire])
+		stirred_fire == maxi(1, int(1250.0 * PlayerStats.HIT_TAKEN * (1.0 - reduction) * (1.0 - armour) * 0.85))
+		and calm_fire == maxi(1, int(1000.0 * PlayerStats.HIT_TAKEN * (1.0 - reduction) * (1.0 - armour) * 0.90)), [stirred_fire, calm_fire])
 	check("  a water hit is as it was - only the stirring land's", body.damage_taken(1000, Element.Type.WATER) == calm_water)
 	check("  and a physical hit too", is_equal_approx(Lands.hit_scale(Element.Type.NONE), 1.0)
 		and is_equal_approx(Lands.resist_scale(Element.Type.NONE), 1.0))
@@ -328,7 +328,7 @@ func _test_stirring_lands() -> void:
 	body.equipped = {"chest": "ltest_chest~a100r613", "helm": "ltest_helm~a100r613"}
 	check("resistance counting double is still held to the 50%% cap: 26%% twice is 50%%, not 52%% (%d)" % body.equipped_resistance(Element.Type.FIRE),
 		body.equipped_resistance(Element.Type.FIRE) == 26
-		and body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1250.0 * (1.0 - reduction)
+		and body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1250.0 * PlayerStats.HIT_TAKEN * (1.0 - reduction)
 			* (1.0 - PlayerStats.armour_reduction(body.equipped_armor_value())) * 0.5)))
 	var src: String = _code_src("res://src/characters/player.gd")
 	check("  and take_damage() still trains defense on the hit as sent, not the stirred one",
@@ -1768,8 +1768,11 @@ func _test_armour_resistance() -> void:
 	var reduction: float = body._get_defense_tier()["reduction"]
 	var armour: float = PlayerStats.armour_reduction(body.equipped_armor_value())
 	check("a fire hit takes 12%% less, after the defense tier and the armour (%d against %d)" % [fire_hit, plain],
-		fire_hit == maxi(1, int(1000 * (1.0 - reduction) * (1.0 - armour) * 0.88)) and fire_hit < plain,
+		fire_hit == maxi(1, int(1000 * PlayerStats.HIT_TAKEN * (1.0 - reduction) * (1.0 - armour) * 0.88)) and fire_hit < plain,
 		[fire_hit, plain])
+	check("every hit on a player lands at PlayerStats.HIT_TAKEN, before the tier and the armour - the owner's \"take more hits\" (0.93.6)",
+		PlayerStats.HIT_TAKEN > 0.0 and PlayerStats.HIT_TAKEN < 1.0
+		and plain == maxi(1, int(1000 * PlayerStats.HIT_TAKEN * (1.0 - reduction) * (1.0 - armour))), [plain, PlayerStats.HIT_TAKEN])
 	check("  and the smallest hit still lands", body.damage_taken(1, Element.Type.FIRE) == 1)
 	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
 	var body_at: int = src.find("func take_damage(")
@@ -1787,7 +1790,7 @@ func _test_armour_resistance() -> void:
 	reduction = body._get_defense_tier()["reduction"]
 	armour = PlayerStats.armour_reduction(body.equipped_armor_value())
 	check("  so a fire hit is at most halved by it, never gone",
-		body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1000 * (1.0 - reduction) * (1.0 - armour) * 0.5)))
+		body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1000 * PlayerStats.HIT_TAKEN * (1.0 - reduction) * (1.0 - armour) * 0.5)))
 	check("a sword that somehow said it resisted would add nothing: a weapon never reads one",
 		not ItemRegistry.has_item("rtest_sword~d107r605"))
 

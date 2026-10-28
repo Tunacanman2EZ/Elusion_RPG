@@ -2361,6 +2361,20 @@ posting to the chest route (and an ordinary one not), the chest's read and
 count, the window on it, Take all by its id, a bag after it, an empty chest,
 Leave asking twice, and the run placing it.
 
+### Every hit on a player lands at half (0.93.6)
+
+The owner, 28 Oct: "player needs to absorb more damage", "like take more
+hits", and "players should absorb bullets and damage". `PlayerStats.HIT_TAKEN`
+(0.5) multiplies every hit in `Player.damage_taken()`, beside the land's and
+the effects' scales and before the defence tier, the armour and the
+resistance take their shares - so twice the hits to fall, everywhere: bullets,
+the swarm's touch, spikes, burns, another player's blow. Every hit on a
+player goes through `damage_taken()` (nothing else writes a player's hp
+down), so this is the one place. Health is the client's (E-9) and the server
+is not asked; defence XP still trains on the hit as sent. Tune it there. The
+checks that pin `damage_taken()`'s arithmetic (testrunner_3) carry the factor,
+and one more holds it applied.
+
 ### Deleting inert code is how you find out what it was for
 
 E-2 closed by making all six skills server-granted, which left machinery behind

@@ -207,6 +207,18 @@ static func weapon_damage_range(damage: int, spread: float) -> Vector2i:
 const ARMOUR_HALF_POINT: float = 200.0
 
 
+# =============================================================================
+# EVERY HIT ON A PLAYER LANDS AT HALF (0.93.6)
+# =============================================================================
+# The owner, 28 Oct: "player needs to absorb more damage", "like take more
+# hits", "players should absorb bullets and damage". One number on every hit a
+# player takes - a bullet, a slime's touch, a spike, a burn, another player's
+# blow - in Player.damage_taken(), before the defence tier, the armour and the
+# resistance take their shares. Health is the client's (E-9), so the server is
+# not asked and needs nothing. 0.5 is twice the hits to fall; tune it here.
+const HIT_TAKEN: float = 0.5
+
+
 static func armour_reduction(armour_value: int) -> float:
 	if armour_value <= 0:
 		return 0.0
