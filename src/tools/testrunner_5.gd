@@ -2604,10 +2604,11 @@ func _test_staff_panel() -> void:
 	check("and so is one below the floor",
 		is_equal_approx(float(Settings._normalise("camera_zoom", -5.0)),
 			Settings.CAMERA_ZOOM_MIN))
-	# THE FLOOR IS 2.0, not 1.0. At 1x a 64px character is 64 screen pixels
-	# and the nameplate over their head is smaller than they are.
-	check("the camera cannot go further out than 2x",
-		is_equal_approx(Settings.CAMERA_ZOOM_MIN, 2.0), Settings.CAMERA_ZOOM_MIN)
+	# THE FLOOR IS 1.0 AGAIN (0.95.0; it was 2.0). The owner, of the big maps:
+	# "all the way out". Below 1x the sleeper's hidden monsters would be on
+	# screen - testrunner_2's sleeper check holds that.
+	check("the camera goes out as far as 1x, and no further",
+		is_equal_approx(Settings.CAMERA_ZOOM_MIN, 1.0), Settings.CAMERA_ZOOM_MIN)
 
 	var probe := Camera2D.new()
 	probe.zoom = Vector2(3.0, 3.0)

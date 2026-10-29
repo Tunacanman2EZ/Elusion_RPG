@@ -195,6 +195,7 @@ func _run_all() -> void:
 	await _test_the_horde_reaches_the_back_wall()
 	_test_the_field_is_dressed()
 	_test_the_field()
+	_test_the_camera_zooms_out()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()

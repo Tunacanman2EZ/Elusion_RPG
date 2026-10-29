@@ -1644,11 +1644,13 @@ func _test_a_big_fight_is_cheap() -> void:
 	check("  woken, it is shown again", far.visible and far.process_mode == Node.PROCESS_MODE_INHERIT
 		and not far.has_meta(&"asleep_shown"))
 	check("  and one something else had hidden stays hidden", not hidden.visible)
+	# The camera sits on the player (no offset, no smoothing), so the far
+	# corner is half the view's diagonal away - 734 px at 1x (0.95.0).
 	var view: Vector2 = Vector2(float(ProjectSettings.get_setting("display/window/size/viewport_width")),
 		float(ProjectSettings.get_setting("display/window/size/viewport_height"))) / _SettingsCode.CAMERA_ZOOM_MIN
 	check("  never on screen: the widest view is %d x %d, and its far corner is nearer the player than %d px"
 		% [int(view.x), int(view.y), int(Sleeper.WAKE_DISTANCE)],
-		view.length() < Sleeper.WAKE_DISTANCE
+		view.length() / 2.0 < Sleeper.WAKE_DISTANCE
 		and str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep")) == "keep", view)
 	player.position = Vector2(-1000, 0)
 	sleeper.check_now()

@@ -51,17 +51,24 @@ const ACTIONS := [
 	["help_toggle", "Controls (this card)"],
 	["voice_talk", "Push to talk (party voice)"],
 	["voice_mute", "Mute my microphone"],
+	["zoom_out", "Zoom out - see more"],
+	["zoom_in", "Zoom in"],
 ]
 
 # ACTIONS MADE HERE rather than in project.godot, with the key each starts on:
-# the ten hotbar keys (below), the Kills window (0.9.0) and party voice's two
-# (0.43.0). project.godot is rewritten by the editor, and an action added to
-# it from outside is lost the next time the editor saves its own copy.
+# the ten hotbar keys (below), the Kills window (0.9.0), party voice's two
+# (0.43.0) and the camera's zoom (0.95.0, minus and equals - the keys a "-"
+# and a "+" are printed on). project.godot is rewritten by the editor, and an
+# action added to it from outside is lost the next time the editor saves its
+# own copy.
 const MADE_HERE := {
 	"kills_toggle": KEY_K,
 	# PARTY VOICE (0.43.0, voice.gd).
 	"voice_talk": KEY_V,
 	"voice_mute": KEY_B,
+	# ZOOM (0.95.0, characterhud.gd - the mouse wheel does it too).
+	"zoom_out": KEY_MINUS,
+	"zoom_in": KEY_EQUAL,
 }
 
 # Two keys an action: a first and a second.

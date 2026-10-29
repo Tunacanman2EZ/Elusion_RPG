@@ -67,7 +67,7 @@ const HELP := {
 	"sfxvolume": "How loud everything else is: swings, spells, doors, monsters and the menus.",
 	"textsize": "Makes all the writing in the game bigger - for a big screen, or one across the room. Most players: Normal.",
 	"fontstyle": "The style of letters every window, button and name is written in. Chat keeps its own, for its emoji. Most players: Standard.",
-	"camerazoom": "How close the camera sits. Lower pulls it back so you see more of the world around you. 3.00x is how the game is drawn to be seen.",
+	"camerazoom": "How close the camera sits. Lower pulls it back so you see more of the world around you - the mouse wheel and the zoom keys (- and =) do it too. 3.00x is how the game is drawn to be seen.",
 	"namehue": "The colour of your name over your head, to tell it apart from everyone else's in a crowd.",
 	"damagenumbers": "The numbers that fly up when something is hit - they show what your weapon is doing. Turn them off for a calmer screen. Most players: On.",
 	"chatfilter": "Hides rude words in chat. It changes only what you see, not what anyone types. Most players: On.",
@@ -998,6 +998,15 @@ func _update_camera_label() -> void:
 	camera_zoom_value.text = "%.2fx" % camera_zoom.value
 
 
+func _on_zoom_from_the_world(key: String, value: Variant) -> void:
+	"""THE WHEEL MOVES THE SLIDER (0.95.0): zoomed from the world with the
+	panel open, the slider and its number follow."""
+	if key != "camera_zoom" or camera_zoom == null:
+		return
+	camera_zoom.set_value_no_signal(float(value))
+	_update_camera_label()
+
+
 func _on_name_hue_changed(_value: float) -> void:
 	_update_name_swatch()
 	if _refreshing:
@@ -1488,6 +1497,7 @@ func _build_help() -> void:
 					(part as Label).tooltip_text = ""
 			_point_help_at(row, str(key))
 	Settings.changed.connect(_on_setting_changed_for_help)
+	Settings.changed.connect(_on_zoom_from_the_world)
 	show_resting_help()
 
 

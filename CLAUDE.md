@@ -2568,6 +2568,46 @@ this is what was built. Folded into 0.94.2, which had not shipped.
   The API's test_pacing.py now counts the placed smalls, and
   test_combatbook.py's two spawn fixtures use kinds the Field still has.
 
+### The camera zooms out to 1x, from the world (0.95.0)
+
+The owner, of the Big Field and the new Field: "map is soo big we need to be
+able to zoom out", then "all the way out i need players to be able to see the
+whole map".
+
+- **Options' Camera view goes from 3x to 1x** (`Settings.CAMERA_ZOOM_MIN`
+  1.0; it was raised to 2.0 once, because at 1x the faces go). At 1x a
+  player sees 1280 x 720 of the world, three times the width at 3x. The
+  slider (optionsscreen.tscn, 9 ticks) and its number follow a zoom made
+  from the world (`_on_zoom_from_the_world()`).
+- **The mouse wheel over the world, and two keys** (`zoom_out` minus,
+  `zoom_in` equals; Keybinds `MADE_HERE`, rebindable, on the Controls
+  card). The HUD's `_unhandled_input()` asks `zoom_steps_for(event)`, so a
+  turn of the wheel over a window scrolls that window as ever; a key held
+  repeats; a trackpad's small turns add up to whole steps. Each step is
+  `Settings.step_camera_zoom()`: a quarter, on the slider's grid, saved like
+  the slider. On a phone it is the Options slider (the touch card says so).
+- **Below 1x is not offered, on purpose.** The sleeper hides and stops every
+  monster further than `WAKE_DISTANCE` (900 px) from every player; the
+  camera sits on the player (no offset, no smoothing, no limits), so at 1x
+  the screen's far corner is 734 px away and nothing hidden is ever on it.
+  Further out, monsters would vanish and freeze at the screen's edge.
+  testrunner_2's sleeper check measures the far corner (half the view's
+  diagonal; it measured the whole diagonal, which at 1x is past 900).
+- **Seeing the whole map is the map's job (M).** At 1x the Big Field
+  (6,160 x 5,152) is about a fifth of its width on screen, the Field about
+  half.
+- **What it costs to draw** (the container, one Big Field pack, the sleeper
+  on): draw calls 68 at 3x, 79 at 2x, 104 at 1.5x, 122 at 1x; objects drawn
+  4,735 to 7,525. No more monsters are awake - that is the sleeper's 900 px,
+  whatever the zoom.
+- **A respawn can be seen at the edge of a wide view**, as it could at 2x:
+  the respawner holds one back only within 250 px of a player. Holding it
+  while on this game's screen was tried and left out - in the boss arena,
+  zoomed out, the whole room is on screen and nothing would come back while
+  anybody stood in it.
+
+`_test_the_camera_zooms_out()` (testrunner_9).
+
 ### Deleting inert code is how you find out what it was for
 
 E-2 closed by making all six skills server-granted, which left machinery behind

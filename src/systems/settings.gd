@@ -220,10 +220,12 @@ const DEFAULTS := {
 	# tank), and past 3x the game stops being pixel art and starts being big
 	# rectangles - there is nothing above it worth offering.
 	#
-	# 2.0 IS THE FLOOR. It started at 1.0 and that was too far back: at 1x a
-	# 64px character is 64 screen pixels, the faces go, and a nameplate over
-	# their head is smaller than the character. Two is as far out as the art
-	# holds up.
+	# 1.0 IS THE FLOOR AGAIN (0.95.0). It started at 1.0, was raised to 2.0
+	# because at 1x the faces go, and is back: the owner, of the Big Field and
+	# the new Field, "map is soo big we need to be able to zoom out", "all the
+	# way out". At 1x the view is the whole 1280 x 720 of the world. Below it
+	# the sleeper's hidden monsters would be on screen (enemysleeper.gd,
+	# WAKE_DISTANCE) - the suite holds the far corner inside it.
 	"camera_zoom": 3.0,
 
 	# THE COLOUR OF YOUR OWN NAME, as a hue in degrees. A hue and nothing else:
@@ -249,8 +251,9 @@ const DEFAULTS := {
 
 
 # The range the slider offers and the value is clamped to. Read by the options
-# screen so the two cannot disagree about what is allowed.
-const CAMERA_ZOOM_MIN := 2.0
+# screen so the two cannot disagree about what is allowed. A step is one notch
+# of the mouse wheel or one press of a zoom key too (step_camera_zoom()).
+const CAMERA_ZOOM_MIN := 1.0
 const CAMERA_ZOOM_MAX := 3.0
 const CAMERA_ZOOM_STEP := 0.25
 
@@ -1723,6 +1726,18 @@ func _apply_camera_zoom_everywhere(zoom: float) -> void:
 		return
 	for node in tree.root.find_children("*", "Camera2D", true, false):
 		_apply_camera_zoom_to(node as Camera2D, zoom)
+
+
+func step_camera_zoom(steps: int) -> float:
+	"""ZOOM FROM THE WORLD (0.95.0): the mouse wheel and the two zoom keys
+	(characterhud.gd) move the Camera view setting by `steps` of
+	CAMERA_ZOOM_STEP - negative is out - on the slider's own grid, saved like
+	the slider. Answers the zoom now."""
+	var now: float = float(get_value("camera_zoom"))
+	var want: float = clampf(snappedf(now + float(steps) * CAMERA_ZOOM_STEP, CAMERA_ZOOM_STEP),
+		CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	set_value("camera_zoom", want)
+	return float(get_value("camera_zoom"))
 
 
 func _apply_lighting_everywhere(mode: String) -> void:

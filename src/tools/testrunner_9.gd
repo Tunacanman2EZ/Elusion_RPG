@@ -1,7 +1,7 @@
 # testrunner_9.gd - part 9 of the suite (testrunner.gd says how it is
-# split): 5 tests, _test_far_attacks_hit_the_swarm,
+# split): 6 tests, _test_far_attacks_hit_the_swarm,
 # _test_a_fall_wakes_you_by_the_chest, _test_the_horde_reaches_the_back_wall,
-# _test_the_field_is_dressed and _test_the_field.
+# _test_the_field_is_dressed, _test_the_field and _test_the_camera_zooms_out.
 extends "res://src/tools/testrunner_8.gd"
 
 
@@ -435,3 +435,97 @@ func _test_the_field() -> void:
 		and builder.contains("func _ladder(") and builder.contains("func _monsters("))
 	area.free()
 	print("  the Field: %d monsters %s, the guard at the levers" % [enemies.size(), by_land])
+
+
+# =============================================================================
+# THE CAMERA ZOOMS OUT TO 1x, FROM THE WORLD (0.95.0)
+# =============================================================================
+# The owner, of the Big Field and the new Field: "map is soo big we need to be
+# able to zoom out", "all the way out". Options' Camera view goes to 1x (it
+# stopped at 2x), and the mouse wheel over the world and two zoom keys move it.
+const _HudCode := preload("res://src/ui/characterhud.gd")
+const _OptionsScene := preload("res://scene/ui/menus/optionsscreen.tscn")
+
+
+func _wheel(up: bool, factor: float = 1.0, down: bool = true) -> InputEventMouseButton:
+	var turn := InputEventMouseButton.new()
+	turn.button_index = MOUSE_BUTTON_WHEEL_UP if up else MOUSE_BUTTON_WHEEL_DOWN
+	turn.factor = factor
+	turn.pressed = down
+	return turn
+
+
+func _test_the_camera_zooms_out() -> void:
+	section("THE CAMERA ZOOMS OUT TO 1x - the wheel over the world, the zoom keys, the Options slider (0.95.0)")
+	var was: float = float(Settings.get_value("camera_zoom"))
+	check("the camera goes out to 1x and in to 3x, in quarters",
+		is_equal_approx(Settings.CAMERA_ZOOM_MIN, 1.0) and is_equal_approx(Settings.CAMERA_ZOOM_MAX, 3.0)
+		and is_equal_approx(Settings.CAMERA_ZOOM_STEP, 0.25))
+	# A camera in the tree follows, as the slider's does.
+	var camera := Camera2D.new()
+	add_child(camera)
+	Settings.set_value("camera_zoom", 3.0)
+	var out_one: float = Settings.step_camera_zoom(-1)
+	check("a step out from 3x is 2.75x, and the camera is there", is_equal_approx(out_one, 2.75)
+		and is_equal_approx(camera.zoom.x, 2.75) and is_equal_approx(camera.zoom.y, 2.75), camera.zoom)
+	for i in 20:
+		Settings.step_camera_zoom(-1)
+	check("  stepping on stops at 1x", is_equal_approx(float(Settings.get_value("camera_zoom")), 1.0)
+		and is_equal_approx(camera.zoom.x, 1.0), camera.zoom)
+	Settings.step_camera_zoom(3)
+	check("  and back in, a quarter a step", is_equal_approx(float(Settings.get_value("camera_zoom")), 1.75))
+	for i in 20:
+		Settings.step_camera_zoom(1)
+	check("  stopping at 3x", is_equal_approx(float(Settings.get_value("camera_zoom")), 3.0))
+	Settings.set_value("camera_zoom", 2.6)
+	check("  a value off the grid (an edited file) steps onto it",
+		is_equal_approx(Settings.step_camera_zoom(-1), 2.25), Settings.get_value("camera_zoom"))
+	camera.queue_free()
+
+	# The wheel and the keys, as the HUD reads them.
+	var hud: Node = _HudCode.new()
+	check("a notch of the wheel up is a step in, down a step out",
+		hud.zoom_steps_for(_wheel(true)) == 1 and hud.zoom_steps_for(_wheel(false)) == -1)
+	check("  its letting go is nothing", hud.zoom_steps_for(_wheel(true, 1.0, false)) == 0)
+	var small: Array = [hud.zoom_steps_for(_wheel(false, 0.4)), hud.zoom_steps_for(_wheel(false, 0.4)),
+		hud.zoom_steps_for(_wheel(false, 0.4))]
+	check("  a trackpad's small turns add up to whole steps", small == [0, 0, -1], small)
+	var minus := Keybinds.key_press(KEY_MINUS)
+	minus.pressed = true
+	var equal := Keybinds.key_press(KEY_EQUAL)
+	equal.pressed = true
+	var held := Keybinds.key_press(KEY_MINUS)
+	held.pressed = true
+	held.echo = true
+	check("the zoom keys: minus out, equals in, and held it keeps going",
+		hud.zoom_steps_for(minus) == -1 and hud.zoom_steps_for(equal) == 1 and hud.zoom_steps_for(held) == -1)
+	var a_key := Keybinds.key_press(KEY_A)
+	a_key.pressed = true
+	check("  any other key is nothing", hud.zoom_steps_for(a_key) == 0)
+	hud.free()
+	check("  both can be changed like every other key, and the Controls card lists them",
+		Keybinds.all_actions().has("zoom_in") and Keybinds.all_actions().has("zoom_out")
+		and InputMap.has_action("zoom_in") and InputMap.has_action("zoom_out")
+		and ControlsPanel.ROWS.any(func(row: Array) -> bool: return row[1] == "zoom_out")
+		and ControlsPanel.ROWS.any(func(row: Array) -> bool: return row[1] == "zoom_in"))
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	var handler: String = _func_body(hud_code, "func _unhandled_input(")
+	check("  the HUD zooms from what no window took (its _unhandled_input), through the setting",
+		handler.contains("zoom_steps_for(event)") and handler.contains("Settings.step_camera_zoom("))
+
+	# Options: the slider's range, and it follows a zoom from the world.
+	var opts: Node = _OptionsScene.instantiate()
+	var slider: Range = opts.get_node_or_null("%camerazoom") as Range
+	check("the Options slider goes from 1x to 3x as authored",
+		slider != null and is_equal_approx(slider.min_value, 1.0) and is_equal_approx(slider.max_value, 3.0))
+	opts.set("camera_zoom", slider)
+	opts.set("camera_zoom_value", opts.get_node_or_null("%camerazoomvalue"))
+	opts.call("_on_zoom_from_the_world", "camera_zoom", 1.5)
+	var number: Label = opts.get_node_or_null("%camerazoomvalue") as Label
+	check("  and follows a zoom from the world, its number with it",
+		is_equal_approx(slider.value, 1.5) and number != null and number.text == "1.50x",
+		[slider.value, number.text if number else "?"])
+	opts.free()
+
+	Settings.set_value("camera_zoom", was)
+	print("  the camera: 1x to 3x, the wheel and the keys a quarter a step")

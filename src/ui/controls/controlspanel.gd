@@ -86,6 +86,9 @@ const ROWS := [
 	["Gear", "equipment_toggle"],
 	["Stats", "character_toggle"],
 	["Map", "minimap_toggle"],
+	# ZOOM (0.95.0): the wheel over the world does it too.
+	["Zoom out to see more (or the mouse wheel)", "zoom_out"],
+	["Zoom back in", "zoom_in"],
 	["Kills - yours and everyone's", "kills_toggle"],
 	["Close a window, or open Options", "Esc"],
 	["This card", "help_toggle"],
@@ -109,6 +112,7 @@ const TOUCH_ROWS := [
 	# 0.56.0: what a mouse would show by hovering (TouchControls.show_tip_at()).
 	["See what something is", "Hold it, then let go"],
 	["Bag, gear, stats, map and the rest", "The buttons along the bottom"],
+	["Zoom out to see more", "Menu, then Options: Camera view"],
 	["This card", "Menu, then Controls"],
 ]
 const TOUCH_FOOTER := "Menu, then Controls, shows this card again."

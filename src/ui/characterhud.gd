@@ -510,6 +510,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# ZOOM, FROM THE WORLD (0.95.0). The owner: "map is soo big we need to be
+	# able to zoom out", "all the way out". The wheel over the world - here,
+	# so only a turn no window took (a list scrolls as ever) - and the two
+	# zoom keys, held to keep going; both move Options' Camera view.
+	var zoom_steps: int = zoom_steps_for(event)
+	if zoom_steps != 0:
+		Settings.step_camera_zoom(zoom_steps)
+		get_viewport().set_input_as_handled()
+		return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -527,6 +537,30 @@ func _unhandled_input(event: InputEvent) -> void:
 	# console key that is also a letter is how the collision happened.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_QUOTELEFT:
 		_toggle_owner_panel()
+
+
+## A trackpad's smooth scroll sends many small turns; whole steps are taken
+## from what they add up to (zoom_steps_for()).
+var _wheel_turned: float = 0.0
+
+
+func zoom_steps_for(event: InputEvent) -> int:
+	"""How many steps of zoom `event` asks for: + in, - out, 0 none. A notch
+	of the wheel is one (a trackpad's `factor` is a part of one, added up), a
+	zoom key one, again while it is held."""
+	var wheel := event as InputEventMouseButton
+	if wheel != null and wheel.pressed \
+			and wheel.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		var turn: float = wheel.factor if wheel.factor > 0.0 else 1.0
+		_wheel_turned += turn if wheel.button_index == MOUSE_BUTTON_WHEEL_UP else -turn
+		var whole: int = int(_wheel_turned)
+		_wheel_turned -= float(whole)
+		return whole
+	if InputMap.has_action("zoom_in") and event.is_action_pressed("zoom_in", true):
+		return 1
+	if InputMap.has_action("zoom_out") and event.is_action_pressed("zoom_out", true):
+		return -1
+	return 0
 
 
 func _toggle_owner_panel() -> void:
