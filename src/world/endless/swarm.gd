@@ -113,6 +113,17 @@ const ROOM_PUSH := 80.0
 const ROOM_REACH := 260.0
 # How close one comes to the player before it stops: it is touching them.
 const TOUCH := 14.0
+# How near the arena's edge a slime may stand.
+const EDGE := 6.0
+# A PLAYER AGAINST THE BACK WALL IS STILL ON THE FLOOR (0.94.2). The owner:
+# "enemies stop moving on top side of map in minigame". A player's origin is
+# 13 px over its feet, so against the back wall it stands at y 22 - over the
+# swarm's floor, which starts at 34, clear of the wall - and a crowd with
+# nobody on its floor chased nobody: it stood still and touched nobody. Now a
+# player within FLOOR_SLACK of the floor is on it (on_floor()), and the crowd
+# goes for, and touches, the nearest point of the floor to them
+# (floor_point()).
+const FLOOR_SLACK := 16.0
 const TOUCH_SECONDS := 0.5
 const TOUCH_MOST := 5
 # THE LAND'S EFFECT RIDES THE TOUCH (0.93.3, the owner: "we need to really
@@ -551,13 +562,13 @@ func is_alive(i: int) -> bool:
 
 func _process(delta: float) -> void:
 	var player: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
-	var target: Vector2 = player.global_position if player != null else arena.get_center()
-	var chasing: bool = player != null and player.get("is_dying") != true \
-		and arena.has_point(target) and not _kept_out(target)
+	var at: Vector2 = player.global_position if player != null else arena.get_center()
+	var chasing: bool = player != null and player.get("is_dying") != true and on_floor(at)
+	var target: Vector2 = floor_point(at)
 	_others_now = PackedVector2Array()
 	for point in others:
-		if arena.has_point(point) and not _kept_out(point):
-			_others_now.append(point)
+		if on_floor(point):
+			_others_now.append(floor_point(point))
 	_step_left -= delta
 	var steps: int = 0
 	while _step_left <= 0.0 and steps < 2:
@@ -579,6 +590,19 @@ func _process(delta: float) -> void:
 			var hit: int = touch_damage * mini(_touching, TOUCH_MOST)
 			player.call("take_damage", hit, element)
 			touch_effect_on(player, hit)
+
+
+func on_floor(at: Vector2) -> bool:
+	"""Whether a player standing at `at` is on the crowd's floor: within
+	FLOOR_SLACK of the arena, and not in the corridor."""
+	return arena.grow(FLOOR_SLACK).has_point(at) and not _kept_out(at)
+
+
+func floor_point(at: Vector2) -> Vector2:
+	"""The nearest point to `at` that a slime may stand on: what the crowd
+	goes for, and touches."""
+	return Vector2(clampf(at.x, arena.position.x + EDGE, arena.end.x - EDGE),
+		clampf(at.y, arena.position.y + EDGE, arena.end.y - EDGE))
 
 
 func touch_effect_on(player: Node, hit: int) -> bool:
@@ -633,10 +657,10 @@ func _step(target: Vector2, chasing: bool) -> void:
 				near.append(i)
 	_near = near
 	_make_room(hx, hy, side)
-	var left: float = arena.position.x + 6.0
-	var right: float = arena.end.x - 6.0
-	var top: float = arena.position.y + 6.0
-	var bottom: float = arena.end.y - 6.0
+	var left: float = arena.position.x + EDGE
+	var right: float = arena.end.x - EDGE
+	var top: float = arena.position.y + EDGE
+	var bottom: float = arena.end.y - EDGE
 	var stride: float = speed * STEP
 	var push: float = PUSH * STEP
 	var spread: float = SPREAD * STEP

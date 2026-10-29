@@ -5111,8 +5111,23 @@ func _test_a_pet_says_how_to_summon_it() -> void:
 
 
 func _test_the_big_field_is_dressed() -> void:
-	section("THE BIG FIELD, DRESSED - every edge walled in the crypt's own pieces, end to end, its doors and gates in place (0.61.0, 0.94.0)")
-	var area: Node = (load(BIG_FIELD) as PackedScene).instantiate()
+	_check_dressed_map(BIG_FIELD,
+		"THE BIG FIELD, DRESSED - every edge walled in the crypt's own pieces, end to end, its doors and gates in place (0.61.0, 0.94.0)",
+		{"pieces": 2000, "edges": 5000, "doors": BIG_FIELD_DOORS, "levers": BIG_FIELD_GATES, "spikes": 2 * BIG_FIELD_GATES,
+		"gates_words": "%d shortcuts back to the hub: each a spike gate, its lever in its wing's far room",
+		"lands": BIG_FIELD_LANDS, "behind": ["crypt", "chasm", "caverns"],
+		"behind_words": "  and with the doors shut, the crypt, the chasm and the caverns are closed off behind them"})
+
+
+func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> void:
+	"""A map built from a plan (tools/maps/), walled in the crypt's pieces:
+	the Big Field's checks (0.94.0), and the Field's (0.94.2) with its own
+	numbers in `want` - at least `pieces` props and solids, `edges` edges,
+	`doors` doors, `levers` levers each driving its spike gate with `spikes`
+	spikes in all, and the `behind` lands (by `lands`) closed off with the
+	doors shut."""
+	section(title)
+	var area: Node = (load(scene_path) as PackedScene).instantiate()
 	var ground: TileMapLayer = area.get_node("ground") as TileMapLayer
 	var crypt: Node2D = area.get_node_or_null("ysortworld/props/crypt") as Node2D
 	check("the props have a home of their own: ysortworld/props/crypt - its walls, doors and decor",
@@ -5133,7 +5148,7 @@ func _test_the_big_field_is_dressed() -> void:
 			if not str(prop.scene_file_path).begins_with("res://scene/crypt/"):
 				foreign.append("%s/%s" % [group.name, prop.name])
 	check("%d props, every one a scene/crypt/ piece - the sheet's art at its own size" % props.size(),
-		props.size() >= 2000 and foreign.is_empty(), foreign.slice(0, 4))
+		props.size() >= int(want["pieces"]) and foreign.is_empty(), foreign.slice(0, 4))
 	check("  y-sorted with the world, so a player walks behind a wall and in front of it",
 		crypt.y_sort_enabled and unsorted.is_empty(), unsorted)
 
@@ -5161,7 +5176,7 @@ func _test_the_big_field_is_dressed() -> void:
 				"layer": body.collision_layer, "door": str(prop.scene_file_path) == "res://scene/crypt/door.tscn"})
 	var off_layer: Array = solids.filter(func(s): return int(s.layer) != 1).map(func(s): return s.name)
 	check("the walls, doors, pillars and big pieces are solid, on the walls' own layer: %d blockers" % solids.size(),
-		solids.size() >= 2000 and off_layer.is_empty(), off_layer.slice(0, 4))
+		solids.size() >= int(want["pieces"]) and off_layer.is_empty(), off_layer.slice(0, 4))
 
 	# ---- every wall's picture, and none over another -----------------------------
 	var pictures: Array = []
@@ -5194,7 +5209,7 @@ func _test_the_big_field_is_dressed() -> void:
 				if both.size.x > 0.01 and both.size.y > 0.01:
 					over["%s / %s" % [pictures[list[m]][1], pictures[list[n]][1]]] = true
 	check("%d wall pieces and doors laid end to end: none over another" % pictures.size(),
-		pictures.size() >= 2000 and over.is_empty(), over.keys().slice(0, 4))
+		pictures.size() >= int(want["pieces"]) and over.is_empty(), over.keys().slice(0, 4))
 
 	# ---- walls round the whole map --------------------------------------------------
 	# Every edge between the plain floor and the dark: its own line (each wall
@@ -5225,7 +5240,7 @@ func _test_the_big_field_is_dressed() -> void:
 			if not walled.call(probe[1]):
 				open_edges.append("%s edge at %s" % [probe[0], probe[1]])
 	check("walls round the whole map: every one of the floor's %d edges has its wall" % edges,
-		edges > 5000 and open_edges.is_empty(), open_edges.slice(0, 4))
+		edges > int(want["edges"]) and open_edges.is_empty(), open_edges.slice(0, 4))
 
 	# ---- the fights it must not get in the way of -------------------------------
 	var crowded: Array = []
@@ -5246,7 +5261,7 @@ func _test_the_big_field_is_dressed() -> void:
 		if str(d.scene_file_path) == "res://scene/crypt/door.tscn" and not bool(d.get("starts_open")):
 			shut.append(d)
 	check("%d crypt doors, every one shut until a player opens it" % doors.size(),
-		doors.size() == BIG_FIELD_DOORS and shut.size() == doors.size(), doors.size())
+		doors.size() == int(want["doors"]) and shut.size() == doors.size(), doors.size())
 	var levers: Array = []
 	var gated: Array = []
 	for node in area.get_node("ysortworld/interactables").get_children():
@@ -5265,8 +5280,8 @@ func _test_the_big_field_is_dressed() -> void:
 				found += 1
 		if found >= 2 and found == targets.size():
 			gated.append(lever.name)
-	check("%d shortcuts back to the hub: each a spike gate, its lever in its wing's far room" % levers.size(),
-		levers.size() == BIG_FIELD_GATES and gated.size() == levers.size() and spikes.size() >= 2 * BIG_FIELD_GATES,
+	check(str(want["gates_words"]) % levers.size(),
+		levers.size() == int(want["levers"]) and gated.size() == levers.size() and spikes.size() >= int(want["spikes"]),
 		[levers.size(), gated, spikes.size()])
 
 	# A player's feet, walked over the floor one cell at a time with every
@@ -5328,11 +5343,11 @@ func _test_the_big_field_is_dressed() -> void:
 			stranded.append(enemy.name)
 		if not reached.call(shut_walk, p):
 			var land: String = str(enemy.name).get_slice("_", 0)
-			behind[BIG_FIELD_LANDS.get(land, land)] = true
+			behind[(want["lands"] as Dictionary).get(land, land)] = true
 	check("the doors open and the gates up, a player can walk from where they arrive to every monster",
 		stranded.is_empty(), stranded.slice(0, 4))
-	check("  and with the doors shut, the crypt, the chasm and the caverns are closed off behind them",
-		behind.has("crypt") and behind.has("chasm") and behind.has("caverns"), behind.keys())
+	check(str(want["behind_words"]),
+		(want["behind"] as Array).all(func(w): return behind.has(w)), behind.keys())
 
 	var dark: CanvasModulate = null
 	for n in area.find_children("*", "CanvasModulate", true, false):

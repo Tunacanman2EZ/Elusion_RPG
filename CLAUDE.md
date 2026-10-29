@@ -2412,6 +2412,26 @@ death and has an arrow saying grab loot from chest".
 `_test_far_attacks_hit_the_swarm()` and `_test_a_fall_wakes_you_by_the_chest()`,
 in testrunner_9.gd (part 8 passed 250 KB).
 
+### The horde reaches a player at the back wall (0.94.2)
+
+The owner, 28 Oct: "enemies stop moving on top side of map in minigame". A
+player's origin is 13 px over its feet, so against the Endless's back wall a
+warrior stands at y 22 - over the swarm's floor (`arena_rect` starts at 34,
+6 px clear of the wall's foot). The swarm chased only a player inside its
+floor, so there the whole crowd stood still and touched nobody, the run did
+not count the player in (a party's run could end), and new slimes were born
+beside them. Measured in the map: slimes 0.3 px in 4 s, none touching;
+after, they came 65 px and three touched.
+
+- **swarm.gd**: `on_floor()` - within `FLOOR_SLACK` (16) of the floor and
+  not in the corridor - says whether a player is chased, and the crowd goes
+  for, and touches, `floor_point()`, the nearest point a slime may stand on
+  (`EDGE`, 6 px in). The party's others the same.
+- **endlessrun.gd**: `on_floor()` for `my_in` and the spawn's avoid points;
+  `in_arena()` (the floor itself) still places wind's spikes.
+
+`_test_the_horde_reaches_the_back_wall()` (testrunner_9).
+
 ### Every hit on a player lands at half (0.93.6)
 
 The owner, 28 Oct: "player needs to absorb more damage", "like take more
@@ -2494,6 +2514,59 @@ folder's MAPS_PLAN.txt; this is what was built.
 - **The backdrop stacks its runs (`mapbackdrop.gd` `_stacked()`).** Rows of
   runs, one above another with the same ends, are one rectangle: the new
   map was 2,667 rectangles in rows, a few hundred stacked.
+
+### The Field is built from a plan too (0.94.2)
+
+The owner, 28 Oct: "work on the next map field", then candidate B ("sounds
+good resume"). MAPS_PLAN.txt, THE FIELD CANDIDATES and BUILT, has the plan;
+this is what was built. Folded into 0.94.2, which had not shipped.
+
+- **The same three steps as the Big Field.** `tools/maps/field.py` (it
+  shares bigfield.py's rooms, routes and `walls.py`) writes
+  `tools/maps/field_build.json` (seed 38; the candidates were 33, 38 and
+  40); `src/tools/buildfield.gd`'s `build_field()` writes
+  `scene/field.tscn`; then the Field's spawns go into `data/gamedata.json`
+  and the API's copy. Change the plan, never the scene.
+- **buildfield.gd extends buildbigfield.gd** (by path, no class_name) and
+  overrides three things: `_ladder()` (ladderdown to bossarena.tscn,
+  `boss_entrance`, and the `boss_ladder` portal 27 px below it),
+  `_gates()` (the three spike doors `spikedoor`, `spikedoor2`, `spikedoor3`
+  on the root, the levers `levergatesout` and `levergatesin` aiming at
+  `../../../spikedoorN` - the names the suite and the server's lever
+  memory already knew) and `_monsters()` (a leash only when the plan gives
+  one: the Field's keep their own, a bush mage's 1,500). The Big Field's
+  builder gained `root_name` and nothing else; its build is unchanged.
+- **The map.** 150 x 108 tiles (2,400 x 1,728 px), about twice the old
+  Field. You arrive top left (`field_entrance`); a fire route (tier 4:
+  Coven, Elite, Swarm, Coven) over the top and down the right, a dark
+  route (tier 5: Splitters, Hunters, Nest, Coven) down the left and along
+  the bottom, round a solid middle nothing is dug through; both end in the
+  exit hall, where a plain Elite pack (a skeleton elite and two soldiers)
+  stands by the outer lever, the passage down has the spike gate across
+  it, and the ladder's room is below with the inner lever. 27 monsters in
+  9 packs, none within 400 px of the arrival; 3 crypt doors (below the
+  landing, between the last two fire rooms, into the exit hall).
+- **A door is solved first (`walls.py`).** The old solver could not fit a
+  door when both its columns' allowed lines were sparse. A door's band is
+  now given before solving (`e["door"]`), `_door_cost()` in `solve()`'s
+  `allowed()` keeps a line the door fits, and `pieces()` splits the column
+  round it. The Big Field's plan rebuilds to the same file byte for byte.
+- **Both maps' dressing is one check** (testrunner_1
+  `_check_dressed_map(scene_path, title, want)`: pieces, edges walled,
+  doors, levers, spikes, gate words, each land, what is behind the gate).
+  testrunner_9's `_test_the_field_is_dressed()` and `_test_the_field()`
+  hold the counts, the arrival, the guard nearest the outer lever, the
+  leashes, the spawns in gamedata.json against the scene, the ladder and
+  the road, and the builder's overrides. testrunner_7's slime check reads
+  both fields (the Field places dark smalls in its Splitters pack now).
+- **`placed_count` was stale since 0.94.0, and is counted again.** It is
+  every enemy scene's instances across every world scene, a small slime's
+  being eight a placed large plus the smalls a map places itself; the
+  0.94.0 Big Field went out with the old map's counts. Harmless - the
+  server's kill ceiling is eleven times the count per five minutes, and a
+  player is in one area - but copy gamedata.json whenever a map changes.
+  The API's test_pacing.py now counts the placed smalls, and
+  test_combatbook.py's two spawn fixtures use kinds the Field still has.
 
 ### Deleting inert code is how you find out what it was for
 

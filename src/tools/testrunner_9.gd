@@ -1,6 +1,7 @@
 # testrunner_9.gd - part 9 of the suite (testrunner.gd says how it is
-# split): 2 tests, _test_far_attacks_hit_the_swarm and
-# _test_a_fall_wakes_you_by_the_chest.
+# split): 5 tests, _test_far_attacks_hit_the_swarm,
+# _test_a_fall_wakes_you_by_the_chest, _test_the_horde_reaches_the_back_wall,
+# _test_the_field_is_dressed and _test_the_field.
 extends "res://src/tools/testrunner_8.gd"
 
 
@@ -282,3 +283,155 @@ func _test_a_fall_wakes_you_by_the_chest() -> void:
 	run.queue_free()
 	await get_tree().process_frame
 	print("  the fall and the chest: done")
+
+
+# =============================================================================
+# THE HORDE REACHES THE BACK WALL (0.94.2)
+# =============================================================================
+# The owner: "enemies stop moving on top side of map in minigame". A player's
+# origin is 13 px over its feet, so against the back wall it stands at y 22,
+# over the swarm's floor (y 34): the crowd chased nobody, stood still and
+# touched nobody, and the run did not count the player in.
+
+func _test_the_horde_reaches_the_back_wall() -> void:
+	section("THE HORDE REACHES THE BACK WALL - a player against it is on the floor (0.94.2)")
+	var SwarmScript: GDScript = load("res://src/world/endless/swarm.gd") as GDScript
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	if SwarmScript == null or Run == null:
+		check("the swarm and the run load", false)
+		return
+	# The arena as the map has it (endless.tscn), far from everything.
+	var o := Vector2(-58000, -58000)
+	var floor_rect := Rect2(o + Vector2(9, 34), Vector2(1518, 1344))
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("arena", floor_rect)
+	add_child(swarm)
+	swarm.set_process(false)
+	swarm.set_physics_process(false)
+	var me := Node2D.new()
+	me.add_to_group(&"player")
+	add_child(me)
+	# Where a warrior stands against the back wall: 12 px over the floor.
+	me.global_position = o + Vector2(700, 22)
+	check("a player against the back wall is on the crowd's floor",
+		bool(swarm.call("on_floor", me.global_position)) and not floor_rect.has_point(me.global_position))
+	var aim: Vector2 = swarm.call("floor_point", me.global_position)
+	check("  and the crowd goes for the nearest point of the floor to them",
+		aim == Vector2(me.global_position.x, floor_rect.position.y + SwarmScript.EDGE), aim)
+	var records := PackedInt32Array()
+	for k in 12:
+		var spot: Vector2 = me.global_position + Vector2(float(k % 4) * 20.0 - 30.0, 90.0 + floorf(float(k) / 4.0) * 20.0)
+		records.append_array(PackedInt32Array([k, 1, 50, roundi(spot.x), roundi(spot.y), Element.Type.LIGHT]))
+	swarm.call("import_alive", records)
+	var start: float = 0.0
+	for k in 12:
+		start += (swarm.get("py") as PackedFloat32Array)[k]
+	for i in 120:
+		swarm.call("_process", 1.0 / 30.0)
+	var end: float = 0.0
+	for k in 12:
+		end += (swarm.get("py") as PackedFloat32Array)[k]
+	check("  it comes for them", end < start - 12.0 * 40.0, [start / 12.0, end / 12.0])
+	check("  and touches them", int(swarm.get("_touching")) > 0, swarm.get("_touching"))
+	me.global_position = o + Vector2(700, -40)
+	check("off the map's floor nobody is chased", not bool(swarm.call("on_floor", me.global_position)))
+
+	var run: Node = Run.new()
+	var against: Vector2 = Vector2(700, 22)
+	check("the run counts a player against the back wall in",
+		bool(run.call("on_floor", against)) and not bool(run.call("in_arena", against)))
+	check("  but not one in the corridor", not bool(run.call("on_floor", Vector2(768, 1200))))
+	run.free()
+	me.queue_free()
+	swarm.queue_free()
+	await get_tree().process_frame
+	print("  the back wall: done")
+
+
+# =============================================================================
+# THE FIELD, BUILT FROM A PLAN (0.94.2)
+# =============================================================================
+# The owner: "work on the next map field". tools/maps/field.py (seed 38) and
+# src/tools/buildfield.gd, as the Big Field: you arrive top left from the Big
+# Field's ladder; the fire route over the top and down the right, the dark
+# route down the left and along the bottom, round a solid middle; the exit
+# hall's guard by the outer lever, the boss gate, the ladder below.
+const FIELD := "res://scene/field.tscn"
+const FIELD_PLAN := "res://tools/maps/field_build.json"
+const FIELD_MONSTERS := 27
+const FIELD_DOORS := 3
+const FIELD_LANDS := {"fire": 12, "dark": 12, "plain": 3}
+
+
+func _test_the_field_is_dressed() -> void:
+	_check_dressed_map(FIELD,
+		"THE FIELD, DRESSED - every edge walled in the crypt's own pieces, its doors and the boss gate in place (0.94.2)",
+		{"pieces": 300, "edges": 1000, "doors": FIELD_DOORS, "levers": 2, "spikes": 3,
+		"gates_words": "%d levers, one either side of the boss gate, each driving its three spikes",
+		"lands": {}, "behind": ["dark", "plain"],
+		"behind_words": "  and with the doors shut, the dark route and the exit hall are closed off behind them"})
+
+
+func _test_the_field() -> void:
+	section("THE FIELD - two routes round a solid middle, fire and dark, the guard at the levers (0.94.2)")
+	var area: Node = (load(FIELD) as PackedScene).instantiate()
+	var plan: Variant = JSON.parse_string(FileAccess.get_file_as_string(FIELD_PLAN))
+	check("the scene and its plan load", area != null and plan is Dictionary)
+	if area == null or not (plan is Dictionary):
+		if area != null:
+			area.free()
+		return
+	var enemies: Array = area.get_node("ysortworld/enemies").get_children()
+	var by_land: Dictionary = {}
+	for enemy in enemies:
+		var land: String = str(enemy.name).get_slice("_", 0)
+		by_land[land] = int(by_land.get(land, 0)) + 1
+	check("%d monsters, as the plan says: twelve of fire, twelve of the dark, three skeletons" % enemies.size(),
+		enemies.size() == FIELD_MONSTERS and (plan["monsters"] as Array).size() == FIELD_MONSTERS
+		and by_land == FIELD_LANDS, by_land)
+	var arrive: Vector2 = _area_xform(area.get_node("ysortworld/interactables/fieldteleport/arrivalmarker"), area).origin
+	var nearest: float = INF
+	for enemy in enemies:
+		nearest = minf(nearest, (enemy as Node2D).position.distance_to(arrive))
+	check("  none within 400 px of where you arrive", nearest >= 400.0, nearest)
+	var outside: Node2D = area.get_node_or_null("ysortworld/interactables/levergatesout") as Node2D
+	var guard: Node2D = null
+	for enemy in enemies:
+		if str(enemy.scene_file_path).ends_with("skeletonelite.tscn") and str(enemy.name).begins_with("plain"):
+			guard = enemy
+	var guarded: bool = outside != null and guard != null
+	if guarded:
+		for enemy in enemies:
+			if not str(enemy.name).begins_with("plain") \
+					and (enemy as Node2D).position.distance_to(outside.position) < guard.position.distance_to(outside.position):
+				guarded = false
+	check("the guard - a skeleton elite and two soldiers - stands nearer the outer lever than anything else", guarded)
+	var authored := true
+	for enemy in enemies:
+		var own: Node = (load(str(enemy.scene_file_path)) as PackedScene).instantiate()
+		authored = authored and is_equal_approx(float(enemy.get("leash_range")), float(own.get("leash_range")))
+		own.free()
+	check("  every monster keeps its own leash, as the old Field's did (a bush mage's 1,500)", authored)
+	# The export: the server's books know every monster where it stands.
+	var exported: Array = []
+	var areas: Variant = _load_gamedata().get("areas", {})
+	if areas is Dictionary and (areas as Dictionary).has("field"):
+		exported = (areas["field"] as Dictionary).get("spawns", [])
+	var missing: Array = []
+	for spawn in exported:
+		if not area.has_node(str(spawn.get("o", ""))):
+			missing.append(spawn.get("o"))
+	check("gamedata.json holds the Field's %d monsters where they stand (re-export and copy to the API if not)" % exported.size(),
+		exported.size() == enemies.size() and missing.is_empty(), missing.slice(0, 4))
+	# The road: the Big Field's ladder lands here, this ladder goes to the boss.
+	var down: Node = area.get_node_or_null("ysortworld/interactables/ladderdown")
+	var back: Node = area.get_node_or_null("ysortworld/interactables/ladderarrival")
+	check("the ladder down goes to the boss arena, and a climb back up lands beside it",
+		down != null and str(down.get("destination_scene_path")) == "res://scene/bossarena.tscn"
+		and str(down.get("target_spawn_id")) == "boss_entrance" and back != null and str(back.get("portal_id")) == "boss_ladder")
+	var builder: String = _code_src("res://src/tools/buildfield.gd")
+	check("  built by buildfield.gd, the Big Field's builder with the Field's own ladder, gate and leashes",
+		builder.contains("extends \"res://src/tools/buildbigfield.gd\"") and builder.contains("func _gates(")
+		and builder.contains("func _ladder(") and builder.contains("func _monsters("))
+	area.free()
+	print("  the Field: %d monsters %s, the guard at the levers" % [enemies.size(), by_land])

@@ -384,10 +384,17 @@ func in_arena(at: Vector2) -> bool:
 	return arena_rect.has_point(at) and not corridor_rect.has_point(at)
 
 
+func on_floor(at: Vector2) -> bool:
+	"""A PLAYER on the arena's floor: in_arena(), or against the back wall,
+	where a player's origin stands over the floor's edge (swarm.gd
+	FLOOR_SLACK, 0.94.2) - in the run, and not to have slimes born beside it."""
+	return arena_rect.grow(SwarmScript.FLOOR_SLACK).has_point(at) and not corridor_rect.has_point(at)
+
+
 func _process(delta: float) -> void:
 	var player: Node2D = _player()
 	my_in = (state == State.RUNNING or state == State.COUNTDOWN) and player != null \
-		and player.get("is_dying") != true and in_arena(player.global_position)
+		and player.get("is_dying") != true and on_floor(player.global_position)
 	_ease_floor(delta)
 	if state == State.WAITING:
 		if player != null and start_rect.has_point(player.global_position):
@@ -543,11 +550,11 @@ func _avoid_points() -> PackedVector2Array:
 	floor (this one's, and the others as drawn here)."""
 	var points := PackedVector2Array()
 	var player: Node2D = _player()
-	if player != null and in_arena(player.global_position):
+	if player != null and on_floor(player.global_position):
 		points.append(player.global_position)
 	if party != null:
 		for at in party.call("other_positions"):
-			if in_arena(at):
+			if on_floor(at):
 				points.append(at)
 	if points.is_empty():
 		points.append(arena_rect.get_center())

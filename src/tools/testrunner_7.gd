@@ -975,7 +975,10 @@ func _test_the_game_has_a_pace() -> void:
 	check("level 22 in about eight hours", at[22] > 7.0 and at[22] < 9.0, snappedf(at[22], 0.01))
 
 	# ---- the slimes, as data ------------------------------------------------
-	var field_text := FileAccess.get_file_as_string("res://scene/field.tscn")
+	# Both fields: the Big Field holds every land's slimes and the Field the
+	# dark's (0.94.2), a Splitters pack a large and two smalls.
+	var field_text := FileAccess.get_file_as_string("res://scene/field.tscn") \
+		+ FileAccess.get_file_as_string("res://scene/bigfield.tscn")
 	for el in _SLIME_ELEMENTS:
 		var large := _enemy_fields(el + "slimelarge")
 		var small := _enemy_fields(el + "slime")
@@ -992,9 +995,8 @@ func _test_the_game_has_a_pace() -> void:
 		check("  and a small's arrow hits for about three quarters of a normal hit",
 			absf(int(small.get("projectile_damage", "0")) - 0.75 * element_hit[el]) <= 1.0,
 			[small.get("projectile_damage"), element_hit[el]])
-		check("  the field places the large, not the small",
-			field_text.contains('path="res://scene/enemy/%sslimelarge.tscn"' % el)
-			and not field_text.contains('path="res://scene/enemy/%sslime.tscn"' % el))
+		check("  the fields place the large",
+			field_text.contains('path="res://scene/enemy/%sslimelarge.tscn"' % el))
 
 	# ---- the slimes, alive --------------------------------------------------
 	var holder := Node2D.new()

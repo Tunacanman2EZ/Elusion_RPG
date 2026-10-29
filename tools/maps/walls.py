@@ -16,6 +16,11 @@ every run and every column comes out as a sum of whole pieces.
 
 Edges against the chasm are "open": no wall, the tiles' rims and cliffs edge
 the floor there, and a column meeting one stops on its cell line.
+
+A column a crypt door's wall crosses carries e["door"] = (top, bottom), the
+band in px the door's wall takes: solve() then fits the column's two parts
+round it, each whole pieces (the Field's doors, field.py). Without it nothing
+changes - the Big Field places its doors after solving.
 """
 from functools import lru_cache
 
@@ -354,6 +359,18 @@ def _cost(e, length, lo=None, hi=None):
     return SIDE_C[length]
 
 
+def _door_cost(e, s, t):
+    """A column a door's wall crosses (e["door"], the band (top, bottom) in
+    px it leaves out): both parts whole pieces, each at least a short one."""
+    g0, g1 = e["door"]
+    a, b = int(round(g0 - s)), int(round(t - g1))
+    if a < 35 or b < 35 or a > MAXLEN or b > MAXLEN:
+        return None
+    if SIDE_C[a] is None or SIDE_C[b] is None:
+        return None
+    return SIDE_C[a] + SIDE_C[b]
+
+
 def solve(loop):
     """Each edge's line P, so that every run and column is whole pieces.
     Returns {index: P} or raises ValueError naming the edge that cannot fit."""
@@ -380,6 +397,8 @@ def solve(loop):
             lo, hi = _ends(e, loop[i], loop[j])
             plo, phi = (a, b) if lo is loop[i] else (b, a)
             s, t = run_span(e, lo, hi, plo, phi)
+            if "door" in e:
+                return _door_cost(e, s, t)
             return _cost(e, int(round(t - s)), lo, hi)
 
         best = None
@@ -471,6 +490,9 @@ def pieces(loop, P, cuts=None):
             parts = [(s, t)]
             if i in cuts:
                 g0, g1 = cuts[i]
+                parts = [(s, g0), (g1, t)]
+            elif "door" in e:
+                g0, g1 = e["door"]
                 parts = [(s, g0), (g1, t)]
             for (a, b) in parts:
                 seq = side_run(int(round(b - a)))

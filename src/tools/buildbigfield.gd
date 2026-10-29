@@ -44,6 +44,8 @@ const LEASH := 250.0
 
 var _root: Node2D = null
 var _cache: Dictionary = {}
+# The scene's root node's name (buildfield.gd, which extends this, says "field").
+var root_name: String = "bigfield"
 
 
 func build(build_path: String = BUILD, out_path: String = OUT) -> int:
@@ -60,7 +62,7 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 		return ERR_FILE_NOT_FOUND
 
 	_root = Node2D.new()
-	_root.name = "bigfield"
+	_root.name = root_name
 	_root.set_script(load("res://src/world/field.gd"))
 	_root.set("bullet_zone", true)
 
