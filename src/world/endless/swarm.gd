@@ -38,7 +38,7 @@
 # two on one would take every blow twice.
 #
 # IT HITS BACK BY TOUCH: every TOUCH_SECONDS the player takes one hit,
-# touch_damage for each swarmling against them up to TOUCH_MOST, through
+# touch_damage for each swarmling within BITE of them up to TOUCH_MOST, through
 # Player.take_damage() - armour, resistance, god mode and the defence XP as
 # for any hit.
 #
@@ -115,6 +115,20 @@ const ROOM_REACH := 260.0
 const TOUCH := 14.0
 # How near the arena's edge a slime may stand.
 const EDGE := 6.0
+# NOT BEHIND THE WALLS (0.96.0). The owner: "slimes are going behind walls".
+# A slime's picture is wider than its feet - 17 px to the left of them, 15 to
+# the right - and the side walls and the corridor's are y-sorted props drawn
+# over the crowd, so one held EDGE from a side wall had half its body under
+# the wall. Held SIDE_EDGE from the side walls and HELD_OUT_SIDES further out
+# of the corridor, every body stays clear of them; the crowd still touches a
+# player against them (floor_point()).
+const SIDE_EDGE := 18.0
+const HELD_OUT_SIDES := 16.0
+# And the back wall: a picture reaches PICTURE_TOP above the feet (a hop all
+# of it), so the slimes within that of the wall's foot are drawn by a second
+# MultiMesh sorted just in front of the wall (draw_in_front_of()) - over the
+# wall they stand before, as y-sorting would draw them.
+const PICTURE_TOP := 42.0
 # A PLAYER AGAINST THE BACK WALL IS STILL ON THE FLOOR (0.94.2). The owner:
 # "enemies stop moving on top side of map in minigame". A player's origin is
 # 13 px over its feet, so against the back wall it stands at y 22 - over the
@@ -125,7 +139,15 @@ const EDGE := 6.0
 # (floor_point()).
 const FLOOR_SLACK := 16.0
 const TOUCH_SECONDS := 0.5
-const TOUCH_MOST := 5
+# A CROWD ROUND YOU IS DEADLY (0.96.0). The owner: "make sure more then 3
+# slimes are attacking the player when surrounded stopping in a crowd should
+# be deadly". Only the front rank bit - those within TOUCH, 4 or 5 round a
+# still player, at most 5 counted. Now every one within BITE bites: both
+# ranks, about 15 to 18 round a still player in a crowd of 300 (zz/crowdcount
+# measured 15, 17 and 18 at speeds 60, 110 and 175), at most TOUCH_MOST. One
+# who keeps moving leaves most of the crowd behind them.
+const BITE := 26.0
+const TOUCH_MOST := 16
 # THE LAND'S EFFECT RIDES THE TOUCH (0.93.3, the owner: "we need to really
 # feel each elements effect"): a touch that hurts you also puts `touch_effect`
 # on you (statuseffects.gd), at most once every EFFECT_GAP seconds - a crowd
@@ -141,7 +163,8 @@ const PROXY_REACH := 420.0
 # FOCUS_GROUP, each reaching its swarm_reach() (FOCUS_REACH without one) plus
 # FOCUS_MARGIN - a flying axe covers 16 px between two steps.
 const FOCUS_GROUP := &"swarm_focus"
-const FOCUS_PROXIES := 96
+# 160 since 0.96.0: a warrior's waves and orbs are in it too.
+const FOCUS_PROXIES := 160
 const FOCUS_REACH := 44.0
 const FOCUS_MARGIN := 24.0
 # Drawn the size of the Field's small slimes.
@@ -220,9 +243,19 @@ var _room_head := PackedInt32Array()
 var _room_next := PackedInt32Array()
 var _gw: int = 1
 var _gh: int = 1
+# The free slimes by CELL square, for the stand-ins round attacks
+# (_focus_shares()): the first in each square, and the next after each.
+var _focus_head := PackedInt32Array()
+var _focus_next := PackedInt32Array()
 var _mesh: MultiMeshInstance2D = null
 var _material: ShaderMaterial = null
 var _buffer := PackedFloat32Array()
+# IN FRONT OF THE BACK WALL (draw_in_front_of()): slimes whose feet are above
+# front_line are drawn by _front, which y-sorts at _front_y.
+var front_line: float = -INF
+var _front_y: float = 0.0
+var _front: MultiMeshInstance2D = null
+var _front_buffer := PackedFloat32Array()
 var _proxies: Array = []
 # The swarmlings the stand-ins stand on (_place_proxies()): the first PROXIES
 # the player's, the rest the attacks'.
@@ -260,6 +293,8 @@ func _init() -> void:
 func _ready() -> void:
 	_rng.randomize()
 	_build_mesh()
+	if front_line > -INF:
+		_build_front()
 	for i in PROXIES + FOCUS_PROXIES:
 		var proxy: Node2D = SwarmProxy.new()
 		proxy.set("swarm", self)
@@ -269,6 +304,34 @@ func _ready() -> void:
 
 
 func _build_mesh() -> void:
+	_mesh = _make_mesh("drawn")
+	_mesh.z_index = DRAW_Z
+	add_child(_mesh)
+
+
+func draw_in_front_of(wall_foot: float) -> void:
+	"""A wall along the arena's top with its foot at `wall_foot`: the slimes
+	whose pictures reach over it are drawn in front of it (PICTURE_TOP)."""
+	front_line = wall_foot + PICTURE_TOP
+	_front_y = wall_foot + 1.0
+	if _mesh != null and _front == null:
+		_build_front()
+
+
+func _build_front() -> void:
+	# SORTED WITH THE WORLD: this node y-sorts its children with the y-sorted
+	# world it is in, so _front, placed a pixel past the wall's foot, is drawn
+	# after the wall and before anybody standing south of it. _mesh is z -1,
+	# under all of it, as ever.
+	y_sort_enabled = true
+	_front_buffer.resize(MOST * 16)
+	_front = _make_mesh("drawnfront")
+	_front.position = Vector2(0.0, _front_y)
+	add_child(_front)
+	set_arena(arena)
+
+
+func _make_mesh(mesh_name: String) -> MultiMeshInstance2D:
 	# A quad the size of one cell of the sheet, its feet at the origin - the
 	# Field's slime draws its cell 18 px above its feet.
 	var half: float = 24.0 * DRAW_SCALE
@@ -289,15 +352,15 @@ func _build_mesh() -> void:
 	multi.mesh = quad
 	multi.instance_count = MOST
 	multi.visible_instance_count = 0
-	_material = ShaderMaterial.new()
-	_material.shader = SHADER
-	_mesh = MultiMeshInstance2D.new()
-	_mesh.name = "drawn"
-	_mesh.multimesh = multi
-	_mesh.texture = SHEET
-	_mesh.material = _material
-	_mesh.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_mesh.z_index = DRAW_Z
+	if _material == null:
+		_material = ShaderMaterial.new()
+		_material.shader = SHADER
+	var made := MultiMeshInstance2D.new()
+	made.name = mesh_name
+	made.multimesh = multi
+	made.texture = SHEET
+	made.material = _material
+	made.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	# NOT PHYSICS-INTERPOLATED (0.93.5). The owner, with a video: "they are
 	# litterally zipping accross the field", "when they jump their graphics
 	# split accross the screen". The project interpolates physics, and Godot
@@ -311,9 +374,9 @@ func _build_mesh() -> void:
 	# shader's own (`blend`, from bx/by), so there is nothing for the engine
 	# to blend: off on the node and on the MultiMesh, as bulletfield.gd's
 	# orbs (12 Oct).
-	_mesh.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	add_child(_mesh)
+	made.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	RenderingServer.multimesh_set_physics_interpolated(multi.get_rid(), false)
+	return made
 
 
 func set_arena(rect: Rect2) -> void:
@@ -324,6 +387,9 @@ func set_arena(rect: Rect2) -> void:
 	if _mesh != null:
 		_mesh.multimesh.custom_aabb = AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0, -1.0),
 			Vector3(rect.size.x + 128.0, rect.size.y + 128.0, 2.0))
+	if _front != null:
+		_front.multimesh.custom_aabb = AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0 - _front_y, -1.0),
+			Vector3(rect.size.x + 128.0, front_line - rect.position.y + 128.0, 2.0))
 	_gw = maxi(1, int(ceil(rect.size.x / CELL)))
 	_gh = maxi(1, int(ceil(rect.size.y / CELL)))
 	_grid.resize(_gw * _gh)
@@ -601,7 +667,7 @@ func on_floor(at: Vector2) -> bool:
 func floor_point(at: Vector2) -> Vector2:
 	"""The nearest point to `at` that a slime may stand on: what the crowd
 	goes for, and touches."""
-	return Vector2(clampf(at.x, arena.position.x + EDGE, arena.end.x - EDGE),
+	return Vector2(clampf(at.x, arena.position.x + SIDE_EDGE, arena.end.x - SIDE_EDGE),
 		clampf(at.y, arena.position.y + EDGE, arena.end.y - EDGE))
 
 
@@ -657,8 +723,8 @@ func _step(target: Vector2, chasing: bool) -> void:
 				near.append(i)
 	_near = near
 	_make_room(hx, hy, side)
-	var left: float = arena.position.x + EDGE
-	var right: float = arena.end.x - EDGE
+	var left: float = arena.position.x + SIDE_EDGE
+	var right: float = arena.end.x - SIDE_EDGE
 	var top: float = arena.position.y + EDGE
 	var bottom: float = arena.end.y - EDGE
 	var stride: float = speed * STEP
@@ -710,10 +776,11 @@ func _step(target: Vector2, chasing: bool) -> void:
 		var here: int = _grid[gy2 * gw + gx2]
 		var against: bool = false
 		if best < INF:
+			# Only this game's player is hurt here (each by their own copy):
+			# by every slime within BITE of them, the second rank too.
+			if mine and d <= BITE:
+				touching += 1
 			if d <= TOUCH:
-				# Only this game's player is hurt here (each by their own copy).
-				if mine:
-					touching += 1
 				against = true
 			elif d > 0.001:
 				# A little sideways wander, its own and slow, so a crowd does
@@ -753,14 +820,19 @@ func _step(target: Vector2, chasing: bool) -> void:
 		# Its own room, if it is near (_make_room()).
 		mx += _rx[i] * ROOM_PUSH * STEP
 		my += _ry[i] * ROOM_PUSH * STEP
-		# Carried from the last step, never a full turn at once.
-		mx = lerpf(vx[i], mx, STEER)
-		my = lerpf(vy[i], my, STEER)
+		# Carried from the last step, never a full turn at once - but at the
+		# player it stops: carried on at a late stage's stride (up to 8.75 px a
+		# step, endlessrun.gd stage_speed()) it slid through them and back.
+		var steer: float = 1.0 if against else STEER
+		mx = lerpf(vx[i], mx, steer)
+		my = lerpf(vy[i], my, steer)
 		vx[i] = mx
 		vy[i] = my
 		x = clampf(x + mx, left, right)
 		y = clampf(y + my, top, bottom)
-		for rect in keep_out:
+		for kept in keep_out:
+			# Its walls' width further out at the sides (HELD_OUT_SIDES).
+			var rect: Rect2 = kept.grow_individual(HELD_OUT_SIDES, 0.0, HELD_OUT_SIDES, 0.0)
 			if rect.has_point(Vector2(x, y)):
 				# Out the nearest side.
 				# Never out a side that leaves the floor: a corridor walled
@@ -835,33 +907,47 @@ func _write_buffer() -> void:
 	(flash, dying, shown) and the custom data (the step back, facing and
 	phase, hue)."""
 	_sort_order()
-	var buf: PackedFloat32Array = _buffer
+	# Back to front, so the ones in front of the back wall (above front_line)
+	# are the first of the order: those go to _front, a pixel past the wall's
+	# foot, and the rest to _mesh.
+	var back: PackedFloat32Array = _buffer
+	var front: PackedFloat32Array = _front_buffer
+	var in_front: int = 0
 	var k: int = 0
 	for i in _order:
 		var s: int = state[i]
-		buf[k] = 1.0
-		buf[k + 1] = 0.0
-		buf[k + 2] = 0.0
-		buf[k + 3] = px[i]
-		buf[k + 4] = 0.0
-		buf[k + 5] = 1.0
-		buf[k + 6] = 0.0
-		buf[k + 7] = py[i]
-		buf[k + 8] = flash[i] / FLASH_SECONDS if s == 1 else 0.0
-		buf[k + 9] = clampf(timer[i] / DYING_SECONDS, 0.01, 1.0) if s == 2 else 0.0
-		buf[k + 10] = 0.0
-		buf[k + 11] = 1.0
-		buf[k + 12] = bx[i] - px[i]
-		buf[k + 13] = by[i] - py[i]
-		buf[k + 14] = float(facing[i]) + phase[i] * 0.99
-		buf[k + 15] = hue[i]
-		k += 16
+		var to_front: bool = _front != null and py[i] < front_line
+		var buf: PackedFloat32Array = front if to_front else back
+		var at: int = (in_front if to_front else k) * 16
+		buf[at] = 1.0
+		buf[at + 1] = 0.0
+		buf[at + 2] = 0.0
+		buf[at + 3] = px[i]
+		buf[at + 4] = 0.0
+		buf[at + 5] = 1.0
+		buf[at + 6] = 0.0
+		buf[at + 7] = py[i] - _front_y if to_front else py[i]
+		buf[at + 8] = flash[i] / FLASH_SECONDS if s == 1 else 0.0
+		buf[at + 9] = clampf(timer[i] / DYING_SECONDS, 0.01, 1.0) if s == 2 else 0.0
+		buf[at + 10] = 0.0
+		buf[at + 11] = 1.0
+		buf[at + 12] = bx[i] - px[i]
+		buf[at + 13] = by[i] - py[i]
+		buf[at + 14] = float(facing[i]) + phase[i] * 0.99
+		buf[at + 15] = hue[i]
+		if to_front:
+			in_front += 1
+		else:
+			k += 1
 	var multi: MultiMesh = _mesh.multimesh
 	# The whole buffer, always: MultiMesh takes one of exactly its size. Past
 	# the order's end it holds old cells, and visible_instance_count draws
 	# none of them.
-	multi.buffer = buf
-	multi.visible_instance_count = _order.size()
+	multi.buffer = back
+	multi.visible_instance_count = k
+	if _front != null:
+		_front.multimesh.buffer = front
+		_front.multimesh.visible_instance_count = in_front
 
 
 func _sort_order() -> void:
@@ -958,14 +1044,14 @@ func _place_proxies() -> void:
 				_held[p] = i
 				taken[i] = true
 	if empty_focus > 0 and not foci.is_empty():
-		# Nearest the middle of an attack first, by thirds of its reach.
+		# Nearest the middle of an attack first, by thirds of its reach - found
+		# through the cells round each attack (_focus_shares()), not by asking
+		# every slime about every attack: a warrior's waves and orbs are
+		# dozens of attacks at once (0.96.0).
+		var shares: Dictionary = _focus_shares(foci, taken)
 		var near: Array = [[], [], []]
-		for i in _high:
-			if state[i] != 1 or taken.has(i):
-				continue
-			var share: float = _near_focus(i, foci)
-			if share <= 1.0:
-				(near[mini(2, int(share * 3.0))] as Array).append(i)
+		for i in shares:
+			(near[mini(2, int(float(shares[i]) * 3.0))] as Array).append(i)
 		var q: int = PROXIES
 		for band in near:
 			for i in band:
@@ -975,6 +1061,49 @@ func _place_proxies() -> void:
 					break
 				_held[q] = i
 	_move_proxies()
+
+
+func _focus_shares(foci: Array, taken: Dictionary) -> Dictionary:
+	"""Every free swarmling within an attack's reach -> how far it stands from
+	the nearest one's middle, as a share of that reach (_near_focus()'s
+	answer): the slimes are put in CELL squares once, and each attack looks
+	only in the squares it covers."""
+	var cells: int = _gw * _gh
+	if _focus_head.size() != cells:
+		_focus_head.resize(cells)
+	_focus_head.fill(-1)
+	if _focus_next.size() != MOST:
+		_focus_next.resize(MOST)
+	var ox: float = arena.position.x
+	var oy: float = arena.position.y
+	for i in _high:
+		if state[i] != 1 or taken.has(i):
+			continue
+		var c: int = clampi(int((py[i] - oy) / CELL), 0, _gh - 1) * _gw + clampi(int((px[i] - ox) / CELL), 0, _gw - 1)
+		_focus_next[i] = _focus_head[c]
+		_focus_head[c] = i
+	var best: Dictionary = {}
+	for focus in foci:
+		var fx: float = focus[0]
+		var fy: float = focus[1]
+		var reach: float = maxf(1.0, focus[2])
+		var x0: int = clampi(int(floorf((fx - reach - ox) / CELL)), 0, _gw - 1)
+		var x1: int = clampi(int(floorf((fx + reach - ox) / CELL)), 0, _gw - 1)
+		var y0: int = clampi(int(floorf((fy - reach - oy) / CELL)), 0, _gh - 1)
+		var y1: int = clampi(int(floorf((fy + reach - oy) / CELL)), 0, _gh - 1)
+		for cy in range(y0, y1 + 1):
+			for cx in range(x0, x1 + 1):
+				var i: int = _focus_head[cy * _gw + cx]
+				while i >= 0:
+					var dx: float = px[i] - fx
+					var dy: float = py[i] - fy
+					var d2: float = dx * dx + dy * dy
+					if d2 <= reach * reach:
+						var share: float = sqrt(d2) / reach
+						if share < float(best.get(i, INF)):
+							best[i] = share
+					i = _focus_next[i]
+	return best
 
 
 func focus_points() -> Array:

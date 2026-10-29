@@ -164,6 +164,9 @@ enum State { WAITING, RUNNING, OVER, COUNTDOWN }
 
 # Set by the scene (src/tools/buildendless.gd writes them).
 @export var arena_rect: Rect2 = Rect2(24, 24, 1488, 1344)
+# How far the floor's top is below the back wall's foot (buildendless.gd
+# SWARM_BACK_GAP): the swarm draws the slimes before that wall in front of it.
+const BACK_WALL_GAP := 6.0
 @export var corridor_rect: Rect2 = Rect2(690, 980, 160, 420)
 @export var start_rect: Rect2 = Rect2(729, 930, 78, 52)
 @export var wake_spot: Vector2 = Vector2(768, 1290)
@@ -224,6 +227,9 @@ func _ready() -> void:
 	swarm = SwarmScript.new()
 	swarm.set("arena", arena_rect)
 	(swarm.get("keep_out") as Array).append(corridor_rect)
+	# Drawn in front of the back wall they stand before (0.96.0, swarm.gd
+	# PICTURE_TOP): its foot is BACK_WALL_GAP over the floor's top.
+	swarm.call("draw_in_front_of", arena_rect.position.y - BACK_WALL_GAP)
 	var ground: Node = get_parent().get_node_or_null("ysortworld/groundeffects")
 	(ground if ground != null else get_parent()).add_child.call_deferred(swarm)
 	_hud = (load("res://src/world/endless/endlesshud.gd") as GDScript).new()
@@ -275,8 +281,19 @@ static func stage_health(stage_number: int) -> float:
 	return 24.0 * pow(1.22, maxi(1, stage_number) - 1)
 
 
+# FASTER AS IT GOES (0.96.0). The owner: "slimes need a speed buff as things
+# progress". It was 50 + 3 a stage, held at 95 - slower than any class walks
+# (140 to 200), so from the first stage to the last a player could always
+# walk off. Now SPEED_STEP a stage up to SPEED_MOST at stage 21: past the
+# healer's walk from stage 16, the tank's from 19, the mage's from 20; never
+# the warrior's walk, nor anybody's sprint (x1.5).
+const SPEED_START := 50.0
+const SPEED_STEP := 6.0
+const SPEED_MOST := 175.0
+
+
 static func stage_speed(stage_number: int) -> float:
-	return minf(95.0, 50.0 + 3.0 * float(maxi(1, stage_number)))
+	return minf(SPEED_MOST, SPEED_START + SPEED_STEP * float(maxi(1, stage_number)))
 
 
 static func stage_touch(stage_number: int) -> int:

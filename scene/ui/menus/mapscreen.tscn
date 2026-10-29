@@ -8,10 +8,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -240.0
-offset_right = 260.0
-offset_bottom = 240.0
+offset_left = -580.0
+offset_top = -320.0
+offset_right = 580.0
+offset_bottom = 320.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_mapscreen")
@@ -64,16 +64,25 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="mapcentre" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer/mapframe"]
-layout_mode = 2
-
-[node name="mapview" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapcentre"]
+[node name="mapview" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/mapframe"]
 unique_name_in_owner = true
+clip_contents = true
 texture_filter = 1
 layout_mode = 2
+expand_mode = 1
 stretch_mode = 5
 
-[node name="mapmarkers" type="Control" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapcentre/mapview"]
+[node name="mapground" type="Control" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapview"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="mapmarkers" type="Control" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapview"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -97,3 +106,27 @@ theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 11
 text = "0% explored"
 vertical_alignment = 1
+
+[node name="mapzoomout" type="Button" parent="mainpanel/margincontainer/vboxcontainer/footerrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 24)
+layout_mode = 2
+tooltip_text = "Zoom the map out (or turn the mouse wheel over it)"
+theme_override_font_sizes/font_size = 14
+text = "-"
+
+[node name="mapzoomin" type="Button" parent="mainpanel/margincontainer/vboxcontainer/footerrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 24)
+layout_mode = 2
+tooltip_text = "Zoom the map in (or turn the mouse wheel over it), then drag it to look around"
+theme_override_font_sizes/font_size = 14
+text = "+"
+
+[node name="mapwhole" type="Button" parent="mainpanel/margincontainer/vboxcontainer/footerrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+tooltip_text = "Show the whole map again"
+theme_override_font_sizes/font_size = 12
+text = "Whole map"

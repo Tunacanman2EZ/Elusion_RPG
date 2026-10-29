@@ -15,16 +15,32 @@
 # it kept from last time.
 #
 # =============================================================================
-# THE SCALE IS A WHOLE NUMBER, ALWAYS
+# THE WHOLE MAP, AS BIG AS THE WINDOW (0.96.0)
 # =============================================================================
-# The field is 126 x 108 pixels and the frame it goes in is around 500 x 380,
-# so the honest fit is 3.5x. Drawn at 3.5x, a one-pixel tile lands on three
-# screen pixels in some columns and four in others, and a map made of straight
-# coastlines comes out with a stutter in it.
+# The owner, of the Big Field and the new Field: "i need players to be able to
+# see the whole map". The window fills most of the screen (1160 x 640 as
+# drawn, and it resizes), the picture fits it at ANY scale, and ground not yet
+# walked is drawn too, darker (WorldMap.display_image(area, true)).
 #
-# So it is floored to 3x and centred. Losing a little of the frame is invisible;
-# a shimmering grid is not. The same reasoning the HUD readouts use for their
-# font sizes, and why the TextureRect is texture_filter = nearest.
+# IT WAS A WHOLE NUMBER, ALWAYS, and that is why it could not grow: the Big
+# Field is 385 x 322 tiles, which fits a 600 px frame once and not twice, so
+# it was drawn at 1x in any window. Drawn at a fraction with nearest
+# filtering, a one-pixel tile lands on three screen pixels in some columns and
+# four in others - the stutter the old rule was for. So the picture is first
+# blown up by a whole number with nearest filtering (sharpen(), MAX_SHARPEN)
+# and drawn from there, smoothly (with mipmaps) while it is smaller than that
+# on screen and pixel for pixel past it: straight edges at any size.
+#
+# ZOOM AND DRAG (0.96.0). The owner: "i meant the map not the player ... i
+# meant map in hud" - the map is what had to zoom out. It opens on the whole
+# area; the mouse wheel over it zooms in and out where the pointer is, a drag
+# moves it, and -, + and Whole map in its footer do the same for a finger.
+# _zoom is a multiple of the whole-area fit (1 is all of it, at most a tile
+# MAX_TILE_PX across); _centre is the map pixel at the middle of the view.
+#
+# THE PICTURE DOES NOT SIZE THE WINDOW. %mapview fills the frame and clips;
+# %mapground draws the picture at _offset, _fit (_layout()), so a window made
+# smaller by hand is not held open by its own map.
 extends Control
 
 
@@ -39,12 +55,17 @@ signal closed
 # CONSTANTS
 # =============================================================================
 
-const MIN_SCALE := 1
-const MAX_SCALE := 8
+# How far sharpen() blows the picture up, at most, and the largest side it
+# may reach. Past MAX_SHARPEN screen pixels a tile it is drawn pixel for pixel
+# (nearest), where a column one pixel wider than the next does not show.
+const MAX_SHARPEN := 6
+const MAX_TEXTURE := 4096
 
-# What _fit_scale() returns on the one frame before the frame has been laid
-# out and has no size to measure against. See the note at its use.
-const FALLBACK_SCALE := 4
+# ZOOM AND DRAG: a notch of the wheel, a press of - or +, and the closest it
+# goes - a tile this many interface pixels across (48 is the game's own 3x).
+const WHEEL_STEP := 1.25
+const BUTTON_STEP := 1.6
+const MAX_TILE_PX := 24.0
 
 # The arrow. Drawn rather than authored, because it is four points and an
 # artist should not be asked for a triangle.
@@ -80,9 +101,10 @@ const MARKER_SIZE := 7.0
 # anywhere gets a pin without a line of code. The group is joined in each
 # landmark's _init(); see bankchest.gd for the pattern.
 #
-# FOG APPLIES. A landmark whose tile has not been seen is not drawn, for the
-# same reason the terrain under it is not: the map is what you have walked,
-# and a pin in the dark is a spoiler with an icon.
+# EVERY PIN, WALKED OR NOT (0.96.0). They were drawn only on ground you had
+# seen - "a pin in the dark is a spoiler with an icon" - and now the whole
+# area is drawn, so the pins are too: where the ladder is, is what a big map
+# is opened for. Monsters still show only on ground you have seen.
 const LANDMARK_GROUP := "map_landmarks"
 
 # Kind -> [16px icon, or "" for a drawn glyph; pin colour].
@@ -121,6 +143,10 @@ const LABEL_FONT_SIZE := 11
 @onready var frame:          Control     = get_node_or_null("%mapframe")
 @onready var view:           TextureRect = get_node_or_null("%mapview")
 @onready var markers:        Control     = get_node_or_null("%mapmarkers")
+@onready var ground:         Control     = get_node_or_null("%mapground")
+@onready var zoom_out_button: Button     = get_node_or_null("%mapzoomout")
+@onready var zoom_in_button:  Button     = get_node_or_null("%mapzoomin")
+@onready var whole_button:    Button     = get_node_or_null("%mapwhole")
 
 
 # =============================================================================
@@ -130,7 +156,18 @@ const LABEL_FONT_SIZE := 11
 var player: Node = null
 
 var _area: String = ""
-var _scale: int = 1
+# Where the picture is drawn in the marker layer: map pixel p is at
+# _offset + p * _fit (_layout()).
+var _fit: float = 1.0
+var _offset := Vector2.ZERO
+# ZOOM AND DRAG: how far in (1 is the whole area), the map pixel at the middle
+# of the view (negative: the map's own middle), and a drag under way.
+var _zoom: float = 1.0
+var _centre := Vector2(-1.0, -1.0)
+var _dragging: bool = false
+# The picture, blown up _sharp times (refresh()).
+var _picture: Texture2D = null
+var _sharp: int = 1
 
 # Collected on refresh(), not per frame: a landmark does not move, and the
 # group walk plus a fog lookup each is not work to redo sixty times a second
@@ -168,6 +205,18 @@ func _ready() -> void:
 
 	if markers != null:
 		markers.draw.connect(_draw_markers)
+	# A window resized by hand fits the picture again.
+	if view != null:
+		view.resized.connect(_on_view_resized)
+		view.gui_input.connect(_on_view_input)
+	if ground != null:
+		ground.draw.connect(_draw_ground)
+	if zoom_out_button != null:
+		zoom_out_button.pressed.connect(zoom_by.bind(1.0 / BUTTON_STEP))
+	if zoom_in_button != null:
+		zoom_in_button.pressed.connect(zoom_by.bind(BUTTON_STEP))
+	if whole_button != null:
+		whole_button.pressed.connect(show_whole)
 
 	visible = false
 
@@ -191,6 +240,9 @@ func set_player(p: Node) -> void:
 
 func open() -> void:
 	visible = true
+	# OPENS ON THE WHOLE AREA, every time: that is what it is opened for.
+	_zoom = 1.0
+	_centre = Vector2(-1.0, -1.0)
 	refresh()
 
 
@@ -216,50 +268,162 @@ func refresh() -> void:
 		_hover = -1
 		return
 
-	var image: Image = WorldMap.display_image(_area)
+	var image: Image = WorldMap.display_image(_area, true)
 	if image == null:
 		return
 
 	if view != null:
-		view.texture = ImageTexture.create_from_image(image)
-		_scale = _fit_scale(image.get_size())
-		# custom_minimum_size, not scale: scaling a Control scales its children
-		# and its input rect too, and the marker layer is a child. Sizing the
-		# TextureRect and letting stretch_mode fill it keeps the arrow's
-		# coordinate space the same as the panel's.
-		view.custom_minimum_size = Vector2(image.get_size()) * float(_scale)
+		var big: Image = sharpen(image, MAX_SHARPEN)
+		_sharp = maxi(1, big.get_width() / maxi(1, image.get_width()))
+		# Mipmaps, for drawing it smaller than it is without dropping rows.
+		big.generate_mipmaps()
+		_picture = ImageTexture.create_from_image(big)
+		view.texture = null
+		view.custom_minimum_size = Vector2.ZERO
+		_layout()
 
 	if header_label != null:
 		header_label.text = AreaRegistry.display_name(_area) if _area != "" else "Map"
 
 	if explored_label != null:
-		explored_label.text = "%d%% explored" % roundi(
+		explored_label.text = "%d%% explored - the darker ground is still to explore" % roundi(
 			WorldMap.explored_fraction(_area) * 100.0)
 
 	_collect_landmarks()
 
 
-func _fit_scale(image_size: Vector2i) -> int:
-	# NOT `size`. This script extends Control, which already has a `size`
-	# property, and a parameter by that name shadows it — so `frame.size`
-	# below still means the frame but a bare `size` would mean the argument.
-	# Godot warns about it; the warning is right.
-	if frame == null or image_size.x <= 0 or image_size.y <= 0:
-		return 1
-	var room: Vector2 = frame.size
-	if room.x <= 0.0 or room.y <= 0.0:
-		# Before the first layout pass the frame has no size yet. Guessing at
-		# 1x here would be a map the size of a postage stamp for one frame;
-		# the next refresh() corrects it, and opening the panel calls one.
-		#
-		# A constant rather than MAX_SCALE / 2, which Godot flagged as an
-		# integer division. It was not a rounding bug — 8 / 2 is exact — but
-		# the expression implied a relationship that isn't real: this number
-		# is "a sensible guess for one frame", not "half the maximum", and
-		# raising MAX_SCALE should not quietly change it.
-		return FALLBACK_SCALE
-	var fit: int = int(min(room.x / float(image_size.x), room.y / float(image_size.y)))
-	return clampi(fit, MIN_SCALE, MAX_SCALE)
+static func fit_for(room: Vector2, map_px: Vector2) -> float:
+	"""How big a map of `map_px` pixels is drawn to fill `room`: the largest
+	scale at which all of it fits, a fraction or not. 1 for nothing."""
+	if map_px.x <= 0.0 or map_px.y <= 0.0 or room.x <= 0.0 or room.y <= 0.0:
+		return 1.0
+	return minf(room.x / map_px.x, room.y / map_px.y)
+
+
+static func sharpen(image: Image, on_screen: float) -> Image:
+	"""The picture blown up by the whole number that makes it at least as big
+	as it is drawn (`on_screen` screen pixels a map pixel), nearest filtered -
+	so drawn down from there with linear filtering, every tile's edge is
+	straight (THE WHOLE MAP, AS BIG AS THE WINDOW)."""
+	var times: int = clampi(ceili(on_screen), 1, MAX_SHARPEN)
+	var longest: int = maxi(image.get_width(), image.get_height())
+	while times > 1 and longest * times > MAX_TEXTURE:
+		times -= 1
+	if times == 1:
+		return image
+	var big: Image = image.duplicate() as Image
+	big.resize(image.get_width() * times, image.get_height() * times, Image.INTERPOLATE_NEAREST)
+	return big
+
+
+func _stretch() -> float:
+	"""Screen pixels an interface pixel takes - the window's own stretch."""
+	if not is_inside_tree():
+		return 1.0
+	return maxf(get_viewport().get_final_transform().x.length(), 0.01)
+
+
+func max_zoom() -> float:
+	"""As far in as the map goes: a tile MAX_TILE_PX interface pixels across,
+	and never less than the whole area."""
+	if view == null or _area == "":
+		return 1.0
+	var whole: float = fit_for(view.size, Vector2(WorldMap.map_size(_area)))
+	return maxf(1.0, MAX_TILE_PX / maxf(whole, 0.01))
+
+
+func _layout() -> void:
+	"""Where the picture is drawn in the view - _fit and _offset from _zoom and
+	_centre, which is kept so the map never leaves more of the view empty than
+	it must - and everything on it with it."""
+	if view == null or _area == "":
+		return
+	var map_px: Vector2 = Vector2(WorldMap.map_size(_area))
+	_zoom = clampf(_zoom, 1.0, max_zoom())
+	_fit = fit_for(view.size, map_px) * _zoom
+	var half: Vector2 = view.size * 0.5 / maxf(_fit, 0.0001)
+	var centre: Vector2 = _centre if _centre.x >= 0.0 else map_px * 0.5
+	for axis in 2:
+		if map_px[axis] <= half[axis] * 2.0:
+			centre[axis] = map_px[axis] * 0.5
+		else:
+			centre[axis] = clampf(centre[axis], half[axis], map_px[axis] - half[axis])
+	_centre = centre
+	_offset = (view.size * 0.5 - centre * _fit).round()
+	if ground != null:
+		# Smooth while the picture is drawn smaller than it was blown up;
+		# pixel for pixel past that.
+		ground.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS \
+			if _fit * _stretch() < float(_sharp) else CanvasItem.TEXTURE_FILTER_NEAREST
+		ground.queue_redraw()
+	view.mouse_default_cursor_shape = Control.CURSOR_MOVE if _zoom > 1.001 else Control.CURSOR_ARROW
+	if markers != null:
+		markers.queue_redraw()
+
+
+func _draw_ground() -> void:
+	if _picture == null or _area == "":
+		return
+	ground.draw_texture_rect(_picture, Rect2(_offset, Vector2(WorldMap.map_size(_area)) * _fit), false)
+
+
+func zoom_by(factor: float, at: Variant = null) -> void:
+	"""Zoom by `factor` (over 1 is in) about `at` in the view - the map under
+	it stays under it - or about the middle of the view."""
+	if view == null or _area == "":
+		return
+	var point: Vector2 = at if at is Vector2 else view.size * 0.5
+	var under: Vector2 = (point - _offset) / maxf(_fit, 0.0001)
+	_zoom = clampf(_zoom * factor, 1.0, max_zoom())
+	var new_fit: float = fit_for(view.size, Vector2(WorldMap.map_size(_area))) * _zoom
+	_centre = under + (view.size * 0.5 - point) / maxf(new_fit, 0.0001)
+	_layout()
+
+
+func pan_by(screen_delta: Vector2) -> void:
+	"""Move the map with a drag of `screen_delta` view pixels."""
+	_centre -= screen_delta / maxf(_fit, 0.0001)
+	_layout()
+
+
+func show_whole() -> void:
+	_zoom = 1.0
+	_centre = Vector2(-1.0, -1.0)
+	_layout()
+
+
+func _on_view_input(event: InputEvent) -> void:
+	"""The wheel zooms where the pointer is, a held button drags, a trackpad's
+	pinch zooms - all of it taken here, so none of it reaches the camera."""
+	var button := event as InputEventMouseButton
+	if button != null:
+		if button.pressed and button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			var notches: float = button.factor if button.factor > 0.0 else 1.0
+			var step: float = pow(WHEEL_STEP, notches)
+			zoom_by(step if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / step, button.position)
+			view.accept_event()
+		elif button.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = button.pressed
+			view.accept_event()
+		return
+	var motion := event as InputEventMouseMotion
+	if motion != null and _dragging:
+		if not (motion.button_mask & MOUSE_BUTTON_MASK_LEFT):
+			_dragging = false
+			return
+		pan_by(motion.relative)
+		view.accept_event()
+		return
+	var pinch := event as InputEventMagnifyGesture
+	if pinch != null:
+		zoom_by(pinch.factor, pinch.position)
+		view.accept_event()
+
+
+func _on_view_resized() -> void:
+	if not visible:
+		return
+	_layout()
 
 
 func _on_explored(area: String) -> void:
@@ -305,11 +469,11 @@ const PARTY_RADIUS := 4.0
 
 func _on_map(world: Vector2) -> Variant:
 	"""Where `world` is drawn on the marker layer, or null off the map."""
-	var at: Vector2 = WorldMap.pixel_for(world, _area) * float(_scale)
-	var bounds: Vector2 = markers.size
-	if at.x < 0.0 or at.y < 0.0 or at.x > bounds.x or at.y > bounds.y:
+	var pixel: Vector2 = WorldMap.pixel_for(world, _area)
+	var bounds: Vector2 = Vector2(WorldMap.map_size(_area))
+	if pixel.x < 0.0 or pixel.y < 0.0 or pixel.x > bounds.x or pixel.y > bounds.y:
 		return null
-	return at
+	return _offset + pixel * _fit
 
 
 static func monster_colour(enemy: Node) -> Color:
@@ -368,18 +532,13 @@ func _draw_arrow() -> void:
 	if player == null:
 		return
 
-	var pixel: Vector2 = WorldMap.pixel_for(player.global_position, _area)
-	var at: Vector2 = pixel * float(_scale)
-
-	# `bounds`, not `size` — same shadowing as _fit_scale(); this one reads
-	# the marker layer's size, and a local called `size` would hide this
-	# Control's own property from everything below it.
-	var bounds: Vector2 = markers.size
-	if at.x < 0.0 or at.y < 0.0 or at.x > bounds.x or at.y > bounds.y:
-		# Off the edge of what is mapped — which happens legitimately at the
-		# boundary of an area, and drawing the arrow clamped to the rim would
-		# say "you are here" about somewhere you are not.
+	# Off the edge of what is mapped — which happens legitimately at the
+	# boundary of an area, and drawing the arrow clamped to the rim would
+	# say "you are here" about somewhere you are not.
+	var spot: Variant = _on_map(player.global_position)
+	if spot == null:
 		return
+	var at: Vector2 = spot
 
 	var facing: Vector2 = Vector2.DOWN
 	if "last_direction" in player:
@@ -413,11 +572,12 @@ func _collect_landmarks() -> void:
 	if markers == null or _area == "" or not WorldMap.has_map(_area):
 		return
 
-	# THE IMAGE'S SIZE, NOT THE MARKER LAYER'S. This runs inside refresh(),
+	# THE MAP'S SIZE, NOT THE MARKER LAYER'S. This runs inside refresh(),
 	# on the frame the panel opens - before layout has sized the layer - so
 	# markers.size would be zero and every pin would be thrown away as off
-	# the edge. The first draft did exactly that. The image is known now.
-	var bounds: Vector2 = Vector2(WorldMap.map_size(_area)) * float(_scale)
+	# the edge. The first draft did exactly that. Each keeps its map pixel;
+	# where it is drawn, zoomed and dragged, is _pin_at().
+	var bounds: Vector2 = Vector2(WorldMap.map_size(_area))
 	for node in get_tree().get_nodes_in_group(LANDMARK_GROUP):
 		# Node2D, not "anything": the pin goes where it stands, and a Control
 		# or a plain Node has no world position to put one at.
@@ -440,15 +600,8 @@ func _collect_landmarks() -> void:
 			continue
 
 		var world_pos: Vector2 = (node as Node2D).global_position
-		if not WorldMap.is_seen(_area, WorldMap.tile_at(_area, world_pos)):
-			continue
-
-		# ROUNDED, because the icon is 16 art pixels drawn at 1x, and a
-		# texture drawn at a fractional position is resampled - half a pixel
-		# off is a blurred coin. The arrow is a polygon and can sit anywhere;
-		# a sprite cannot.
-		var at: Vector2 = (WorldMap.pixel_for(world_pos, _area) * float(_scale)).round()
-		if at.x < 0.0 or at.y < 0.0 or at.x > bounds.x or at.y > bounds.y:
+		var pixel: Vector2 = WorldMap.pixel_for(world_pos, _area)
+		if pixel.x < 0.0 or pixel.y < 0.0 or pixel.x > bounds.x or pixel.y > bounds.y:
 			continue
 
 		var style: Array = LANDMARK_STYLE[kind]
@@ -456,7 +609,7 @@ func _collect_landmarks() -> void:
 			"kind": kind,
 			"label": str(info.get("label", kind.capitalize())),
 			"colour": info.get("colour", style[1]),
-			"at": at,
+			"pixel": pixel,
 		})
 
 
@@ -474,14 +627,22 @@ func _icon_for(kind: String) -> Texture2D:
 	return tex
 
 
+func _pin_at(landmark: Dictionary) -> Vector2:
+	"""Where a pin is drawn now, zoomed and dragged. ROUNDED, because the
+	icon is 16 art pixels drawn at 1x, and a texture drawn at a fractional
+	position is resampled - half a pixel off is a blurred coin. The arrow is a
+	polygon and can sit anywhere; a sprite cannot."""
+	return (_offset + (landmark["pixel"] as Vector2) * _fit).round()
+
+
 func _update_hover() -> void:
 	_hover = -1
-	if markers == null or _landmarks.is_empty():
+	if markers == null or _landmarks.is_empty() or _dragging:
 		return
 	var mouse: Vector2 = markers.get_local_mouse_position()
 	var best: float = HOVER_RADIUS * HOVER_RADIUS
 	for i in _landmarks.size():
-		var d: float = mouse.distance_squared_to(_landmarks[i]["at"])
+		var d: float = mouse.distance_squared_to(_pin_at(_landmarks[i]))
 		if d <= best:
 			best = d
 			_hover = i
@@ -494,7 +655,7 @@ func _update_hover() -> void:
 func _draw_landmarks() -> void:
 	for i in _landmarks.size():
 		var lm: Dictionary = _landmarks[i]
-		var c: Vector2 = lm["at"]
+		var c: Vector2 = _pin_at(lm)
 		var colour: Color = lm["colour"]
 		var hovered: bool = i == _hover
 
@@ -566,9 +727,10 @@ func _draw_hover_label() -> void:
 	var box := Vector2(text_size.x, float(LABEL_FONT_SIZE) + 2.0) + pad * 2.0
 
 	# To the right of the pin, flipped left if that would run off the map.
-	var origin: Vector2 = lm["at"] + Vector2(PIN_RADIUS + 4.0, -box.y * 0.5)
+	var pin: Vector2 = _pin_at(lm)
+	var origin: Vector2 = pin + Vector2(PIN_RADIUS + 4.0, -box.y * 0.5)
 	if origin.x + box.x > markers.size.x:
-		origin.x = lm["at"].x - PIN_RADIUS - 4.0 - box.x
+		origin.x = pin.x - PIN_RADIUS - 4.0 - box.x
 	origin = origin.round()
 
 	markers.draw_rect(Rect2(origin, box), PIN_BACK)

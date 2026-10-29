@@ -80,7 +80,7 @@ var _done: bool = false
 var stretched_still: bool = false
 
 # HOW OFTEN A CAST'S ORBS HAVE HIT EACH MONSTER (0.71.1, frostring.gd's ice
-# shards): instance id -> hits, shared by every orb of the cast, or null for an
+# shards): Targets.hit_key() -> hits, shared by every orb of the cast, or null for an
 # orb on its own. A monster that has had cast_hits_each takes no more from the
 # cast - but the orb is still spent on it, absorbed where it struck: a bullet
 # never passes through a body.
@@ -94,7 +94,7 @@ static func fire(parent: Node, at: Vector2, way: Vector2, orb_speed: float, orb_
 		orb_damage: int, orb_palette: StringName = STEEL, is_cosmetic: bool = false,
 		ignore_id: int = 0) -> BladeOrb:
 	"""One orb from `at` (in the world) along `way`, passing over the monster
-	whose instance id is `ignore_id`. Frees itself. Not from inside a physics
+	whose Targets.hit_key() is `ignore_id`. Frees itself. Not from inside a physics
 	callback (body_entered and the like): a new Area2D may not join then -
 	slashwave.gd's burst defers."""
 	var orb := BladeOrb.new()
@@ -195,6 +195,14 @@ func _ready() -> void:
 	if cosmetic:
 		monitorable = false
 		collision_layer = 0
+	else:
+		# The Endless's swarm puts stand-ins where it flies (swarm.gd, 0.96.0).
+		add_to_group(&"swarm_focus")
+
+
+func swarm_reach() -> float:
+	"""How far round it the swarm needs stand-ins: what it touches."""
+	return RADIUS
 
 
 func _physics_process(delta: float) -> void:
@@ -234,7 +242,9 @@ func _on_area_entered(area: Area2D) -> void:
 
 
 func _try_hit(target: Node) -> void:
-	if target.get_instance_id() == _ignore_id or not target.has_method(&"take_damage"):
+	# By the slime, for a swarm's stand-in (Targets.hit_key()).
+	var key: int = Targets.hit_key(target)
+	if key == _ignore_id or not target.has_method(&"take_damage"):
 		return
 	# NOT THROUGH A WALL (0.69.1): a monster's hurtbox stands taller than the
 	# wall its feet are behind, and an orb touching that is at the wall - it
@@ -243,12 +253,11 @@ func _try_hit(target: Node) -> void:
 		pop()
 		return
 	if cast_hits is Dictionary:
-		var id: int = target.get_instance_id()
-		var had: int = int((cast_hits as Dictionary).get(id, 0))
+		var had: int = int((cast_hits as Dictionary).get(key, 0))
 		if had >= cast_hits_each:
 			pop()
 			return
-		(cast_hits as Dictionary)[id] = had + 1
+		(cast_hits as Dictionary)[key] = had + 1
 	if not cosmetic and damage > 0:
 		target.take_damage(damage, element)
 	pop()

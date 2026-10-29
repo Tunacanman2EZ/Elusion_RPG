@@ -99,6 +99,11 @@ const COLOUR_UNKNOWN := Color(0.45, 0.30, 0.45)
 # dark rather than as a hole in the panel.
 const COLOUR_FOG := Color(0.04, 0.04, 0.05)
 
+# THE WHOLE MAP (0.96.0): ground you have not walked, drawn this far toward
+# the fog - its shape plain, darker than what you have seen (display_image()
+# with `whole`).
+const UNSEEN_DIM := 0.62
+
 
 # =============================================================================
 # STATE
@@ -550,13 +555,18 @@ func explored_fraction(area: String) -> float:
 # WHAT THE PANEL DRAWS
 # =============================================================================
 
-func display_image(area: String = "") -> Image:
+func display_image(area: String = "", whole: bool = false) -> Image:
 	# The terrain with the fog laid over it, as a fresh Image the caller owns.
 	#
 	# BAKED RATHER THAN SHADED. At 126 x 108 this is thirteen thousand pixel
 	# writes, once, when the panel opens or something new is uncovered — which
 	# is cheaper to write, cheaper to read, and needs no second texture than
 	# doing it with a mask and a shader would be.
+	#
+	# WHOLE (0.96.0, the map window): the owner, "i need players to be able to
+	# see the whole map". Ground not walked yet is drawn too, UNSEEN_DIM of the
+	# way to the fog, and where nothing is painted stays clear - the shape of
+	# the whole area, what you have seen the brighter part of it.
 	if area == "":
 		area = area_id()
 	var info = _terrain.get(area, null)
@@ -574,7 +584,13 @@ func display_image(area: String = "") -> Image:
 		for x in size.x:
 			var index: int = y * size.x + x
 			var lit: bool = have_bits and (bits[index >> 3] & (1 << (index & 7))) != 0
-			out.set_pixel(x, y, source.get_pixel(x, y) if lit else COLOUR_FOG)
+			var ground: Color = source.get_pixel(x, y)
+			if lit:
+				out.set_pixel(x, y, ground)
+			elif not whole:
+				out.set_pixel(x, y, COLOUR_FOG)
+			elif ground.a > 0.0:
+				out.set_pixel(x, y, ground.lerp(COLOUR_FOG, UNSEEN_DIM))
 	return out
 
 

@@ -16,6 +16,20 @@
 extends RefCounted
 
 
+static func hit_key(target: Object) -> int:
+	"""Who a blow has struck, for "once each": a monster by its instance id,
+	a swarm's stand-in by the slime it stands on (swarmproxy.gd pass_key()).
+	A stand-in moves on to another slime, and remembered by its own id the
+	next one it stood on went uncut - spinningaxe.gd's axe (0.94.1), and the
+	warrior's wave and every orb (0.96.0, the owner: "warriors projectile is
+	not slicing through all enemies")."""
+	if target == null:
+		return 0
+	if target.has_method(&"pass_key"):
+		return int(target.call(&"pass_key"))
+	return target.get_instance_id()
+
+
 static func touching(area: Area2D, group: StringName = &"enemies") -> Array:
 	"""What a player's blow, blast or ring touches: the bodies AND the
 	hurtboxes' owners in `group`, one entry each (0.93.1). A monster has both

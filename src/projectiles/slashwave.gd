@@ -303,6 +303,18 @@ func _ready() -> void:
 		# Still looking (walls stop it, monsters make it swell), never seen.
 		set_deferred("monitorable", false)
 		set_deferred("collision_layer", 0)
+	else:
+		# THE ENDLESS'S SWARM puts stand-ins where it flies (swarm.gd,
+		# FOCUS_GROUP), or past the crowd round the player it cut nothing
+		# (0.96.0, the owner: "warriors projectile is not slicing through all
+		# enemies").
+		add_to_group(&"swarm_focus")
+
+
+func swarm_reach() -> float:
+	"""How far round it the swarm needs stand-ins: to the far corner of its
+	box, from where it is."""
+	return SPRITE_CENTRE.length() + (HITBOX_REACH + Vector2(HITBOX_THICKNESS, HITBOX_SWEEP).length() * 0.5) * hitbox_scale
 
 
 func _physics_process(delta: float) -> void:
@@ -316,6 +328,13 @@ func _physics_process(delta: float) -> void:
 	# map, so it breaks there, quietly - no burst out in the black.
 	elif not _is_dying and MapBackdrop.black_at(self, hit_middle()):
 		destroy_wave(false)
+	# EVERYTHING IN THE BOX, EVERY TICK (0.96.0). The signals tell of what
+	# comes in; a swarm's stand-in moved onto another slime while already in
+	# the box never comes in again, and that slime went uncut. Each is still
+	# cut once (_hit_targets, by the slime: Targets.hit_key()).
+	if not _is_dying:
+		for area in get_overlapping_areas():
+			_on_area_entered(area)
 
 
 func _process(delta: float) -> void:
@@ -483,7 +502,7 @@ func _try_hit(target: Node) -> void:
 	if not target.has_method(&"take_damage"):
 		return
 
-	var target_id: int = target.get_instance_id()
+	var target_id: int = Targets.hit_key(target)
 	if target_id in _hit_targets:
 		return
 	# NOT THROUGH A WALL (0.69.1). The box touches a monster whose hurtbox
@@ -691,7 +710,7 @@ func burst(at: Vector2, cut: Node) -> bool:
 	# in the black, and the ring of orbs appeared out there and flew off. It
 	# leaves from as far toward that point as the wave can see.
 	var safe: Vector2 = Targets.short_of_wall(self, hit_middle(), at)
-	_fire_burst.call_deferred(get_parent(), safe, cut.get_instance_id() if cut != null else 0)
+	_fire_burst.call_deferred(get_parent(), safe, Targets.hit_key(cut) if cut != null else 0)
 	return true
 
 

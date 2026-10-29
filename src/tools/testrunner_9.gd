@@ -1,7 +1,9 @@
 # testrunner_9.gd - part 9 of the suite (testrunner.gd says how it is
-# split): 6 tests, _test_far_attacks_hit_the_swarm,
+# split): 9 tests, _test_far_attacks_hit_the_swarm,
 # _test_a_fall_wakes_you_by_the_chest, _test_the_horde_reaches_the_back_wall,
-# _test_the_field_is_dressed, _test_the_field and _test_the_camera_zooms_out.
+# _test_the_field_is_dressed, _test_the_field, _test_the_camera_zooms_out,
+# _test_the_whole_map, _test_the_swarm_keeps_off_the_walls and
+# _test_slimes_speed_up.
 extends "res://src/tools/testrunner_8.gd"
 
 
@@ -529,3 +531,344 @@ func _test_the_camera_zooms_out() -> void:
 
 	Settings.set_value("camera_zoom", was)
 	print("  the camera: 1x to 3x, the wheel and the keys a quarter a step")
+
+
+# =============================================================================
+# THE WHOLE MAP, AS BIG AS THE WINDOW (0.96.0)
+# =============================================================================
+# The owner: "i need players to be able to see the whole map". The map window
+# fills most of the screen and fits the picture at any scale (blown up by a
+# whole number, nearest, then drawn down, linear), ground not walked yet is
+# drawn darker, and every landmark has its pin.
+const _MapCode := preload("res://src/ui/menus/mapscreen.gd")
+const _MapScene := preload("res://scene/ui/menus/mapscreen.tscn")
+const _MAP_AREA := "zz_suite_map"
+const _MAP_BIG := "zz_suite_map_big"
+
+
+func _test_the_whole_map() -> void:
+	section("THE WHOLE MAP - the window fills the screen, the picture fits it, it zooms and drags, the unwalked ground is drawn darker (0.96.0)")
+	# A 4 x 2 area: the top row painted, the bottom row's last cell bare; the
+	# first two cells seen.
+	var ground := Color(0.33, 0.45, 0.26)
+	var terrain := Image.create_empty(4, 2, false, Image.FORMAT_RGBA8)
+	terrain.fill(Color(0, 0, 0, 0))
+	for x in 4:
+		terrain.set_pixel(x, 0, ground)
+	for x in 3:
+		terrain.set_pixel(x, 1, ground)
+	WorldMap._terrain[_MAP_AREA] = {"image": terrain, "origin": Vector2i.ZERO, "size": Vector2i(4, 2),
+		"tile": Vector2i(16, 16)}
+	WorldMap._seen[_MAP_AREA] = PackedByteArray([0b11])
+	var fogged: Image = WorldMap.display_image(_MAP_AREA)
+	var whole: Image = WorldMap.display_image(_MAP_AREA, true)
+	# Eight bits a channel: a colour comes back within half a step of 1/255.
+	var near := func(a: Color, b: Color) -> bool:
+		return absf(a.r - b.r) < 0.01 and absf(a.g - b.g) < 0.01 and absf(a.b - b.b) < 0.01 and absf(a.a - b.a) < 0.01
+	check("seen ground is drawn as it is, either way",
+		near.call(whole.get_pixel(0, 0), ground) and near.call(fogged.get_pixel(1, 0), ground),
+		[whole.get_pixel(0, 0), fogged.get_pixel(1, 0)])
+	check("  the fog still hides the rest where the whole map is not asked for",
+		near.call(fogged.get_pixel(2, 0), WorldMap.COLOUR_FOG), fogged.get_pixel(2, 0))
+	var dim: Color = whole.get_pixel(2, 0)
+	check("  the whole map draws ground not walked yet, darker than what was seen",
+		dim.a > 0.99 and dim.v < ground.v and dim.v > WorldMap.COLOUR_FOG.v, dim)
+	check("  and leaves bare what nothing is painted on", whole.get_pixel(3, 1).a < 0.01, whole.get_pixel(3, 1))
+
+	# The fit: any scale, the largest at which all of it fits.
+	check("the Big Field's 385 x 322 fills the frame at 1.74x - not floored to 1x",
+		is_equal_approx(snappedf(_MapCode.fit_for(Vector2(1120, 560), Vector2(385, 322)), 0.01), 1.74),
+		_MapCode.fit_for(Vector2(1120, 560), Vector2(385, 322)))
+	check("  a frame with no size yet draws at 1x", is_equal_approx(_MapCode.fit_for(Vector2.ZERO, Vector2(10, 10)), 1.0))
+	var small := Image.create_empty(10, 5, false, Image.FORMAT_RGBA8)
+	var sharp: Image = _MapCode.sharpen(small, 2.6)
+	check("the picture is blown up by the whole number past what it is drawn at (2.6 -> 3x)",
+		sharp.get_size() == Vector2i(30, 15), sharp.get_size())
+	check("  not at all when it is drawn smaller than it is", _MapCode.sharpen(small, 0.7).get_size() == Vector2i(10, 5))
+	var wide := Image.create_empty(600, 10, false, Image.FORMAT_RGBA8)
+	check("  and never past the largest texture side",
+		_MapCode.sharpen(wide, 8.0).get_width() <= _MapCode.MAX_TEXTURE, _MapCode.sharpen(wide, 8.0).get_width())
+
+	# The window as drawn, and the picture in it.
+	var map: Control = _MapScene.instantiate() as Control
+	check("the map window is drawn 1160 x 640 - most of the screen",
+		map.size.is_equal_approx(Vector2(1160, 640)) or Vector2(map.offset_right - map.offset_left,
+			map.offset_bottom - map.offset_top).is_equal_approx(Vector2(1160, 640)))
+	var picture: TextureRect = map.get_node_or_null("%mapview") as TextureRect
+	var under: Control = map.get_node_or_null("%mapground") as Control
+	check("  the map fills its frame and clips; the picture is drawn on a layer under the pins",
+		picture != null and picture.get_parent() == map.get_node_or_null("%mapframe")
+		and picture.expand_mode == TextureRect.EXPAND_IGNORE_SIZE and picture.clip_contents
+		and under != null and under.get_parent() == picture and under.get_index() < map.get_node("%mapmarkers").get_index())
+	check("  and its footer has -, + and Whole map",
+		map.get_node_or_null("%mapzoomout") is Button and map.get_node_or_null("%mapzoomin") is Button
+		and map.get_node_or_null("%mapwhole") is Button)
+	add_child(map)
+	map.set("_area", _MAP_AREA)
+	picture.size = Vector2(400, 300)
+	map.call("_layout")
+	var at: Variant = map.call("_on_map", Vector2(24, 24))
+	check("  a place in the world lands where the picture drew it (fit 100, 50 px down to centre it)",
+		is_equal_approx(float(map.get("_fit")), 100.0) and at is Vector2 and (at as Vector2).is_equal_approx(Vector2(150, 200)), at)
+	check("  and off the map is nowhere", map.call("_on_map", Vector2(-40, 8)) == null)
+
+	# ZOOM AND DRAG, on a 40 x 20 area in a 400 x 300 view: the whole of it at
+	# 10 a tile, and in as far as 24 a tile.
+	WorldMap._terrain[_MAP_BIG] = {"image": Image.create_empty(40, 20, false, Image.FORMAT_RGBA8),
+		"origin": Vector2i.ZERO, "size": Vector2i(40, 20), "tile": Vector2i(16, 16)}
+	map.set("_area", _MAP_BIG)
+	map.call("show_whole")
+	check("the map opens on the whole area: 10 a tile, centred",
+		is_equal_approx(float(map.get("_fit")), 10.0) and (map.get("_offset") as Vector2).is_equal_approx(Vector2(0, 50)),
+		[map.get("_fit"), map.get("_offset")])
+	map.call("zoom_by", 2.0, Vector2(100, 100))
+	var kept: Vector2 = (map.get("_offset") as Vector2) + Vector2(10, 5) * float(map.get("_fit"))
+	check("  zoomed in about the pointer, the map under it stays under it",
+		is_equal_approx(float(map.get("_fit")), 20.0) and kept.is_equal_approx(Vector2(100, 100)), [map.get("_fit"), kept])
+	map.call("zoom_by", 100.0)
+	check("  no further in than a tile 24 across", is_equal_approx(float(map.get("_fit")), 24.0), map.get("_fit"))
+	map.call("pan_by", Vector2(-5000, 0))
+	var right_edge: float = (map.get("_offset") as Vector2).x + 40.0 * float(map.get("_fit"))
+	check("  dragged as far as it goes, its edge stops at the view's",
+		is_equal_approx(right_edge, 400.0), right_edge)
+	map.call("zoom_by", 0.01)
+	check("  and zoomed out, no further than the whole area", is_equal_approx(float(map.get("_fit")), 10.0), map.get("_fit"))
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = Vector2(200, 150)
+	map.call("_on_view_input", wheel)
+	check("the wheel over the map zooms it", is_equal_approx(float(map.get("_fit")), 12.5), map.get("_fit"))
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	map.call("_on_view_input", press)
+	var was_centre: Vector2 = map.get("_centre")
+	var drag := InputEventMouseMotion.new()
+	drag.button_mask = MOUSE_BUTTON_MASK_LEFT
+	drag.relative = Vector2(25, 0)
+	map.call("_on_view_input", drag)
+	check("  a drag moves it", is_equal_approx((map.get("_centre") as Vector2).x, was_centre.x - 2.0),
+		[was_centre, map.get("_centre")])
+	(map.get_node("%mapwhole") as Button).pressed.emit()
+	check("  and Whole map shows all of it again", is_equal_approx(float(map.get("_fit")), 10.0))
+	(map.get_node("%mapzoomin") as Button).pressed.emit()
+	var stepped_in: float = float(map.get("_fit"))
+	(map.get_node("%mapzoomout") as Button).pressed.emit()
+	check("  + zooms in a step, - back out",
+		is_equal_approx(stepped_in, 16.0) and is_equal_approx(float(map.get("_fit")), 10.0), [stepped_in, map.get("_fit")])
+	var hud_code: String = _code_src("res://src/ui/menus/mapscreen.gd")
+	check("  the map takes the wheel and the drag itself, so the camera does not zoom under it",
+		_func_body(hud_code, "func _on_view_input(").contains("view.accept_event()"))
+	WorldMap._terrain.erase(_MAP_BIG)
+	map.queue_free()
+	var map_src: String = _code_src("res://src/ui/menus/mapscreen.gd")
+	check("every landmark has its pin, walked or not; monsters only on ground seen",
+		not _func_body(map_src, "func _collect_landmarks(").contains("is_seen")
+		and _func_body(map_src, "func _draw_monsters(").contains("WorldMap.is_seen(")
+		and _func_body(map_src, "func refresh(").contains("WorldMap.display_image(_area, true)"))
+
+	WorldMap._terrain.erase(_MAP_AREA)
+	WorldMap._seen.erase(_MAP_AREA)
+	await get_tree().process_frame
+	print("  the map: the whole area, at any size, the unwalked ground darker")
+
+
+# =============================================================================
+# THE SWARM KEEPS OFF THE WALLS, AND THE WAVE CUTS IT ALL (0.96.0)
+# =============================================================================
+# The owner: "in minigame slimes are going behind walls and warriors
+# projectile is not slicing through all enemies". A slime's picture is wider
+# than its feet, so held EDGE from a side wall half of it was under the wall;
+# the top row was under the back wall. And the slash wave flew past the crowd
+# round the player, where the slimes had no stand-ins, and remembered a
+# stand-in, not its slime.
+func _test_the_swarm_keeps_off_the_walls() -> void:
+	section("THE SWARM KEEPS OFF THE WALLS, AND THE WAVE CUTS IT ALL - bodies clear of the sides, the top row over the back wall, every slime the wave meets cut once (0.96.0)")
+	var SwarmScript: GDScript = load("res://src/world/endless/swarm.gd") as GDScript
+	var o := Vector2(-64000, -64000)
+	var swarm: Node2D = SwarmScript.new()
+	var arena := Rect2(o + Vector2(9, 34), Vector2(800, 600))
+	var corridor := Rect2(o + Vector2(350, 450), Vector2(100, 184))
+	swarm.set("arena", arena)
+	(swarm.get("keep_out") as Array).append(corridor)
+	swarm.call("draw_in_front_of", o.y + 28.0)
+	add_child(swarm)
+	swarm.set_process(false)
+	swarm.set_physics_process(false)
+	await get_tree().process_frame
+	swarm.call("spawn", 400, o + Vector2(400, 300))
+	# Chased to the left wall, then to beside the corridor.
+	for k in 80:
+		swarm.call("_step", o + Vector2(0, 300), true)
+	var px: PackedFloat32Array = swarm.get("px")
+	var py: PackedFloat32Array = swarm.get("py")
+	var leftmost: float = INF
+	for i in int(swarm.get("_high")):
+		if int(swarm.get("state")[i]) == 1:
+			leftmost = minf(leftmost, px[i])
+	check("against a side wall a slime's feet stay %d px off it - its picture clear of the wall" % int(SwarmScript.SIDE_EDGE),
+		leftmost >= arena.position.x + SwarmScript.SIDE_EDGE - 0.01, leftmost - arena.position.x)
+	for k in 80:
+		swarm.call("_step", o + Vector2(340, 600), true)
+	px = swarm.get("px")
+	py = swarm.get("py")
+	var too_near: int = 0
+	for i in int(swarm.get("_high")):
+		if int(swarm.get("state")[i]) == 1 and py[i] > corridor.position.y + 1.0 \
+				and px[i] > corridor.position.x - SwarmScript.HELD_OUT_SIDES + 0.5 and px[i] < corridor.end.x + SwarmScript.HELD_OUT_SIDES - 0.5:
+			too_near += 1
+	check("  beside the corridor, %d px further out than its feet were held" % int(SwarmScript.HELD_OUT_SIDES), too_near == 0, too_near)
+	var target: Vector2 = swarm.call("floor_point", o + Vector2(12, 300))
+	check("  and a player against the wall is still the crowd's to reach (floor_point)",
+		is_equal_approx(target.x, arena.position.x + SwarmScript.SIDE_EDGE))
+	# The top row, over the back wall.
+	swarm.call("clear")
+	var records := PackedInt32Array()
+	var ys: Array = [40, 50, 69, 71, 200]
+	for k in ys.size():
+		records.append_array(PackedInt32Array([k, 1, 50, roundi(o.x + 100.0 + k * 40.0), roundi(o.y + float(ys[k])), 0]))
+	swarm.call("import_alive", records)
+	swarm.call("_write_buffer")
+	var front: MultiMeshInstance2D = swarm.get("_front") as MultiMeshInstance2D
+	var back: MultiMeshInstance2D = swarm.get("_mesh") as MultiMeshInstance2D
+	check("the slimes whose pictures reach over the back wall are drawn by the front layer, the rest as before",
+		front != null and front.multimesh.visible_instance_count == 3 and back.multimesh.visible_instance_count == 2,
+		[front.multimesh.visible_instance_count if front else -1, back.multimesh.visible_instance_count])
+	var first_y: float = (swarm.get("_front_buffer") as PackedFloat32Array)[7]
+	check("  sorted a pixel past the wall's foot, with the world, over the wall and under anybody south of it",
+		swarm.y_sort_enabled and is_equal_approx(front.position.y, o.y + 29.0) and front.z_index == 0
+		and back.z_index == SwarmScript.DRAW_Z and is_equal_approx(first_y + front.position.y, o.y + 40.0), first_y)
+	check("  drawn as written, never blended by the engine",
+		front.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF)
+
+	# The wave, flown through a line of slimes past the crowd round the player.
+	swarm.call("clear")
+	var me := Node2D.new()
+	me.add_to_group(&"player")
+	add_child(me)
+	me.global_position = o + Vector2(200, 300)
+	records = PackedInt32Array()
+	var slot: int = 0
+	for k in 150:
+		var turn: float = TAU * float(k) / 150.0
+		var spot: Vector2 = me.global_position + Vector2(cos(turn), sin(turn)) * (24.0 + float(k % 5) * 10.0)
+		if spot.x > me.global_position.x + 10.0 and absf(spot.y - me.global_position.y - 8.0) < 30.0:
+			spot.y += 80.0
+		records.append_array(PackedInt32Array([slot, 1, 50, roundi(spot.x), roundi(spot.y), 0]))
+		slot += 1
+	var line: Array = []
+	for k in 30:
+		var spot: Vector2 = me.global_position + Vector2(110.0 + float(k) * 12.0, 8.0 + float(k % 3) * 6.0 - 6.0)
+		records.append_array(PackedInt32Array([slot, 1, 50, roundi(spot.x), roundi(spot.y), 0]))
+		line.append(slot)
+		slot += 1
+	swarm.call("import_alive", records)
+	var wave: Area2D = (load("res://scene/projectiles/slashwave.tscn") as PackedScene).instantiate()
+	var notice: Node = wave.get_node_or_null("VisibleOnScreenNotifier2D")
+	if notice != null:
+		wave.remove_child(notice)
+		notice.free()
+	wave.set("damage", 10)
+	add_child(wave)
+	wave.global_position = me.global_position
+	wave.call("shoot_vector", Vector2.RIGHT)
+	check("the slash wave puts stand-ins where it flies (swarm_focus, its reach)",
+		wave.is_in_group(&"swarm_focus") and float(wave.call("swarm_reach")) > 30.0)
+	for t in 140:
+		swarm.call("_place_proxies")
+		await get_tree().physics_frame
+	var hp: PackedFloat32Array = swarm.get("hp")
+	var cut: int = 0
+	var twice: int = 0
+	for s in line:
+		if hp[s] <= 40.5:
+			cut += 1
+		if hp[s] < 39.5:
+			twice += 1
+	check("  it cuts every slime in its way, past the crowd round you: %d of %d" % [cut, line.size()],
+		cut == line.size(), cut)
+	check("  each once, though stand-ins move from slime to slime under it (Targets.hit_key)", twice == 0, twice)
+	var orb_src: String = _code_src("res://src/projectiles/bladeorb.gd")
+	check("  and the warrior's orbs: stand-ins where they fly, a slime remembered by itself",
+		_first_code_index(orb_src, "add_to_group(&\"swarm_focus\")", 0) != -1
+		and _func_body(orb_src, "func _try_hit(").contains("Targets.hit_key(target)"))
+	if is_instance_valid(wave):
+		wave.queue_free()
+	me.queue_free()
+	swarm.queue_free()
+	await get_tree().process_frame
+	print("  the swarm: off the walls, over the back wall, cut by the wave")
+
+
+# =============================================================================
+# THE SLIMES SPEED UP AS THE RUN GOES ON (0.96.0)
+# =============================================================================
+# The owner: "slimes need a speed buff as things progress". It stopped at 95,
+# slower than any class walks; now 6 a stage up to 175, and at the player a
+# slime stops instead of sliding through them. And "make sure more then 3
+# slimes are attacking the player when surrounded": every one within BITE.
+func _test_slimes_speed_up() -> void:
+	section("THE SLIMES SPEED UP AND A CROWD IS DEADLY - 6 a stage up to 175, they stop at you, every one within 26 px bites (0.96.0)")
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var rising: bool = true
+	for s in range(1, 30):
+		if Run.stage_speed(s + 1) < Run.stage_speed(s):
+			rising = false
+	check("faster every stage until the most: %d at 1, %d at 10, %d from 21" % [int(Run.stage_speed(1)), int(Run.stage_speed(10)),
+		int(Run.stage_speed(21))],
+		rising and Run.stage_speed(1) >= 53.0 and Run.stage_speed(10) > 80.0 and is_equal_approx(Run.stage_speed(21), Run.SPEED_MOST)
+		and is_equal_approx(Run.stage_speed(40), Run.SPEED_MOST))
+	var slowest_sprint: float = 140.0 * 1.5
+	check("  past the slower classes' walk late on, never the warrior's walk (200) or a sprint (%d)" % int(slowest_sprint),
+		Run.stage_speed(16) > 140.0 and Run.SPEED_MOST < 200.0 and Run.SPEED_MOST < slowest_sprint)
+	# One slime at the most, walking straight at a still player: it stops at
+	# them, never slides through.
+	var SwarmScript: GDScript = load("res://src/world/endless/swarm.gd") as GDScript
+	var o := Vector2(-64000, -64000)
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("arena", Rect2(o, Vector2(800, 600)))
+	add_child(swarm)
+	swarm.set_process(false)
+	swarm.set_physics_process(false)
+	await get_tree().process_frame
+	swarm.set("speed", Run.SPEED_MOST)
+	var player: Vector2 = o + Vector2(400, 300)
+	swarm.call("import_alive", PackedInt32Array([0, 1, 50, roundi(player.x - 160.0), roundi(player.y), 0]))
+	var nearest: float = INF
+	var last: float = INF
+	for k in 80:
+		swarm.call("_step", player, true)
+		last = Vector2(float(swarm.get("px")[0]), float(swarm.get("py")[0])).distance_to(player)
+		nearest = minf(nearest, last)
+	check("  at the most, one walking at a still player stops at them and stays (nearest %.1f px, last %.1f)" % [nearest, last],
+		last <= SwarmScript.TOUCH + 0.5 and nearest >= 4.0 and float(swarm.get("px")[0]) <= player.x, [nearest, last])
+	# SURROUNDED IS DEADLY: the owner, "make sure more then 3 slimes are
+	# attacking the player when surrounded stopping in a crowd should be
+	# deadly". 200 round a still player, then round one walking.
+	swarm.call("clear")
+	swarm.set("arena", Rect2(o, Vector2(1200, 1000)))
+	swarm.set("speed", 110.0)
+	player = o + Vector2(600, 500)
+	swarm.call("spawn", 200, player)
+	var biting: int = 0
+	for k in 320:
+		swarm.call("_step", player, true)
+		if k >= 270:
+			biting += int(swarm.get("_touching"))
+	var still_bites: float = float(biting) / 50.0
+	check("  stood still in a crowd, the two ranks round you bite - %.1f of them (4 or 5 did), at most %d" % [still_bites, SwarmScript.TOUCH_MOST],
+		still_bites >= 10.0 and SwarmScript.TOUCH_MOST > 5 and SwarmScript.BITE > SwarmScript.TOUCH, still_bites)
+	var centre: Vector2 = player
+	biting = 0
+	for k in 200:
+		var turn: float = float(k) * SwarmScript.STEP * 150.0 / 200.0
+		player = centre + Vector2(cos(turn), sin(turn)) * 200.0
+		swarm.call("_step", player, true)
+		if k >= 100:
+			biting += int(swarm.get("_touching"))
+	var moving_bites: float = float(biting) / 100.0
+	check("  and one who keeps walking leaves most of them behind (%.1f biting)" % moving_bites, moving_bites < 5.0, moving_bites)
+	swarm.queue_free()
+	await get_tree().process_frame
+	print("  the slimes: faster each stage, stopping at you, deadly round you")

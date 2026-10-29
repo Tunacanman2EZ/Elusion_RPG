@@ -2387,7 +2387,7 @@ death and has an arrow saying grab loot from chest".
   the Double Axe spinning 170 px out cut nothing. Anything a player's attack
   leaves on the floor joins `FOCUS_GROUP` ("swarm_focus") with
   `swarm_reach()` - spinningaxe.gd, dynamite.gd, meteor.gd,
-  burningcrater.gd, spelltargetcircle.gd - and `FOCUS_PROXIES` (96) more
+  burningcrater.gd, spelltargetcircle.gd - and `FOCUS_PROXIES` (96; 160 since 0.96.0) more
   stand-ins take the slimes within that reach plus `FOCUS_MARGIN` (24, for
   one in flight). One slime never has two stand-ins (a blow would land
   twice); another player's picture of an attack (`cosmetic`) is no focus.
@@ -2431,6 +2431,78 @@ after, they came 65 px and three touched.
   `in_arena()` (the floor itself) still places wind's spikes.
 
 `_test_the_horde_reaches_the_back_wall()` (testrunner_9).
+
+### The swarm keeps off the walls, and the wave cuts it all (0.96.0)
+
+The owner, 28 Oct: "in minigame slimes are going behind walls and warriors
+projectile is not slicing through all enemies". Pictured before and after
+(the commit folder's endless_walls_before_after.png).
+
+- **A slime's picture is wider than its feet** - 17 px left of them, 15
+  right, and up to 42 px above (a hop). The swarm is drawn at `DRAW_Z` -1,
+  under every wall, so held `EDGE` (6) from a side wall half its body was
+  under the wall, and beside the corridor the same; and since 0.94.2 the
+  crowd presses to the back wall, where its top row was under the wall's
+  face (and showed through its gaps).
+- **Sides and corridor: held clear.** `SIDE_EDGE` (18) from the side walls
+  in the step and in `floor_point()`, and the `keep_out` rects grown by
+  `HELD_OUT_SIDES` (16) at their sides when a slime is pushed out of them.
+  A player against those walls is still the crowd's: it chases and touches
+  `floor_point()`.
+- **The back wall: drawn in front of it.** `draw_in_front_of(wall_foot)`
+  (endlessrun.gd, `arena_rect.position.y - BACK_WALL_GAP`) makes a second
+  MultiMesh, `_front`, at a pixel past the wall's foot, z 0, and turns on
+  the swarm node's `y_sort_enabled` so it sorts with the world: after the
+  wall, before anybody standing south of it. `_write_buffer()` sends the
+  slimes whose feet are within `PICTURE_TOP` (42) of the wall's foot - the
+  first of the back-to-front order - to `_front` (`_front_buffer`, y less
+  `_front_y`), the rest to `_mesh` as before. Both meshes come from
+  `_make_mesh()`, interpolation off on both.
+- **The wave cut nothing past the crowd round the player.** The swarm's
+  `PROXIES` (96) stand on the slimes nearest the player; a slash wave flying
+  past them met slimes with no stand-in. It joins `swarm_focus` now with a
+  `swarm_reach()` to its box's far corner, as the axe does; so does every
+  orb (bladeorb.gd, `RADIUS`). `FOCUS_PROXIES` is 160, and the slimes round
+  the attacks are found through CELL squares (`_focus_shares()`) instead of
+  asking every slime about every attack - a warrior's waves and orbs are
+  dozens at once.
+- **Once each, by the slime.** The wave and the orbs remembered what they
+  struck by instance id, and a stand-in moves on to another slime: the next
+  one it stood on went uncut. `Targets.hit_key()` is the slime's
+  `pass_key()` for a stand-in and the instance id for a monster - the wave's
+  `_hit_targets`, an orb's `_ignore_id` and `cast_hits`, a finisher's
+  burst. And the wave cuts what is in its box every tick
+  (`get_overlapping_areas()`), not only what comes in: a stand-in moved
+  onto a new slime inside the box never comes in again.
+
+`_test_the_swarm_keeps_off_the_walls()` (testrunner_9): with the wave's
+`swarm_focus` taken out it cut 0 of 30 slimes past the crowd; with it, 30.
+
+### Faster each stage, and a crowd round you is deadly (0.96.0)
+
+The owner: "slimes need a speed buff as things progress", then "make sure
+more then 3 slimes are attacking the player when surrounded stopping in a
+crowd should be deadly".
+
+- **`stage_speed()`** (endlessrun.gd) is `SPEED_START` 50 + `SPEED_STEP` 6
+  a stage, held at `SPEED_MOST` 175 from stage 21: 56 at the first, 110 at
+  the tenth. It was 50 + 3, held at 95 - slower than any class walks (140
+  to 200), so a player could always walk off. Now past the healer's walk
+  from stage 16, the tank's from 19, the mage's from 20; never the
+  warrior's walk, nor any sprint (x1.5).
+- **At the player a slime stops** (swarm.gd, the step): within `TOUCH` its
+  steering is not carried over (`steer` 1, not `STEER`). At a late stage's
+  stride (8.75 px a step) the carried velocity slid it through the player
+  and back - to 2.4 px in the test, with the fix 11.
+- **Every slime within `BITE` (26 px) bites** - both ranks round you - up
+  to `TOUCH_MOST` (16; it was 5, and only those within `TOUCH`, 14 px,
+  counted). Measured round a still player in a crowd of 300 (zz/crowdcount):
+  4 or 5 bit before; 17 at speed 110, 18 at 175 now. Walking a circle at
+  150 px/s, 0 to 2. Each bite is `stage_touch()`, the whole halved as every
+  hit on a player is (`HIT_TAKEN`): at stage 1, 16 biting is 40 a half
+  second before armour. `_touching` is still the count's name.
+
+`_test_slimes_speed_up()` (testrunner_9).
 
 ### Every hit on a player lands at half (0.93.6)
 
@@ -2607,6 +2679,46 @@ whole map".
   anybody stood in it.
 
 `_test_the_camera_zooms_out()` (testrunner_9).
+
+### The map shows the whole area, zooms and drags (0.96.0)
+
+The same request, answered where it was meant: "i need players to be able to
+see the whole map", then "i meant the map not the player ... i meant map in
+hud" - the map (M) is what had to zoom out. The camera's 1x (0.95.0) stays,
+a setting.
+
+- **The window is drawn 1160 x 640** (mapscreen.tscn; it was 520 x 480) and
+  still drags and resizes. `%mapview` fills its frame and clips;
+  `%mapground`, under `%mapmarkers`, draws the picture where `_layout()`
+  says. The picture no longer sizes the window, so a window made smaller by
+  hand is not held open by it.
+- **It opens on the whole area, every time.** `_zoom` is a multiple of the
+  whole-area fit (`fit_for()`): 1 is all of it, at most a tile
+  `MAX_TILE_PX` (24) interface pixels across. `_centre` is the map pixel at
+  the view's middle, kept so the map never leaves more of the view empty
+  than it must. The wheel over the map zooms about the pointer
+  (`WHEEL_STEP` 1.25 a notch; a trackpad's pinch too), a held button drags
+  it (`pan_by()`), and the footer's -, + (`BUTTON_STEP` 1.6) and Whole map
+  do the same for a finger. `_on_view_input()` accepts all of it, so the
+  camera's wheel zoom never happens under the map.
+- **Crisp at any scale.** It was floored to a whole number, which put the
+  Big Field (385 x 322) at 1x in any window. Now the picture is blown up
+  `MAX_SHARPEN` (6) times, nearest (`sharpen()`, at most `MAX_TEXTURE` 4096
+  a side), with mipmaps, and drawn from there: smoothly while smaller than
+  that on screen, pixel for pixel past it.
+- **Where things are drawn is worked out, not read off a size.** `_fit`
+  and `_offset` from `_layout()`; `_on_map()` is `_offset + pixel * _fit`
+  for the arrow, monsters and party; a pin keeps its map pixel and is drawn
+  at `_pin_at()`.
+- **Ground not walked yet is drawn, darker.** `WorldMap.display_image(area,
+  true)`: seen ground as it is, the rest of the painted ground `UNSEEN_DIM`
+  (0.62) of the way to the fog, bare cells clear. The footer says "N%
+  explored - the darker ground is still to explore". Without `whole` the fog
+  is as before.
+- **Every landmark has its pin, walked or not** - the ladder is what a big
+  map is opened for. Monsters still show only on ground you have seen.
+
+`_test_the_whole_map()` (testrunner_9).
 
 ### Deleting inert code is how you find out what it was for
 
