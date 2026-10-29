@@ -40,7 +40,9 @@ extends Node
 const NODE_NAME := "stresscrowd"
 const GROUP := &"stresscrowd"
 const META := &"stress_copy"
-const AREAS := ["res://scene/bigfield.tscn"]
+# The Big Field and the Field (0.94.0; the owner: "i need to make sure my
+# stress test works on everything also").
+const AREAS := ["res://scene/bigfield.tscn", "res://scene/field.tscn"]
 # What the owner panel offers. 1 is off. 12x and 16x since 0.76.0 (the owner:
 # "a x16 stress test that ran smooth"), with the seats (BaseEnemy, SEATS) and
 # the sleeper's spread pass that make it run.
@@ -50,6 +52,9 @@ const SPREAD_MIN := 20.0
 const SPREAD_MAX := 56.0
 # Nothing new within this of where players arrive - the Big Field's own rule.
 const ARRIVAL_CLEAR := 400.0
+# What a copy may not be on the far side of from its monster: the walls,
+# doors, gates and the rift's edges (layer 1).
+const WALL_MASK := 1
 # How long a frame may spend building or taking away copies, in ms.
 const BUILD_MS := 3.0
 const RESPAWN_FALLBACK := 30.0
@@ -193,6 +198,7 @@ func _take_census() -> void:
 			"respawn": wait,
 			"name": str(enemy.name),
 			"map": map,
+			"world": (_area as Node2D).get_world_2d() if _area is Node2D else null,
 			"arrivals": arrivals,
 		})
 
@@ -245,8 +251,8 @@ func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 
 
 func _spot_near(entry: Dictionary) -> Variant:
-	"""A spot on the floor beside the monster being copied, clear of where
-	players arrive; null when eight tries find none."""
+	"""A spot on the floor beside the monster being copied, in sight of it,
+	clear of where players arrive; null when eight tries find none."""
 	var home: Vector2 = entry["home"]
 	var map: RID = entry["map"]
 	for attempt in 8:
@@ -256,6 +262,8 @@ func _spot_near(entry: Dictionary) -> Variant:
 			var floor_at: Vector2 = NavigationServer2D.map_get_closest_point(map, spot)
 			if floor_at.distance_to(spot) > 1.5:
 				continue
+		if not _in_sight(entry, home, spot):
+			continue
 		var near_arrival: bool = false
 		for arrival in entry["arrivals"]:
 			if (arrival as Vector2).distance_to(spot) < ARRIVAL_CLEAR:
@@ -265,6 +273,17 @@ func _spot_near(entry: Dictionary) -> Variant:
 			continue
 		return spot
 	return null
+
+
+func _in_sight(entry: Dictionary, from: Vector2, to: Vector2) -> bool:
+	"""Nothing solid between a monster and its copy's spot (0.94.0): the copy
+	stands in its monster's room - never past a wall that only the floor's
+	navigation joins round the corner, nor over the rift."""
+	var world: World2D = entry.get("world") as World2D
+	if world == null:
+		return true
+	var query := PhysicsRayQueryParameters2D.create(from, to, WALL_MASK)
+	return world.direct_space_state.intersect_ray(query).is_empty()
 
 
 func _on_copy_died(source: int) -> void:

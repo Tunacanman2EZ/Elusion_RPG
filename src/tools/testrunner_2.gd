@@ -440,38 +440,24 @@ func _test_the_crypt_skeletons() -> void:
 		func(id): return exported.has(id) or ResourceLoader.exists("res://data/enemies/%s.tres" % id))
 	check("the export carries both for the server's books - %d Soldiers and %d Elites placed - and the five alcove skeletons are gone"
 		% [int(spawns.get("skeletonsoldier", 0)), int(spawns.get("skeletonelite", 0))],
-		books.is_empty() and gone.is_empty() and int(spawns.get("skeletonsoldier", 0)) >= 60
-		and int(spawns.get("skeletonelite", 0)) >= 10, [books, gone])
+		books.is_empty() and gone.is_empty() and int(spawns.get("skeletonsoldier", 0)) == BIG_FIELD_SOLDIERS
+		and int(spawns.get("skeletonelite", 0)) == BIG_FIELD_ELITES, [books, gone])
 
-	# ---- the crypt: Soldiers in the halls, Elites three to a chamber -------------------
+	# ---- the crypt (0.94.0): its own wing, skeletons and nothing else - Patrols
+	# and Warbands of Soldiers, an Elite and its guard in the room furthest in ----
 	var field: Node = (load(BIG_FIELD) as PackedScene).instantiate()
-	var halls: Dictionary = {}
-	var chambers: Dictionary = {}
+	var in_crypt: Dictionary = {}
 	var astray: Array = []
 	for enemy in field.get_node("ysortworld/enemies").get_children():
 		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
-		var spot_at: Vector2 = (enemy as Node2D).position
-		# Which hall's columns it is under: the halls stand over the fields.
-		var band: int = 0
-		for h in 5:
-			if spot_at.x >= [224, 768, 1312, 1856, 2400][h] and spot_at.x <= [672, 1216, 1760, 2304, 2912][h]:
-				band = h + 1
-		if kind == "skeletonsoldier":
-			if spot_at.y >= -128 and spot_at.y <= 160:
-				halls[band] = int(halls.get(band, 0)) + 1
-			else:
+		var land: String = str(enemy.name).get_slice("_", 0)
+		if land == "plain":
+			in_crypt[kind] = int(in_crypt.get(kind, 0)) + 1
+			if not kind.begins_with("skeleton"):
 				astray.append(enemy.name)
-		elif kind == "skeletonelite":
-			if spot_at.y >= -448 and spot_at.y <= -176:
-				chambers[band] = int(chambers.get(band, 0)) + 1
-			else:
-				astray.append(enemy.name)
-		elif spot_at.y < 192:
-			astray.append(enemy.name)
-	var crowded_halls: bool = [1, 2, 3, 4, 5].all(func(h): return int(halls.get(h, 0)) >= 12)
-	var six_each: bool = [1, 2, 3, 4, 5].all(func(h): return int(chambers.get(h, 0)) == ELITES_A_CHAMBER)
-	check("Soldiers fill all five crypt halls, %d Elites stand in each chamber, nothing else in the crypt" % ELITES_A_CHAMBER,
-		crowded_halls and six_each and astray.is_empty(), [halls, chambers, astray.slice(0, 4)])
+	check("the crypt holds skeletons and nothing else: %s" % [in_crypt],
+		int(in_crypt.get("skeletonsoldier", 0)) >= 20 and int(in_crypt.get("skeletonelite", 0)) == 1 and astray.is_empty(),
+		[in_crypt, astray.slice(0, 4)])
 	field.free()
 
 	# ---- the fight ----------------------------------------------------------------
@@ -1071,7 +1057,7 @@ func _test_the_owner_stress_crowd() -> void:
 	crowd.set("refill_seconds_override", 0.3)
 	for i in 4:
 		await get_tree().process_frame
-	var authored: int = BIG_FIELD_MONSTERS + BIG_FIELD_SOLDIERS + BIG_FIELD_ELITES
+	var authored: int = BIG_FIELD_MONSTERS
 	check("off, it adds nothing - and it knows the Big Field is its area", int(crowd.call("copy_count")) == 0
 		and bool(crowd.call("applies")))
 
@@ -1129,6 +1115,19 @@ func _test_the_owner_stress_crowd() -> void:
 		unpaid and paying_sources * 2 > copies.size(), paying_sources)
 	check("  each the same monster - its scene and its leash", unlike.is_empty(), unlike.slice(0, 4))
 	check("  each on the floor, a few steps from it, and none near where players arrive", misplaced.is_empty(), misplaced.slice(0, 4))
+	# 0.94.0: and in sight of it - never past a wall the floor joins round a
+	# corner, nor over the rift.
+	var unseen: Array = []
+	var space: PhysicsDirectSpaceState2D = area.get_world_2d().direct_space_state
+	for copy in copies:
+		var source_name: String = str(copy.name).trim_prefix("stress_").rsplit("_", true, 1)[0]
+		var source: Node2D = copy.get_parent().get_node_or_null(source_name) as Node2D
+		if source == null:
+			continue
+		var ray := PhysicsRayQueryParameters2D.create(source.global_position, (copy as Node2D).global_position, Crowd.WALL_MASK)
+		if not space.intersect_ray(ray).is_empty():
+			unseen.append(copy.name)
+	check("  each in sight of the monster it copies: no wall between them", unseen.is_empty(), unseen.slice(0, 4))
 	var by_arrival: Variant = crowd.call("_spot_near", {"home": arrival + Vector2(40, 0), "map": map, "arrivals": [arrival]})
 	var in_field: Variant = crowd.call("_spot_near", {"home": (copies[0] as Node2D).global_position, "map": map, "arrivals": [arrival]})
 	check("  a monster standing by the arrival gets no copy at all - a copy elsewhere gets its spot",
@@ -1143,7 +1142,12 @@ func _test_the_owner_stress_crowd() -> void:
 	check("  the kill report says nothing for a monster with no id", _func_body(_code_src("res://src/systems/combat.gd"), "func report_kill(")
 		.contains("if enemy_id == \"\":"))
 
+	# Not a slime: a big one splits, and its halves are copies of their own.
 	var victim: Node = copies[0]
+	for copy in copies:
+		if not str(copy.scene_file_path).contains("slime"):
+			victim = copy
+			break
 	victim.call("_die")
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -1159,12 +1163,18 @@ func _test_the_owner_stress_crowd() -> void:
 	stand_in.add_to_group(&"player")
 	area.add_child(stand_in)
 	stand_in.global_position = arrival
+	# Every copy there already - the 2x ones and the one rebuilt after the
+	# kill, both built with nobody in the world - is not this check's.
+	var before_three: Dictionary = {}
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if Crowd.is_copy(node):
+			before_three[node] = true
 	Crowd.set_multiplier(3, get_tree())
 	await _crowd_settles(crowd, authored * 2)
 	var born_asleep: int = 0
 	var far_awake: Array = []
 	for node in get_tree().get_nodes_in_group("enemies"):
-		if not Crowd.is_copy(node) or not area.is_ancestor_of(node) or copies.has(node):
+		if not Crowd.is_copy(node) or not area.is_ancestor_of(node) or before_three.has(node):
 			continue
 		var far_off: bool = (node as Node2D).global_position.distance_to(arrival) > 1100.0
 		if node.has_meta(&"asleep") and node.process_mode == Node.PROCESS_MODE_DISABLED:
@@ -1186,7 +1196,8 @@ func _test_the_owner_stress_crowd() -> void:
 	var elsewhere := Node2D.new()
 	world.add_child(elsewhere)
 	var other: Node = Crowd.add_to(elsewhere)
-	check("  only the Big Field: anywhere else it does nothing", not bool(other.call("applies")))
+	check("  only the Big Field and the Field: anywhere else it does nothing", not bool(other.call("applies"))
+		and Crowd.AREAS == ["res://scene/bigfield.tscn", "res://scene/field.tscn"], Crowd.AREAS)
 	check("  and the switch is a setting of this run alone - a static, never saved",
 		not _code_src("res://src/world/stresscrowd.gd").contains("Settings.set_value")
 		and _code_src("res://src/world/stresscrowd.gd").contains("static var multiplier: int = 1"))
@@ -1218,7 +1229,7 @@ func _test_the_owner_stress_crowd() -> void:
 
 
 func _test_the_big_field() -> void:
-	section("THE BIG FIELD - packed fields off one road, harder the further you go")
+	section("THE BIG FIELD - the crossroads and its wings, a tier each, harder the further you go (0.94.0)")
 
 	check("it is an area: /goto and the walk test can reach it",
 		AreaRegistry.has_area("bigfield") and str(AreaRegistry.AREAS.get("bigfield", "")) == BIG_FIELD
@@ -1238,30 +1249,39 @@ func _test_the_big_field() -> void:
 	check("players arrive where the town's portal sends them (field_entrance)",
 		arrival != null and str(arrival.get("portal_id")) == "field_entrance")
 	var ladder: Node = area.get_node_or_null("ysortworld/interactables/ladderdown")
-	check("the ladder at the far end goes down to the Field, landing at its arrival (0.15.0)",
+	check("the ladder at the descent's heart goes down to the Field, landing at its arrival (0.15.0)",
 		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/field.tscn"
 		and str(ladder.get("target_spawn_id")) == "field_entrance")
-	check("a respawner brings the fields back", area.get_node_or_null("enemyrespawner") != null)
-	# The fields' monsters, doubled in 0.63.0, and the crypt's skeletons.
-	var crypt_kinds: Dictionary = {}
+	check("a respawner brings the monsters back", area.get_node_or_null("enemyrespawner") != null)
+	var skeletons: Dictionary = {}
 	for enemy in enemies:
 		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
 		if kind.begins_with("skeleton"):
-			crypt_kinds[kind] = int(crypt_kinds.get(kind, 0)) + 1
-	check("%d enemies are placed: the fields' %d, doubled, and the crypt's %d Soldiers and %d Elites"
-		% [enemies.size(), BIG_FIELD_MONSTERS, BIG_FIELD_SOLDIERS, BIG_FIELD_ELITES],
-		enemies.size() == BIG_FIELD_MONSTERS + BIG_FIELD_SOLDIERS + BIG_FIELD_ELITES
-		and int(crypt_kinds.get("skeletonsoldier", 0)) == BIG_FIELD_SOLDIERS
-		and int(crypt_kinds.get("skeletonelite", 0)) == BIG_FIELD_ELITES, [enemies.size(), crypt_kinds])
+			skeletons[kind] = int(skeletons.get(kind, 0)) + 1
+	check("%d enemies are placed, %d Skeleton Soldiers and %d Elites among them"
+		% [enemies.size(), BIG_FIELD_SOLDIERS, BIG_FIELD_ELITES],
+		enemies.size() == BIG_FIELD_MONSTERS and int(skeletons.get("skeletonsoldier", 0)) == BIG_FIELD_SOLDIERS
+		and int(skeletons.get("skeletonelite", 0)) == BIG_FIELD_ELITES, [enemies.size(), skeletons])
 
 	# Positions are read relative to the area root, as the scene file holds them.
 	var arrive_at: Vector2 = Vector2.ZERO
 	if arrival != null:
 		arrive_at = (arrival.get_parent() as Node2D).position + (arrival.get_parent() as Node2D).transform.basis_xform(arrival.position)
+	# Which wing a spot is in: the build file's rooms and corridors, by cell.
+	var plan: Variant = JSON.parse_string(FileAccess.get_file_as_string(BIG_FIELD_BUILD))
+	var rooms: Array = (plan as Dictionary).get("rooms", []) if plan is Dictionary else []
+	check("the build file it was made from is beside its tool", not rooms.is_empty(), BIG_FIELD_BUILD)
+	var wing_at := func(at: Vector2) -> String:
+		var c := Vector2i(floori(at.x / 16.0), floori(at.y / 16.0))
+		for r in rooms:
+			if c.x >= int(r["x"]) and c.x < int(r["x"]) + int(r["w"]) and c.y >= int(r["y"]) and c.y < int(r["y"]) + int(r["h"]):
+				return str(r["wing"])
+		return ""
 	var too_close: Array = []
 	var in_walls: Array = []
 	var chase: Array = []
-	var by_band: Dictionary = {}
+	var astray: Array = []
+	var by_tier: Dictionary = {}
 	for enemy in enemies:
 		var at: Vector2 = (enemy as Node2D).position
 		if at.distance_to(arrive_at) < 400.0:
@@ -1272,31 +1292,31 @@ func _test_the_big_field() -> void:
 			in_walls.append("%s on %s" % [enemy.name, atlas])
 		if not is_equal_approx(float(enemy.get("leash_range")), 250.0):
 			chase.append(enemy.name)
-		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
-		if kind.begins_with("skeleton"):
-			continue                      # the crypt's: no band (_test_the_crypt_skeletons)
-		var band: int = 0
-		for prefix in BIG_FIELD_BANDS:
-			if kind.begins_with(prefix):
-				band = int(BIG_FIELD_BANDS[prefix])
-				break
-		if not by_band.has(band):
-			by_band[band] = []
-		by_band[band].append(at.x)
+		var land: String = str(enemy.name).get_slice("_", 0)
+		var wing: String = str(BIG_FIELD_LANDS.get(land, "?"))
+		if wing_at.call(at) != wing:
+			astray.append("%s in %s" % [enemy.name, wing_at.call(at)])
+		if BIG_FIELD_TIERS.has(wing):
+			var tier: int = int(BIG_FIELD_TIERS[wing])
+			if not by_tier.has(tier):
+				by_tier[tier] = []
+			by_tier[tier].append(at.distance_to(arrive_at))
 	check("a safe landing: nothing within 400 px of where players arrive", too_close.is_empty(), too_close)
 	check("every enemy stands on open floor, none in a wall tile", in_walls.is_empty(), in_walls.slice(0, 4))
-	check("every enemy chases from 250 px, so one field does not pull the next", chase.is_empty(), chase.slice(0, 4))
+	check("every enemy chases from 250 px, so one pack does not pull the next", chase.is_empty(), chase.slice(0, 4))
+	check("every monster stands in its land's wing: light and wind in the courts, water and ice in the chasm, "
+		+ "earth in the caverns, fire in the fortress, dark in the descent, the skeletons' own in the crypt",
+		astray.is_empty(), astray.slice(0, 4))
 	var means: Array = []
-	for band in [1, 2, 3, 4, 5]:
-		var xs: Array = by_band.get(band, [])
+	for tier in [1, 2, 3, 4, 5]:
+		var ds: Array = by_tier.get(tier, [])
 		var total: float = 0.0
-		for x in xs:
-			total += float(x)
-		means.append(total / maxf(xs.size(), 1.0))
-	check("every enemy is in a band, and every band has its fields", not by_band.has(0)
-		and [1, 2, 3, 4, 5].all(func(b): return by_band.has(b)), by_band.keys())
-	check("harder the further you go: each band sits further along the road than the one before",
-		means[0] < means[1] and means[1] < means[2] and means[2] < means[3] and means[3] < means[4], means)
+		for dd in ds:
+			total += float(dd)
+		means.append(total / maxf(ds.size(), 1.0))
+	check("every tier has its wing, and harder the further you go: the courts' the nearest, the descent's the furthest",
+		[1, 2, 3, 4, 5].all(func(t): return by_tier.has(t)) and means[0] == means.min() and means[4] == means.max(),
+		means.map(func(m): return int(m)))
 	var kinds: Array = []
 	for enemy in enemies:
 		if not kinds.has(enemy.scene_file_path):
@@ -1330,7 +1350,7 @@ func _test_the_big_field() -> void:
 	check("  while a mage nobody set still commits to the chase, as in the Field",
 		is_equal_approx(float(mage.get("leash_range")), 1500.0), mage.get("leash_range"))
 	holder.free()
-	print("  %d enemies, bands along the road at x %s" % [enemies.size(), means.map(func(m): return int(m))])
+	print("  %d enemies, the tiers' mean distance from the arrival %s" % [enemies.size(), means.map(func(m): return int(m))])
 
 
 # =============================================================================

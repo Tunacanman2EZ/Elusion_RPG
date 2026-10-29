@@ -137,7 +137,34 @@ static func cover(area: Node) -> Array[Rect2]:
 			if i < spans.size():
 				left = spans[i][0]
 				right = left + spans[i][1]
+	return _stacked(out)
+
+
+static func _stacked(runs: Array[Rect2]) -> Array[Rect2]:
+	"""Runs one above the other, the same left and right, become one
+	rectangle (0.94.0). The Big Field's rooms and corridors are many runs to
+	a row and three hundred rows - 2,667 rectangles a frame in rows, a few
+	hundred stacked."""
+	runs.sort_custom(_by_column)
+	var out: Array[Rect2] = []
+	for r in runs:
+		if not out.is_empty():
+			var last: Rect2 = out[out.size() - 1]
+			if is_equal_approx(last.position.x, r.position.x) and is_equal_approx(last.size.x, r.size.x) \
+					and absf(last.end.y - r.position.y) < 0.01:
+				out[out.size() - 1] = Rect2(last.position, Vector2(last.size.x, r.end.y - last.position.y))
+				continue
+		out.append(r)
 	return out
+
+
+static func _by_column(a: Rect2, b: Rect2) -> bool:
+	"""Left edge, then width, then top: runs that can stack end up together."""
+	if not is_equal_approx(a.position.x, b.position.x):
+		return a.position.x < b.position.x
+	if not is_equal_approx(a.size.x, b.size.x):
+		return a.size.x < b.size.x
+	return a.position.y < b.position.y
 
 
 static func _drawn_rect(layer: TileMapLayer, cell: Vector2i, known: Dictionary) -> Rect2:

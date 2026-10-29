@@ -3328,6 +3328,8 @@ func _test_a_trade_is_made_from_the_bag() -> void:
 	check("the trade window and its card load", TradePanel != null and Prompt != null and packed != null)
 	if TradePanel == null or Prompt == null or packed == null:
 		return
+	# A clone without the art pack has none of these (PACK_STAND_INS).
+	var stand_ins: Array = _stand_ins_for(["tinyhealthpotion", "ironsword"])
 
 	# ---- beside the bag ----
 	var screen := Vector2(1280, 720)
@@ -3450,6 +3452,7 @@ func _test_a_trade_is_made_from_the_bag() -> void:
 		_func_body(hud_src, "func _ready(").contains("TradePrompt.attach(self)")
 		and _func_body(_code_src("res://src/ui/trade/tradeprompt.gd"), "func _on_see(").contains("toggle_trade"))
 	hud.free()
+	_drop_stand_ins(stand_ins)
 	await get_tree().process_frame
 	print("  a trade is made from the bag")
 
@@ -4731,6 +4734,8 @@ func _test_endless_chest() -> void:
 	check("the chest loads", Chest != null and Chest.can_instantiate())
 	if Chest == null or Run == null or Card == null:
 		return
+	# A clone without the art pack has none of these (PACK_STAND_INS).
+	var stand_ins: Array = _stand_ins_for(["coppercoin", "ironsword"])
 
 	# ---- the schedule the server holds a kill to ----
 	var enemy_id_of := func(scene_name: String) -> String:
@@ -4973,5 +4978,6 @@ func _test_endless_chest() -> void:
 	for node in [place, card_host, bag, stand_hud, chest, player]:
 		if is_instance_valid(node):
 			node.queue_free()
+	_drop_stand_ins(stand_ins)
 	await get_tree().process_frame
 	print("  the chest: the schedule, a run's kill, the window, Leave and the corridor")

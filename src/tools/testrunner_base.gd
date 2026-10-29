@@ -1203,6 +1203,40 @@ func _pack_present() -> bool:
 	return ResourceLoader.exists("res://art/pack/currency/goldpile.png")
 
 
+# STAND-INS FOR THE PACK'S ITEMS (28 Oct). A test that fills a bag, a trade
+# or a chest with real ids - tinyhealthpotion, ironsword, coppercoin - reads
+# them from ItemRegistry, and a clone without the private art pack registers
+# none of them (their .tres point at the pack's pictures). On GitHub that was
+# five failures and a SCRIPT ERROR from 0.93.0 on, every push, mailed to the
+# owner. These are not facts about the art, so they are not skips: the test
+# registers a plain ItemData for each id the registry lacks - type, slot and
+# stack as the real one has them - and takes them out after. With the pack,
+# nothing is added and the real items are used.
+const PACK_STAND_INS := {
+	"tinyhealthpotion": [ItemData.Type.CONSUMABLE, ItemData.EquipSlot.NONE, 20],
+	"ironsword": [ItemData.Type.WEAPON, ItemData.EquipSlot.WEAPON, 1],
+	"coppercoin": [ItemData.Type.CURRENCY, ItemData.EquipSlot.NONE, 9999],
+}
+
+
+func _stand_ins_for(ids: Array) -> Array:
+	"""Register a stand-in for each of `ids` (keys of PACK_STAND_INS) the
+	registry does not hold; returns the ids added, for _drop_stand_ins()."""
+	var added: Array = []
+	for id in ids:
+		if ItemRegistry.has_item(id) or not PACK_STAND_INS.has(id):
+			continue
+		var spec: Array = PACK_STAND_INS[id]
+		ItemRegistry._items[id] = _menu_item(id, spec[0], spec[1], spec[2])
+		added.append(id)
+	return added
+
+
+func _drop_stand_ins(added: Array) -> void:
+	for id in added:
+		ItemRegistry._items.erase(id)
+
+
 func check_needs_pack(label: String, condition: bool, detail: Variant = "") -> void:
 	"""check(), unless the private art pack is absent - then it is a skip."""
 	if not _pack_present():
@@ -1519,35 +1553,46 @@ const DOOR_SCRIPTS := ["res://src/world/ladder.gd", "res://src/world/leavetown.g
 # =============================================================================
 # THE BIG FIELD
 # =============================================================================
-# Day 2: the owner wanted the Field twice the size, packed with enemies, "super
-# fast and easy for players to jump into". bigfield.tscn is generated from the
-# blueprint the owner signed off: the Field's own crypt tiles, a main road from
-# the arrival to the ladder, ten fields off it, one element each, harder the
-# further you go. These hold what the blueprint promised; the walk test above
-# holds the walls and the doors, because bigfield is in AreaRegistry.AREAS.
+# 0.94.0, the owner: "we need to mix the maps from earlier with these ones to
+# make it more complex", then "we have to add the walls all around the map
+# nice and perfectly the doors all of it". bigfield.tscn is written by
+# src/tools/buildbigfield.gd from tools/maps/bigfield_build.json, which
+# tools/maps/bigfield.py makes: THE CROSSROADS, where you arrive, and a wing a
+# tier off it - the courts, the chasm and its rift, the caverns and their
+# arena, the fortress, the descent with the ladder at its heart, and the
+# crypt. These hold what that plan promised; the walk test above holds the
+# walls and the doors, because bigfield is in AreaRegistry.AREAS.
 const BIG_FIELD := "res://scene/bigfield.tscn"
-const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 3,
-	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5}
-# The fields' monsters since 0.63.0 ("lets double the enemies in big field"),
-# and the crypt's skeletons, which are in no band: one solid tier each.
-const BIG_FIELD_MONSTERS := 256
-const BIG_FIELD_SOLDIERS := 80
-const BIG_FIELD_ELITES := 30
-# Six in each chamber: "more elites in there also", twice.
-const ELITES_A_CHAMBER := 6
+const BIG_FIELD_BUILD := "res://tools/maps/bigfield_build.json"
+# Each land's wing (a monster's land is the start of its name in the scene).
+const BIG_FIELD_LANDS := {"light": "courts", "wind": "courts", "water": "chasm", "ice": "chasm",
+	"electric": "chasm", "poison": "chasm", "earth": "caverns", "fire": "fortress", "dark": "descent",
+	"plain": "crypt"}
+const BIG_FIELD_TIERS := {"courts": 1, "chasm": 2, "caverns": 3, "fortress": 4, "descent": 5}
+# Every monster placed; the skeletons among them (the crypt's Patrols and
+# Warbands, the caverns' Patrols; an Elite in the crypt's furthest room and
+# the fortress's Elite packs).
+const BIG_FIELD_MONSTERS := 282
+const BIG_FIELD_SOLDIERS := 40
+const BIG_FIELD_ELITES := 6
+# The crypt doors (one a wing behind it, two down the descent) and the
+# shortcuts' spike gates, each with its lever in its wing's far room.
+const BIG_FIELD_DOORS := 6
+const BIG_FIELD_GATES := 3
 
 # =============================================================================
 # THE BIG FIELD, DRESSED (0.61.0)
 # =============================================================================
 # The owner, 20 Oct: "go ahead and place because i cannot get the right sizes
-# for them to do it" - the walls and props of floorwalls.png, in "the alcoves
-# and edges", the walls and big pieces solid - and then "i need walls around
-# the whole map": every edge of the floor walled (0.62.0) - and the crypt and its
-# doors (0.63.0, _test_the_crypt_doors). The sheet is loose pieces of
-# every size, not a grid, so a TileSet cannot cut it; scene/crypt/ already
-# has each piece at its size, standing on its own feet, and those are what is
-# placed (ysortworld/props/crypt, one group an area). These hold the placing
-# to what the owner asked and to the fights it must not get in the way of.
+# for them to do it" - the walls and props of floorwalls.png, the walls and
+# big pieces solid - and then "i need walls around the whole map": every edge
+# of the floor walled (0.62.0) - and the crypt doors (0.63.0,
+# _test_the_crypt_doors). The sheet is loose pieces of every size, not a grid,
+# so a TileSet cannot cut it; scene/crypt/ already has each piece at its
+# size, standing on its own feet, and those are what is placed
+# (ysortworld/props/crypt: walls, doors, decor). Since 0.94.0 every piece is
+# laid end to end along the floor's edges, nothing over anything - the
+# Endless's rule (0.93.2) - and these hold that too.
 
 const DRESSED_LIGHT_BUDGET := 40
 

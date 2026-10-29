@@ -1294,6 +1294,20 @@ coin-ordering loop iterates over coins that never registered. `ItemStack` is pur
 logic and should not need purchased art to be tested; building its cases from a
 synthetic `ItemData` instead of the registry would let those run everywhere.
 
+**A test that fills a bag with real items needs stand-ins in a clone
+(28 Oct).** From 0.93.0 GitHub's run failed on every push - and mailed the
+owner each time - with five failures and a SCRIPT ERROR on
+`tinyhealthpotion`: the trade-from-the-bag and Endless-chest sections fill
+a bag, a trade and a chest with `tinyhealthpotion`, `ironsword` and
+`coppercoin`, whose `.tres` point at the pack's pictures, so a clone
+registers none of them. Not a fact about the art, so not a skip: the base's
+`_stand_ins_for(ids)` registers a plain ItemData (`PACK_STAND_INS`: type,
+slot and stack as the real one) for each id the registry lacks, and
+`_drop_stand_ins()` takes them out after; with the pack nothing is added.
+A new test that puts a real item in a grid asks for its stand-in the same
+way. **Run the suite once without `art/pack` before a ship that adds such a
+test** - on a PC it always passes.
+
 ### Deleting art a TileSet still uses degrades the scene instead of erroring
 
 `.godot/` is gitignored, so anything inside it exists on the machine that built
@@ -2374,6 +2388,75 @@ down), so this is the one place. Health is the client's (E-9) and the server
 is not asked; defence XP still trains on the hit as sent. Tune it there. The
 checks that pin `damage_taken()`'s arithmetic (testrunner_3) carry the factor,
 and one more holds it applied.
+
+### The Big Field is built from a plan, walled piece by piece (0.94.0)
+
+The owner, 28 Oct: "we need to mix the maps from earlier with these ones to
+make it more complex", then "we have to add the walls all around the map
+nice and perfectly the doors all of it and i need to make sure my stress
+test works on everything also". The plans and pictures are in the commit
+folder's MAPS_PLAN.txt; this is what was built.
+
+- **Three steps, none by hand.** `tools/maps/bigfield.py` (Python: numpy,
+  scipy, Pillow) lays out the map and works out every wall piece, and writes
+  `tools/maps/bigfield_build.json` (seed 22) and pictures;
+  `src/tools/buildbigfield.gd`'s `build()` writes `scene/bigfield.tscn` from
+  it; then the Big Field's spawns go into `data/gamedata.json` (the export)
+  and the API's copy. Changing the scene in the editor is lost the next
+  build - change the plan. `tools/maps/` has a `.gdignore`: Godot never
+  imports or exports it.
+- **The plan.** THE CROSSROADS (52 x 34 cells, you arrive in its middle) and
+  a wing a tier off it: the courts (light, wind; pillared halls) west; the
+  chasm (water, ice, the electric and poison oddities) north, two long halls
+  either side of a rift crossed by three bridges; the caverns (earth, its
+  arena and Champion pack) north-east; the fortress (fire) south-east, a
+  gatehouse and a grid; the descent (dark) east, two rings of halls and the
+  ladder at its heart; the crypt (skeletons) south-west. 385 x 322 cells,
+  four times the old map; 282 monsters in 89 packs, one land a room, none
+  within 400 px of the arrival.
+- **Walls that fit (`tools/maps/walls.py`).** Every edge between floor and
+  dark gets its crypt piece: the back wall on a top edge, the front wall on
+  a bottom, a 9 px column on each side, the four corners where two meet. The
+  pieces come in a few sizes (runs 101/51/26 and the 17 px pillar; columns
+  58/36/35), so each wall line may sit a few px off its cell line, where the
+  floor tile under it is hidden by the wall itself - a column within 9 px,
+  a back or front wall within 28. `solve()` picks every line so every run
+  and column is whole pieces, end to end, nothing over anything; shapes and
+  corridors are only ones it can wall (rooms of rectangles, every step wide
+  enough for a piece, rock between any two places for both their walls).
+- **A wall pillar is plugged.** A pillar's body is the bottom 12 px of it, a
+  run's the whole 28: beside a door or at a wall's end a player squeezed in
+  over one and out into the dark. `ysortworld/props/pillarplugs` fills the
+  18 px over every wall pillar. A pillar is 30 tall to a run's 28, so one at
+  the end of a back wall a column comes down onto stands 2 px lower.
+- **The rift is tiles.** The north hall's south edge is the plateau's own
+  cliff (two rows), the south hall's north edge its rim, the bridges' sides
+  rims, the joins the tileset's inner corners - collision and all, on the
+  walls' layer, so shots stop at its edge. No crypt wall there.
+- **Doors and gates.** A crypt door (`scene/crypt/door.tscn`, shut until
+  opened) across each way into the chasm, the caverns, the fortress and the
+  crypt, and the two passages down the descent: a pillar, the door and a
+  pillar across a 6-cell corridor, each pillar up to 4 px off its column so
+  the door fits whatever the columns' lines. Three shortcuts back to the hub
+  (the courts', the chasm's, the caverns'), each a row of spike doors on the
+  root with a lever in its wing's far room, as the Field's boss gates are.
+  With every gate up, every monster can still be walked to.
+- **What the old map's tests asked, the new one's ask** (testrunner_1
+  `_test_the_big_field_is_dressed`, testrunner_2 `_test_the_big_field`):
+  every edge walled (9,776), no two wall pictures over each other, nothing
+  solid on a monster's spawn, 6 doors, 3 gates, each land in its wing, the
+  courts nearest and the descent furthest, the crypt skeletons only. The
+  walk test holds the walls.
+- **The stress test, in sight (`stresscrowd.gd`).** `AREAS` is the Big Field
+  and the Field. A copy's spot must be on the floor's navigation AND in a
+  straight line from its monster with no wall between (`_in_sight()`, layer
+  1): navigation joins rooms round corners, so a spot 40 px away could be in
+  the next room or over the rift. Benched headless at the thickest pack, 4x:
+  physics 2.4 ms a frame, the old map 4.0; 8x 4.9 against 8.1 - packs behind
+  walls are far fewer awake (132 of 2,300 against 486 of 2,928).
+- **The backdrop stacks its runs (`mapbackdrop.gd` `_stacked()`).** Rows of
+  runs, one above another with the same ends, are one rectangle: the new
+  map was 2,667 rectangles in rows, a few hundred stacked.
 
 ### Deleting inert code is how you find out what it was for
 
