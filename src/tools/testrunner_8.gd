@@ -3741,7 +3741,7 @@ func _test_the_endless_run() -> void:
 					or (child.get_node("hurtbox") as Area2D).collision_layer != 8:
 				proxies_right = false
 	check("  %d stand-ins take its hits: in \"enemies\", marked as the owner's copies (never shared, counted or paid), a hurtbox on the monsters' layer" % proxies.size(),
-		proxies.size() == SwarmScript.PROXIES and proxies_right)
+		proxies.size() == SwarmScript.PROXIES + SwarmScript.FOCUS_PROXIES and proxies_right)
 	swarm.set("max_hp", 30.0)
 	swarm.call("spawn", 1, Vector2(-9999, -9999))
 	var last: int = int(swarm.get("_high")) - 1
@@ -3791,8 +3791,9 @@ func _test_the_endless_run() -> void:
 	var body := Node2D.new()
 	body.set_script(_endless_body_script())
 	add_child(body)
+	body.global_position = Vector2(5000, 5000)
+	check("off the Endless's floor a fall is an ordinary death", run.call("knock_out", body) == false)
 	body.global_position = Vector2(800, 400)
-	check("outside a run a fall is an ordinary death", run.call("knock_out", body) == false)
 	run.set("state", 1)
 	var caught: bool = bool(run.call("knock_out", body))
 	check("inside one it is caught: 1 health, back in the corridor, and the run over",

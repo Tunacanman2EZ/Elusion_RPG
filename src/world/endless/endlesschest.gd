@@ -24,6 +24,15 @@
 # art): its frames are borrowed, nothing new is drawn. Over it, how many cells
 # hold something (`count_label`), from the chest's answer and from each kill's.
 #
+# GRAB YOUR LOOT (0.94.1). The owner: "need to make sure it pots player by
+# chest after death and has an arrow saying grab loot from chest". While it
+# holds something, shut, and you stand in the corridor (`corridor`, set by
+# endlessrun.gd), a gold arrow bobs over it saying so (`beckon`: drawn as the
+# map's own arrow is, a triangle outlined in black). And the ladder up waits
+# once (holds_ladder(), the "ladder_guard" group ladder.gd asks): step on it
+# with loot here and it says so; step on it again and it goes. The next Go
+# empties the chest.
+#
 # Built in code, no class_name, so a fresh checkout needs no editor rescan.
 extends Area2D
 
@@ -38,6 +47,14 @@ const TITLE := "Your chest"
 # key still held from the last scene).
 const SPAWN_GRACE := 0.4
 const READ_TIMEOUT := 4.0
+# The arrow over it: where it points (just over the count), how far and how
+# fast it bobs, and what it says.
+const BECKON_Y := -32.0
+const BECKON_BOB := 2.0
+const BECKON_SPEED := 4.0
+const BECKON_TEXT := "Grab your loot"
+const BECKON_COLOUR := Color(1.0, 0.86, 0.45)
+const BECKON_EDGE := Color(0, 0, 0, 0.85)
 
 # The loot window reads these (lootbaginventory.gd open_for_bag()).
 var panel_cells: int = CHEST_CELLS
@@ -47,6 +64,17 @@ var panel_title: String = TITLE
 # SEAMS FOR THE SUITE. In the game: GET /api/loot/chest for this character.
 var chest_request: Callable = Callable()
 var slot_now: Callable = Callable()
+# And the player the arrow is for: the "player" group's.
+var player_now: Callable = Callable()
+
+# The corridor (endlessrun.gd's corridor_rect): the arrow shows to a player in
+# it. Empty, it shows to nobody.
+var corridor: Rect2 = Rect2()
+var beckon: Node2D = null
+var beckon_label: Label = null
+var _bob: float = 0.0
+# The ladder has said once that the chest holds loot (holds_ladder()).
+var _ladder_warned: bool = false
 
 var anim: AnimatedSprite2D = null
 var count_label: Label = null
@@ -100,7 +128,9 @@ func _ready() -> void:
 	count_label.z_index = 2
 	count_label.visible = false
 	add_child(count_label)
+	_build_beckon()
 	add_to_group(&"endless_chest")
+	add_to_group(&"ladder_guard")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	# What earlier kills left in it, said over the lid from the start.
@@ -120,7 +150,76 @@ static func _bank_frames() -> SpriteFrames:
 	return frames
 
 
+func _build_beckon() -> void:
+	beckon = Node2D.new()
+	beckon.name = "beckon"
+	beckon.z_index = 3
+	beckon.position = Vector2(0, BECKON_Y)
+	beckon.visible = false
+	beckon.draw.connect(_draw_beckon)
+	add_child(beckon)
+	beckon_label = Label.new()
+	beckon_label.text = BECKON_TEXT
+	beckon_label.add_theme_font_size_override("font_size", 9)
+	beckon_label.add_theme_color_override("font_color", BECKON_COLOUR)
+	beckon_label.add_theme_color_override("font_outline_color", BECKON_EDGE)
+	beckon_label.add_theme_constant_override("outline_size", 3)
+	beckon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	beckon_label.size = Vector2(100, 12)
+	beckon_label.position = Vector2(-50, -25)
+	beckon.add_child(beckon_label)
+
+
+func _draw_beckon() -> void:
+	# Pointing down at the chest, its tip at the arrow node: outlined, so it
+	# reads on the dark floor and on the gold count under it.
+	var points := PackedVector2Array([Vector2(0, 0), Vector2(-6, -7), Vector2(-2, -7), Vector2(-2, -11),
+		Vector2(2, -11), Vector2(2, -7), Vector2(6, -7)])
+	var ring := points.duplicate()
+	ring.append(points[0])
+	beckon.draw_polyline(ring, BECKON_EDGE, 2.0)
+	beckon.draw_colored_polygon(points, BECKON_COLOUR)
+
+
+func should_beckon() -> bool:
+	"""Loot in it, its lid shut, and the player in the corridor."""
+	if used <= 0 or is_open or corridor.size == Vector2.ZERO:
+		return false
+	var found: Node = null
+	if player_now.is_valid():
+		found = player_now.call()
+	elif is_inside_tree():
+		found = get_tree().get_first_node_in_group(&"player")
+	var who: Node2D = found as Node2D
+	return who != null and is_instance_valid(who) and who.get("is_dying") != true \
+		and corridor.has_point(who.global_position)
+
+
+func _tick_beckon(delta: float) -> void:
+	if beckon == null:
+		return
+	var show_it: bool = should_beckon()
+	if show_it != beckon.visible:
+		beckon.visible = show_it
+		_bob = 0.0
+	if show_it:
+		_bob = fmod(_bob + delta * BECKON_SPEED, TAU)
+		beckon.position = Vector2(0, BECKON_Y + roundf(sin(_bob) * BECKON_BOB))
+
+
+func holds_ladder(_ladder: Node, body: Node) -> bool:
+	"""ladder.gd asks before it takes a player up: with loot here, the first
+	step on it says so and stays; the next goes."""
+	if used <= 0 or _ladder_warned:
+		return false
+	_ladder_warned = true
+	if body != null and body.has_method("show_notice"):
+		body.call("show_notice", "Your chest holds %d - grab it first. Step on the ladder again to leave it." % used)
+	return true
+
+
 func _process(delta: float) -> void:
+	_tick_beckon(delta)
 	if _grace > 0.0:
 		_grace -= delta
 		return
@@ -212,6 +311,9 @@ func note_win(data: Dictionary) -> void:
 
 
 func note_used(cells: int) -> void:
+	if maxi(0, cells) != used:
+		# Something new to say on the ladder.
+		_ladder_warned = false
 	used = maxi(0, cells)
 	if count_label != null:
 		count_label.text = "×%d" % used

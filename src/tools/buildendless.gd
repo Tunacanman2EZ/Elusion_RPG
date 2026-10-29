@@ -163,7 +163,8 @@ func build() -> int:
 	run.set("corridor_rect", Rect2(CORRIDOR_LEFT - 8, DOOR_Y - 32, CORRIDOR_RIGHT - CORRIDOR_LEFT + 16, BACK - DOOR_Y + 32))
 	# Through the door and out of the corridor: the run starts.
 	run.set("start_rect", Rect2(729, DOOR_Y - 104, 78, 68))
-	run.set("wake_spot", Vector2(768, 1250))
+	# A fall wakes you where Go brings you, by the chest (0.94.1).
+	run.set("wake_spot", Vector2(768, 1290))
 	_own(run, _root)
 
 	var packed := PackedScene.new()

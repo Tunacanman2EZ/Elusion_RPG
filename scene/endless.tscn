@@ -522,7 +522,7 @@ script = ExtResource("32_ttvqa")
 arena_rect = Rect2(9, 34, 1518, 1344)
 corridor_rect = Rect2(686.5, 998, 163, 380)
 start_rect = Rect2(729, 926, 78, 68)
-wake_spot = Vector2(768, 1250)
+wake_spot = Vector2(768, 1290)
 
 [connection signal="body_entered" from="ysortworld/interactables/ladderup" to="ysortworld/interactables/ladderup" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/ladderup" to="ysortworld/interactables/ladderup" method="_on_body_exited"]

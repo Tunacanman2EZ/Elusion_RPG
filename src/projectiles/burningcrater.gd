@@ -133,6 +133,8 @@ func _build() -> void:
 	circle.radius = radius
 	shape.shape = circle
 	add_child(shape)
+	# The Endless's swarm puts stand-ins where it burns (swarm.gd, 0.94.1).
+	add_to_group(&"swarm_focus")
 
 	# On the floor, over the crater mark (z -2) and under everybody.
 	z_as_relative = false
@@ -301,3 +303,8 @@ func _go_out() -> void:
 		get_tree().create_timer(1.2).timeout.connect(queue_free)
 	else:
 		queue_free()
+
+
+func swarm_reach() -> float:
+	"""How far round it the Endless's swarm needs stand-ins (swarm.gd)."""
+	return radius

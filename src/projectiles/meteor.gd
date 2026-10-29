@@ -190,7 +190,13 @@ func _ready() -> void:
 	_build_vortex()
 	if cosmetic:
 		RemoteAttacks.go_quiet(self)
+	# The Endless's swarm puts stand-ins where it falls (swarm.gd, 0.94.1).
+	add_to_group(&"swarm_focus")
 	queue_redraw()
+
+
+func swarm_reach() -> float:
+	return HIT_RADIUS
 
 
 func _build_vortex() -> void:

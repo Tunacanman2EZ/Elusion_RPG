@@ -2375,6 +2375,43 @@ posting to the chest route (and an ordinary one not), the chest's read and
 count, the window on it, Take all by its id, a bag after it, an empty chest,
 Leave asking twice, and the run placing it.
 
+### The Endless keeps your loot, and far attacks hit the swarm (0.94.1)
+
+The owner, 28 Oct: "i tossed down my mythic weapon as warrior would hit
+enemies then later it stopped hitting enemies also i died wen back into the
+minigame to find no loot need to make sure it pots player by chest after
+death and has an arrow saying grab loot from chest".
+
+- **Stand-ins where an attack lands** (swarm.gd). The swarm's `PROXIES` (96)
+  stood on the slimes nearest the player, so once a stage's crowd passed 96
+  the Double Axe spinning 170 px out cut nothing. Anything a player's attack
+  leaves on the floor joins `FOCUS_GROUP` ("swarm_focus") with
+  `swarm_reach()` - spinningaxe.gd, dynamite.gd, meteor.gd,
+  burningcrater.gd, spelltargetcircle.gd - and `FOCUS_PROXIES` (96) more
+  stand-ins take the slimes within that reach plus `FOCUS_MARGIN` (24, for
+  one in flight). One slime never has two stand-ins (a blow would land
+  twice); another player's picture of an attack (`cosmetic`) is no focus.
+  **A new weapon that lands away from the player joins the group too.**
+- **The axe remembers a slime, not a stand-in** (swarmproxy.gd
+  `pass_key()`): a stand-in moves on to another slime, and by its own id the
+  next one went uncut on that pass.
+- **Nothing in the Endless kills** (endlessrun.gd `knock_out()`). Only a blow
+  in a run was caught, and a fall left a burn on: once the run was over its
+  next tick on 1 health was a real death - to town, and the next Go empties
+  the chest. Now a lethal blow anywhere on the map, in any state, wakes you
+  on 1 health, and every effect is cleared (`clear_all()`).
+- **You wake by the chest**: `wake_spot` is where Go brings you (768, 1290),
+  in the chest's reach; a party's fallen at `WAKE_SPOTS` round it.
+- **"Grab your loot"** (endlesschest.gd `beckon`): with loot in it, its lid
+  shut and you in the corridor (`corridor`, set by the run), a gold arrow
+  bobs over the chest, drawn as the map's arrow is.
+- **The ladder asks once** (ladder.gd `held_back()`, the "ladder_guard"
+  group): with loot in the chest, the first step says so and stays; the
+  next goes. More loot, and it asks again.
+
+`_test_far_attacks_hit_the_swarm()` and `_test_a_fall_wakes_you_by_the_chest()`,
+in testrunner_9.gd (part 8 passed 250 KB).
+
 ### Every hit on a player lands at half (0.93.6)
 
 The owner, 28 Oct: "player needs to absorb more damage", "like take more

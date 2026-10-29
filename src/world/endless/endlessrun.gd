@@ -130,8 +130,12 @@ const DOOR_OPEN_SECONDS := 3.0
 # A party run is not over while somebody says they are in; for this long after
 # it starts (or changes hands) nobody has had time to say so.
 const START_GRACE := 2.0
-# How far apart a party's fallen wake in the corridor (wake_for()).
-const WAKE_STEP := 22.0
+# WHERE A FALL WAKES YOU: BY THE CHEST (0.94.1). The owner: "need to make sure
+# it pots player by chest after death and has an arrow saying grab loot from
+# chest". wake_spot is where Go brings you, in the chest's reach (its 42 px
+# circle round the feet); a party's fallen wake at these steps from it, each
+# still in reach, clear of the chest and of each other (wake_for()).
+const WAKE_SPOTS := [Vector2(0, 0), Vector2(0, -24), Vector2(24, -26), Vector2(50, -26)]
 
 # Each land's monsters that come as elites, and its boss.
 const ELITES := {
@@ -162,7 +166,7 @@ enum State { WAITING, RUNNING, OVER, COUNTDOWN }
 @export var arena_rect: Rect2 = Rect2(24, 24, 1488, 1344)
 @export var corridor_rect: Rect2 = Rect2(690, 980, 160, 420)
 @export var start_rect: Rect2 = Rect2(729, 930, 78, 52)
-@export var wake_spot: Vector2 = Vector2(768, 1240)
+@export var wake_spot: Vector2 = Vector2(768, 1290)
 # The chest (0.93.4), in the corridor beside the ladder up.
 @export var chest_spot: Vector2 = Vector2(804, 1300)
 @export var door_path: NodePath = NodePath("../ysortworld/props/rundoor")
@@ -234,6 +238,8 @@ func _ready() -> void:
 	chest = ChestScript.new()
 	chest.name = "endlesschest"
 	chest.position = chest_spot
+	# Its arrow shows to a player in the corridor (0.94.1).
+	chest.set("corridor", corridor_rect)
 	var props: Node = get_parent().get_node_or_null("ysortworld/interactables")
 	(props if props != null else get_parent()).add_child.call_deferred(chest)
 	# ONE WAY IN (0.93.3): the owner, "the door needs to be 1 way entry also".
@@ -697,19 +703,31 @@ func _bring(path: String, health_scale: float = 1.0) -> void:
 # =============================================================================
 
 func knock_out(player: Node) -> bool:
-	"""Player.take_damage(), on the blow that would kill: inside a run, the
-	player wakes in the corridor on 1 health and the run is over. Anywhere
-	else, false - the ordinary death goes ahead."""
-	if state != State.RUNNING or player == null or not (player is Node2D):
+	"""Player.take_damage(), on the blow that would kill: in the Endless, the
+	player wakes in the corridor by the chest on 1 health, and in a run the
+	run is over. Off the map, false - the ordinary death goes ahead.
+
+	IN EVERY STATE, AND THE EFFECTS GO (0.94.1). The owner: "i died wen back
+	into the minigame to find no loot". Only a blow in a run was caught, and
+	a fall left a burn on (statuseffects.gd: three seconds, a tick every
+	half): once the run was over its next tick on 1 health was a death - to
+	town, and the next Go empties the chest. Now nothing in the Endless
+	kills, and a fall clears every effect."""
+	if player == null or not (player is Node2D):
 		return false
 	var body := player as Node2D
 	if not arena_rect.grow(32.0).has_point(body.global_position):
 		return false
 	player.set("hp", 1)
+	var effects: Node = StatusEffects.of(player)
+	if effects != null and effects.has_method("clear_all"):
+		effects.call("clear_all")
 	body.global_position = wake_for()
 	body.reset_physics_interpolation()
 	if body.has_method("snap_camera"):
 		body.call("snap_camera")
+	if state != State.RUNNING:
+		return true
 	my_in = false
 	if shared():
 		# A PARTY GOES ON while anybody is in: back through the door at the
@@ -724,13 +742,13 @@ func knock_out(player: Node) -> bool:
 
 
 func wake_for() -> Vector2:
-	"""Where this game's player wakes from a fall: wake_spot alone; in a party,
-	a step to one side by its account, so two who fell are not drawn on top
-	of each other."""
+	"""Where this game's player wakes from a fall, by the chest: wake_spot
+	alone; in a party, one of WAKE_SPOTS by its account, so two who fell are
+	not drawn on top of each other."""
 	if not shared():
 		return wake_spot
 	var me: int = int(party.get("link").call("my_id")) if party.get("link") != null else 0
-	return wake_spot + Vector2((float(posmod(me, 4)) - 1.5) * WAKE_STEP, 0.0)
+	return wake_spot + (WAKE_SPOTS[posmod(me, WAKE_SPOTS.size())] as Vector2)
 
 
 func _end_run() -> void:

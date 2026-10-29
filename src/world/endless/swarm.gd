@@ -24,8 +24,18 @@
 # finds what it hits by touching a hurtbox whose parent is in the "enemies"
 # group and has take_damage(). PROXIES (96) such stand-ins (swarmproxy.gd)
 # are moved each physics tick onto the swarmlings nearest the player, and a
-# blow on one is a blow on the swarmling it stands on. A swarmling further
-# off cannot be hit, which is as it should be: nothing reaches that far.
+# blow on one is a blow on the swarmling it stands on.
+#
+# AND WHERE THE PLAYER'S ATTACKS LAND (0.94.1). The owner: "i tossed down my
+# mythic weapon as warrior would hit enemies then later it stopped hitting
+# enemies". The Double Axe spins up to 170 px away; once a stage's crowd was
+# past PROXIES, every stand-in held a slime round the player, and the axe
+# spun among slimes with none. So anything a player's attack leaves out on
+# the floor - the axe, a dynamite, a meteor, a burning crater, a spike
+# circle - joins FOCUS_GROUP with swarm_reach(), and FOCUS_PROXIES more
+# stand-ins take the slimes within that reach (and FOCUS_MARGIN, for one in
+# flight) of any of them. One slime, one stand-in, whichever pool holds it:
+# two on one would take every blow twice.
 #
 # IT HITS BACK BY TOUCH: every TOUCH_SECONDS the player takes one hit,
 # touch_damage for each swarmling against them up to TOUCH_MOST, through
@@ -116,6 +126,13 @@ const FLASH_SECONDS := 0.12
 # The stand-ins that take the hits, and how far from the player they reach.
 const PROXIES := 96
 const PROXY_REACH := 420.0
+# AND WHERE ITS ATTACKS LAND (0.94.1): a second pool for the nodes in
+# FOCUS_GROUP, each reaching its swarm_reach() (FOCUS_REACH without one) plus
+# FOCUS_MARGIN - a flying axe covers 16 px between two steps.
+const FOCUS_GROUP := &"swarm_focus"
+const FOCUS_PROXIES := 96
+const FOCUS_REACH := 44.0
+const FOCUS_MARGIN := 24.0
 # Drawn the size of the Field's small slimes.
 const DRAW_SCALE := 1.0
 # UNDER EVERYTHING STANDING: the player, the monsters and the walls draw over
@@ -196,7 +213,8 @@ var _mesh: MultiMeshInstance2D = null
 var _material: ShaderMaterial = null
 var _buffer := PackedFloat32Array()
 var _proxies: Array = []
-# The swarmlings the stand-ins stand on, nearest first (_place_proxies()).
+# The swarmlings the stand-ins stand on (_place_proxies()): the first PROXIES
+# the player's, the rest the attacks'.
 var _held := PackedInt32Array()
 var _rng := RandomNumberGenerator.new()
 # The party's other players this step, those on the arena's floor (`others`).
@@ -231,7 +249,7 @@ func _init() -> void:
 func _ready() -> void:
 	_rng.randomize()
 	_build_mesh()
-	for i in PROXIES:
+	for i in PROXIES + FOCUS_PROXIES:
 		var proxy: Node2D = SwarmProxy.new()
 		proxy.set("swarm", self)
 		add_child(proxy)
@@ -856,7 +874,8 @@ func _sort_order() -> void:
 
 func _place_proxies() -> void:
 	"""Which swarmlings the stand-ins stand on, once a step. A STAND-IN KEEPS
-	ITS SWARMLING while it lives and is within PROXY_REACH: what was put on
+	ITS SWARMLING while it lives and is within PROXY_REACH (an attack's: within
+	that attack's reach, focus_points()): what was put on
 	one - a bleed biting it - belongs to that swarmling, and a stand-in moved
 	to the nearest each step carried a wound from slime to slime (the owner:
 	"bleed damage is spreading"). Only a free one takes the nearest not held,
@@ -872,18 +891,27 @@ func _place_proxies() -> void:
 	if _held.size() != _proxies.size():
 		_held.resize(_proxies.size())
 		_held.fill(-1)
+	var foci: Array = focus_points()
 	var taken := {}
 	var empty: int = 0
+	var empty_focus: int = 0
 	for p in _held.size():
 		var i: int = _held[p]
-		if i >= 0 and state[i] == 1:
-			var hx: float = px[i] - at.x
-			var hy: float = py[i] - at.y
-			if hx * hx + hy * hy <= reach2:
+		if i >= 0 and state[i] == 1 and not taken.has(i):
+			if p < PROXIES:
+				var hx: float = px[i] - at.x
+				var hy: float = py[i] - at.y
+				if hx * hx + hy * hy <= reach2:
+					taken[i] = true
+					continue
+			elif _near_focus(i, foci) <= 1.0:
 				taken[i] = true
 				continue
 		_held[p] = -1
-		empty += 1
+		if p < PROXIES:
+			empty += 1
+		else:
+			empty_focus += 1
 	if empty > 0:
 		var bands: Array = [[], [], [], [], [], []]
 		var band_size: float = PROXY_REACH / float(bands.size())
@@ -899,12 +927,62 @@ func _place_proxies() -> void:
 		var p: int = 0
 		for band in bands:
 			for i in band:
-				while p < _held.size() and _held[p] >= 0:
+				while p < PROXIES and _held[p] >= 0:
 					p += 1
-				if p >= _held.size():
+				if p >= PROXIES:
 					break
 				_held[p] = i
+				taken[i] = true
+	if empty_focus > 0 and not foci.is_empty():
+		# Nearest the middle of an attack first, by thirds of its reach.
+		var near: Array = [[], [], []]
+		for i in _high:
+			if state[i] != 1 or taken.has(i):
+				continue
+			var share: float = _near_focus(i, foci)
+			if share <= 1.0:
+				(near[mini(2, int(share * 3.0))] as Array).append(i)
+		var q: int = PROXIES
+		for band in near:
+			for i in band:
+				while q < _held.size() and _held[q] >= 0:
+					q += 1
+				if q >= _held.size():
+					break
+				_held[q] = i
 	_move_proxies()
+
+
+func focus_points() -> Array:
+	"""Where the player's attacks are out on the floor (FOCUS_GROUP): each
+	[x, y, reach] with FOCUS_MARGIN in the reach."""
+	var out: Array = []
+	if not is_inside_tree():
+		return out
+	for node in get_tree().get_nodes_in_group(FOCUS_GROUP):
+		if not (node is Node2D) or not (node as Node2D).is_inside_tree() or (node as Node).is_queued_for_deletion():
+			continue
+		# Another player's attack drawn here hits nothing here (remoteattacks.gd).
+		if node.get("cosmetic") == true:
+			continue
+		var reach: float = float(node.call("swarm_reach")) if node.has_method("swarm_reach") else FOCUS_REACH
+		var spot: Vector2 = (node as Node2D).global_position
+		out.append(PackedFloat32Array([spot.x, spot.y, reach + FOCUS_MARGIN]))
+	return out
+
+
+func _near_focus(i: int, foci: Array) -> float:
+	"""How far swarmling `i` stands from the nearest attack, as a share of its
+	reach: 1 or under is within it. INF with none."""
+	var best: float = INF
+	for focus in foci:
+		var dx: float = px[i] - focus[0]
+		var dy: float = py[i] - focus[1]
+		var reach: float = maxf(1.0, focus[2])
+		var d2: float = dx * dx + dy * dy
+		if d2 <= reach * reach:
+			best = minf(best, sqrt(d2) / reach)
+	return best
 
 
 func _move_proxies() -> void:

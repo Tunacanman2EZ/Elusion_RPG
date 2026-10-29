@@ -46,6 +46,8 @@ var can_teleport := true
 
 func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
+		if held_back(body):
+			return
 		can_teleport = false
 		if destination_scene_path == "":
 			push_warning("Ladder (%s): destination_scene_path not assigned in the Inspector" % name)
@@ -67,6 +69,19 @@ func _on_body_entered(body):
 		Audio.play("door")
 
 		SceneTransition.change_scene(destination_scene)
+
+
+func held_back(body: Node) -> bool:
+	"""ANYTHING MAY ASK A LADDER TO WAIT (0.94.1): a node in "ladder_guard"
+	whose holds_ladder(ladder, body) is true keeps the player here this time -
+	the Endless's chest while it holds loot, which the next Go empties
+	(endlesschest.gd). Stepping off and on again asks again."""
+	if not is_inside_tree():
+		return false
+	for guard in get_tree().get_nodes_in_group(&"ladder_guard"):
+		if guard.has_method("holds_ladder") and bool(guard.call("holds_ladder", self, body)):
+			return true
+	return false
 
 
 func _on_body_exited(body):

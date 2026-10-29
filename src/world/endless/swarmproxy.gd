@@ -92,3 +92,14 @@ func _drop_wounds() -> void:
 
 func can_be_aimed_at() -> bool:
 	return slot >= 0
+
+
+func pass_key() -> int:
+	"""Which slime this is, for an attack that cuts each once (spinningaxe.gd's
+	_passed): the stand-in moves on to another slime, so its own instance id
+	would leave the next one uncut. Negative, so never a node's id; the batch
+	in it, so a slot born again is a new slime (4096 slots a batch: the swarm
+	has MOST, 3,000)."""
+	if slot < 0 or swarm == null:
+		return get_instance_id()
+	return -(1 + slot + 4096 * int(swarm.gen[slot]))

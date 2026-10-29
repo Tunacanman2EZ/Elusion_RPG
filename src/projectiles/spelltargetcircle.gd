@@ -150,6 +150,8 @@ func _ready() -> void:
 		_dress_gold()
 	if cosmetic:
 		RemoteAttacks.go_quiet(self)
+	# The Endless's swarm puts stand-ins where it strikes (swarm.gd, 0.94.1).
+	add_to_group(&"swarm_focus")
 
 	anim.animation_finished.connect(_on_animation_finished)
 	anim.frame_changed.connect(_on_frame_changed)
@@ -414,3 +416,8 @@ func _on_animation_finished() -> void:
 	# play multiple sequences (impact debris, residual particles, etc.).
 	if anim.animation == "fall":
 		queue_free()
+
+
+func swarm_reach() -> float:
+	"""How far round it the Endless's swarm needs stand-ins (swarm.gd)."""
+	return circle_radius

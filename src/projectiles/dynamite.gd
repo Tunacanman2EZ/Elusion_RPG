@@ -122,6 +122,12 @@ func _ready() -> void:
 	visible = delay <= 0.0
 	if cosmetic:
 		RemoteAttacks.go_quiet(self)
+	# The Endless's swarm puts stand-ins where it lands (swarm.gd, 0.94.1).
+	add_to_group(&"swarm_focus")
+
+
+func swarm_reach() -> float:
+	return HIT_RADIUS
 
 
 func throw_from(from: Vector2, to: Vector2) -> void:

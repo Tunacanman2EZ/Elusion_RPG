@@ -178,6 +178,14 @@ func _ready() -> void:
 		_build_blood()
 	if cosmetic:
 		RemoteAttacks.go_quiet(self)
+	else:
+		# The Endless's swarm puts stand-ins where it spins (swarm.gd, 0.94.1).
+		add_to_group(&"swarm_focus")
+
+
+func swarm_reach() -> float:
+	"""How far round it the swarm needs stand-ins: what it cuts now."""
+	return reach()
 
 
 func _build_whirl() -> void:
@@ -497,7 +505,9 @@ func _cut_what_it_passes() -> void:
 	if cosmetic:
 		return
 	for enemy in _enemies_touching():
-		var id: int = enemy.get_instance_id()
+		# A swarm's stand-in moves from slime to slime: remembered by the slime
+		# (swarmproxy.gd pass_key()), or the next one it stands on goes uncut.
+		var id: int = int(enemy.call("pass_key")) if enemy.has_method("pass_key") else enemy.get_instance_id()
 		if _passed.has(id):
 			continue
 		var swing: int = _swing_damage()
