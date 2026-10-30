@@ -107,6 +107,19 @@ var _player_nearby: Node = null
 var _spent: bool = false
 var _throwing: bool = false
 
+# THE ARROW OVER IT (0.97.0). The owner: "we also need to put arrows above
+# levers in the game so players can see". A lever is a small thing on a wall
+# and players walked past the Field's boss gates without finding it. A gold
+# arrow bobs over every lever while the doors it drives are shut - there is
+# something to do here - and goes once they are open, or once a one-shot lever
+# is spent (`points()`). Shown and hidden in _show_state(), the one place every
+# throw, follow and partner move ends.
+const Arrow := preload("res://src/shared/beckonarrow.gd")
+# Its tip, a few pixels over the handle (the lever is drawn low in its 32 px
+# frame, which is centred on the origin).
+const ARROW_AT := Vector2(0, -6)
+var arrow: Node2D = null
+
 
 # =============================================================================
 # LIFECYCLE
@@ -114,6 +127,10 @@ var _throwing: bool = false
 
 func _ready() -> void:
 	add_to_group(&"levers")
+
+	arrow = Arrow.make(ARROW_AT)
+	arrow.visible = false
+	add_child(arrow)
 
 	_is_on = starts_on
 	_show_state(_is_on)
@@ -301,6 +318,18 @@ func _apply_to_targets() -> void:
 func _show_state(on: bool) -> void:
 	if anim != null:
 		anim.play(&"on" if on else &"off")
+	if arrow != null:
+		arrow.call("show_it", points())
+
+
+func points() -> bool:
+	"""Whether the arrow is over it: the doors it drives are shut (or, with
+	none, it has not been pulled), and it is not a one-shot already spent."""
+	if _spent:
+		return false
+	if target_nodes().is_empty():
+		return not _is_on
+	return doors_raised()
 
 
 # =============================================================================

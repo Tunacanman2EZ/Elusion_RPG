@@ -3375,6 +3375,19 @@ three gates and toggle them; the Field loads with the gates up.
 
 `_test_the_boss_gates_lever`.
 
+**An arrow over every lever while its doors are shut (0.97.0).** The owner:
+"we also need to put arrows above levers in the game so players can see". A
+lever is a small thing on a wall. Each makes a gold arrow in `_ready()`
+(`src/shared/beckonarrow.gd`, preloaded: the chest's "Grab your loot" arrow
+alone, tip at `ARROW_AT`, bobbing a whole pixel at a time, z 3, unshaded like
+the aim rings - the Field's darkness turned it olive). `points()` says
+whether it shows: the doors the lever drives are shut (`doors_raised()`), or
+with no doors it has not been pulled, and never on a spent one-shot.
+`_show_state()` sets it - the one place every throw, `follow_pull()` and a
+partner's `follow_doors()` end - so the lever on the far side of the same
+gates loses its arrow too. Every lever in the Field and the Big Field has one
+(they are all lever.tscn). `_test_levers_have_arrows()` (testrunner_9).
+
 ### The version: MAJOR.MINOR.PATCH, and who moves it
 
 6 Oct, the owner on numbering releases. The game's version is

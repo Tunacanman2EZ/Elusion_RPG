@@ -931,3 +931,60 @@ func _test_a_boss_keeps_its_health_when_the_lead_moves() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  a boss: its health is the fight's, whoever's game runs it")
+
+
+func _test_levers_have_arrows() -> void:
+	section("AN ARROW OVER EVERY LEVER WHILE ITS DOORS ARE SHUT (0.97.0)")
+	# The owner: "we also need to put arrows above levers in the game so players
+	# can see".
+	var door_script := GDScript.new()
+	door_script.source_code = "extends Node2D\nvar raised: bool = false\nfunc set_raised(r: bool) -> void:\n\traised = r\n"
+	door_script.reload()
+	var world := Node2D.new()
+	add_child(world)
+	var door := Node2D.new()
+	door.name = "door"
+	door.set_script(door_script)
+	world.add_child(door)
+	var packed: PackedScene = load("res://scene/interactables/lever.tscn") as PackedScene
+	var outside: Node = packed.instantiate()
+	outside.set("targets", [NodePath("../door")] as Array[NodePath])
+	world.add_child(outside)
+	var inside: Node = packed.instantiate()
+	inside.set("targets", [NodePath("../door")] as Array[NodePath])
+	inside.set("inverted", false)
+	world.add_child(inside)
+	var once: Node = packed.instantiate()
+	once.set("one_shot", true)
+	world.add_child(once)
+	await get_tree().process_frame
+	var a_out: Node2D = outside.get("arrow")
+	var a_in: Node2D = inside.get("arrow")
+	check("every lever has an arrow, its tip just over the handle, and unshaded (the Field's dark)",
+		a_out != null and a_in != null and once.get("arrow") != null and a_out.position.y < -3.0
+		and (a_out.material as CanvasItemMaterial) != null
+		and (a_out.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED, a_out)
+	check("  shown while the doors it drives are shut", a_out.visible and a_in.visible and bool(door.get("raised")))
+	outside.call("throw")
+	await get_tree().create_timer(0.45).timeout
+	check("pulled: the doors open and both levers' arrows go (the partner follows)",
+		not bool(door.get("raised")) and not a_out.visible and not a_in.visible, [door.get("raised"), a_out.visible, a_in.visible])
+	inside.call("throw")
+	await get_tree().create_timer(0.45).timeout
+	check("  pulled shut again from the other side: both arrows are back",
+		bool(door.get("raised")) and a_out.visible and a_in.visible)
+	var a_once: Node2D = once.get("arrow")
+	check("a one-shot lever with no doors points until it is pulled", a_once.visible)
+	once.call("throw")
+	await get_tree().create_timer(0.45).timeout
+	check("  and not once it is spent", not a_once.visible)
+	var y0: float = a_out.position.y
+	var moved: bool = false
+	for i in 20:
+		await get_tree().process_frame
+		if not is_equal_approx(a_out.position.y, y0):
+			moved = true
+	check("  it bobs, a whole pixel at a time", moved and is_equal_approx(a_out.position.y, roundf(a_out.position.y)))
+	world.queue_free()
+	await get_tree().process_frame
+	print("  levers: an arrow over each, while there is something to open")
