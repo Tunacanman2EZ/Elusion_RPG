@@ -199,6 +199,7 @@ func _run_all() -> void:
 	await _test_the_whole_map()
 	await _test_the_swarm_keeps_off_the_walls()
 	await _test_slimes_speed_up()
+	await _test_a_boss_keeps_its_health_when_the_lead_moves()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()

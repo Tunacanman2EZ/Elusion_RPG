@@ -802,6 +802,10 @@ func _container(path: String) -> Node:
 func _apply_record(e: BaseEnemy, r: Dictionary, snap: bool) -> void:
 	var max_now: int = int(r.get("mh", e.max_hp))
 	if max_now > 0 and max_now != e.max_hp:
+		# A boss raised for its fight keeps how far (bossenemy.gd
+		# note_told_max()), or taking the fight over raises it again.
+		if e.has_method("note_told_max"):
+			e.call("note_told_max", max_now)
 		e.max_hp = max_now
 	e.net_apply_state(Vector2(float(r.get("x", e.global_position.x)), float(r.get("y", e.global_position.y))),
 		str(r.get("a", "")), int(r.get("hp", e.hp)), snap)

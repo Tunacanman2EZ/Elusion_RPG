@@ -872,3 +872,62 @@ func _test_slimes_speed_up() -> void:
 	swarm.queue_free()
 	await get_tree().process_frame
 	print("  the slimes: faster each stage, stopping at you, deadly round you")
+
+
+func _test_a_boss_keeps_its_health_when_the_lead_moves() -> void:
+	section("A BOSS KEEPS ITS HEALTH WHEN ITS FIGHT CHANGES HANDS (0.96.1)")
+	# The owner: "i was playing with a friend we both were killing the bosses
+	# he died and boss recharged full hp". His friend's game ran the boss; it
+	# fell, and the owner's copy took over at a scale of 1.0, so its first
+	# raise_for_scale() raised the already-raised boss again and added the
+	# difference as health.
+	var Sync := preload("res://src/world/monstersync.gd")
+	var world := Node2D.new()
+	add_child(world)
+	var me: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate() as Node2D
+	me.set_physics_process(false)
+	world.add_child(me)
+	var bosses: Array = []
+	for i in 2:
+		var b: Node2D = (load("res://scene/enemy/lightboss.tscn") as PackedScene).instantiate() as Node2D
+		world.add_child(b)
+		bosses.append(b)
+	await get_tree().process_frame
+	var base: int = int(bosses[0].max_hp)
+	# Two level-22s on the Light boss: 4.6 x 1.6 = 7.36 times, 70% done.
+	var two: float = BossEnemy.scale_for(Element.Type.LIGHT, [22, 22])
+	var told_max: int = roundi(base * two)
+	var told_hp: int = roundi(told_max * 0.3)
+	var sync: Node = Sync.new()
+	for b in bosses:
+		b.set_physics_process(false)
+		b.net_set_mirror(true)
+	# One copy hears the leader raise it ("mh"); the other walked in late and
+	# was sent everything (a record).
+	bosses[0].net_rescale(told_max, told_hp)
+	sync.call("_apply_record", bosses[1], {"x": bosses[1].global_position.x,
+		"y": bosses[1].global_position.y, "a": "", "hp": told_hp, "mh": told_max}, true)
+	sync.free()
+	var ways: Array = ["told by the leader", "sent everything on arrival"]
+	for k in 2:
+		var b: Node2D = bosses[k]
+		check("a copy %s knows how far the fight raised it (%.2f times)" % [ways[k], two],
+			is_equal_approx(float(b.health_scale), float(told_max) / float(base)), [b.health_scale, two])
+		# The leader falls: this game takes the fight over, one level-22 left.
+		me.global_position = b.global_position + Vector2(0, 60)
+		me.set("level", 22)
+		b.net_set_mirror(false)
+		b.set("player", me)
+		b.set("engaged", true)
+		b.set("gated", false)
+		b.call("raise_for_scale")
+		check("  taking it over with one fighter left: not healed (%d of %d)" % [int(b.hp), int(b.max_hp)],
+			int(b.hp) == told_hp and int(b.max_hp) == told_max, [b.hp, b.max_hp, told_hp, told_max])
+		b.set("engaged", false)
+		b.hp = int(b.max_hp)
+		b.call("unscale")
+		check("  and home, whole, out of the fight: itself again",
+			int(b.max_hp) == base and is_equal_approx(float(b.health_scale), 1.0), [b.max_hp, base])
+	world.queue_free()
+	await get_tree().process_frame
+	print("  a boss: its health is the fight's, whoever's game runs it")

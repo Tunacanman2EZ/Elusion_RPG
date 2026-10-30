@@ -2720,9 +2720,26 @@ func net_rescale(new_max: int, new_hp: int) -> void:
 	fighting it ("mh")."""
 	if new_max <= 0:
 		return
+	note_told_max(new_max)
 	max_hp = new_max
 	hp = clampi(new_hp, 0, max_hp)
 	_refresh_health_display()
+
+
+func note_told_max(new_max: int) -> void:
+	"""(Mirror, before its maximum becomes `new_max`.) Keep how many times
+	its own health the game running it has raised it, so that if this game
+	takes the fight over - its leader fell or left - it starts from the
+	scale the fight already has. A mirror kept 1.0, so its first
+	raise_for_scale() after taking over took the RAISED maximum for the
+	unraised one, raised it again and added the difference to its health:
+	the owner's friend died beside him and the boss was all but full again
+	(0.96.1)."""
+	if new_max <= 0 or new_max == max_hp:
+		return
+	if _unscaled_max <= 0:
+		_unscaled_max = max_hp
+	health_scale = maxf(1.0, float(new_max) / float(_unscaled_max))
 
 
 func _tell_scale() -> void:

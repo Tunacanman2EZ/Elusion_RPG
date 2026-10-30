@@ -9048,6 +9048,23 @@ screen and the server's books are told with a world event `"mh"`
 boss "max_hp_differs". `_test_bosses_scale_to_their_fight`; the API's
 test_combatbook.py CB-12.
 
+**A copy knows how far its fight raised it (0.96.1).** The owner: "i was
+playing with a friend we both were killing the bosses he died and boss
+recharged full hp". The friend's game ran the boss; when it fell, the
+owner's took it over - but a mirror is only told the new maximum
+(`net_rescale()`, or a record's `"mh"` in `_apply_record()`), and kept
+`health_scale` 1.0. So its first `raise_for_scale()` took the RAISED maximum
+for the plain one, raised it again and added the difference as health:
+measured, two level-22s at 30% left on the Light boss went to 85% of four
+and a half times the health, and home it stayed that big. Now both paths
+call `note_told_max()` first: the copy keeps `_unscaled_max` (its own
+health before any raise) and `health_scale` (the told maximum over it), so
+taking over carries on from the fight's scale - raised only if a stronger
+fight joins, never lowered, and `unscale()` brings it home. A new way a
+mirror learns a boss's maximum goes through it too.
+`_test_a_boss_keeps_its_health_when_the_lead_moves()` (testrunner_9): on the
+old code a copy took 10,104 of 33,679 to 131,348 of 154,923.
+
 ## The damage meter (0.81.0)
 
 GM panel > Testing > **Damage meter** (a CheckButton made in code under
