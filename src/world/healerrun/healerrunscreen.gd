@@ -235,7 +235,8 @@ func paint() -> void:
 	_lives_seen = lives
 	lives_line.text = "Lives %d" % lives
 	lives_line.add_theme_color_override("font_color", COLOUR_BAD if int(run.get("lives")) <= 1 else COLOUR)
-	shots_line.text = "Shots %d" % int(RunScript.SHOT_STEPS[int(run.get("power"))])
+	shots_line.text = "Shots %d" % int(RunScript.SHOT_STEPS[int(run.get("power"))]) \
+		+ (" - overcharge" if float(run.get("overcharge")) > 0.0 else "")
 	rank_line.text = "Danger %d" % int(run.call("rank"))
 	slain_line.text = "Slain %d" % int(run.get("slain"))
 	banner_line.text = str(run.get("banner"))

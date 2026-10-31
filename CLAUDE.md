@@ -2823,6 +2823,33 @@ tab are step 3, with the server.
   life lost, 0 to 10 - tougher monsters, faster bullets, more shots, bigger
   and quicker waves, a faster scroll. The screen shows it as "Danger".
 
+**Tuned after the first play (0.98.1).** The owner: "phase 1 is good need more
+power ups more enemies maybe a fire from behind the ground needs to move faster
+as time progresses just a little at a time", and "when the mini game starts we
+want the healer to be standing on a platform not walking in from the black".
+
+- **She starts standing on a landing** (`_lay_landing()`): the floor laid to
+  below the screen's bottom from the start (it began at the middle, so the
+  bottom half was the dark), the crypt's wall behind her across the path
+  (`LANDING_WIDTHS`, wallrun pieces and two pillars) and a candelabra either
+  side; `idleup` until the run starts, and the path still until then.
+- **The ground speeds up a little all the time**: `SCROLL_PER_SECOND` (0.1,
+  so 6 px/s a minute) from `SCROLL_START` (28), plus rank, never past
+  `SCROLL_MOST` (95). It was a step at each stretch.
+- **More power-ups**: `KINDS`' odds about half again (a mage 45%), and
+  `POWER_PITY` 12. **At eight shots a power-up is overcharge**: twice the
+  rate of fire for `OVERCHARGE_SECONDS` (6); the screen says "Shots 8 -
+  overcharge".
+- **More monsters**: a V is 7 (to 11), a sweep 8, slimes 6, arcs 8, mages 3;
+  and from the second stretch a wave may bring a second, half-size wave of
+  another kind alongside (`BOTH_CHANCE` 0.3, +0.12 a stretch;
+  `spawn_wave(kind, share)`, `_sized()`).
+- **The fire behind her** (`_burn()`): from `FIRE_AFTER` (20 s) a wall of fire
+  rises from the bottom of the screen at `FIRE_RISE` (0.25 px/s) to
+  `FIRE_MOST` (64). Her hitbox in it costs a life and puts her above it. Drawn
+  as an unshaded gradient glow (a `GradientTexture2D`, as the Endless washes
+  its floor) and embers - a second BulletField that hits nothing. No new art.
+
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
 taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the

@@ -43,6 +43,25 @@
 # (group_extra()) and quicker to come (wave_time()), and the scroll a little
 # faster (scroll_speed()).
 #
+# TUNED AFTER THE FIRST PLAY (0.98.1). The owner: "phase 1 is good need more
+# power ups more enemies maybe a fire from behind the ground needs to move
+# faster as time progresses just a little at a time", and "when the mini game
+# starts we want the healer to be standing on a platform not walking in from
+# the black".
+# - She starts STANDING on a landing: the floor laid under the whole screen,
+#   the crypt's wall behind her and a candelabra either side
+#   (_lay_landing()); the path moves only once the run starts.
+# - The ground speeds up a little all the time (SCROLL_PER_SECOND), not in
+#   steps at each stretch.
+# - More power-ups (KINDS' odds, POWER_PITY) and, at eight shots, a
+#   power-up is OVERCHARGE: twice the rate of fire for OVERCHARGE_SECONDS.
+# - More monsters: bigger waves, and from the second stretch a second, smaller
+#   wave of another kind alongside (BOTH_CHANCE).
+# - THE FIRE BEHIND HER: from FIRE_AFTER seconds a wall of fire rises from the
+#   bottom of the screen, FIRE_RISE px a second, to FIRE_MOST - stand in it
+#   and it costs a life. Drawn as a glow and embers (BulletField orbs), no
+#   new art.
+#
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
@@ -87,22 +106,39 @@ const BODY := 5.0
 const SHOT_COLOUR := Color(0.55, 1.0, 0.62)
 
 const RANK_MOST := 10
-const SCROLL_START := 26.0
-const SCROLL_PER_STRETCH := 6.0
+const SCROLL_START := 28.0
+# A little faster every second of the run (6 px/s a minute), and a little
+# with rank; never past SCROLL_MOST.
+const SCROLL_PER_SECOND := 0.1
 const SCROLL_PER_RANK := 1.5
+const SCROLL_MOST := 95.0
+const OVERCHARGE_SECONDS := 6.0
+# From the second stretch, the chance a wave brings a second, smaller one of
+# another kind alongside - more with each stretch.
+const BOTH_CHANCE := 0.3
+const BOTH_PER_STRETCH := 0.12
+const FIRE_AFTER := 20.0
+const FIRE_RISE := 0.25
+const FIRE_MOST := 64.0
+const FIRE_COLOURS := [Color(1.0, 0.45, 0.12), Color(1.0, 0.7, 0.2), Color(1.0, 0.25, 0.1)]
+# The landing she starts on: the crypt's wall behind her, end to end between
+# the side walls (wallrun pieces 101 and 51 wide, pillars 17).
+const LANDING_WIDTHS := [101, 101, 17, 51, 17, 101, 101]
+const LANDING_PIECES := {101: "res://scene/crypt/wallrun4.tscn", 51: "res://scene/crypt/wallrun2.tscn",
+	17: "res://scene/crypt/pillar.tscn"}
 const BULLET_SPEED := 105.0
 
 # What each kind of monster is: its health before rank, how big it is to a
 # shot, and its chance of dropping a power-up or a potion.
 const KINDS := {
-	"sprite": {"health": 3.0, "radius": 9.0, "power": 0.05, "potion": 0.02},
-	"slime": {"health": 7.0, "radius": 9.0, "power": 0.10, "potion": 0.03},
-	"mage": {"health": 12.0, "radius": 11.0, "power": 0.30, "potion": 0.06},
-	"sniper": {"health": 8.0, "radius": 10.0, "power": 0.25, "potion": 0.05},
+	"sprite": {"health": 3.0, "radius": 9.0, "power": 0.09, "potion": 0.025},
+	"slime": {"health": 7.0, "radius": 9.0, "power": 0.16, "potion": 0.04},
+	"mage": {"health": 12.0, "radius": 11.0, "power": 0.45, "potion": 0.07},
+	"sniper": {"health": 8.0, "radius": 10.0, "power": 0.4, "potion": 0.06},
 	"boss": {"health": 260.0, "radius": 24.0, "power": 0.0, "potion": 0.0},
 }
 # After this many kills with no power-up, the next kill drops one.
-const POWER_PITY := 25
+const POWER_PITY := 12
 const WAVE_KINDS := ["vee", "sweep", "mages", "slimes", "arcs", "snipers"]
 
 const LANDS := [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
@@ -196,9 +232,17 @@ var _shot_pos := PackedVector2Array()
 var _shot_vel := PackedVector2Array()
 var _shot_mesh: MultiMesh = null
 var _shot_buffer := PackedFloat32Array()
-var _painted_top: int = 1
-var _painted_bottom: int = 0
-var _wall_top: int = 1
+# The floor and walls are laid from just below the screen's bottom, so she
+# never stands over the dark.
+var _painted_top: int = floori((HALF.y + 64.0) / TILE) + 1
+var _painted_bottom: int = floori((HALF.y + 64.0) / TILE)
+var _wall_top: int = floori((HALF.y + 64.0) / WALL_STEP) + 1
+var overcharge: float = 0.0
+var fire_height: float = 0.0
+var embers: BulletField = null
+var fire_glow: TextureRect = null
+var _ember_in: float = 0.0
+var _fire_told: bool = false
 var _section_top: float = -CLEAR_START
 var _obstacles: Array = []
 var _boss_cast: float = 0.0
@@ -264,7 +308,9 @@ func _ready() -> void:
 	field.capacity = 2500
 	field.bounds = Rect2(-HALF - Vector2(24, 24), VIEW + Vector2(48, 48))
 	add_child(field)
+	_make_fire()
 	_lay_terrain()
+	_lay_landing()
 	banner = "Get ready"
 	banner_left = READY_SECONDS
 
@@ -279,13 +325,77 @@ func _make_healer() -> void:
 	healer_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	healer_sprite.offset = look.get("offset", Vector2.ZERO)
 	healer.add_child(healer_sprite)
-	if healer_sprite.sprite_frames != null and healer_sprite.sprite_frames.has_animation("walkup"):
-		healer_sprite.play("walkup")
+	# STANDING on the landing until the run starts (step()).
+	if healer_sprite.sprite_frames != null and healer_sprite.sprite_frames.has_animation("idleup"):
+		healer_sprite.play("idleup")
 	var glow := (load("res://scene/characters/playerlight.tscn") as PackedScene).instantiate() as PointLight2D
 	if glow != null:
 		glow.enabled = true
 		healer.add_child(glow)
 	add_child(healer)
+
+
+func _make_fire() -> void:
+	"""The fire behind her: a glow up from the bottom of the screen (an
+	unshaded gradient, as the Endless washes its floor) and embers rising
+	from it - nothing drawn for it, only made here."""
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.35, 0.08, 0.0))
+	ramp.set_color(1, Color(1.0, 0.4, 0.1, 0.85))
+	ramp.add_point(0.55, Color(1.0, 0.55, 0.15, 0.45))
+	var fade := GradientTexture2D.new()
+	fade.gradient = ramp
+	fade.fill_from = Vector2(0.5, 0.0)
+	fade.fill_to = Vector2(0.5, 1.0)
+	fade.width = 4
+	fade.height = 64
+	fire_glow = TextureRect.new()
+	fire_glow.name = "fire"
+	fire_glow.texture = fade
+	fire_glow.stretch_mode = TextureRect.STRETCH_SCALE
+	fire_glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fire_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	fire_glow.material = unshaded
+	fire_glow.z_index = 40
+	fire_glow.visible = false
+	add_child(fire_glow)
+	embers = BulletField.new()
+	embers.name = "embers"
+	embers.capacity = 400
+	embers.bounds = Rect2(-PATH_HALF - 10.0, -HALF.y - 10.0, PATH_HALF * 2.0 + 20.0, VIEW.y + 20.0)
+	embers.z_index = 41
+	add_child(embers)
+
+
+func fire_top() -> float:
+	"""Where the fire reaches up to, in screen space; past the bottom when none."""
+	return HALF.y - fire_height
+
+
+func _burn(delta: float) -> void:
+	fire_height = clampf((run_seconds - FIRE_AFTER) * FIRE_RISE, 0.0, FIRE_MOST)
+	if fire_height > 0.0 and not _fire_told:
+		_fire_told = true
+		_say("The fire is behind you")
+	var glow_height: float = fire_height * 1.6 + (14.0 if fire_height > 0.0 else 0.0)
+	fire_glow.visible = glow_height > 0.0
+	fire_glow.position = Vector2(-PATH_HALF, HALF.y - glow_height)
+	fire_glow.size = Vector2(PATH_HALF * 2.0, glow_height)
+	if fire_height > 0.0:
+		_ember_in -= delta
+		while _ember_in <= 0.0:
+			_ember_in += 0.03
+			var x: float = _rng.randf_range(-PATH_HALF, PATH_HALF)
+			var colour: Color = FIRE_COLOURS[_rng.randi_range(0, FIRE_COLOURS.size() - 1)]
+			var speed: float = _rng.randf_range(30.0, 70.0)
+			embers.spawn(Vector2(x, HALF.y + 4.0), -PI / 2.0 + _rng.randf_range(-0.3, 0.3), speed, colour,
+				_rng.randf() < 0.2, 0.0, 0.0, (fire_height + 16.0) / speed)
+	embers.step(delta, Vector2(99999.0, 99999.0), 0.0, 0.0, true)
+	if fire_height > 0.0 and healer.position.y + HITBOX_AT.y > fire_top():
+		hurt()
+		healer.position.y = minf(healer.position.y, fire_top() - 24.0)
 
 
 func _make_shots() -> void:
@@ -343,7 +453,7 @@ static func wave_time(at_rank: int) -> float:
 
 
 func scroll_speed() -> float:
-	return SCROLL_START + SCROLL_PER_STRETCH * mini(stretch, STRETCHES - 1) + SCROLL_PER_RANK * rank()
+	return minf(SCROLL_MOST, SCROLL_START + SCROLL_PER_SECOND * run_seconds + SCROLL_PER_RANK * rank())
 
 
 static func shot_offsets(count: int) -> Array:
@@ -391,20 +501,23 @@ func step(delta: float) -> void:
 		banner = ""
 	if state == State.READY:
 		_state_left -= delta
-		_scroll(delta * 0.5)
 		_move_healer(delta)
 		if _state_left <= 0.0:
 			state = State.RUNNING
+			if healer_sprite.sprite_frames != null and healer_sprite.sprite_frames.has_animation("walkup"):
+				healer_sprite.play("walkup")
 			_start_wave()
 		return
 	run_seconds += delta
 	untouchable = maxf(0.0, untouchable - delta)
+	overcharge = maxf(0.0, overcharge - delta)
 	_scroll(delta)
 	_move_healer(delta)
 	_fire(delta)
 	_move_shots(delta)
 	_move_foes(delta)
 	_move_drops(delta)
+	_burn(delta)
 	var hit: Vector2i = field.step(delta, healer.position + HITBOX_AT, HITBOX, 0.0, untouchable > 0.0)
 	if hit.x > 0:
 		hurt()
@@ -489,7 +602,7 @@ func _fire(delta: float) -> void:
 	_shot_in -= delta
 	if _shot_in > 0.0:
 		return
-	_shot_in += SHOT_GAP
+	_shot_in += SHOT_GAP * (0.5 if overcharge > 0.0 else 1.0)
 	var from: Vector2 = healer.position + Vector2(0.0, -16.0)
 	for shot in shot_offsets(int(SHOT_STEPS[power])):
 		if _shot_pos.size() >= SHOT_MOST:
@@ -593,7 +706,12 @@ func hurt() -> void:
 
 
 func gain_power() -> void:
-	power = mini(SHOT_STEPS.size() - 1, power + 1)
+	if power >= SHOT_STEPS.size() - 1:
+		# At eight shots, a power-up is OVERCHARGE: twice the rate for a while.
+		overcharge = OVERCHARGE_SECONDS
+		_say("Overcharge")
+		return
+	power += 1
 	_say("Shots %d" % int(SHOT_STEPS[power]))
 
 
@@ -605,7 +723,7 @@ func gain_life() -> void:
 func _say(words: String) -> void:
 	"""A short word in the banner - unless a stretch's or the gate's is up."""
 	if banner_left > 1.2 and banner != "" and not banner.begins_with("Shots") and not banner.begins_with("A life") \
-			and not banner.begins_with("Lives"):
+			and not banner.begins_with("Lives") and banner != "Overcharge":
 		return
 	banner = words
 	banner_left = 1.0
@@ -690,7 +808,13 @@ func _start_wave() -> void:
 	if waves_done == 0:
 		banner = "Stretch 1 - the %s lands" % land_name(land())
 		banner_left = BANNER_SECONDS
-	spawn_wave(_pick_kind())
+	var kind: String = _pick_kind()
+	spawn_wave(kind)
+	if stretch >= 1 and _rng.randf() < BOTH_CHANCE + BOTH_PER_STRETCH * (stretch - 1):
+		var other: String = kind
+		while other == kind:
+			other = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
+		spawn_wave(other, 0.5)
 
 
 func _pick_kind() -> String:
@@ -702,14 +826,15 @@ func _pick_kind() -> String:
 	return str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
 
 
-func spawn_wave(kind: String) -> Array:
-	"""One wave of `kind`, of this stretch's land. Returned for the suite."""
+func spawn_wave(kind: String, share: float = 1.0) -> Array:
+	"""One wave of `kind`, of this stretch's land - `share` of its size when it
+	comes alongside another. Returned for the suite."""
 	var made: Array = []
 	var r: int = rank()
 	var top: float = -HALF.y - 24.0
 	match kind:
 		"vee":
-			var count: int = mini(9, 5 + group_extra(r))
+			var count: int = _sized(mini(11, 7 + group_extra(r)), share)
 			var centre: float = _rng.randf_range(-PATH_HALF + 90.0, PATH_HALF - 90.0)
 			for i in count:
 				var off: float = float(i) - float(count - 1) / 2.0
@@ -719,7 +844,7 @@ func spawn_wave(kind: String) -> Array:
 				f.shoot_in = _rng.randf_range(1.2, 2.4)
 				made.append(f)
 		"sweep":
-			var count: int = mini(10, 6 + group_extra(r))
+			var count: int = _sized(mini(12, 8 + group_extra(r)), share)
 			var side: float = -1.0 if _rng.randf() < 0.5 else 1.0
 			var row_y: float = _rng.randf_range(-HALF.y + 40.0, -HALF.y + 90.0)
 			for i in count:
@@ -730,7 +855,7 @@ func spawn_wave(kind: String) -> Array:
 				f.shoot_in = _rng.randf_range(0.8, 2.0)
 				made.append(f)
 		"mages":
-			var count: int = 2 + (1 if r >= 4 else 0)
+			var count: int = _sized(3 + (1 if r >= 4 else 0), share)
 			for i in count:
 				var x: float = (float(i) - float(count - 1) / 2.0) * 150.0
 				var f := _foe("mage", Vector2(x, top))
@@ -740,7 +865,7 @@ func spawn_wave(kind: String) -> Array:
 				f.shoot_in = 1.0
 				made.append(f)
 		"slimes":
-			var count: int = 4 + group_extra(r)
+			var count: int = _sized(6 + group_extra(r), share)
 			for i in count:
 				var f := _foe("slime", Vector2(_rng.randf_range(-PATH_HALF + 30.0, PATH_HALF - 30.0),
 					top - _rng.randf_range(0.0, 80.0)))
@@ -748,7 +873,7 @@ func spawn_wave(kind: String) -> Array:
 				f.side = _rng.randf_range(0.0, TAU)
 				made.append(f)
 		"arcs":
-			var count: int = 6 + group_extra(r)
+			var count: int = _sized(8 + group_extra(r), share)
 			for i in count:
 				var side: float = -1.0 if i % 2 == 0 else 1.0
 				var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0), -HALF.y - 10.0 - float(i / 2) * 34.0))
@@ -767,6 +892,10 @@ func spawn_wave(kind: String) -> Array:
 				f.shoot_in = 1.0
 				made.append(f)
 	return made
+
+
+static func _sized(count: int, share: float) -> int:
+	return maxi(2, roundi(count * share)) if share < 1.0 else count
 
 
 func _foe(kind: String, at: Vector2) -> Foe:
@@ -1049,6 +1178,20 @@ func _lay_terrain() -> void:
 		if (o["rect"] as Rect2).position.y < bottom + 40.0:
 			kept.append(o)
 	_obstacles = kept
+
+
+func _lay_landing() -> void:
+	"""Where she starts, standing: the crypt's wall behind her across the
+	path, a candelabra either side. It scrolls away once the run starts."""
+	var foot: float = HALF.y + 4.0
+	var x: float = -PATH_HALF - 4.5
+	for width in LANDING_WIDTHS:
+		_prop(str(LANDING_PIECES[int(width)]), Vector2(x + float(width) / 2.0, foot))
+		x += float(width)
+	_obstacles.append({"rect": Rect2(-PATH_HALF, foot - 12.0, PATH_HALF * 2.0, 12.0),
+		"art": Rect2(-PATH_HALF, foot - 28.0, PATH_HALF * 2.0, 28.0)})
+	for side in [-1.0, 1.0]:
+		_prop("res://scene/crypt/candelabra.tscn", Vector2(side * 64.0, HALF.y - 34.0))
 
 
 func _lay_section(at_y: float) -> void:

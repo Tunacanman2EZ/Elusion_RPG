@@ -1227,14 +1227,34 @@ func _test_the_healers_run() -> void:
 	check("a run starts ready: 3 lives, one shot, nothing yet, and says so",
 		run.state == RunScript.State.READY and run.lives == 3 and run.power == 0 and run.foes.get_child_count() == 0
 		and run.banner == "Get ready")
-	for i in 120:
+	# The owner: "we want the healer to be standing on a platform not walking
+	# in from the black".
+	var under_her: Vector2i = Vector2i(0, floori((RunScript.HALF.y - 4.0) / RunScript.TILE))
+	var walls_behind: int = 0
+	for piece in run.props.get_children():
+		if str(piece.scene_file_path).contains("wallrun") and (piece as Node2D).position.y > RunScript.HALF.y - 10.0:
+			walls_behind += 1
+	check("  standing on a landing: floor to the screen's bottom, the crypt's wall behind her, and she stands still",
+		run.floor_layer.get_cell_source_id(under_her) != -1 and walls_behind == 5
+		and run.healer_sprite.animation == &"idleup", [walls_behind, run.healer_sprite.animation])
+	var standing_at: float = run.scrolled
+	for i in 60:
+		run.step(1.0 / 60.0)
+	check("  and the path does not move while she gets ready", run.scrolled == standing_at, run.scrolled)
+	for i in 60:
 		run.step(1.0 / 60.0)
 	var first: Array = []
 	for f in run.foes.get_children():
 		first.append(f.kind)
-	check("  then the first wave: a V of five sprites of the first land, and the land named",
-		run.state == RunScript.State.RUNNING and first.size() == 5 and first.count("sprite") == 5
-		and run.banner.begins_with("Stretch 1 - the "), [first, run.banner])
+	check("  then she walks, and the first wave comes: a V of seven sprites of the first land, the land named",
+		run.state == RunScript.State.RUNNING and first.size() == 7 and first.count("sprite") == 7
+		and run.banner.begins_with("Stretch 1 - the ") and run.healer_sprite.animation == &"walkup", [first, run.banner])
+	var slow: float = run.scroll_speed()
+	run.run_seconds += 120.0
+	var later: float = run.scroll_speed()
+	run.run_seconds -= 120.0
+	check("THE GROUND SPEEDS UP A LITTLE AT A TIME: two minutes on, %.0f px/s faster, never past %d" % [later - slow,
+		RunScript.SCROLL_MOST], later - slow > 10.0 and later - slow < 14.0 and RunScript.SCROLL_MOST < 100.0)
 	check("THE PATH IS WIDER: 480 of the view's 640, walled both sides", RunScript.PATH_HALF * 2.0 == 480.0)
 	var cells_then: int = run.floor_layer.get_used_cells().size()
 	for i in 60 * 40:
@@ -1252,6 +1272,20 @@ func _test_the_healers_run() -> void:
 	run.gain_power()
 	run.gain_power()
 	check("  and power-ups stop at eight", run.power == 4 and int(RunScript.SHOT_STEPS[run.power]) == 8)
+	run.gain_power()
+	check("  past it, a power-up is overcharge: twice the rate of fire for a while",
+		run.power == 4 and run.overcharge == RunScript.OVERCHARGE_SECONDS and run.banner == "Overcharge")
+	run.overcharge = 0.0
+	check("more power-ups: a mage drops one nearly half the time, and never more than 12 kills without one",
+		float(RunScript.KINDS["mage"]["power"]) >= 0.4 and RunScript.POWER_PITY <= 12)
+	var waves_then: int = run.foes.get_child_count()
+	run.stretch = 3
+	var full_size: int = mini(11, 7 + RunScript.group_extra(run.rank()))
+	var both: Array = run.spawn_wave("vee", 0.5)
+	run.stretch = 0
+	check("  more monsters: a V is seven and more; one alongside another comes at half its size, never under two",
+		full_size >= 7 and both.size() == roundi(full_size * 0.5) and run.foes.get_child_count() == waves_then + both.size()
+		and RunScript._sized(3, 0.5) == 2, [full_size, both.size()])
 	var slain_then: int = run.slain
 	var target: Node2D = run.call("_foe", "sprite", run.healer.position + Vector2(0.0, -90.0))
 	target.set("health", 1.0)
@@ -1277,6 +1311,23 @@ func _test_the_healers_run() -> void:
 	run.call("_drop", "potion", run.healer.position + RunScript.HITBOX_AT)
 	run.step(1.0 / 60.0)
 	check("  and one she walks into is picked up", run.lives == 3, run.lives)
+	# THE FIRE BEHIND HER (the owner: "maybe a fire from behind").
+	var lives_before: int = run.lives
+	run.untouchable = 0.0
+	var then_seconds: float = run.run_seconds
+	run.run_seconds = RunScript.FIRE_AFTER - 1.0
+	run.call("_burn", 1.0 / 60.0)
+	var none_yet: bool = run.fire_height == 0.0 and not run.fire_glow.visible
+	run.run_seconds = RunScript.FIRE_AFTER + 120.0
+	run.healer.position.y = RunScript.HALF.y - 12.0
+	run.call("_burn", 1.0 / 60.0)
+	check("from %d s a fire rises behind her - %.0f px after two minutes, held to %d - and standing in it costs a life"
+		% [RunScript.FIRE_AFTER, run.fire_height, RunScript.FIRE_MOST],
+		none_yet and is_equal_approx(run.fire_height, 120.0 * RunScript.FIRE_RISE) and run.fire_glow.visible
+		and run.lives == lives_before - 1 and run.healer.position.y < run.fire_top(), [run.fire_height, run.lives])
+	run.run_seconds = then_seconds
+	run.fire_height = 0.0
+	run.lives = 2
 	var pushed: Vector2 = RunScript._pushed_out(Vector2(5, 5), 2.0, Rect2(0, 0, 20, 8))
 	check("a pillar's foot stops her: put out the shortest way", pushed == Vector2(5, 10), pushed)
 	# ---- the gate and the goal ----
