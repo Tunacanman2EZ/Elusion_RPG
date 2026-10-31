@@ -2776,6 +2776,59 @@ fight, and swells the fire one; nothing stirring, none; a fresh swell adopts.
 Pictured in the commit folder (swell_before_after.png): a fire pack in the
 fortress, three monsters, then nine.
 
+### The Healer's Run: a shooter with the healer as the ship (0.98.0)
+
+The owner, 31 Oct: "healer is constantly walking forward in a loop basically
+add some upgrades drop some enemies and healer trys to avoid running into
+enemies but can also kill them i was thinking power up like those old space
+games", "players goal is to kill everything as quick as possible", "first
+power up 2 bullets then 4 then 6 the 8", "make the path wider". The whole plan
+is the commit folder's HEALER_RUN_PLAN.txt; **this is step 1** - the run, to
+play and tune. It pays nothing and is the owner's alone on the Minigames card
+(`_shows_healer_run()`, `Api.is_owner`); the gold, the day and the High scores
+tab are step 3, with the server.
+
+- **Its own world, over the screen.** `src/world/healerrun/healerrunscreen.gd`
+  (a CanvasLayer at 90, opened by the card's second Go, **in town only** -
+  elsewhere the card says "Play it from town.") holds a SubViewport of 640 x
+  360 with a `World2D` of its own, drawn at whole multiples. The character
+  waits in town, `PROCESS_MODE_DISABLED` until Leave. Keys are kept from the
+  game behind it (`_input()`), Escape is Leave - twice while a run is on.
+  Nothing reaches the area, its physics, the server or presence.
+- **`healerrun.gd` is the run.** The monsters are pictures of the game's own
+  (`look_of_scene()`: an instance never added, its frames and its land's
+  recolour, `BaseEnemy.element_material`) moved by the script - not
+  BaseEnemy, so no brains and no kill reports. Their bullets are the shared
+  `BulletField`; her shots are packed arrays and one MultiMesh (both
+  interpolation switches off, as the rule says).
+- **The scene moves, not her.** Everything that fights is in screen space;
+  only `terrain` scrolls, laid ahead and taken up behind (`_lay_terrain()`):
+  the underground floor, the crypt's side walls every 58 px, and a section
+  each `SECTION_LENGTH` (300) - a hall, a row of pillars, a colonnade, a
+  crossing with one way through. A pillar's foot stops her
+  (`_pushed_out()`); pushed off the bottom she loses a life. The path is
+  480 of the 640 wide (`PATH_HALF` 240); beyond the walls is drawn black
+  over everything, so monsters come in from behind them.
+- **The run**: 5 stretches of 5 waves, each stretch a land (shuffled), then the
+  last land's boss at the gate, then the goal marker ("GOAL - 1000 gold",
+  two pillars and the gold arrow) - walking to it wins. A wave comes when the
+  last is dead (`WAVE_GAP`) or when `wave_time()` is up, on top of what is
+  left. Waves: a V, a sweep, mages (fans), slimes, arcs, snipers.
+- **Her shots**: always firing, 1 then 2, 4, 6, 8 (`SHOT_STEPS`,
+  `shot_offsets()`). **Lives**: 3, a potion one more to 5; one hit is one
+  life, `BLINK_SECONDS` (2) untouchable, a shot step lost, the screen's
+  bullets cleared. **Drops** from kills (`KINDS`' odds; the 25th kill with
+  no power-up drops one, `POWER_PITY`).
+- **The hidden rank** (`rank()`): the stretch plus her shot step less one a
+  life lost, 0 to 10 - tougher monsters, faster bullets, more shots, bigger
+  and quicker waves, a faster scroll. The screen shows it as "Danger".
+
+`_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
+land's monsters existing, a run from Ready through a wave, the floor laid and
+taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the
+gate, the goal, a loss; the screen (its own world, the character held and let
+go, Escape twice); the card (town only, owner only).
+
 ### Deleting inert code is how you find out what it was for
 
 E-2 closed by making all six skills server-granted, which left machinery behind

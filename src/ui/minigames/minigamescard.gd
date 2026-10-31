@@ -23,6 +23,12 @@
 # corridor, whose ladder still goes up. With loot in the chest (0.93.4) Leave
 # asks twice: the chest waits on the server, and the next Go empties it.
 #
+# THE HEALER'S RUN (0.98.0, healerrun.gd) is the card's second minigame: a
+# shooter with the healer as the ship, played over the screen from town (Go
+# elsewhere says "Play it from town."). Step 1 of HEALER_RUN_PLAN.txt pays
+# nothing yet and is the owner's alone, to play and tune; the day and the
+# gold come with the server in step 3.
+#
 # Built by the HUD (attach()), no class_name, so a fresh checkout needs no
 # editor rescan.
 extends PanelContainer
@@ -40,6 +46,8 @@ const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
 const BLURB := "A horde that never stops. Once a day."
 const UNREACHABLE := "Could not reach the server - try again."
+const HEALER_BLURB := "The healer, up a crypt path, shooting. Testing - nothing paid yet."
+const FROM_TOWN := "Play it from town."
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
 # area this game is in.
@@ -50,6 +58,9 @@ var area_now: Callable = Callable(AreaRegistry, "current_area_id")
 # How many cells of the Endless's chest hold something (0.93.4): the chest in
 # the corridor's own count (endlesschest.gd `used`). A seam for the suite.
 var chest_count: Callable = Callable(self, "_chest_count")
+# The Healer's Run's doors: who sees it (the owner, in step 1) and what Go does.
+var shows_healer_run: Callable = Callable(self, "_shows_healer_run")
+var open_run: Callable = Callable(self, "_open_run")
 
 var hud: Node = null
 var title: Label = null
@@ -58,6 +69,9 @@ var blurb: Label = null
 var status: Label = null
 var go_button: Button = null
 var close_button: Button = null
+var healer_box: VBoxContainer = null
+var healer_status: Label = null
+var healer_go: Button = null
 # Seconds of the wait left when the server last said, and when that was.
 var ready_in: int = 0
 var _said_at_msec: int = 0
@@ -120,6 +134,30 @@ func _init() -> void:
 	go_button.custom_minimum_size = Vector2(72, 28)
 	go_button.pressed.connect(_on_go)
 	row.add_child(go_button)
+	healer_box = VBoxContainer.new()
+	healer_box.name = "healerrun"
+	healer_box.add_theme_constant_override("separation", 4)
+	column.add_child(healer_box)
+	healer_box.add_child(HSeparator.new())
+	healer_box.add_child(_label("healergame", "The Healer's Run", FONT_SIZE, COLOUR))
+	var healer_blurb: Label = _label("healerblurb", HEALER_BLURB, 12, COLOUR_HINT)
+	healer_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	healer_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
+	healer_box.add_child(healer_blurb)
+	var healer_row := HBoxContainer.new()
+	healer_row.add_theme_constant_override("separation", 10)
+	healer_box.add_child(healer_row)
+	healer_status = _label("healerstatus", "", FONT_SIZE, COLOUR_HINT)
+	healer_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	healer_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
+	healer_row.add_child(healer_status)
+	healer_go = Button.new()
+	healer_go.name = "healergo"
+	healer_go.text = "Go"
+	healer_go.focus_mode = Control.FOCUS_NONE
+	healer_go.custom_minimum_size = Vector2(72, 28)
+	healer_go.pressed.connect(_on_healer_go)
+	healer_row.add_child(healer_go)
 
 
 func _label(id: String, text: String, size: int, colour: Color) -> Label:
@@ -215,6 +253,7 @@ static func wait_text(seconds: int) -> String:
 
 func paint() -> void:
 	"""The status line and the button, from what is known now."""
+	_paint_healer()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -314,6 +353,32 @@ func _on_go() -> void:
 		return
 	_failed = true
 	paint()
+
+
+func _paint_healer() -> void:
+	healer_box.visible = bool(shows_healer_run.call())
+	var in_town: bool = str(area_now.call()) == TOWN
+	healer_status.text = "Ready" if in_town else FROM_TOWN
+	healer_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
+	healer_go.disabled = not in_town
+	healer_go.tooltip_text = "Play the Healer's Run - your character waits in town" if in_town \
+		else "Go back to town first"
+
+
+func _on_healer_go() -> void:
+	if str(area_now.call()) != TOWN:
+		paint()
+		return
+	close()
+	open_run.call()
+
+
+func _shows_healer_run() -> bool:
+	return bool(Api.is_owner)
+
+
+func _open_run() -> void:
+	(load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).call("open", get_tree())
 
 
 func chest_held() -> int:

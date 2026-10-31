@@ -1172,3 +1172,182 @@ func _swell_origins(holder: Node, swell_script: GDScript) -> Array:
 			out.append(str(e.get_meta(&"net_origin", "")))
 	out.sort()
 	return out
+
+
+func _test_the_healers_run() -> void:
+	section("THE HEALER'S RUN: A SHOOTER WITH THE HEALER AS THE SHIP, STEP 1 (0.98.0)")
+	# The owner: "healer is constantly walking forward in a loop basically add
+	# some upgrades drop some enemies", "first power up 2 bullets then 4 then 6
+	# the 8", "make the path wider".
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	const ScreenScript := preload("res://src/world/healerrun/healerrunscreen.gd")
+	# ---- her shots ----
+	var counts: Array = []
+	var even: bool = true
+	for n in RunScript.SHOT_STEPS:
+		var volley: Array = RunScript.shot_offsets(int(n))
+		counts.append(volley.size())
+		var sum := Vector2.ZERO
+		for shot in volley:
+			sum += Vector2(float(shot[0]), float(shot[1]))
+		even = even and sum.is_zero_approx()
+	check("her shots: 1, then 2, 4, 6 and 8, each volley even either side",
+		RunScript.SHOT_STEPS == [1, 2, 4, 6, 8] and counts == [1, 2, 4, 6, 8] and even, counts)
+	check("  two side by side and straight up, then a pair fanning wider each step",
+		RunScript.shot_offsets(2) == [[-4.0, 0.0], [4.0, 0.0]]
+		and absf(float(RunScript.shot_offsets(8)[7][1])) > absf(float(RunScript.shot_offsets(6)[5][1])))
+	# ---- the hidden rank ----
+	check("harder with rank: tougher, faster bullets, quicker to shoot, bigger waves, waves sooner (never under 8 s)",
+		RunScript.foe_health(3.0, 5) > RunScript.foe_health(3.0, 0) and RunScript.bullet_speed(6) > RunScript.bullet_speed(0)
+		and RunScript.fire_gap(2.0, 6) < RunScript.fire_gap(2.0, 0) and RunScript.fire_gap(2.0, 99) >= 1.0
+		and RunScript.group_extra(9) > RunScript.group_extra(0) and RunScript.wave_time(4) < RunScript.wave_time(0)
+		and RunScript.wave_time(99) >= 8.0)
+	# ---- every land has its monsters ----
+	var missing: Array = []
+	for land in RunScript.LANDS:
+		for table in [RunScript.SPRITES, RunScript.MAGES, RunScript.SNIPERS, RunScript.BOSSES, RunScript.SLIMES]:
+			var id: String = str(table.get(land, ""))
+			if id != "" and not ResourceLoader.exists("res://scene/enemy/%s.tscn" % id):
+				missing.append(id)
+			elif id == "" and table != RunScript.SLIMES:
+				missing.append("%s: none" % land)
+	check("every land has a sprite, a mage, a sniper and a boss of its own in the game (and a slime, or a sprite instead)",
+		missing.is_empty(), missing)
+	var look: Dictionary = RunScript.look_of_scene("res://scene/enemy/windsprite.tscn")
+	var her: Dictionary = RunScript.look_of_scene(RunScript.HEALER_SCENE, false)
+	check("  each drawn as the world draws it - the game's own frames and its land's colour; the healer read, never made",
+		look.get("frames") is SpriteFrames and look.get("material") is ShaderMaterial and her.get("frames") is SpriteFrames
+		and (her["frames"] as SpriteFrames).has_animation("walkup"))
+	# ---- a run ----
+	var run = RunScript.new()
+	run.set("seed_value", 77)
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	add_child(run)
+	run.set_process(false)
+	check("a run starts ready: 3 lives, one shot, nothing yet, and says so",
+		run.state == RunScript.State.READY and run.lives == 3 and run.power == 0 and run.foes.get_child_count() == 0
+		and run.banner == "Get ready")
+	for i in 120:
+		run.step(1.0 / 60.0)
+	var first: Array = []
+	for f in run.foes.get_children():
+		first.append(f.kind)
+	check("  then the first wave: a V of five sprites of the first land, and the land named",
+		run.state == RunScript.State.RUNNING and first.size() == 5 and first.count("sprite") == 5
+		and run.banner.begins_with("Stretch 1 - the "), [first, run.banner])
+	check("THE PATH IS WIDER: 480 of the view's 640, walled both sides", RunScript.PATH_HALF * 2.0 == 480.0)
+	var cells_then: int = run.floor_layer.get_used_cells().size()
+	for i in 60 * 40:
+		run.lives = 3
+		run.untouchable = 1.0
+		run.step(1.0 / 60.0)
+	var cells_now: int = run.floor_layer.get_used_cells().size()
+	check("the scene moves, not her: the floor laid ahead and taken up behind, never more than a screen and a bit",
+		run.scrolled > 1000.0 and cells_now <= 40 * 30 and cells_then > 0, [run.scrolled, cells_then, cells_now])
+	var before: int = run.shots_flying()
+	run.power = 2
+	run.call("_fire", RunScript.SHOT_GAP)
+	check("at four shots, a volley is four", run.shots_flying() - before == 4, run.shots_flying() - before)
+	run.gain_power()
+	run.gain_power()
+	run.gain_power()
+	check("  and power-ups stop at eight", run.power == 4 and int(RunScript.SHOT_STEPS[run.power]) == 8)
+	var slain_then: int = run.slain
+	var target: Node2D = run.call("_foe", "sprite", run.healer.position + Vector2(0.0, -90.0))
+	target.set("health", 1.0)
+	target.set("velocity", Vector2.ZERO)
+	for i in 20:
+		run.untouchable = 1.0
+		run.step(1.0 / 60.0)
+	check("a monster in front of her is shot down and counted", run.slain > slain_then, [slain_then, run.slain])
+	# ---- lives ----
+	run.untouchable = 0.0
+	run.lives = 3
+	run.power = 3
+	run.field.spawn(Vector2(0, -100), PI / 2.0, 10.0, Color.WHITE)
+	run.hurt()
+	check("one hit is one life: she blinks, a shot step goes, and the screen's bullets with it",
+		run.lives == 2 and run.power == 2 and run.untouchable > 0.0 and run.field.count == 0)
+	run.hurt()
+	check("  and while she blinks nothing more is taken", run.lives == 2)
+	for i in 4:
+		run.gain_life()
+	check("a potion is a life more, held to five", run.lives == RunScript.LIVES_MOST)
+	run.lives = 2
+	run.call("_drop", "potion", run.healer.position + RunScript.HITBOX_AT)
+	run.step(1.0 / 60.0)
+	check("  and one she walks into is picked up", run.lives == 3, run.lives)
+	var pushed: Vector2 = RunScript._pushed_out(Vector2(5, 5), 2.0, Rect2(0, 0, 20, 8))
+	check("a pillar's foot stops her: put out the shortest way", pushed == Vector2(5, 10), pushed)
+	# ---- the gate and the goal ----
+	var won: Array = []
+	run.finished.connect(func(did_win: bool) -> void: won.append(did_win))
+	run.call("_start_boss")
+	check("after the last stretch, the gate: its keeper is the last land's boss, at full health",
+		run.state == RunScript.State.BOSS and run.boss != null and is_equal_approx(run.boss_share(), 1.0))
+	run.call("_strike", run.boss, run.boss.most + 1.0)
+	check("  killed, the way is open and the goal marker laid ahead", run.state == RunScript.State.GOAL and run.goal != null
+		and run.goal.get_child_count() >= 3)
+	for i in 60 * 30:
+		if run.state != RunScript.State.GOAL:
+			break
+		run.untouchable = 1.0
+		run.step(1.0 / 60.0)
+	check("  and walking to it wins the run - in the time it took",
+		run.state == RunScript.State.WON and won == [true] and run.result_text().begins_with("Cleared in "),
+		[run.state, won, run.result_text()])
+	run.queue_free()
+	var lost = RunScript.new()
+	lost.set("seed_value", 3)
+	add_child(lost)
+	lost.set_process(false)
+	for i in 120:
+		lost.step(1.0 / 60.0)
+	lost.lives = 1
+	lost.untouchable = 0.0
+	lost.hurt()
+	check("the last life gone: the run is over, and says how far it got",
+		lost.state == RunScript.State.LOST and lost.result_text().begins_with("Fell in stretch 1"), lost.result_text())
+	lost.queue_free()
+	# ---- on screen ----
+	var stand_in := Node2D.new()
+	stand_in.add_to_group("player")
+	add_child(stand_in)
+	var screen = ScreenScript.open(get_tree(), 9)
+	await get_tree().process_frame
+	check("the screen opens over everything with the run in a world of its own, and the character waits, still",
+		screen.layer == ScreenScript.LAYER and screen.run != null and screen.viewport.world_2d != get_viewport().world_2d
+		and stand_in.process_mode == Node.PROCESS_MODE_DISABLED)
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	screen._input(escape)
+	check("  Escape asks first while a run is on", is_instance_valid(screen) and not screen.is_queued_for_deletion()
+		and screen.leave_button.text == "Sure?")
+	screen.ask_to_leave()
+	await get_tree().process_frame
+	check("  and the second time leaves - the character let go", not is_instance_valid(screen)
+		and stand_in.process_mode == Node.PROCESS_MODE_INHERIT)
+	stand_in.queue_free()
+	# ---- the Minigames card ----
+	var Card: GDScript = load("res://src/ui/minigames/minigamescard.gd") as GDScript
+	var hud := Control.new()
+	add_child(hud)
+	var card = Card.call("attach", hud)
+	var opened: Array = []
+	card.set("shows_healer_run", func() -> bool: return true)
+	card.set("open_run", func() -> void: opened.append(true))
+	card.set("area_now", func() -> String: return "field")
+	card.call("paint")
+	check("the Minigames card has the Healer's Run under the Endless: away from town, \"Play it from town.\"",
+		card.healer_box.visible and card.healer_status.text == "Play it from town." and card.healer_go.disabled)
+	card.set("area_now", func() -> String: return "elusion")
+	card.call("paint")
+	card.healer_go.pressed.emit()
+	check("  in town, Go opens it", not card.healer_go.disabled and opened == [true])
+	card.set("shows_healer_run", func() -> bool: return false)
+	card.call("paint")
+	check("  and only the owner sees it while it pays nothing (step 1)", not card.healer_box.visible)
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  the healer's run: a shooter of her own, in a world of its own, from town")
