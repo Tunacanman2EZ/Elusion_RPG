@@ -4104,22 +4104,23 @@ func _test_the_party_run() -> void:
 		(swarm_a.get("others") as PackedVector2Array).size() == 1
 		and (swarm_a.get("others") as PackedVector2Array)[0] == (b[3] as Node2D).global_position)
 
-	# ---- the door at each stage, a fall ----
-	run_a.set("elapsed", 60.2)
-	_party_frames([a, b], 0.2)
-	check("a new stage holds the door open on every screen, for whoever is in the corridor",
-		int(run_a.get("stage")) == 2 and int(run_b.get("stage")) == 2 and bool(door_a.get("held"))
-		and bool(door_b.get("held")), [run_a.get("stage"), run_b.get("stage")])
-	_party_frames([a, b], 3.2)
-	check("  and lets go after %d seconds" % int(Run.DOOR_OPEN_SECONDS), not bool(door_a.get("held"))
-		and not bool(door_b.get("held")))
+	# ---- a fall, then a new stage ----
+	# 0.97.1, the owner: "no reentry the have to wait for other person to die
+	# but they should spawn by the chest". The door opened 3 s at each stage.
 	var caught: bool = bool(run_b.call("knock_out", b[3]))
 	_party_frames([a, b], 0.3)
-	check("one falls: they wake in the corridor, a step apart from where another would, and the run goes on for the party",
+	check("one falls: they wake by the chest, a step apart from where another would, and the run goes on for the party",
 		caught and (b[3] as Node2D).global_position == run_b.call("wake_for")
 		and run_b.call("wake_for") != run_a.call("wake_for")
 		and (run_b.get("corridor_rect") as Rect2).has_point(run_b.call("wake_for")) and int(run_a.get("state")) == 1
 		and int(run_b.get("state")) == 1 and not bool(run_b.get("my_in")))
+	run_a.set("elapsed", 60.2)
+	_party_frames([a, b], 3.5)
+	check("  a new stage keeps the door shut on every screen: no way back in until the run is over",
+		int(run_a.get("stage")) == 2 and int(run_b.get("stage")) == 2 and not bool(door_a.get("held"))
+		and not bool(door_b.get("held")) and not bool(run_a.get("door_open")) and not bool(run_b.get("door_open"))
+		and not bool(run_b.get("my_in")),
+		[run_a.get("stage"), run_b.get("stage"), door_a.get("held"), door_b.get("held")])
 
 	# ---- somebody walks in mid-run ----
 	var lc: Node = LinkScript.new()

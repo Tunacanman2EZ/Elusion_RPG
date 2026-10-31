@@ -159,8 +159,11 @@ func _ready() -> void:
 		if enemy == null:
 			continue
 		# The owner's stress copies bring themselves back (stresscrowd.gd), and
-		# a party run's elites never come back (endlessrun.gd).
-		if enemy.has_meta(&"stress_copy") or enemy.has_meta(&"run_extra"):
+		# a party run's elites never come back (endlessrun.gd); nor do a stir's
+		# swell monsters come back as authored ones (swell.gd, 0.97.1 - built,
+		# or drawn from the leader's, before this census).
+		if enemy.has_meta(&"stress_copy") or enemy.has_meta(&"run_extra") or enemy.has_meta(&"swell_copy") \
+				or str(enemy.get_meta(&"net_origin", "")).contains("#swell"):
 			continue
 
 		# An enemy placed by hand is an instantiated scene and knows its own

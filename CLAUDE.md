@@ -2214,15 +2214,17 @@ Endless: party plan"; this is what was built. Alone, nothing changes.
 - **A game walking in mid-run** asks `need`; the leader sends `full`: its
   line and every slime (`export_alive()`, six numbers each, in parts of
   `PART_SLIMES`), and it `import_alive()`s them. It waits in the corridor
-  for the next stage's door.
-- **The door at each stage**: `DOOR_OPEN_SECONDS` (3) held open, so the late
-  and the fallen walk back in.
-- **A fall** wakes you in the corridor as alone, and the run goes on while
-  anybody says they are in (`me`). **Back in on what resting brought back**:
-  the plan said half health, but a heal the game gives itself is what the
-  server's healing check takes back, so the corridor heals nobody -
-  regeneration is 1.67% a second, about half in 30 s. The HUD says when the
-  door opens.
+  for the run to end.
+- **No way back in (0.97.1).** The owner: "no reentry the have to wait for
+  other person to die but they should spawn by the chest". Until then the
+  door was held open `DOOR_OPEN_SECONDS` (3) at each new stage for the late
+  and the fallen; a friend who fell missed it and was teleported in. Now the
+  door shuts at the start and stays shut until the run is over (the
+  countdown's hold is unchanged).
+- **A fall** wakes you by the chest (`wake_for()`), and the run goes on while
+  anybody says they are in (`me`). The corridor heals nobody - a heal the
+  game gives itself is what the server's healing check takes back. The HUD
+  says "out - waiting by the chest while N fight on" (`party_text()`).
 - **Over when nobody is in**: "The party lasted ... · N yours" on every
   screen. `START_GRACE` (2 s) after a start or a change of leader, before
   anybody has had time to say they are in.
@@ -2719,6 +2721,60 @@ a setting.
   map is opened for. Monsters still show only on ground you have seen.
 
 `_test_the_whole_map()` (testrunner_9).
+
+### The Swell: a stirring land's monsters, more of them, real ones (0.97.1)
+
+The owner, 30 Oct: "lets make the tests into a real feature that changes
+with the land we can customize it more in hud" - the stress test (above,
+"The stress test (0.65.0)") made real. Stage 1 of the commit folder's
+STIR_PLAN.txt. The server's half is in the API's CLAUDE.md, "The Swell".
+
+- **What it is.** While a land stirs, each of its monsters in the Big Field
+  stands `swell` times over (2 to 4; the GM panel's World tab, the Swell row,
+  on at 2x by default). The same size for every land. Shared with everyone in
+  the area and paying like any monster.
+- **`src/world/swell.gd`**, added to every area by AreaRegistry beside the
+  stress test, acts in `res://scene/bigfield.tscn` alone. It takes a census
+  of the area's monsters once (their scene, leash and the respawner's kept
+  settings, their land, their respawn wait), then each `CHECK_SECONDS` (1)
+  and on `Lands.changed` it builds the missing ones by the clock
+  (`BUILD_MS` 3 a frame), at a spot on the floor 20 to 56 px from the one it
+  swells, in sight of it, never within 400 px of the arrival. Born asleep
+  past the sleeper's distance from every player, as the stress test's are.
+- **Only the game running the area builds** (`_has_authority()`: the
+  monstersync leader, or alone). A game that takes the area over adopts the
+  swell standing by its origin (`_adopt()`) and builds no second one.
+- **Real, not copies.** No `stress_copy` mark: `get_enemy_id()` is the
+  monster's own, so a kill is reported and paid, and monstersync.gd numbers
+  and shares it like any monster. **Its origin is
+  `"<the authored origin>#swell<n>"`** (n 1 to size - 1) - not the authored
+  origin, which a follower would match to the authored monster; the server's
+  books read the mark (`_judge_swell`). `is_swell()` is the `swell_copy` meta
+  or that mark; enemyrespawner.gd and stresscrowd.gd leave both out of their
+  census.
+- **Killed: back after its monster's respawn wait** (`_back_at`), at a new
+  spot, and never within `PLAYER_CLEAR` (250) of a player.
+- **The stir ends, moves on, or the size comes down: the extras go once out
+  of a fight** (not `engaged`, not dying) - nobody's target vanishes under
+  them.
+- **A follower draws up to 640 monsters** (monstersync.gd `MAX_MONSTERS`, was
+  400): the Big Field's 282 plus dark's 66 at 4x is 480.
+- **The HUD's line names the place**: `Lands.line()` is "The Fire lands stir
+  in the Fortress, south-east - 2h 14m left" (`Lands.WINGS`, `place_text()`;
+  bigfield_build.json's wings), and the chip is 460 px wide (±230). Lands
+  reads `swell` from the poll's world (1 from an older server, held to 4);
+  `Lands.swell_size()` is 1 with nothing stirring.
+- **The World tab's Swell row** sends a whole number (a step of 1 is, like a
+  percent).
+
+`_test_the_swell()` (testrunner_9): the poll's size and the line, every
+land's Big Field monsters inside the wing the line names, then a stand-in
+area (a water and a fire monster on a floor) - 3x builds two of the water
+one only, real and beside it; killed, back after its wait; no authority,
+none; 4x three; the stir moving on takes the water ones but not one in a
+fight, and swells the fire one; nothing stirring, none; a fresh swell adopts.
+Pictured in the commit folder (swell_before_after.png): a fire pack in the
+fortress, three monsters, then nine.
 
 ### Deleting inert code is how you find out what it was for
 

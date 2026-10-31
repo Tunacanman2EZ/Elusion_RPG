@@ -121,10 +121,12 @@ const PROJECTILE_SCENES := "res://scene/projectiles/"
 const MIN_SPIKE_TELEGRAPH := 0.4
 const MAX_TELEGRAPH := 5.0
 const MAX_SPIKE_RADIUS := 20.0
-# The most monsters a follower will draw. Big Field, the busiest area, has 128;
-# this is room for the gauntlet's adds on top, and a ceiling on a world message
-# that tries to fill the screen.
-const MAX_MONSTERS := 400
+# The most monsters a follower will draw. Big Field, the busiest area, has 282
+# since 0.94.0, and a stir's swell (swell.gd, 0.97.1) puts up to three more
+# beside each of its land's - dark's 66 at 4x is 480 in all; this is room for
+# that and the splits, and a ceiling on a world message that tries to fill the
+# screen.
+const MAX_MONSTERS := 640
 
 # -1 until the first decision, so that decision always runs _become().
 var role: int = -1

@@ -181,7 +181,9 @@ func _take_census() -> void:
 	var respawner: Node = _area.find_child("enemyrespawner", true, false)
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Node2D
-		if enemy == null or is_copy(enemy) or enemy.scene_file_path == "" or not _area.is_ancestor_of(enemy) \
+		if enemy == null or is_copy(enemy) or enemy.has_meta(&"swell_copy") \
+				or str(enemy.get_meta(&"net_origin", "")).contains("#swell") \
+				or enemy.scene_file_path == "" or not _area.is_ancestor_of(enemy) \
 				or not (enemy.get_parent() is Node2D):
 			continue
 		var packed: PackedScene = load(enemy.scene_file_path) as PackedScene

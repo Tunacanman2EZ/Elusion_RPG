@@ -102,6 +102,7 @@ var _spawn_wait_left: float = 0.0
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 const EnemySleeper := preload("res://src/world/enemysleeper.gd")
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
+const Swell := preload("res://src/world/swell.gd")
 const MonsterSync := preload("res://src/world/monstersync.gd")
 
 
@@ -147,6 +148,10 @@ func _on_scene_changed() -> void:
 	# only, while the owner panel's switch says so; see stresscrowd.gd.
 	if scene.get_node_or_null(StressCrowd.NODE_NAME) == null:
 		StressCrowd.add_to(scene)
+	# A stir's swell - real monsters, shared and paid, beside each of the
+	# stirring land's in the Big Field (0.97.1); see swell.gd.
+	if scene.get_node_or_null(Swell.NODE_NAME) == null:
+		Swell.add_to(scene)
 	# Everyone in the area fights the same monsters; see monstersync.gd.
 	if scene.get_node_or_null(MonsterSync.NODE_NAME) == null:
 		MonsterSync.add_to(scene)

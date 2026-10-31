@@ -56,6 +56,9 @@ const EFFECTS := [
 		"How many times armour's resistance to it counts - still held to the 50% cap."],
 	["xp_on", "xp_percent", "More XP", "%", 0.0, 100.0, 5.0,
 		"How much more XP its monsters give (the server pays it)."],
+	# THE SWELL (0.97.1): the stress test made real - swell.gd.
+	["swell_on", "swell_size", "Swell", "x", 2.0, 4.0, 1.0,
+		"How many of each of its monsters stand in the Big Field: 2x is one more beside each. Real ones - every player sees them, and they pay."],
 ]
 
 # Where requests go; seams for the suite.
@@ -306,7 +309,8 @@ func settings_from_controls() -> Dictionary:
 	for effect in EFFECTS:
 		out[effect[0]] = (effect_switches[effect[0]] as CheckBox).button_pressed
 		var amount: float = (effect_amounts[effect[1]] as SpinBox).value
-		if str(effect[3]) == "%":
+		# A percent, or a count stepped by ones (the swell), is a whole number.
+		if str(effect[3]) == "%" or float(effect[6]) >= 1.0:
 			out[effect[1]] = int(roundf(amount))
 		else:
 			out[effect[1]] = snappedf(amount, 0.01)

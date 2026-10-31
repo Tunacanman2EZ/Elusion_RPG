@@ -45,13 +45,14 @@
 #              screen; the door is held open (cryptdoor.gd hold()) so the
 #              party comes through together. At zero the clock starts.
 #   RUNNING    the leader's game spawns and brings the elites; the others
-#              follow its line. Each new stage holds the door open
-#              DOOR_OPEN_SECONDS, so whoever is in the corridor - late, or back
-#              from a fall - can walk in.
-#   A FALL     wakes the player in the corridor, as alone, and the run goes on
-#              while anybody is in. Back in at the next stage, on the health
-#              resting has brought back: the corridor heals nobody (the
-#              server's healing check would take a heal back).
+#              follow its line. The door stays shut until the run is over
+#              (0.97.1, the owner: "no reentry the have to wait for other
+#              person to die but they should spawn by the chest"): one who
+#              walks in late waits for the next run.
+#   A FALL     wakes the player by the chest, and the run goes on while
+#              anybody is in. No way back in: they wait there for the party.
+#              The corridor heals nobody (the server's healing check would
+#              take a heal back).
 #   OVER       when nobody is in. One result for the party, and your own kills.
 # The party is scaled (party_crowd(), party_health(), party_elites(),
 # party_boss()): more slimes, a little tougher, more elites, much tougher
@@ -124,9 +125,8 @@ const SPAWN_RATE_STEP := 15.0
 const CLEAR_AFTER := 2.0
 # A run's elites and bosses (BaseEnemy.get_enemy_id(), monstersync.gd).
 const RUN_MARK := &"run_extra"
-# A party: how long the door waits for it, and stays open at each new stage.
+# A party: how long the door waits for it.
 const COUNTDOWN_SECONDS := 5.0
-const DOOR_OPEN_SECONDS := 3.0
 # A party run is not over while somebody says they are in; for this long after
 # it starts (or changes hands) nobody has had time to say so.
 const START_GRACE := 2.0
@@ -199,8 +199,6 @@ var players: int = 1
 # This game's player is in the run: past the door, on the arena's floor.
 var my_in: bool = false
 var countdown_left: float = 0.0
-# (Leader.) The door held open this much longer.
-var door_left: float = 0.0
 var door_open: bool = false
 # The party's line, as the leader last said it (followers) or says it.
 var party_slain: int = 0
@@ -449,10 +447,6 @@ func _process(delta: float) -> void:
 	if not lead_now:
 		return
 	_grace_left -= delta
-	if door_left > 0.0:
-		door_left -= delta
-		if door_left <= 0.0:
-			_set_door(false)
 	# A PARTY RUN IS OVER WHEN NOBODY IS IN: each game says whether its player
 	# is (endlessparty.gd "me").
 	if shared() and _grace_left <= 0.0 and not my_in and int(party.call("others_in")) == 0:
@@ -633,7 +627,6 @@ func start() -> void:
 	players = int(party.call("members")) if party != null and shared() else 1
 	swarm.set("slain", 0)
 	swarm.set("my_slain", 0)
-	door_left = 0.0
 	_set_door(false)
 	_enter_stage(1)
 	Audio.play("teleport")
@@ -667,11 +660,9 @@ func _enter_stage(number: int) -> void:
 		return
 	if stage % BOSS_EVERY == 0:
 		_bring(_boss_scene(stage), party_boss(players))
-	# THE DOOR OPENS AT EACH NEW STAGE, for a party: whoever is in the corridor
-	# - late, or back from a fall - walks in.
-	if shared() and stage >= 2:
-		door_left = DOOR_OPEN_SECONDS
-		_set_door(true)
+	# NO DOOR AT A NEW STAGE (0.97.1): it opened DOOR_OPEN_SECONDS (3) at each
+	# one so the late and the fallen could walk back in. The owner: no way
+	# back - the fallen wait by the chest for the party to fall.
 
 
 func _elite_scene(stage_number: int, nth: int) -> String:
@@ -779,7 +770,6 @@ func _end_run() -> void:
 	var was_party: bool = shared()
 	state = State.OVER
 	best = maxf(best, elapsed)
-	door_left = 0.0
 	door_open = false
 	if was_party:
 		_last_result = "The party lasted %s  ·  stage %d  ·  %s slain  ·  %s yours" % [clock_text(elapsed), stage,

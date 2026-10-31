@@ -266,7 +266,7 @@ func _test_stirring_lands() -> void:
 	next_tick["tick"] = 13
 	check("  the same land as a new stir is", Lands.apply(next_tick))
 	check("the line on the HUD counts down on the server's clock",
-		Lands.line() == "The Fire lands stir - 2h 14m left", Lands.line())
+		Lands.line() == "The Fire lands stir in the Fortress, south-east - 2h 14m left", Lands.line())
 	check("  and what it does, in words, from the numbers sent",
 		Lands.effects_line() == "Fire monsters hit 25% harder, have 50% more health, move 15% faster and drop loot 1.5x as often; fire resistance counts 1.5x.",
 		Lands.effects_line())
@@ -411,7 +411,7 @@ func _test_stirring_lands() -> void:
 		"latest_id": 5, "world": fire})
 	var chip: PanelContainer = hud.world_chip
 	check("logging in during a stir: the line under the top of the screen, in fire's colour, and no banner",
-		chip != null and chip.visible and hud.world_label.text == "The Fire lands stir - 2h 14m left"
+		chip != null and chip.visible and hud.world_label.text == "The Fire lands stir in the Fortress, south-east - 2h 14m left"
 		and hud.world_label.get_theme_color("font_color").is_equal_approx(Element.colour_for(Element.Type.FIRE).lightened(0.35))
 		and (hud.mythic_banner == null or not is_instance_valid(hud.mythic_banner)), hud.world_label.text if hud.world_label else "")
 	var water: Dictionary = fire.duplicate()
@@ -483,7 +483,7 @@ func _test_stirring_lands() -> void:
 	var view: Variant = JSON.parse_string(JSON.stringify({
 		"settings": {"on": true, "hours": 3, "hit_on": true, "hit_percent": 25, "health_on": true, "health_percent": 50,
 			"speed_on": true, "speed_percent": 15, "bags_on": true, "bags_times": 1.5,
-			"resist_on": true, "resist_times": 1.5, "xp_on": false, "xp_percent": 25},
+			"resist_on": true, "resist_times": 1.5, "xp_on": false, "xp_percent": 25, "swell_on": true, "swell_size": 2},
 		"state": {"on": true, "tick": 12, "element": 6, "name": "fire", "started_at": now - 600, "ends_at": now + 3600,
 			"hit": 0.25, "resist": 1.5, "bags": 1.5, "xp": 0.0, "now": now},
 		"recent": [{"tick": 12, "element": 6, "name": "fire", "started_at": now - 600, "ends_at": now + 3600, "chosen_by": ""},
@@ -520,7 +520,7 @@ func _test_stirring_lands() -> void:
 	var said_after_refresh: String = results.get_parsed_text() if results != null else ""
 	check("Refresh says what it read in the GM panel's Results: what stirs now and every setting",
 		said_after_refresh.contains("Read from the server. The Fire lands are stirring - 1h 00m left (stir 12). "
-			+ "Each stir lasts 3 h. On: hit harder 25%, more health 50%, faster 15%, more loot 1.5x, resistance 1.5x. Off: more XP.")
+			+ "Each stir lasts 3 h. On: hit harder 25%, more health 50%, faster 15%, more loot 1.5x, resistance 1.5x, swell 2x. Off: more XP.")
 		and tab.say_label.text == "Read from the server." and asked.size() == 2, said_after_refresh)
 	(tab.effect_switches["xp_on"] as CheckBox).button_pressed = true
 	(tab.effect_amounts["xp_percent"] as SpinBox).value = 40.0
@@ -533,7 +533,7 @@ func _test_stirring_lands() -> void:
 		sent.size() == 1 and sent[0][0] == "/api/server/world" and sent[0][1] == {"on": true, "hours": 6,
 			"hit_on": true, "hit_percent": 25, "health_on": true, "health_percent": 100, "speed_on": false,
 			"speed_percent": 15, "bags_on": true, "bags_times": 1.5, "resist_on": true,
-			"resist_times": 1.75, "xp_on": true, "xp_percent": 40}, sent)
+			"resist_times": 1.75, "xp_on": true, "xp_percent": 40, "swell_on": true, "swell_size": 2}, sent)
 	check("  and Results says it was saved, with the settings the server now holds - not the \"Saving...\" on the way",
 		results.get_parsed_text().contains("Saved - the game hears it within one poll. Each stir lasts 3 h.")
 		and not results.get_parsed_text().contains("Saving..."), results.get_parsed_text())

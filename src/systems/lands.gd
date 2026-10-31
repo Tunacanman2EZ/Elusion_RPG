@@ -50,6 +50,9 @@ var speed: float = 0.0
 var resist: float = 1.0
 var bags: float = 1.0
 var xp: float = 0.0
+# THE SWELL (0.97.1): how many of each of its monsters the Big Field holds
+# while it stirs (1: none added), up to 4 - swell.gd builds the rest.
+var swell: int = 1
 # The server's clock minus this one's, so a countdown is the server's.
 var _clock_offset: int = 0
 
@@ -58,7 +61,7 @@ func apply(data: Variant) -> bool:
 	"""What the poll's "world" says. True if a different stir began - a new
 	land, or the same one again as a new tick - so the HUD can announce it."""
 	var before := [tick, element]
-	var was := [tick, element, ends_at, hit, health, speed, resist, bags, xp]
+	var was := [tick, element, ends_at, hit, health, speed, resist, bags, xp, swell]
 	var said: Dictionary = data if data is Dictionary else {}
 	var land: int = int(said.get("element", 0)) if _number(said.get("element")) else 0
 	if land < Element.Type.DARK or land > Element.Type.WATER:
@@ -74,9 +77,10 @@ func apply(data: Variant) -> bool:
 		resist = clampf(float(said.get("resist", 1.0)), 1.0, 2.0) if _number(said.get("resist")) else 1.0
 		bags = clampf(float(said.get("bags", 1.0)), 1.0, 3.0) if _number(said.get("bags")) else 1.0
 		xp = clampf(float(said.get("xp", 0.0)), 0.0, 1.0) if _number(said.get("xp")) else 0.0
+		swell = clampi(int(said.get("swell", 1)), 1, 4) if _number(said.get("swell")) else 1
 		if _number(said.get("now")):
 			_clock_offset = int(said.get("now")) - int(Time.get_unix_time_from_system())
-	if [tick, element, ends_at, hit, health, speed, resist, bags, xp] != was:
+	if [tick, element, ends_at, hit, health, speed, resist, bags, xp, swell] != was:
 		changed.emit()
 	return element != 0 and [tick, element] != before
 
@@ -100,6 +104,7 @@ func _clear() -> void:
 	resist = 1.0
 	bags = 1.0
 	xp = 0.0
+	swell = 1
 
 
 static func _number(value: Variant) -> bool:
@@ -163,15 +168,45 @@ func time_text(seconds: int) -> String:
 	return "%dh %02dm" % [hours, minutes]
 
 
+func swell_size() -> int:
+	"""How many of each of the stirring land's monsters the Big Field holds:
+	the server's swell while a land stirs, 1 when none does."""
+	return swell if stirring() != 0 else 1
+
+
+# WHERE EACH LAND LIVES (0.97.1), for the HUD's line: the Big Field's wing,
+# and which way it lies from the Crossroads where you arrive (the plan's
+# wings, tools/maps/bigfield.py; _test_the_swell() holds each land's monsters
+# inside its wing's box in bigfield_build.json).
+const WINGS := {
+	Element.Type.LIGHT: ["the Courts", "west"],
+	Element.Type.WIND: ["the Courts", "west"],
+	Element.Type.WATER: ["the Chasm", "north"],
+	Element.Type.ICE: ["the Chasm", "north"],
+	Element.Type.EARTH: ["the Caverns", "north-east"],
+	Element.Type.FIRE: ["the Fortress", "south-east"],
+	Element.Type.DARK: ["the Descent", "east"],
+}
+
+
+func place_text() -> String:
+	"""Where the stirring land is: 'the Chasm, north', or '' for none."""
+	var wing: Array = WINGS.get(stirring(), [])
+	return "%s, %s" % wing if wing.size() == 2 else ""
+
+
 func land_name() -> String:
 	return Element.name_for(stirring()).capitalize() if stirring() != 0 else ""
 
 
 func line() -> String:
-	"""The HUD's line: 'The Fire lands stir - 2h 14m left', or '' for none."""
+	"""The HUD's line: 'The Fire lands stir in the Fortress, south-east - 2h
+	14m left', or '' for none. Where since 0.97.1: a stir is worth a trip."""
 	if stirring() == 0:
 		return ""
-	return "The %s lands stir - %s left" % [land_name(), time_text(seconds_left())]
+	var where: String = place_text()
+	return "The %s lands stir%s - %s left" % [land_name(), (" in " + where) if where != "" else "",
+		time_text(seconds_left())]
 
 
 func effects_line() -> String:

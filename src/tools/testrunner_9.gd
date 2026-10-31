@@ -988,3 +988,187 @@ func _test_levers_have_arrows() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  levers: an arrow over each, while there is something to open")
+
+
+func _test_the_swell() -> void:
+	section("THE SWELL: A STIRRING LAND'S MONSTERS, MORE OF THEM, REAL ONES (0.97.1)")
+	# The owner: "lets make the tests into a real feature that changes with the
+	# land we can customize it more in hud".
+	const SwellScript := preload("res://src/world/swell.gd")
+	const SyncScript := preload("res://src/world/monstersync.gd")
+	# ---- what the server says ----
+	var stir := {"element": Element.Type.WATER, "tick": 40, "started_at": 0, "ends_at": int(Time.get_unix_time_from_system()) + 3600,
+		"hit": 0.25, "health": 0.5, "speed": 0.15, "resist": 1.5, "bags": 1.5, "xp": 0.0, "swell": 3,
+		"now": int(Time.get_unix_time_from_system())}
+	Lands.apply(stir)
+	check("the poll's world says how many of each: 3", Lands.swell_size() == 3, Lands.swell_size())
+	check("  and the HUD's line says where the land is", Lands.line().begins_with("The Water lands stir in the Chasm, north - "),
+		Lands.line())
+	var older: Dictionary = stir.duplicate()
+	older.erase("swell")
+	older["tick"] = 41
+	Lands.apply(older)
+	check("  a server from before it: 1, none added", Lands.swell_size() == 1)
+	var junk: Dictionary = stir.duplicate()
+	junk["swell"] = 99
+	junk["tick"] = 42
+	Lands.apply(junk)
+	check("  more than four: held to four", Lands.swell_size() == 4)
+	Lands.clear()
+	check("  nothing stirring: 1", Lands.swell_size() == 1 and Lands.line() == "")
+	# ---- each land's wing is where the plan put it ----
+	var plan: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tools/maps/bigfield_build.json"))
+	var astray: Array = []
+	if plan is Dictionary:
+		var tile: float = float(plan.get("tile", 16))
+		var names := {Element.Type.LIGHT: "light", Element.Type.WIND: "wind", Element.Type.WATER: "water",
+			Element.Type.ICE: "ice", Element.Type.EARTH: "earth", Element.Type.FIRE: "fire", Element.Type.DARK: "dark"}
+		for land in names:
+			var wing: String = str(Lands.WINGS[land][0]).trim_prefix("the ").to_lower()
+			var box: Array = plan["wings"].get(wing, {}).get("box", [])
+			for m in plan["monsters"]:
+				if str(m.get("land", "")) != names[land]:
+					continue
+				var inside: bool = box.size() == 4 and float(m["x"]) >= float(box[0]) * tile and float(m["x"]) <= float(box[2]) * tile \
+					and float(m["y"]) >= float(box[1]) * tile and float(m["y"]) <= float(box[3]) * tile
+				if not inside:
+					astray.append([names[land], wing, m["x"], m["y"]])
+	check("every land's Big Field monsters stand in the wing the line names (bigfield_build.json)",
+		plan is Dictionary and astray.is_empty(), astray.slice(0, 4))
+	# ---- the swell in an area ----
+	var area := Node2D.new()
+	area.scene_file_path = SwellScript.AREA
+	add_child(area)
+	# Floor under all of it: the swell stands its monsters on the navigation.
+	var floor_region := NavigationRegion2D.new()
+	var floor_shape := NavigationPolygon.new()
+	floor_shape.vertices = PackedVector2Array([Vector2(0, 0), Vector2(1400, 0), Vector2(1400, 900), Vector2(0, 900)])
+	floor_shape.add_polygon(PackedInt32Array([0, 1, 2, 3]))
+	floor_region.navigation_polygon = floor_shape
+	area.add_child(floor_region)
+	var holder := Node2D.new()
+	holder.name = "enemies"
+	area.add_child(holder)
+	var water: Node2D = (load("res://scene/enemy/watersprite.tscn") as PackedScene).instantiate() as Node2D
+	water.position = Vector2(400, 400)
+	water.set_meta(&"net_origin", "ysortworld/enemies/water_001_watersprite")
+	holder.add_child(water)
+	var fire: Node2D = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate() as Node2D
+	fire.position = Vector2(900, 400)
+	fire.set_meta(&"net_origin", "ysortworld/enemies/fire_001_firesprite")
+	holder.add_child(fire)
+	var size: Array = [3]
+	var land: Array = [Element.Type.WATER]
+	var mine: Array = [true]
+	var swell: Node = SwellScript.add_to(area)
+	swell.set("land_now", func() -> int: return land[0])
+	swell.set("size_now", func() -> int: return size[0])
+	swell.set("authority_now", func() -> bool: return mine[0])
+	swell.set("wait_override", 0.2)
+	(swell.get("_timer") as Timer).stop()  # the test does the checking, one at a time
+	# The navigation takes its floor in a few frames of its own (as the Big
+	# Field's does when it loads; the swell's next check catches up then).
+	var nav_map: RID = area.get_world_2d().navigation_map
+	for i in 120:
+		if NavigationServer2D.map_get_closest_point(nav_map, Vector2(430, 400)).distance_to(Vector2(430, 400)) < 1.0:
+			break
+		await get_tree().physics_frame
+	await swell.call("check")
+	await get_tree().process_frame
+	var swelled: Array = []
+	for e in holder.get_children():
+		if SwellScript.is_swell(e) and not e.is_queued_for_deletion():
+			swelled.append(e)
+	var origins: Array = []
+	for e in swelled:
+		origins.append(str(e.get_meta(&"net_origin", "")))
+	origins.sort()
+	check("water stirring at 3x: two more of the water monster, none of the fire one, each at a place of its own",
+		swelled.size() == 2 and origins == ["ysortworld/enemies/water_001_watersprite#swell1",
+			"ysortworld/enemies/water_001_watersprite#swell2"], [origins, swell.call("source_count"), swell.call("copy_count"),
+			water.call("current_element"), fire.call("current_element")])
+	var pays: bool = true
+	var near: bool = true
+	for e in swelled:
+		pays = pays and str(e.call("get_enemy_id")) != "" and not e.has_meta(&"stress_copy")
+		near = near and (e as Node2D).global_position.distance_to(water.global_position) <= SwellScript.SPREAD_MAX + 0.5
+	check("  real ones: a kill of one is reported and paid (get_enemy_id), beside the monster they swell",
+		pays and near)
+	if swelled.size() != 2:
+		area.queue_free()
+		await get_tree().process_frame
+		return
+	var first: Node2D = null
+	for e in swelled:
+		if str(e.get_meta(&"net_origin")).ends_with("#swell1"):
+			first = e
+	first.emit_signal("died")
+	first.queue_free()
+	await swell.call("check")
+	check("  one killed is not back at once", int(swell.call("copy_count")) == 1, swell.call("copy_count"))
+	await get_tree().create_timer(0.35).timeout
+	await swell.call("check")
+	check("  and is back after its wait, at the same place's number", int(swell.call("copy_count")) == 2
+		and _swell_origins(holder, SwellScript).has("ysortworld/enemies/water_001_watersprite#swell1"),
+		_swell_origins(holder, SwellScript))
+	mine[0] = false
+	size[0] = 4
+	await swell.call("check")
+	check("a game that does not run the area builds none", int(swell.call("copy_count")) == 2)
+	mine[0] = true
+	await swell.call("check")
+	check("  the one that does: 4x is three", int(swell.call("copy_count")) == 3)
+	var fighting: Node2D = null
+	for e in holder.get_children():
+		if str(e.get_meta(&"net_origin", "")).ends_with("#swell1") and not e.is_queued_for_deletion():
+			fighting = e
+	fighting.set("engaged", true)
+	land[0] = Element.Type.FIRE
+	await swell.call("check")
+	await get_tree().process_frame
+	check("the stir moves on: the water ones go - but not one in a fight - and the fire one swells",
+		_swell_origins(holder, SwellScript) == ["ysortworld/enemies/fire_001_firesprite#swell1",
+			"ysortworld/enemies/fire_001_firesprite#swell2", "ysortworld/enemies/fire_001_firesprite#swell3",
+			"ysortworld/enemies/water_001_watersprite#swell1"], _swell_origins(holder, SwellScript))
+	fighting.set("engaged", false)
+	land[0] = 0
+	await swell.call("check")
+	await get_tree().process_frame
+	check("  out of its fight, it goes too; nothing stirring, none at all", _swell_origins(holder, SwellScript).is_empty(),
+		_swell_origins(holder, SwellScript))
+	# ---- a game taking the area over carries on with the ones standing ----
+	land[0] = Element.Type.WATER
+	size[0] = 2
+	await swell.call("check")
+	swell.queue_free()
+	await get_tree().process_frame
+	var heir: Node = SwellScript.add_to(area)
+	heir.set("land_now", func() -> int: return land[0])
+	heir.set("size_now", func() -> int: return size[0])
+	heir.set("authority_now", func() -> bool: return true)
+	(heir.get("_timer") as Timer).stop()
+	await heir.call("check")
+	await get_tree().process_frame
+	check("a game that takes the area over adopts the swell standing, and builds no second one",
+		int(heir.call("copy_count")) == 1 and _swell_origins(holder, SwellScript).size() == 1,
+		_swell_origins(holder, SwellScript))
+	area.queue_free()
+	await get_tree().process_frame
+	# ---- the rest of the game makes room for them ----
+	check("a follower draws up to %d monsters: dark's 66 at 4x is 480 in the Big Field" % SyncScript.MAX_MONSTERS,
+		SyncScript.MAX_MONSTERS >= 282 + 66 * 3)
+	var respawner_code: String = _code_src("res://src/world/enemyrespawner.gd")
+	check("  the respawner and the stress test leave swell monsters out of what they count",
+		respawner_code.contains("&\"swell_copy\"") and _code_src("res://src/world/stresscrowd.gd").contains("&\"swell_copy\""))
+	check("  and every area gets a Swell (arearegistry.gd), which acts in the Big Field alone",
+		_code_src("res://src/systems/arearegistry.gd").contains("Swell.add_to(scene)") and SwellScript.AREA == "res://scene/bigfield.tscn")
+	print("  the swell: real monsters, more of the stirring land's, gone once the stir is over")
+
+
+func _swell_origins(holder: Node, swell_script: GDScript) -> Array:
+	var out: Array = []
+	for e in holder.get_children():
+		if swell_script.call("is_swell", e) and not e.is_queued_for_deletion():
+			out.append(str(e.get_meta(&"net_origin", "")))
+	out.sort()
+	return out

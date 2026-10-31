@@ -136,13 +136,11 @@ func show_result(text: String, best_text: String) -> void:
 
 
 func party_text() -> String:
-	"""A party run: how many are in, or - for one who fell - when the door
-	opens again (each new stage, endlessrun.gd)."""
+	"""A party run: how many are in - or, for one who fell or came late, that
+	there is no way in until the run is over (0.97.1: the door stays shut)."""
 	var members: int = int(run.party.call("members"))
+	var in_now: int = int(run.call("line")[7]) if bool(run.call("leading")) else int(run.get("party_in"))
 	if bool(run.get("my_in")):
-		var in_now: int = int(run.call("line")[7]) if bool(run.call("leading")) else int(run.get("party_in"))
 		return "%d of %d in" % [clampi(in_now, 1, members), members]
-	if bool(run.get("door_open")):
-		return "the door is open - come in"
-	var next_at: float = float(int(run.get("stage"))) * float(run.STAGE_SECONDS)
-	return "resting - the door opens in %s" % run.clock_text(maxf(0.0, next_at - float(run.get("elapsed"))))
+	var still: int = maxi(in_now, 1)
+	return "out - waiting by the chest while %d %s on" % [still, "fights" if still == 1 else "fight"]

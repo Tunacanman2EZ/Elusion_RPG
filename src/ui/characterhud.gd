@@ -2519,8 +2519,9 @@ func _build_world_chip() -> void:
 	frame.name = "worldchip"
 	frame.anchor_left = 0.5
 	frame.anchor_right = 0.5
-	frame.offset_left = -170.0
-	frame.offset_right = 170.0
+	# 460 wide since 0.97.1: the line names where the land is.
+	frame.offset_left = -230.0
+	frame.offset_right = 230.0
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.visible = false
 	var style := StyleBoxFlat.new()
