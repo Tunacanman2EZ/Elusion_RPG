@@ -2983,6 +2983,44 @@ Healer's Run: three runs a day, its gold at Leave".
   a pincer from both top corners, a ring turning as it comes, a wall of
   slimes with one way through (`WAVE_KINDS`, ten).
 
+- **Wilder, and 20,000 for the whole run (0.104.0)** - the owner: "fire needs
+  to rise faster on part 3 of mini game and it keeps getting higher if no
+  upgrades are taken", "we need more randomness in the game also i want elites
+  to pop in also with their hit effects", "t3 needs to reward up to 20,000
+  gold high stakes hi rewards".
+  - **The last tier's fire** (`fire_rise()`, `fire_ceiling()`): twice as fast
+    (`FIRE_LAST_PACE`), and the longer no power-up is taken (`_starved`) the
+    faster (`FIRE_HUNGER`) and the higher it may climb (`FIRE_CLIMB` a second
+    from `FIRE_MOST` to `FIRE_HIGHEST`, half the screen). A power-up pushes
+    it `FIRE_LAST_PUSH` and starts both again; it only rises to its ceiling,
+    so a lowered ceiling holds it. Its glow reaches at most 36 px above it.
+  - **Elites** (`_elites_step()`, `mark_elite()`, `pop_elite()`): from the
+    second tier, every `ELITE_GAP` (random; `ELITE_GAP_LAST` in the last) a
+    ring closes on a spot up the path (`Hazards.marks`) and a mage or sniper
+    of the land pops in with a flash and a jolt: `ELITE_SIZE` bigger,
+    `ELITE_HEALTH` times the health, a glow and its health drawn by `Foe`
+    itself, `wave` -1 so it never holds a wave. `_elite_move()`: it sways
+    and casts its own attack, then a volley of its land's keeper cast
+    (`_signature(..., fired)`), leaving after `ELITE_STAY`. Struck it sparks
+    (`_strike()`, as a boss); down it bursts, jolts and always drops a
+    power-up (a potion or meteor sometimes).
+  - **Random events** (`start_event()`, `_events_step()`): from the third
+    wave `EVENT_CHANCE` of the waves bring one of `EVENTS`, never two waves
+    running - a meteor shower (rocks marked on the path, `SHOWER_GAP`), a
+    power-up rain (three and a potion), a swarm (`spawn_wave("swarm")`), a
+    treasure (kind "treasure": gold, zigzagging down, harmless; caught it
+    spills `TREASURE_DROPS` power-ups) and darkness (a shader ColorRect at
+    `DARK_Z`, under the hazards' marks, her shots and every bullet: only
+    `DARK_REACH` round her is lit, for `DARK_SECONDS`).
+  - **Mixed up**: never the same formation twice running (`_last_kind`), and
+    every wave a random pace (0.85 to 1.2) and half the time mirrored
+    (`_vary()`).
+  - **Gold**: the server's table is 10 / 25 / 500 a wave by tier, bosses 120
+    / 300 / 6000, the goal 9300 - 20,000 in all (`DEFAULT_PAYS` says the
+    same until Go answers). The owner: "i doubt even 4 people will pass to
+    the end it would take major focus".
+  `_test_the_healers_run_gets_wilder()` (testrunner_9).
+
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
 taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the

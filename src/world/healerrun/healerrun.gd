@@ -133,9 +133,10 @@
 #   land, hotter: heat() is two a tier, and it feeds the rank, the crowd, the
 #   second and third waves and the bosses' rings. After the third, the goal.
 # - Gold by tier (the server's healer_tier_pays(), DEFAULT_PAYS until Go
-#   answers): 10, 25, 100 a wave, the bosses 120, 300, 1500, the goal 2000 -
-#   up to 5000 a run, 700 of it by the second boss (the owner: "up to 5000
-#   gold for passing phase 2").
+#   answers): 10, 25, 500 a wave, the bosses 120, 300, 6000, the goal 9300 -
+#   up to 20,000 a run, 700 of it by the second boss (the owner: "up to 5000
+#   gold for passing phase 2", then in 0.104.0 "t3 needs to reward up to
+#   20,000 gold high stakes hi rewards").
 # - THE FIRE CLIMBS HIGHER, AND POWER PUSHES IT BACK (the owner: "the fire at
 #   the bottom gets a bit taller and upgrades push it back down"): it rises
 #   FIRE_RISE a second, FIRE_RISE_PER_TIER more each tier, to FIRE_MOST (it
@@ -253,8 +254,8 @@ const ARC_IN := 165.0
 const ARC_TURN := 75.0
 # Until the server says (its answer to Go, "tiers"): the same table as
 # minigames/services.py's healer_tier_pays().
-const DEFAULT_PAYS := {"wave_gold": [10, 25, 100], "waves_per_tier": 8, "boss_gold": [120, 300, 1500],
-	"goal_gold": 2000, "most": 5000}
+const DEFAULT_PAYS := {"wave_gold": [10, 25, 500], "waves_per_tier": 8, "boss_gold": [120, 300, 6000],
+	"goal_gold": 9300, "most": 20000}
 # From the second heat, the chance a wave brings a second, smaller one of
 # another kind alongside - more with each.
 const BOTH_CHANCE := 0.45
@@ -304,6 +305,65 @@ const FIRE_RISE_PER_TIER := 0.15
 const FIRE_MOST := 96.0
 const FIRE_PUSH := 16.0
 const FIRE_COLOURS := [Color(1.0, 0.45, 0.12), Color(1.0, 0.7, 0.2), Color(1.0, 0.25, 0.1)]
+# THE LAST TIER'S FIRE (0.104.0; the owner: "fire needs to rise faster on part
+# 3 of mini game and it keeps getting higher if no upgrades are taken"): it
+# rises FIRE_LAST_PACE times as fast, and while no power-up is taken its
+# ceiling climbs FIRE_CLIMB a second from FIRE_MOST to FIRE_HIGHEST (half the
+# screen) and it rises FIRE_HUNGER a second faster, to FIRE_HUNGER_MOST more.
+# A power-up pushes it down FIRE_LAST_PUSH and starts both again.
+const FIRE_LAST_PACE := 2.0
+const FIRE_CLIMB := 2.0
+const FIRE_HIGHEST := 180.0
+const FIRE_HUNGER := 0.02
+const FIRE_HUNGER_MOST := 1.2
+const FIRE_LAST_PUSH := 28.0
+# ELITES (0.104.0; the owner: "i want elites to pop in also with their hit
+# effects"): from the second tier one pops in on the path every ELITE_GAP
+# seconds (a random spread; ELITE_GAP_LAST in the last tier) - a mark first,
+# then a bigger, glowing mage or sniper of the land with ELITE_HEALTH times
+# the health. It casts its own attack and, every other cast, one volley of its
+# land's keeper cast (_signature); it sparks when struck, bursts when it dies,
+# always drops a power-up, and leaves after ELITE_STAY. It never holds a wave.
+const ELITE_GAP := [16.0, 26.0]
+const ELITE_GAP_LAST := [10.0, 18.0]
+const ELITE_WARN := 0.8
+const ELITE_HEALTH := 6.0
+const ELITE_SIZE := 1.5
+const ELITE_CAST := 2.2
+const ELITE_STAY := 18.0
+const ELITE_SHAKE := 3.0
+const ELITE_POTION := 0.3
+const ELITE_METEOR := 0.15
+# RANDOM EVENTS (0.104.0; the owner: "we need more randomness in the game"):
+# from the third wave, EVENT_CHANCE of the waves bring one of EVENTS with
+# them, never two waves running.
+const EVENT_CHANCE := 0.25
+const EVENTS := ["meteors", "power rain", "swarm", "treasure", "darkness"]
+const EVENT_NAMES := {"meteors": "Meteor shower", "power rain": "Power-up rain", "swarm": "Swarm",
+	"treasure": "A treasure runs past - catch it", "darkness": "Darkness falls"}
+const SHOWER_SECONDS := 6.0
+const SHOWER_GAP := 0.6
+const SHOWER_COLOUR := Color(1.0, 0.55, 0.2)
+const DARK_SECONDS := 10.0
+const DARK_FADE := 0.8
+const DARK_REACH := 80.0
+# Under the hazards' marks, her shots and every bullet: in the dark she sees
+# what is fired at her, not who fires it.
+const DARK_Z := 14
+const TREASURE_TINT := Color(1.8, 1.45, 0.4)
+const TREASURE_DROPS := 3
+const DARK_SHADER := """
+shader_type canvas_item;
+render_mode unshaded;
+uniform vec2 size = vec2(480.0, 360.0);
+uniform vec2 centre = vec2(240.0, 180.0);
+uniform float reach = 80.0;
+uniform float strength = 0.0;
+void fragment() {
+	float d = distance(UV * size, centre);
+	COLOR = vec4(0.0, 0.0, 0.02, strength * 0.93 * smoothstep(reach * 0.7, reach * 1.3, d));
+}
+"""
 # The landing she starts on: the crypt's wall behind her, end to end between
 # the side walls (wallrun pieces 101 and 51 wide, pillars 17).
 const LANDING_WIDTHS := [101, 101, 17, 51, 17, 101, 101]
@@ -319,6 +379,7 @@ const KINDS := {
 	"mage": {"health": 12.0, "radius": 11.0, "power": 0.45, "potion": 0.07},
 	"sniper": {"health": 8.0, "radius": 10.0, "power": 0.4, "potion": 0.06},
 	"boss": {"health": 2400.0, "radius": 24.0, "power": 0.0, "potion": 0.0},
+	"treasure": {"health": 26.0, "radius": 11.0, "power": 0.0, "potion": 0.0},
 }
 # After this many kills with no power-up, the next kill drops one.
 const POWER_PITY := 12
@@ -372,6 +433,22 @@ class Foe extends Node2D:
 	var anchor: Vector2 = Vector2.ZERO
 	var phase: float = 0.0
 	var sprite: AnimatedSprite2D = null
+	# An elite (0.104.0): its glow and health drawn under it, its casts counted.
+	var elite: bool = false
+	var colour: Color = Color.WHITE
+	var casts: int = 0
+
+	func _draw() -> void:
+		if not elite or dying >= 0.0:
+			return
+		var pulse: float = 0.5 + 0.5 * sin(age * 6.0)
+		draw_circle(Vector2(0.0, -10.0), radius + 6.0, Color(colour, 0.18 + 0.1 * pulse))
+		draw_arc(Vector2(0.0, -10.0), radius + 6.0, 0.0, TAU, 28, Color(colour.lightened(0.3), 0.7), 1.5)
+		var share: float = clampf(health / maxf(most, 0.001), 0.0, 1.0)
+		# Its health, over the ring (under it the picture would hide it).
+		var bar_y: float = -10.0 - radius - 12.0
+		draw_rect(Rect2(-16.0, bar_y, 32.0, 3.0), Color(0.0, 0.0, 0.0, 0.7))
+		draw_rect(Rect2(-16.0, bar_y, 32.0 * share, 3.0), Color(colour.lightened(0.2), 0.95))
 
 
 # THE LASER, drawn: a white core and a layer of colour for each level, the
@@ -441,6 +518,8 @@ class Hazards extends Node2D:
 	var gust_side: float = 1.0
 	var clock: float = 0.0
 	var rock_colour: Color = Color(0.75, 0.55, 0.3)
+	# Where elites will pop in: {at, warn, colour}.
+	var marks: Array = []
 
 	func _draw() -> void:
 		for p in pillars:
@@ -460,6 +539,12 @@ class Hazards extends Node2D:
 			draw_circle(at, ROCK_REACH, Color(0.0, 0.0, 0.0, 0.35 * (1.0 - left) + 0.1))
 			draw_arc(at, ROCK_REACH * (0.6 + 1.4 * left), 0.0, TAU, 28, Color(rock_colour, 0.9), 2.0)
 			draw_arc(at, ROCK_REACH, 0.0, TAU, 28, Color(rock_colour, 0.5), 1.0)
+		for m in marks:
+			var at: Vector2 = m["at"] + Vector2(0.0, -10.0)
+			var left: float = clampf(float(m["warn"]) / ELITE_WARN, 0.0, 1.0)
+			var tint: Color = m["colour"]
+			draw_circle(at, 18.0 * (1.0 - left) + 2.0, Color(tint, 0.25))
+			draw_arc(at, 10.0 + 24.0 * left, 0.0, TAU, 28, Color(tint.lightened(0.3), 0.9), 2.0)
 		if gust > 0.0:
 			var strength: float = clampf(gust / 0.5, 0.0, 1.0)
 			for i in 18:
@@ -537,6 +622,19 @@ var embers: BulletField = null
 var fire_glow: TextureRect = null
 var _ember_in: float = 0.0
 var _fire_told: bool = false
+# Seconds since the last power-up, in the last tier: what lifts its fire.
+var _starved: float = 0.0
+var _elite_in: float = -1.0
+var _elite_marks: Array = []
+var elites_seen: int = 0
+var event: String = ""
+var event_left: float = 0.0
+var events_seen: int = 0
+var _event_tick: float = 0.0
+var _event_wave: int = -9
+var _last_kind: String = ""
+var darkness: ColorRect = null
+var _dark: float = 0.0
 var _section_top: float = -CLEAR_START
 var _obstacles: Array = []
 var _boss_cast: float = 0.0
@@ -646,6 +744,21 @@ func _ready() -> void:
 	hazards.z_index = HAZARD_Z
 	hazards.material = _glow_material()
 	add_child(hazards)
+	darkness = ColorRect.new()
+	darkness.name = "darkness"
+	darkness.position = Vector2(-PATH_HALF - 2.0, -HALF.y)
+	darkness.size = Vector2(PATH_HALF * 2.0 + 4.0, VIEW.y)
+	darkness.z_index = DARK_Z
+	darkness.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dark_shader := Shader.new()
+	dark_shader.code = DARK_SHADER
+	var dark_material := ShaderMaterial.new()
+	dark_material.shader = dark_shader
+	dark_material.set_shader_parameter("size", darkness.size)
+	dark_material.set_shader_parameter("reach", DARK_REACH)
+	darkness.material = dark_material
+	darkness.visible = false
+	add_child(darkness)
 	_lay_terrain()
 	_lay_landing()
 	banner = "Get ready"
@@ -711,9 +824,35 @@ func fire_top() -> float:
 	return HALF.y - fire_height
 
 
+func last_tier() -> bool:
+	return tier >= TIERS - 1
+
+
+func fire_rise() -> float:
+	"""How fast the fire rises (px/s): a little more each tier; in the last,
+	FIRE_LAST_PACE times that and faster the longer no power-up is taken."""
+	var rise: float = FIRE_RISE + FIRE_RISE_PER_TIER * tier
+	if last_tier():
+		rise = rise * FIRE_LAST_PACE + minf(FIRE_HUNGER_MOST, FIRE_HUNGER * _starved)
+	return rise
+
+
+func fire_ceiling() -> float:
+	"""How high the fire may climb: FIRE_MOST, and in the last tier higher
+	the longer no power-up is taken, to FIRE_HIGHEST."""
+	if not last_tier():
+		return FIRE_MOST
+	return minf(FIRE_HIGHEST, FIRE_MOST + FIRE_CLIMB * _starved)
+
+
 func _burn(delta: float) -> void:
 	if run_seconds >= FIRE_AFTER:
-		fire_height = minf(FIRE_MOST, fire_height + (FIRE_RISE + FIRE_RISE_PER_TIER * tier) * delta)
+		if last_tier():
+			_starved += delta
+		# It only RISES to its ceiling: a ceiling that drops (a power-up)
+		# holds it where it is until the ceiling climbs past it again.
+		if fire_height < fire_ceiling():
+			fire_height = minf(fire_ceiling(), fire_height + fire_rise() * delta)
 	if _fire_push > 0.0:
 		# PUSHED BACK by a power-up, over a moment.
 		var give: float = minf(_fire_push, FIRE_PUSH * 4.0 * delta)
@@ -722,7 +861,9 @@ func _burn(delta: float) -> void:
 	if fire_height > 0.0 and not _fire_told:
 		_fire_told = true
 		_say("The fire is behind you")
-	var glow_height: float = fire_height * 1.6 + (14.0 if fire_height > 0.0 else 0.0)
+	# The glow reaches a little above the fire, never far: a tall fire (the
+	# last tier's) must not paint ground she may still stand on.
+	var glow_height: float = fire_height + minf(fire_height * 0.6, 36.0) + (14.0 if fire_height > 0.0 else 0.0)
 	fire_glow.visible = glow_height > 0.0
 	fire_glow.position = Vector2(-PATH_HALF, HALF.y - glow_height)
 	fire_glow.size = Vector2(PATH_HALF * 2.0, glow_height)
@@ -1036,6 +1177,8 @@ func step(delta: float) -> void:
 	_burn(delta)
 	_shine(delta)
 	_meteors_fall(delta)
+	_elites_step(delta)
+	_events_step(delta)
 	_hazards_step(delta)
 	var hit: Vector2i = field.step(delta, healer.position + HITBOX_AT, HITBOX, 0.0, untouchable > 0.0)
 	if hit.x > 0:
@@ -1212,9 +1355,10 @@ func _move_shots(delta: float) -> void:
 func _strike(f: Foe, damage: float) -> void:
 	f.health -= damage
 	f.flash = 0.08
-	if f == boss and f.dying < 0.0:
-		# A BOSS STRUCK sparks where it is hit, and the screen shakes a little.
-		if _boss_shook <= 0.0:
+	if (f == boss or f.elite) and f.dying < 0.0:
+		# A BOSS OR AN ELITE STRUCK sparks where it is hit; a boss shakes the
+		# screen a little.
+		if f == boss and _boss_shook <= 0.0:
 			_boss_shook = BOSS_SHAKE_GAP
 			shake_by(BOSS_SHAKE)
 		if _spark_in <= 0.0:
@@ -1231,6 +1375,26 @@ func _kill(f: Foe) -> void:
 	_since_power += 1
 	var info: Dictionary = KINDS.get(f.kind, {})
 	var potion_odds: float = float(info.get("potion", 0.0)) * maxf(0.4, 1.0 - 0.1 * heat())
+	if f.elite:
+		# AN ELITE DOWN: a big burst, a jolt, and always a power-up.
+		_burst(f.position + Vector2(0.0, -10.0), f.colour.lightened(0.3), 46.0, 16, 0.55)
+		_burst(f.position + Vector2(0.0, -10.0), Color(1.0, 1.0, 1.0), 22.0, 8, 0.3)
+		shake_by(ELITE_SHAKE)
+		_drop("power", f.position + Vector2(-10.0, 0.0))
+		_since_power = 0
+		if _rng.randf() < ELITE_POTION:
+			_drop("potion", f.position + Vector2(10.0, 0.0))
+		elif _rng.randf() < ELITE_METEOR:
+			_drop("meteor", f.position + Vector2(10.0, 0.0))
+		return
+	if f.kind == "treasure":
+		# CAUGHT: it bursts in gold and spills its power-ups.
+		_burst(f.position + Vector2(0.0, -8.0), Color(1.0, 0.85, 0.3), 40.0, 14, 0.5)
+		for k in TREASURE_DROPS:
+			_drop("power", f.position + Vector2((k - 1) * 16.0, -float(k % 2) * 10.0))
+		_since_power = 0
+		_say("Treasure!")
+		return
 	if f.kind != "boss":
 		# EVERY KILL BURSTS, in its land's colour.
 		var big: bool = f.kind == "mage" or f.kind == "sniper"
@@ -1279,7 +1443,8 @@ func hurt() -> void:
 
 
 func gain_power() -> void:
-	_fire_push += FIRE_PUSH
+	_fire_push += FIRE_LAST_PUSH if last_tier() else FIRE_PUSH
+	_starved = 0.0
 	if power >= SHOT_STEPS.size() - 1:
 		# At eight shots, a power-up is the LASER - a level stronger each time.
 		laser_level = mini(LASER_LEVELS, laser_level + 1)
@@ -1394,7 +1559,10 @@ func _start_wave() -> void:
 		banner = tier_banner()
 		banner_left = BANNER_SECONDS
 	var kind: String = _pick_kind()
+	_last_kind = kind
 	spawn_wave(kind)
+	if waves_done >= 2 and _wave - _event_wave > 1 and _rng.randf() < EVENT_CHANCE:
+		start_event(str(EVENTS[_rng.randi_range(0, EVENTS.size() - 1)]))
 	var hot: int = heat()
 	if hot >= 1 and _rng.randf() < BOTH_CHANCE + BOTH_PER_HEAT * (hot - 1):
 		var other: String = kind
@@ -1419,7 +1587,11 @@ func _pick_kind() -> String:
 		return "vee"
 	if waves_done == 1:
 		return "sweep"
-	return str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
+	# NEVER THE SAME TWICE RUNNING (0.104.0).
+	var kind: String = _last_kind
+	while kind == _last_kind:
+		kind = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
+	return kind
 
 
 func spawn_wave(kind: String, share: float = 1.0) -> Array:
@@ -1522,6 +1694,15 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.velocity = Vector2(0.0, 45.0 + 3.0 * r)
 				f.shoot_in = _rng.randf_range(1.5, 3.0)
 				made.append(f)
+		"swarm":
+			# AN EVENT'S SWARM: sprites diving fast from all along the top.
+			var count: int = _sized(12 + crowd() * 2, share)
+			for i in count:
+				var f := _foe("sprite", Vector2(_rng.randf_range(-PATH_HALF + 20.0, PATH_HALF - 20.0), top - i * 16.0))
+				f.path = "dive"
+				f.velocity = Vector2(_rng.randf_range(-30.0, 30.0), 150.0 + 6.0 * r)
+				f.shoot_in = _rng.randf_range(1.4, 3.0)
+				made.append(f)
 		"wall":
 			# Slimes across the path, one way through.
 			var gap: float = _rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0)
@@ -1533,7 +1714,30 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 					f.side = 0.0
 					made.append(f)
 				x += 34.0
+	_vary(made)
 	return made
+
+
+func _vary(made: Array) -> void:
+	"""MIXED UP (0.104.0; "we need more randomness"): a wave comes a little
+	faster or slower, and half the time the other way round."""
+	var pace: float = _rng.randf_range(0.85, 1.2)
+	var mirror: bool = _rng.randf() < 0.5
+	for one in made:
+		var f := one as Foe
+		f.velocity *= pace
+		if not mirror:
+			continue
+		f.position.x = -f.position.x
+		f.velocity.x = -f.velocity.x
+		f.anchor.x = -f.anchor.x
+		match f.path:
+			"sweep", "arc", "snake":
+				f.side = -f.side
+			"ring":
+				f.phase = PI - f.phase
+		if f.kind == "slime":
+			f.side += PI
 
 
 static func _sized(count: int, share: float) -> int:
@@ -1556,6 +1760,10 @@ func _foe(kind: String, at: Vector2) -> Foe:
 			scene_id = str(SNIPERS.get(element, "bushsniper"))
 		"boss":
 			scene_id = str(BOSSES.get(element, "bossenemy"))
+		"treasure":
+			scene_id = str(SLIMES.get(element, ""))
+			if scene_id == "":
+				scene_id = str(SPRITES.get(element, "windsprite"))
 	var f := Foe.new()
 	f.kind = kind
 	f.wave = _wave
@@ -1598,53 +1806,90 @@ func _move_foes(delta: float) -> void:
 		f.age += delta
 		f.flash = maxf(0.0, f.flash - delta)
 		f.modulate = Color(2.2, 2.2, 2.2) if f.flash > 0.0 else Color.WHITE
-		match f.kind:
-			"sprite":
-				if f.path == "arc":
-					# In from a side, bending back out the way it came.
-					f.velocity.x += f.side * ARC_TURN * delta
-				if f.path == "snake":
-					f.position.y += f.velocity.y * delta
-					f.position.x = f.anchor.x + sin(f.age * 2.2 + f.phase) * f.side
-				elif f.path == "ring":
-					f.anchor.y += f.velocity.y * delta
-					var turn: float = f.phase + f.age * 1.4
-					f.position = f.anchor + Vector2(cos(turn), sin(turn)) * 52.0
-				else:
-					f.position += f.velocity * delta
-				f.shoot_in -= delta
-				if f.shoot_in <= 0.0 and f.position.y > -HALF.y + 10.0 and f.position.y < HALF.y - 120.0:
-					f.shoot_in = fire_gap(2.6, r)
-					_aimed(f.position, colour, bullet_speed(r))
-			"slime":
-				f.position.y += f.velocity.y * delta
-				f.position.x += sin(f.age * 2.2 + f.side) * 22.0 * delta
-			"mage", "sniper":
-				if not f.leaving and f.position.y < f.stop_y:
-					f.position.y = minf(f.stop_y, f.position.y + f.velocity.y * delta)
-				elif f.leaving:
-					f.position.y += 90.0 * delta
-				else:
-					f.shoot_in -= delta
-					if f.shoot_in <= 0.0:
-						if f.kind == "mage":
-							_fan(f.position, colour, 5 + r / 3, 0.7, bullet_speed(r) * 0.9)
-							f.shoot_in = fire_gap(1.8, r)
-						else:
-							_aimed(f.position, colour, bullet_speed(r) * 1.6)
-							f.shoot_in = fire_gap(1.1, r)
-						f.casts_left -= 1
-						if f.casts_left <= 0:
-							f.leaving = true
-			"boss":
-				pass
+		if f.elite:
+			_elite_move(f, delta, r)
+		else:
+			_foe_move(f, delta, r, colour)
 		if f.kind != "boss":
-			if f.position.distance_to(healer.position + HITBOX_AT) < f.radius + BODY - 2.0:
+			if f.kind != "treasure" and f.position.distance_to(healer.position + HITBOX_AT) < f.radius + BODY - 2.0:
 				hurt()
 				if f.kind == "sprite":
 					_kill(f)
 			if f.position.y > HALF.y + 40.0 or absf(f.position.x) > HALF.x + 120.0:
 				_gone(f)
+
+
+func _foe_move(f: Foe, delta: float, r: int, colour: Color) -> void:
+	"""How each kind of monster moves and shoots, one frame."""
+	match f.kind:
+		"sprite":
+			if f.path == "arc":
+				# In from a side, bending back out the way it came.
+				f.velocity.x += f.side * ARC_TURN * delta
+			if f.path == "snake":
+				f.position.y += f.velocity.y * delta
+				f.position.x = f.anchor.x + sin(f.age * 2.2 + f.phase) * f.side
+			elif f.path == "ring":
+				f.anchor.y += f.velocity.y * delta
+				var turn: float = f.phase + f.age * 1.4
+				f.position = f.anchor + Vector2(cos(turn), sin(turn)) * 52.0
+			else:
+				f.position += f.velocity * delta
+			f.shoot_in -= delta
+			if f.shoot_in <= 0.0 and f.position.y > -HALF.y + 10.0 and f.position.y < HALF.y - 120.0:
+				f.shoot_in = fire_gap(2.6, r)
+				_aimed(f.position, colour, bullet_speed(r))
+		"slime":
+			f.position.y += f.velocity.y * delta
+			f.position.x += sin(f.age * 2.2 + f.side) * 22.0 * delta
+		"mage", "sniper":
+			if not f.leaving and f.position.y < f.stop_y:
+				f.position.y = minf(f.stop_y, f.position.y + f.velocity.y * delta)
+			elif f.leaving:
+				f.position.y += 90.0 * delta
+			else:
+				f.shoot_in -= delta
+				if f.shoot_in <= 0.0:
+					if f.kind == "mage":
+						_fan(f.position, colour, 5 + r / 3, 0.7, bullet_speed(r) * 0.9)
+						f.shoot_in = fire_gap(1.8, r)
+					else:
+						_aimed(f.position, colour, bullet_speed(r) * 1.6)
+						f.shoot_in = fire_gap(1.1, r)
+					f.casts_left -= 1
+					if f.casts_left <= 0:
+						f.leaving = true
+		"treasure":
+			# Running zigzag down the path, never shooting, never hurting.
+			f.position.y += f.velocity.y * delta
+			f.position.x = f.anchor.x + sin(f.age * 2.6) * (PATH_HALF - 40.0)
+		"boss":
+			pass
+
+
+func _elite_move(f: Foe, delta: float, r: int) -> void:
+	"""An elite sways where it popped in, casting - its own attack, then a
+	volley of its land's keeper cast - until ELITE_STAY, then leaves."""
+	f.queue_redraw()
+	if f.leaving:
+		f.position.y += 70.0 * delta
+		return
+	f.position.x = f.anchor.x + sin(f.age * 0.9) * 40.0
+	if f.age >= ELITE_STAY:
+		f.leaving = true
+		return
+	f.shoot_in -= delta
+	if f.shoot_in > 0.0:
+		return
+	f.shoot_in = fire_gap(ELITE_CAST, r)
+	var from: Vector2 = f.position + Vector2(0.0, -10.0)
+	if f.casts % 2 == 1:
+		_signature(from, r, f.colour, f.casts / 2)
+	elif f.kind == "mage":
+		_fan(from, f.colour, 7 + r / 3, 0.9, bullet_speed(r) * 0.9)
+	else:
+		_fan(from, f.colour, 3, 0.25, bullet_speed(r) * 1.6)
+	f.casts += 1
 
 
 static func _gone(node: Node) -> void:
@@ -1798,9 +2043,11 @@ func _land_rock(at: Vector2, colour: Color) -> void:
 	shake_by(ROCK_SHAKE)
 
 
-func _signature(from: Vector2, r: int, colour: Color) -> float:
+func _signature(from: Vector2, r: int, colour: Color, fired: int = -1) -> float:
 	"""One volley of this land's boss's own cast (SIGNATURES); answers the
-	wait before the next, before the boss's pace."""
+	wait before the next, before the boss's pace. `fired` is which volley of
+	the cast this is - the boss's own count unless an elite says."""
+	var volley: int = _boss_fired if fired < 0 else fired
 	var her: Vector2 = healer.position + HITBOX_AT
 	var speed: float = bullet_speed(r)
 	var element: int = land()
@@ -1821,13 +2068,13 @@ func _signature(from: Vector2, r: int, colour: Color) -> float:
 			var share: float = float(k) / float(count - 1) - 0.5
 			field.spawn(from, aim + share * 0.8, speed * 0.85, Color(0.7, 0.95, 1.0), true, 0.0, 0.0, 14.0,
 				FREEZE_MARK)
-		if _boss_fired % 2 == 1:
+		if volley % 2 == 1:
 			for k in 10:
 				field.spawn(from, TAU * k / 10.0 + 0.3, speed * 0.6, colour)
 		return 0.7
 	if element == Element.Type.WIND:
 		# GALE: the gust shoves her, and crosswinds blow with it.
-		if _boss_fired == 0:
+		if volley == 0:
 			gust_side = -1.0 if _rng.randf() < 0.5 else 1.0
 			gust = GUST_SECONDS
 		for k in 3 + tier:
@@ -1869,10 +2116,122 @@ func _signature(from: Vector2, r: int, colour: Color) -> float:
 		_fan(from, colour, 5, 0.6, speed * 0.8)
 		return 1.1
 	# DARK COILS: orbs curling in, each volley the other way.
-	var turn: float = 0.9 if _boss_fired % 2 == 0 else -0.9
+	var turn: float = 0.9 if volley % 2 == 0 else -0.9
 	for k in 6:
-		field.spawn(from, TAU * k / 6.0 + _boss_fired * 0.2, speed * 0.7, Color(0.65, 0.4, 0.95), true, turn)
+		field.spawn(from, TAU * k / 6.0 + volley * 0.2, speed * 0.7, Color(0.65, 0.4, 0.95), true, turn)
 	return 0.35
+
+
+# =============================================================================
+# ELITES AND RANDOM EVENTS (0.104.0)
+# =============================================================================
+
+func _elites_step(delta: float) -> void:
+	"""From the second tier an elite now and then: its mark, then it pops in."""
+	if state == State.RUNNING and tier >= 1:
+		if _elite_in < 0.0:
+			_elite_in = elite_gap()
+		_elite_in -= delta
+		if _elite_in <= 0.0:
+			_elite_in = elite_gap()
+			mark_elite()
+	var still: Array = []
+	for m in _elite_marks:
+		m["warn"] = float(m["warn"]) - delta
+		if float(m["warn"]) > 0.0:
+			still.append(m)
+		else:
+			pop_elite(m["at"], str(m["kind"]))
+	_elite_marks = still
+	hazards.marks = _elite_marks
+
+
+func elite_gap() -> float:
+	var span: Array = ELITE_GAP_LAST if last_tier() else ELITE_GAP
+	return _rng.randf_range(float(span[0]), float(span[1]))
+
+
+func mark_elite() -> void:
+	"""Where the next elite will pop in: a ring closing on a spot up the path."""
+	var at := Vector2(_rng.randf_range(-PATH_HALF + 60.0, PATH_HALF - 60.0), _rng.randf_range(-HALF.y + 55.0, -HALF.y + 110.0))
+	_elite_marks.append({"at": at, "warn": ELITE_WARN, "kind": "mage" if _rng.randf() < 0.5 else "sniper",
+		"colour": Element.colour_for(land())})
+
+
+func pop_elite(at: Vector2, kind: String) -> Foe:
+	"""An elite of this land pops in at `at`: bigger, glowing, ELITE_HEALTH
+	times as tough, with a flash and a jolt."""
+	var f := _foe(kind, at)
+	f.elite = true
+	f.wave = -1
+	f.most *= ELITE_HEALTH
+	f.health = f.most
+	f.radius *= ELITE_SIZE
+	f.sprite.scale *= ELITE_SIZE
+	f.anchor = at
+	f.stop_y = at.y
+	f.shoot_in = 1.0
+	f.colour = Element.colour_for(land())
+	elites_seen += 1
+	_burst(at + Vector2(0.0, -10.0), f.colour.lightened(0.3), 40.0, 12, 0.45)
+	_burst(at + Vector2(0.0, -10.0), Color(1.0, 1.0, 1.0), 20.0, 6, 0.25)
+	shake_by(ELITE_SHAKE)
+	_say("An elite %s" % ("mage" if kind == "mage" else "sniper"))
+	f.queue_redraw()
+	return f
+
+
+func start_event(name_of: String) -> void:
+	"""One of EVENTS, with its banner."""
+	event = name_of
+	_event_wave = _wave
+	events_seen += 1
+	event_left = 1.0
+	banner = str(EVENT_NAMES.get(name_of, name_of))
+	banner_left = BANNER_SECONDS
+	var top: float = -HALF.y - 12.0
+	match name_of:
+		"meteors":
+			event_left = SHOWER_SECONDS
+			_event_tick = 0.3
+		"power rain":
+			for k in 3:
+				_drop("power", Vector2(_rng.randf_range(-PATH_HALF + 30.0, PATH_HALF - 30.0), top - k * 40.0))
+			_drop("potion", Vector2(_rng.randf_range(-PATH_HALF + 30.0, PATH_HALF - 30.0), top - 140.0))
+		"swarm":
+			spawn_wave("swarm")
+		"treasure":
+			var f := _foe("treasure", Vector2(0.0, top))
+			f.wave = -1
+			f.anchor = Vector2(_rng.randf_range(-20.0, 20.0), 0.0)
+			f.velocity = Vector2(0.0, 36.0)
+			f.phase = _rng.randf_range(0.0, TAU)
+			f.age = f.phase
+			f.sprite.modulate = TREASURE_TINT
+		"darkness":
+			event_left = DARK_SECONDS
+
+
+func _events_step(delta: float) -> void:
+	"""The event running: the shower's rocks, and the dark round her."""
+	if event != "":
+		event_left -= delta
+		if event == "meteors":
+			_event_tick -= delta
+			if _event_tick <= 0.0:
+				_event_tick = SHOWER_GAP
+				var at := Vector2(_rng.randf_range(-PATH_HALF + 24.0, PATH_HALF - 24.0),
+					_rng.randf_range(-HALF.y + 60.0, HALF.y - 40.0))
+				_rocks.append({"at": at, "warn": ROCK_WARN, "colour": SHOWER_COLOUR})
+		if event_left <= 0.0:
+			event = ""
+	var want: float = 1.0 if event == "darkness" else 0.0
+	_dark = move_toward(_dark, want, delta / DARK_FADE)
+	darkness.visible = _dark > 0.0
+	if darkness.visible:
+		var shading := darkness.material as ShaderMaterial
+		shading.set_shader_parameter("centre", healer.position + HITBOX_AT - darkness.position)
+		shading.set_shader_parameter("strength", _dark)
 
 
 # =============================================================================
@@ -2040,6 +2399,11 @@ func _finish(won: bool) -> void:
 	_shot_vel.resize(0)
 	_shot_mesh.visible_instance_count = 0
 	banner = ""
+	event = ""
+	_dark = 0.0
+	darkness.visible = false
+	_elite_marks.clear()
+	hazards.marks = _elite_marks
 	finished.emit(won)
 
 

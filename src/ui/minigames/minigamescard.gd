@@ -47,7 +47,7 @@ const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
 const BLURB := "A horde that never stops. Once a day."
 const UNREACHABLE := "Could not reach the server - try again."
-const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 5000 gold a run, three runs a day."
+const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 20,000 gold a run, three runs a day."
 const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
 

@@ -104,7 +104,7 @@ const BUILD := 7
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.103.0"
+const DISPLAY_VERSION := "0.104.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -1132,9 +1132,9 @@ func all_device_tokens() -> Array:
 	if file.load(DEVICES_PATH) != OK or not file.has_section("devices"):
 		return out
 	for key: String in file.get_section_keys("devices"):
-		var token: String = str(file.get_value("devices", key, ""))
-		if token != "" and out.size() < 5:
-			out.append(token)
+		var device: String = str(file.get_value("devices", key, ""))
+		if device != "" and out.size() < 5:
+			out.append(device)
 	return out
 
 

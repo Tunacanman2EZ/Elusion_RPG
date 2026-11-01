@@ -1369,8 +1369,8 @@ func _test_the_healers_run() -> void:
 	var ten_and_one: int = run.gold_now()
 	run.bosses_beaten = 0
 	run.waves_done = waves_were
-	check("the gold on screen, by tier: seven waves are 70; ten waves and the first boss 80 + 50 + 120 (up to 5000)",
-		seven == 70 and ten_and_one == 80 + 50 + 120 and RunScript.DEFAULT_PAYS["most"] == 5000, [seven, ten_and_one])
+	check("the gold on screen, by tier: seven waves are 70; ten waves and the first boss 80 + 50 + 120 (up to 20,000)",
+		seven == 70 and ten_and_one == 80 + 50 + 120 and RunScript.DEFAULT_PAYS["most"] == 20000, [seven, ten_and_one])
 	check("more power-ups: a mage drops one nearly half the time, and never more than 12 kills without one",
 		float(RunScript.KINDS["mage"]["power"]) >= 0.4 and RunScript.POWER_PITY <= 12)
 	var waves_then: int = run.foes.get_child_count()
@@ -1452,7 +1452,8 @@ func _test_the_healers_run() -> void:
 	run.healer.position.y = 0.0
 	run.call("_burn", 9999.0)
 	var tallest: float = run.fire_height
-	run.tier = 2
+	# The second tier (the last climbs higher: _test_the_healers_run_gets_wilder).
+	run.tier = 1
 	run.fire_height = 0.0
 	run.call("_burn", 60.0)
 	var faster: float = run.fire_height
@@ -1560,9 +1561,9 @@ func _test_the_healers_run() -> void:
 			break
 		run.untouchable = 1.0
 		run.step(1.0 / 60.0)
-	check("  and walking to it wins the run - in the time it took - and the whole 5000",
+	check("  and walking to it wins the run - in the time it took - and the whole 20,000",
 		run.state == RunScript.State.WON and won == [true] and run.result_text().begins_with("Cleared in ")
-		and run.gold_now() == 5000 and run.bosses_beaten == 3, [run.state, won, run.result_text(), run.gold_now()])
+		and run.gold_now() == 20000 and run.bosses_beaten == 3, [run.state, won, run.result_text(), run.gold_now()])
 	run.queue_free()
 	var lost = RunScript.new()
 	lost.set("seed_value", 3)
@@ -2085,6 +2086,178 @@ func _test_google_sign_in() -> void:
 		and not shown.call({"ok": true, "data": {"available": false, "staff": false}}))
 	options.queue_free()
 	print("  (signing in with Google: done)")
+
+
+func _test_the_healers_run_gets_wilder() -> void:
+	section("THE HEALER'S RUN: THE LAST TIER'S FIRE, ELITES, RANDOM EVENTS (0.104.0)")
+	# The owner: "fire needs to rise faster on part 3 of mini game and it keeps
+	# getting higher if no upgrades are taken", "we need more randomness in the
+	# game also i want elites to pop in also with their hit effects", "t3 needs
+	# to reward up to 20,000 gold".
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	var run = RunScript.new()
+	run.set("seed_value", 33)
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	add_child(run)
+	run.set_process(false)
+	for i in 120:
+		run.step(1.0 / 60.0)
+	run.lives = 99
+	# THE FIRE.
+	run.tier = 0
+	var first_rise: float = run.fire_rise()
+	var first_ceiling: float = run.fire_ceiling()
+	run.tier = RunScript.TIERS - 1
+	run.set("_starved", 0.0)
+	var last_rise: float = run.fire_rise()
+	run.set("_starved", 30.0)
+	var starved_rise: float = run.fire_rise()
+	var starved_ceiling: float = run.fire_ceiling()
+	run.set("_starved", 9999.0)
+	var highest: float = run.fire_ceiling()
+	check("the last tier's fire rises at least twice as fast, and faster and higher the longer no power-up is taken",
+		first_ceiling == RunScript.FIRE_MOST and last_rise >= 2.0 * (RunScript.FIRE_RISE + RunScript.FIRE_RISE_PER_TIER * 2) - 0.001
+		and last_rise > first_rise * 2.0 and starved_rise > last_rise and starved_ceiling > RunScript.FIRE_MOST
+		and highest == RunScript.FIRE_HIGHEST and highest >= RunScript.HALF.y - 1.0,
+		[first_rise, last_rise, starved_rise, starved_ceiling, highest])
+	run.run_seconds = 999.0
+	run.fire_height = 150.0
+	run.set("_starved", 40.0)
+	run.untouchable = 99.0
+	run.gain_power()
+	for i in 60:
+		run.call("_burn", 1.0 / 60.0)
+	check("  a power-up pushes it down further in the last tier and starts the climb again; it does not rise past its new ceiling",
+		float(run.get("_starved")) < 1.5 and run.fire_height < 150.0 - RunScript.FIRE_PUSH
+		and run.fire_height > run.fire_ceiling(), [run.fire_height, run.fire_ceiling()])
+	# ELITES.
+	for left in run.foes.get_children():
+		left.queue_free()
+	await get_tree().process_frame
+	run.field.clear()
+	run.state = RunScript.State.RUNNING
+	run.tier = 0
+	run.set("_elite_in", 0.01)
+	for i in 30:
+		run.call("_elites_step", 1.0 / 60.0)
+	check("no elites in the first tier", (run.get("_elite_marks") as Array).is_empty() and run.elites_seen == 0)
+	run.tier = 1
+	run.lands[1] = Element.Type.ICE
+	run.set("_elite_in", 0.01)
+	run.call("_elites_step", 1.0 / 60.0)
+	var marked: int = (run.get("_elite_marks") as Array).size()
+	var foes_before: int = run.foes.get_child_count()
+	var bursts_before: int = _bursts_in(run)
+	for i in int(RunScript.ELITE_WARN * 60.0) + 2:
+		run.call("_elites_step", 1.0 / 60.0)
+	var elite: Node2D = null
+	for f in run.foes.get_children():
+		if bool(f.get("elite")):
+			elite = f
+	check("from the second tier an elite is marked, then pops in with a flash: bigger, %d times as tough, holding no wave"
+		% int(RunScript.ELITE_HEALTH),
+		marked == 1 and elite != null and run.foes.get_child_count() == foes_before + 1 and run.elites_seen == 1
+		and _bursts_in(run) > bursts_before and int(elite.get("wave")) == -1
+		and is_equal_approx(float(elite.get("most")), RunScript.foe_health(float(RunScript.KINDS[str(elite.get("kind"))]["health"]),
+			run.rank()) * RunScript.ELITE_HEALTH) and float(elite.get("radius")) > float(RunScript.KINDS[str(elite.get("kind"))]["radius"]),
+		[marked, run.elites_seen])
+	elite.set("casts", 1)
+	elite.set("shoot_in", 0.0)
+	run.field.clear()
+	run.call("_elite_move", elite, 1.0 / 60.0, 0)
+	var freezing: int = 0
+	for i in run.field.count:
+		freezing += 1 if run.field.damage_of(i) == RunScript.FREEZE_MARK else 0
+	check("  every other cast is a volley of its land's keeper cast - an ice elite's shots freeze",
+		freezing >= 5 and int(elite.get("casts")) == 2, [run.field.count, freezing])
+	var sparks_before: int = _bursts_in(run)
+	run.set("_spark_in", 0.0)
+	run.call("_strike", elite, 1.0)
+	check("  struck, it sparks (its hit effect)", _bursts_in(run) > sparks_before)
+	var drops_before: Array = []
+	for d in run.drops.get_children():
+		drops_before.append(d)
+	run.call("_strike", elite, float(elite.get("health")) + 1.0)
+	var powers: int = 0
+	for d in run.drops.get_children():
+		if not drops_before.has(d) and str(d.get_meta(&"drop", "")) == "power":
+			powers += 1
+	check("  down, it bursts and always drops a power-up", float(elite.get("dying")) >= 0.0 and powers == 1
+		and run.shake > 0.0, powers)
+	# EVENTS.
+	check("five random events, each with a name", RunScript.EVENTS.size() == 5 and RunScript.EVENT_NAMES.size() == 5)
+	var drops_then: int = run.drops.get_child_count()
+	run.start_event("power rain")
+	check("  power-up rain: power-ups and a potion fall from the top", run.drops.get_child_count() == drops_then + 4
+		and run.banner == RunScript.EVENT_NAMES["power rain"])
+	var foes_then: int = run.foes.get_child_count()
+	run.start_event("swarm")
+	check("  a swarm: a crowd of sprites diving fast", run.foes.get_child_count() >= foes_then + 12)
+	run.start_event("treasure")
+	var treasure: Node2D = null
+	for f in run.foes.get_children():
+		if str(f.get("kind")) == "treasure":
+			treasure = f
+	var lives_then: int = run.lives
+	run.untouchable = 0.0
+	treasure.position = run.healer.position + RunScript.HITBOX_AT
+	run.call("_move_foes", 0.0)
+	var harmless: bool = run.lives == lives_then
+	run.untouchable = 99.0
+	var power_drops: int = 0
+	for d in run.drops.get_children():
+		power_drops += 1 if str(d.get_meta(&"drop", "")) == "power" else 0
+	run.call("_strike", treasure, float(treasure.get("health")) + 1.0)
+	var power_after: int = 0
+	for d in run.drops.get_children():
+		power_after += 1 if str(d.get_meta(&"drop", "")) == "power" else 0
+	check("  a treasure runs past, harmless; caught, it spills %d power-ups" % RunScript.TREASURE_DROPS,
+		harmless and power_after == power_drops + RunScript.TREASURE_DROPS, [harmless, power_drops, power_after])
+	run.start_event("meteors")
+	run.set("_rocks", [])
+	for i in 90:
+		run.call("_events_step", 1.0 / 60.0)
+	check("  a meteor shower: rocks marked on the path, one after another",
+		(run.get("_rocks") as Array).size() >= 2, (run.get("_rocks") as Array).size())
+	run.start_event("darkness")
+	for i in 60:
+		run.call("_events_step", 1.0 / 60.0)
+	check("  darkness: only the ground round her is lit, under every bullet",
+		run.darkness.visible and float(run.get("_dark")) >= 0.99 and run.darkness.z_index < RunScript.BULLETS_Z
+		and run.darkness.z_index < RunScript.HAZARD_Z)
+	run.event_left = 0.0
+	for i in 70:
+		run.call("_events_step", 1.0 / 60.0)
+	check("  and it lifts when it ends", not run.darkness.visible and run.event == "")
+	# MIXED UP.
+	run.set("_last_kind", "vee")
+	run.waves_done = 5
+	var repeats: int = 0
+	for i in 60:
+		var k: String = run.call("_pick_kind")
+		repeats += 1 if k == str(run.get("_last_kind")) else 0
+		run.set("_last_kind", k)
+	# An arcs wave's first always came in from the left; flipped, from the right.
+	var sides: Dictionary = {}
+	var paces: Dictionary = {}
+	for i in 12:
+		var wave: Array = run.spawn_wave("arcs")
+		var one: Node2D = wave[0]
+		sides[signf(one.position.x)] = true
+		paces[snappedf(absf(float(one.get("velocity").y)), 1.0)] = true
+	check("waves are mixed up: never the same twice running, some flipped, at different speeds",
+		repeats == 0 and sides.size() == 2 and paces.size() >= 4, [repeats, sides.keys(), paces.size()])
+	run.queue_free()
+	await get_tree().process_frame
+	print("  (the healer's run gets wilder: done)")
+
+
+func _bursts_in(run: Node) -> int:
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	var count: int = 0
+	for child in run.get_children():
+		count += 1 if child is RunScript.Burst else 0
+	return count
 
 
 func google_stand_in(path: String, body: Dictionary, _wait: float, sent: Array, answers: Array) -> Dictionary:
