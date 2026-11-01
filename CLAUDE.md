@@ -3030,6 +3030,13 @@ plan is the commit folder's GOOGLE_SIGNIN_PLAN.txt.
   A press is `claim()` (`CLAIM_PATH`): the server links it and answers as a
   login. A name taken at "Start playing" now says to sign in with the
   password and link Google in Options (the server's words).
+- **The name box says who it is for (0.102.1)** - the owner, signed in with
+  Google as the GM and asked for a name: "it should know anyone with a
+  account already not go to add name unless a new player". The server can
+  only know an account by a confirmed recovery email, so the name box says
+  "Already play? Press Cancel, sign in with your password, then link Google
+  in Options" (`GOOGLE_NEW_PLAYER`), and an email only a staff account has
+  is refused with the staff words instead of asking a name (the server).
 - **The page goes back to the game (0.102.0)** - the owner: "need a go back
   button or redirection". Done, it shows "Back to the game" and closes itself
   when the game's own tab opened it (the browser build); a tab the computer

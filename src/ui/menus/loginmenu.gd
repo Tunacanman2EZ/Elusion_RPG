@@ -491,6 +491,7 @@ const GOOGLE_BUTTON_TEXT := "Sign in with Google"
 const GOOGLE_OPEN_AGAIN := "Open the page again"
 const GOOGLE_START_PLAYING := "Start playing"
 const GOOGLE_MAKE_NEW := "Make a new account"
+const GOOGLE_NEW_PLAYER := "No account has this Google email yet. New player? Pick your name - other players see it, never your Google name. Already play? Press Cancel, sign in with your password, then link Google in Options."
 
 var google: Node = null
 var google_button: Button = null
@@ -647,9 +648,12 @@ func _google_answer(res: Dictionary) -> void:
 
 
 func _google_ask_name() -> void:
-	"""A new account: the name box."""
+	"""A new account: the name box. The owner: "it should know anyone with a
+	account already not go to add name unless a new player" - the server
+	knows an account only by a confirmed recovery email (0.102.0), so for
+	everyone else this says what to do instead (0.102.1)."""
 	_google_offer([])
-	google_intro.text = "Signed in with Google. Pick your name in Elusion - it is what other players see, never your Google name."
+	google_intro.text = GOOGLE_NEW_PLAYER
 	google_check.visible = false
 	google_name.visible = true
 	google_name.text = ""

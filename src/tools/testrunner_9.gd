@@ -2008,6 +2008,8 @@ func _test_google_sign_in() -> void:
 	check("  pressed: the page opens, the screen shows the same check code, then asks for a name",
 		opened == ["https://x/page"] and form.visible and not menu.get_node("%loginform").visible
 		and menu.get("google_name").visible and menu.get("google_go").text == "Start playing", [opened, form.visible])
+	check("  and it tells a player who already has an account what to do instead (0.102.1)",
+		str(menu.get("google_intro").text).contains("sign in with your password, then link Google in Options"))
 	menu.get("google_name").text = "no spaces"
 	menu.call("_on_google_go")
 	await get_tree().process_frame
