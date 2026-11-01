@@ -110,6 +110,19 @@
 #   wave to its side, and under ENRAGE_AT of its health it is enraged: its
 #   casts come faster and closer together (ENRAGE_PACE), its rings thicker.
 #
+# THE LASER BALANCED, AND DROPS CAUGHT FROM ANY SIDE (0.99.2). The owner: "we
+# need to balance out the lasers now also noticed when moving backwerds could
+# not pick up the drop".
+# - The laser: LASER_DPS 24 rising 40% a level (it was 34 rising 50%: a
+#   level-5 laser and its side beams did about 300 a second - the boss's 2400
+#   melted), side beams a third of it (SIDE_BEAM_SHARE), and LASER_SECONDS 5
+#   plus a second a level. Still the strongest thing she has; no longer all
+#   of it.
+# - Drops: a drop is picked up within PICKUP_REACH of her middle, and one
+#   within MAGNET_REACH is drawn to her (MAGNET_SPEED) - from behind as well
+#   as ahead. Going back for one that had fallen past meant reaching for it
+#   at the bottom of the screen, where she cannot go and the fire is.
+#
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
@@ -160,8 +173,12 @@ const SCROLL_START := 28.0
 const SCROLL_PER_SECOND := 0.1
 const SCROLL_PER_RANK := 1.5
 const SCROLL_MOST := 95.0
-const LASER_SECONDS := 6.0
-const LASER_DPS := 34.0
+const LASER_SECONDS := 5.0
+const LASER_DPS := 24.0
+const LASER_PER_LEVEL := 0.4
+const PICKUP_REACH := 20.0
+const MAGNET_REACH := 56.0
+const MAGNET_SPEED := 260.0
 const LASER_HALF := 7.0
 const LASER_LEVELS := 5
 # Each level's layer, from the inside out.
@@ -173,7 +190,7 @@ const BEAM_Z := 10
 const SHOTS_Z := 20
 const BULLETS_Z := 21
 const SIDE_BEAM_GAP := 18.0
-const SIDE_BEAM_SHARE := 0.5
+const SIDE_BEAM_SHARE := 0.35
 const METEORS_MOST := 3
 const METEOR_FALL := 0.45
 const METEOR_REACH := 70.0
@@ -534,11 +551,11 @@ static func laser_half(level: int) -> float:
 
 
 static func laser_dps(level: int) -> float:
-	return LASER_DPS * (1.0 + 0.5 * (maxi(1, level) - 1))
+	return LASER_DPS * (1.0 + LASER_PER_LEVEL * (maxi(1, level) - 1))
 
 
 static func laser_seconds(level: int) -> float:
-	return LASER_SECONDS + 1.5 * (maxi(1, level) - 1)
+	return LASER_SECONDS + 1.0 * (maxi(1, level) - 1)
 
 
 static func side_beams(level: int) -> Array:
@@ -1058,8 +1075,13 @@ func _drop(what: String, at: Vector2) -> void:
 func _move_drops(delta: float) -> void:
 	for node in drops.get_children():
 		var icon := node as Node2D
-		icon.position.y += (scroll_speed() + 25.0) * delta
-		if icon.position.distance_to(healer.position + HITBOX_AT) <= 16.0:
+		var to_her: Vector2 = (healer.position + HITBOX_AT) - icon.position
+		if to_her.length() <= MAGNET_REACH:
+			# Drawn to her, from whichever side.
+			icon.position += to_her.limit_length(MAGNET_SPEED * delta)
+		else:
+			icon.position.y += (scroll_speed() + 25.0) * delta
+		if icon.position.distance_to(healer.position + HITBOX_AT) <= PICKUP_REACH:
 			match str(icon.get_meta(&"drop")):
 				"potion":
 					gain_life()
@@ -1068,7 +1090,7 @@ func _move_drops(delta: float) -> void:
 				_:
 					gain_power()
 			_gone(icon)
-		elif icon.position.y > HALF.y + 20.0:
+		elif icon.position.y > HALF.y + 40.0:
 			_gone(icon)
 
 

@@ -2914,6 +2914,15 @@ Healer's Run: three runs a day, its gold at Leave".
   seconds); every `BOSS_ADDS_SECONDS` (7) it calls a half-size wave
   (`BOSS_ADDS`), and under `ENRAGE_AT` (half) it is enraged: casts
   `ENRAGE_PACE` (0.65) as far apart, thicker rings, wider fans, adds sooner.
+- **The laser balanced, drops caught from any side (0.99.2)** - the owner: "we
+  need to balance out the lasers now also noticed when moving backwerds could
+  not pick up the drop". `LASER_DPS` 24 rising `LASER_PER_LEVEL` (40%) a
+  level, side beams `SIDE_BEAM_SHARE` (a third), `LASER_SECONDS` 5 plus one a
+  level: a full laser and its side beams about 150 a second (it was about
+  300). A drop within `MAGNET_REACH` (56) of her middle is drawn to her at
+  `MAGNET_SPEED` (260) from whichever side, and picked up within
+  `PICKUP_REACH` (20): one that had fallen past her could only be reached at
+  the bottom of the screen, where she cannot go and the fire is.
 - **Arcs swing deep**: in at `ARC_IN` (165) turning at `ARC_TURN` (75), about
   165 px into the path (it was 43). **New formations**: a snake weaving down,
   a pincer from both top corners, a ring turning as it comes, a wall of

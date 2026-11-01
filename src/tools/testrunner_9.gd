@@ -1290,7 +1290,8 @@ func _test_the_healers_run() -> void:
 		run.gain_power()
 	check("each power-up after is a laser level, to five: wider, harder, longer, side beams, and the rank with it",
 		run.laser_level == RunScript.LASER_LEVELS and run.laser == RunScript.laser_seconds(5)
-		and RunScript.laser_dps(5) == RunScript.LASER_DPS * 3.0 and RunScript.laser_half(5) > RunScript.laser_half(1)
+		and is_equal_approx(RunScript.laser_dps(5), RunScript.LASER_DPS * (1.0 + 4.0 * RunScript.LASER_PER_LEVEL))
+		and RunScript.laser_half(5) > RunScript.laser_half(1)
 		and RunScript.side_beams(2).is_empty() and RunScript.side_beams(3).size() == 2 and RunScript.side_beams(5).size() == 4
 		and run.rank() >= mini(RunScript.RANK_MOST, rank_at_one + 4) and run.banner == "Laser 5",
 		[run.laser_level, run.rank(), rank_at_one])
@@ -1386,6 +1387,7 @@ func _test_the_healers_run() -> void:
 	run.untouchable = 0.0
 	run.lives = 3
 	run.power = 3
+	run.laser_level = 0
 	run.field.spawn(Vector2(0, -100), PI / 2.0, 10.0, Color.WHITE)
 	run.hurt()
 	check("one hit is one life: she blinks, a shot step goes, and the screen's bullets with it",
@@ -1399,6 +1401,16 @@ func _test_the_healers_run() -> void:
 	run.call("_drop", "potion", run.healer.position + RunScript.HITBOX_AT)
 	run.step(1.0 / 60.0)
 	check("  and one she walks into is picked up", run.lives == 3, run.lives)
+	# "when moving backwerds could not pick up the drop".
+	run.call("_drop", "potion", run.healer.position + Vector2(0.0, 30.0))
+	for i in 20:
+		run.step(1.0 / 60.0)
+	check("  one just behind her is drawn to her and picked up too", run.lives == 4, run.lives)
+	run.lives = 3
+	# "we need to balance out the lasers now".
+	var full_laser: float = RunScript.laser_dps(5) * (1.0 + 4.0 * RunScript.SIDE_BEAM_SHARE)
+	check("the laser balanced: a full laser and its side beams do %d a second (it was about 300)" % int(full_laser),
+		full_laser < 150.0 and RunScript.laser_dps(1) < 30.0 and RunScript.laser_seconds(5) <= 10.0, full_laser)
 	# THE FIRE BEHIND HER (the owner: "maybe a fire from behind").
 	var lives_before: int = run.lives
 	run.untouchable = 0.0
