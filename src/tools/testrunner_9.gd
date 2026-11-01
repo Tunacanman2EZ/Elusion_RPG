@@ -1417,6 +1417,13 @@ func _test_the_healers_run() -> void:
 		run.gain_life()
 	check("a potion is a life more, held to five", run.lives == RunScript.LIVES_MOST)
 	run.lives = 2
+	# Nothing else about that might drop a potion of its own as it is shot.
+	for f in run.foes.get_children():
+		run.foes.remove_child(f)
+		f.queue_free()
+	for d in run.drops.get_children():
+		run.drops.remove_child(d)
+		d.queue_free()
 	run.call("_drop", "potion", run.healer.position + RunScript.HITBOX_AT)
 	run.step(1.0 / 60.0)
 	check("  and one she walks into is picked up", run.lives == 3, run.lives)
@@ -2250,6 +2257,474 @@ func _test_the_healers_run_gets_wilder() -> void:
 	run.queue_free()
 	await get_tree().process_frame
 	print("  (the healer's run gets wilder: done)")
+
+
+func _test_the_healers_run_with_a_party() -> void:
+	section("THE HEALER'S RUN WITH THE PARTY (0.105.0)")
+	# The owner: "make it to where you can join with your party", and of the
+	# gold: "each player". Two games in one tree on stand-in links that pass
+	# "en" as the server does (JSON and back).
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
+	var Link: GDScript = _party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	la.set("me", 1)
+	lb.set("me", 2)
+	for l in [la, lb]:
+		l.set("leader", 1)
+		l.set("others", 1)
+		add_child(l)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	var body_a := Node2D.new()
+	var body_b := Node2D.new()
+	add_child(body_a)
+	add_child(body_b)
+	la.set("bodies", {2: body_b})
+	lb.set("bodies", {1: body_a})
+	var games: Array = []
+	for pair in [[la, 31], [lb, 77]]:
+		var run = RunScript.new()
+		run.set("seed_value", int(pair[1]))
+		run.set("steer", func() -> Vector2: return Vector2.ZERO)
+		var party: Node = PartyScript.new()
+		party.set("link", pair[0])
+		party.set("run", run)
+		run.set("party", party)
+		run.add_child(party)
+		add_child(run)
+		run.set_process(false)
+		party.set_process(false)
+		games.append([run, party])
+	var a = games[0][0]
+	var b = games[1][0]
+	var pa: Node = games[0][1]
+	var pb: Node = games[1][1]
+	var began_at: Array = [-1.0, -1.0]
+	var clock: Array = [0.0]
+	pa.connect("start_now", func() -> void:
+		began_at[0] = clock[0]
+		a.begin_run())
+	pb.connect("start_now", func() -> void:
+		began_at[1] = clock[0]
+		b.begin_run())
+	_hr_frames(games, 0.3)
+	check("waiting together: the leader picks the run's key and its lands, and the other takes them",
+		int(pa.get("key")) > 0 and int(pb.get("key")) == int(pa.get("key")) and pa.call("leads") and not pb.call("leads")
+		and [b.lands[0], b.lands[1], b.lands[2]] == [a.lands[0], a.lands[1], a.lands[2]],
+		[pa.get("key"), pb.get("key")])
+	# READY, THEN THE COUNT ("we need a ready for all players then a countdown").
+	pa.call("set_ready", true)
+	_hr_frames(games, 0.6)
+	var one_ready: bool = float(pa.get("counting")) < 0.0 and not bool(a.get("begun"))
+	pb.call("set_ready", true)
+	_hr_frames(games, 0.6)
+	var counted: Array = [float(pa.get("counting")), float(pb.get("counting"))]
+	check("Ready: the leader alone ready counts nothing; both ready, both count down together (%.1f s and %.1f s left)"
+		% [counted[0], counted[1]], one_ready and counted[0] > 1.5 and counted[1] > 1.5
+		and absf(counted[0] - counted[1]) <= PartyScript.COUNTDOWN_SLACK + 0.21 and not bool(a.get("begun")), counted)
+	pb.call("set_ready", false)
+	_hr_frames(games, 0.4)
+	var stopped: bool = float(pa.get("counting")) < 0.0 and float(pb.get("counting")) < 0.0
+	pb.call("set_ready", true)
+	var t: float = 0.0
+	while t < PartyScript.COUNTDOWN_SECONDS + 1.0:
+		clock[0] = t
+		_hr_frames(games, 1.0 / 30.0)
+		t += 1.0 / 30.0
+	check("  one not ready again stops the count on both; ready again, both begin within a frame or two of each other",
+		stopped and began_at[0] >= PartyScript.COUNTDOWN_SECONDS - 0.2 and began_at[1] >= 0.0
+		and absf(began_at[0] - began_at[1]) <= 0.21, began_at)
+	_hr_frames(games, RunScript.READY_SECONDS + 0.3)
+	check("  for two players, the run under way on both", bool(a.get("begun")) and bool(b.get("begun"))
+		and int(a.get("players")) == 2 and int(b.get("players")) == 2 and int(b.get("state")) == RunScript.State.RUNNING,
+		[a.get("players"), b.get("players"), b.get("state")])
+	var fa: Array = _hr_foes(a)
+	var fb: Array = _hr_foes(b)
+	var same: bool = fa.size() == fb.size() and fa.size() > 0
+	var far: float = 0.0
+	for i in mini(fa.size(), fb.size()):
+		same = (same and str(fa[i].get("kind")) == str(fb[i].get("kind")) and int(fa[i].get("batch")) == int(fb[i].get("batch"))
+			and int(fa[i].get("slot")) == int(fb[i].get("slot")) and is_equal_approx(float(fa[i].get("most")), float(fb[i].get("most"))))
+		far = maxf(far, (fa[i].position as Vector2).distance_to(fb[i].position))
+	check("  the first wave is the same on both screens: the same monsters, health and places (%d, %.1f px apart)"
+		% [fa.size(), far], same and far < 8.0, [fa.size(), fb.size(), far])
+	var base_health: float = float(RunScript.KINDS[str(fa[0].get("kind"))]["health"])
+	var ranked: float = (float(fa[0].get("most")) / (a.party_share() * base_health) - 1.0) / 0.18
+	check("  and tougher for two, by less than before (\"lower the health increases\"): %d%% of its health alone"
+		% roundi(a.party_share() * 100.0), is_equal_approx(a.party_share(), 1.0 + RunScript.PARTY_HEALTH)
+		and RunScript.PARTY_HEALTH <= 0.15 and RunScript.PARTY_BOSS <= 0.4 and RunScript.PARTY_CROWD <= 1
+		and absf(ranked - roundf(ranked)) < 0.01, ranked)
+	var target_b: Node2D = fb[0]
+	var target_a: Node2D = fa[0]
+	var before: float = float(target_a.get("health"))
+	b.call("_strike", target_b, 1.0)
+	_hr_frames(games, 0.3)
+	check("a hit on the other screen lands here too", is_equal_approx(float(target_a.get("health")), before - 1.0),
+		[before, target_a.get("health")])
+	a.call("_strike", target_a, float(target_a.get("health")) + 1.0)
+	_hr_frames(games, 0.3)
+	check("  and a monster killed there dies here", float(target_b.get("dying")) >= 0.0 or not is_instance_valid(target_b)
+		or target_b.get_parent() == null)
+	var push_was: float = float(a.get("_fire_push"))
+	b.gain_power()
+	pb.call("flush")
+	check("a power-up taken by the other pushes the leader's fire back", float(a.get("_fire_push")) > push_was
+		and int(pb.get("pushes")) == 1, [push_was, a.get("_fire_push"), pb.get("pushes")])
+	a.waves_done = 5
+	_hr_frames(games, 0.7)
+	check("  the waves passed are the leader's count on both screens (the gold for each)", b.waves_done == 5, b.waves_done)
+	for f in a.foes.get_children():
+		f.queue_free()
+	for f in b.foes.get_children():
+		f.queue_free()
+	await get_tree().process_frame
+	a.call("_decide", RunScript.EVENT_BOSS, [])
+	_hr_frames(games, 0.3)
+	check("the leader's keeper comes to both, as tough for two",
+		int(b.get("state")) == RunScript.State.BOSS and b.boss != null and a.boss != null
+		and is_equal_approx(float(b.boss.get("most")), float(a.boss.get("most"))) and a.party_share(true) > 1.3,
+		[b.get("state")])
+	b.untouchable = 0.0
+	b.lives = 1
+	b.hurt()
+	_hr_frames(games, 0.6)
+	check("out of lives with the party still in: she watches, the run goes on",
+		bool(b.get("ghost")) and int(b.get("state")) == RunScript.State.BOSS and int(a.get("state")) == RunScript.State.BOSS)
+	# THE BOARD ("show players and total accumulation for the party and who is dead").
+	pa.call("flush")
+	pb.call("flush")
+	var board_a: Array = pa.call("roster")
+	var board_b: Array = pb.call("roster")
+	var gold_a: int = int(a.call("gold_now"))
+	var gold_b: int = int(b.call("gold_now"))
+	check("the party's board on each screen: both players, who is out, their kills and gold, and the party's gold",
+		board_a.size() == 2 and board_b.size() == 2 and bool(board_a[0]["me"]) and int(board_a[1]["flags"]) & PartyScript.OUT != 0
+		and int(board_b[0]["flags"]) & PartyScript.OUT != 0 and int(board_b[1]["flags"]) & PartyScript.OUT == 0
+		and int(board_b[1]["lives"]) == int(a.get("lives")) and int(board_a[0]["kills"]) >= 1
+		and int(board_b[1]["kills"]) == int(board_a[0]["kills"]) and int(pa.call("party_gold")) == gold_a + gold_b,
+		[board_a, board_b])
+	a.untouchable = 0.0
+	a.lives = 1
+	a.hurt()
+	_hr_frames(games, 0.6)
+	check("  and when nobody is left in, it ends on both screens", int(a.get("state")) == RunScript.State.LOST
+		and int(b.get("state")) == RunScript.State.LOST, [a.get("state"), b.get("state")])
+	# A GAME COMING LATE plays alone.
+	var lc: Node = Link.new()
+	lc.set("me", 3)
+	lc.set("leader", 1)
+	lc.set("others", 2)
+	add_child(lc)
+	var c = RunScript.new()
+	c.set("steer", func() -> Vector2: return Vector2.ZERO)
+	var pc: Node = PartyScript.new()
+	pc.set("link", lc)
+	pc.set("run", c)
+	c.set("party", pc)
+	c.add_child(pc)
+	add_child(c)
+	c.set_process(false)
+	pc.set_process(false)
+	pc.call("_on_run", 1, {"r": [int(pa.get("key")), 1, 0, 3, 3, 0, 0, 2, 600, 1, 2, 3, 1]})
+	check("a game coming once the party's run has begun plays its own (joining half way would pay for others' work)",
+		int(pc.get("key")) == PartyScript.ALONE and not pc.call("active") and pc.call("leads"))
+	# PRESENCE: where her healer runs, and the world's monsters not heard.
+	var held_state: Callable = Presence.state_override
+	var needs: Array = []
+	var on_need: Callable = func(_id: int) -> void: needs.append(1)
+	Presence.world_needed.connect(on_need)
+	Presence.state_override = func() -> Dictionary: return {"a": "healerrun", "at": Vector2(5.0, 6.0), "m": "walkup"}
+	var said: Dictionary = Presence.state_for(body_a)
+	Presence.handle_message({"t": "need", "id": 9})
+	Presence.state_override = held_state
+	Presence.world_needed.disconnect(on_need)
+	check("presence says where her healer runs while the party plays, and hears none of the world's monsters",
+		said.get("a") == "healerrun" and is_equal_approx(float(said.get("x")), 5.0) and str(said.get("m")) == "walkup"
+		and str(said.get("pet")) == "" and needs.is_empty(), said)
+	# THE SCREEN: the start panel lists who is here, and Start is Ready.
+	const ScreenScript := preload("res://src/world/healerrun/healerrunscreen.gd")
+	var lf: Node = Link.new()
+	lf.set("me", 2)
+	lf.set("leader", 1)
+	lf.set("others", 1)
+	lf.set("bodies", {1: body_a})
+	add_child(lf)
+	var screen: CanvasLayer = ScreenScript.new()
+	screen.set("party_rooms", func() -> bool: return true)
+	screen.set("party_link", lf)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	var sp: Node = screen.get("run").get("party")
+	sp.set("own_name", func() -> String: return "mia")
+	sp.set("key", 55)
+	screen.call("paint")
+	var waiting_said: String = str(screen.get("party_line").text)
+	screen.call("begin")
+	screen.call("paint")
+	var ready_said: String = str(screen.get("party_line").text)
+	var held: bool = screen.get("tutorial").visible and not bool(screen.get("run").get("begun")) and bool(sp.get("said_ready"))
+	var button_said: String = str(screen.get("start_button").text)
+	sp.emit_signal("start_now")
+	check("the start panel with the party: who is here and who is ready, Start is Ready, and the count starts it",
+		waiting_said.contains("mia (you) - not ready") and waiting_said.contains("a player - joining")
+		and ready_said.contains("mia (you) - ready") and button_said.begins_with("Not ready") and held
+		and not screen.get("tutorial").visible and bool(screen.get("run").get("begun")), [waiting_said, ready_said])
+	screen.call("close")
+	for g in games:
+		(g[0] as Node).queue_free()
+	for n in [c, la, lb, lc, lf, body_a, body_b]:
+		n.queue_free()
+	await get_tree().process_frame
+	print("  (the healer's run with the party: done)")
+
+
+func _test_the_healers_run_is_fair() -> void:
+	section("THE HEALER'S RUN: INSIDE THE WALLS, TUNING, AND THE START PANEL (0.105.0)")
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
+	const ScreenScript := preload("res://src/world/healerrun/healerrunscreen.gd")
+	# NOTHING BREAKS OUT OF THE WALLS ("make everything symetrical so nothing
+	# breaks out of the walls").
+	var run = RunScript.new()
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	add_child(run)
+	run.set_process(false)
+	var out_of_walls: Array = []
+	var crossing_kinds: Dictionary = {}
+	var uneven: Array = []
+	for kind in RunScript.WAVE_KINDS + ["swarm"]:
+		for heat_now in [0, 5]:
+			run.tier = heat_now / 2
+			run.wave_in_tier = 4 if heat_now % 2 == 1 else 0
+			run.power = 4 if heat_now > 0 else 0
+			for i in 8:
+				var made: Array = run.spawn_wave(str(kind))
+				var xs: Array = []
+				for f in made:
+					xs.append(float(f.position.x))
+					if bool(f.get("crossing")):
+						crossing_kinds[kind] = true
+				if kind == "wall" or kind == "mages":
+					xs.sort()
+					if absf(float(xs[0]) + float(xs[xs.size() - 1])) > 0.01:
+						uneven.append([kind, xs[0], xs[xs.size() - 1]])
+				for k in 90:
+					run.call("_move_foes", 1.0 / 30.0)
+					for f in run.foes.get_children():
+						if not bool(f.get("crossing")) and str(f.get("kind")) != "boss" and f.get_parent() != null \
+								and absf(float(f.position.x)) > RunScript.PATH_HALF - float(f.get("radius")) + 0.01:
+							out_of_walls.append([kind, snappedf(float(f.position.x), 0.1)])
+				for f in run.foes.get_children():
+					run.foes.remove_child(f)
+					f.queue_free()
+	check("every wave stays inside the walls, all the way down: only what crosses the path (%s) goes behind them"
+		% ", ".join(crossing_kinds.keys()), out_of_walls.is_empty()
+		and crossing_kinds.keys().all(func(k: String) -> bool: return k in ["sweep", "arcs", "pincer"])
+		and crossing_kinds.size() == 3, out_of_walls.slice(0, 6))
+	check("  and the wall of slimes and the mages are laid even about the middle", uneven.is_empty(), uneven)
+	run.call("_lay_terrain")
+	var wall_z: Array = []
+	for piece in run.props.get_children():
+		if piece.has_meta(&"wall"):
+			wall_z.append(int(piece.z_index))
+	check("  the side walls are drawn over the monsters, the party and the beam, under the dark and every shot",
+		not wall_z.is_empty() and wall_z.all(func(z: int) -> bool: return z == RunScript.WALL_Z)
+		and RunScript.WALL_Z > maxi(int(run.others.z_index), RunScript.BEAM_Z) and RunScript.WALL_Z > int(run.foes.z_index)
+		and RunScript.WALL_Z < mini(RunScript.DARK_Z, RunScript.SHOTS_Z), wall_z.slice(0, 3))
+	run.queue_free()
+	# TUNING: the owner's, carried in each event so every screen agrees.
+	check("the tuning is kept in the suite's own file, never the owner's",
+		RunScript.tune_path.get_file().begins_with("_suite"), RunScript.tune_path)
+	RunScript.tune = RunScript.TUNE_DEFAULTS.duplicate()
+	RunScript.tune["party_health"] = 0.5
+	RunScript.tune["health"] = 2.0
+	RunScript.save_tune()
+	RunScript.tune = RunScript.TUNE_DEFAULTS.duplicate()
+	RunScript.load_tune()
+	var loaded: bool = is_equal_approx(float(RunScript.tune["party_health"]), 0.5) and RunScript.tune_changed()
+	var Link: GDScript = _party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	la.set("me", 1)
+	lb.set("me", 2)
+	for l in [la, lb]:
+		l.set("leader", 1)
+		l.set("others", 1)
+		add_child(l)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	var games: Array = []
+	for pair in [[la, 5], [lb, 6]]:
+		var r = RunScript.new()
+		r.set("seed_value", int(pair[1]))
+		r.set("steer", func() -> Vector2: return Vector2.ZERO)
+		var p: Node = PartyScript.new()
+		p.set("link", pair[0])
+		p.set("run", r)
+		r.set("party", p)
+		r.add_child(p)
+		add_child(r)
+		r.set_process(false)
+		p.set_process(false)
+		p.connect("start_now", r.begin_run)
+		games.append([r, p])
+	var a = games[0][0]
+	var b = games[1][0]
+	_hr_frames(games, 0.3)
+	games[0][1].call("set_ready", true)
+	games[1][1].call("set_ready", true)
+	# The follower's own computer is untuned: only the leader's numbers count.
+	_hr_frames(games, PartyScript.COUNTDOWN_SECONDS + RunScript.READY_SECONDS + 0.5)
+	var fa: Array = _hr_foes(a)
+	var fb: Array = _hr_foes(b)
+	var same: bool = not fa.is_empty() and fa.size() == fb.size()
+	for i in mini(fa.size(), fb.size()):
+		same = same and is_equal_approx(float(fa[i].get("most")), float(fb[i].get("most")))
+	var base: float = float(RunScript.KINDS[str(fa[0].get("kind"))]["health"]) if not fa.is_empty() else 1.0
+	var at_rank: float = float(fa[0].get("most")) / (base * 1.5 * 2.0) if not fa.is_empty() else 0.0
+	check("tuning is the leader's on every screen: the same monsters, %d%% health a player more, x2 health; kept and read back"
+		% roundi(float(RunScript.tune["party_health"]) * 100.0), loaded and same
+		and absf((at_rank - 1.0) / 0.18 - roundf((at_rank - 1.0) / 0.18)) < 0.01, [fa.size(), fb.size(), at_rank])
+	check("  and a tuned run pays nothing, on the leader's screen and the others'",
+		bool(a.get("tune_used")) and bool(b.get("tune_used")))
+	RunScript.tune = RunScript.TUNE_DEFAULTS.duplicate()
+	RunScript.save_tune()
+	for g in games:
+		(g[0] as Node).queue_free()
+	la.queue_free()
+	lb.queue_free()
+	# THE START PANEL, opened from the card with the party: the run of the day
+	# is asked for at the count, so Leave before it costs nothing.
+	var asked: Array = []
+	var answers: Array = []
+	var stand_in: Callable = func(path: String, body: Dictionary, _wait: float) -> Dictionary:
+		asked.append([path, body])
+		return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0}
+	var screen: CanvasLayer = ScreenScript.new()
+	screen.set("party_rooms", func() -> bool: return false)
+	screen.set("enter_at_start", true)
+	screen.set("enter_request", stand_in)
+	screen.set("finish_request", stand_in)
+	screen.set("slot_now", func() -> int: return 2)
+	screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	answers.append({"ok": false, "status": 409, "data": {"message": "You have run The Healer's Run 3 times today."}})
+	await screen.call("begin")
+	screen.call("paint")
+	var refused: bool = screen.get("tutorial").visible and int(screen.get("run_id")) == 0 \
+		and str(screen.get("party_line").text).contains("3 times today")
+	answers.append({"ok": true, "status": 200, "data": {"run": 77, "pays": {}}})
+	await screen.call("begin")
+	check("Start alone asks for the run of the day then (the server's no said on the panel), and goes",
+		refused and asked.size() == 2 and str(asked[1][0]) == "/api/minigames/enter"
+		and str(asked[1][1].get("game")) == "healerrun" and int(asked[1][1].get("slot")) == 2
+		and int(screen.get("run_id")) == 77 and not screen.get("tutorial").visible, asked)
+	screen.get("run").set("state", RunScript.State.LOST)
+	answers.append({"ok": true, "status": 200, "data": {"gold": 0}})
+	await screen.call("again")
+	check("  Again pays this run and goes back to the start panel, asking for nothing yet",
+		asked.size() == 3 and str(asked[2][0]) == "/api/minigames/finish" and int(screen.get("run_id")) == 0
+		and screen.get("tutorial").visible, asked.size())
+	screen.call("ask_to_leave")
+	await get_tree().process_frame
+	check("  Leave from the start panel: out at once, nothing asked, no run spent",
+		asked.size() == 3 and not is_instance_valid(screen))
+	# With the party: Ready, then the count asks for the run; no run, not ready.
+	var lf: Node = Link.new()
+	lf.set("me", 2)
+	lf.set("leader", 1)
+	lf.set("others", 1)
+	add_child(lf)
+	screen = ScreenScript.new()
+	screen.set("party_rooms", func() -> bool: return true)
+	screen.set("party_link", lf)
+	screen.set("enter_at_start", true)
+	screen.set("enter_request", stand_in)
+	screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	asked.clear()
+	var sp: Node = screen.get("run").get("party")
+	sp.set("key", 9)
+	screen.call("begin")
+	var readied: bool = bool(sp.get("said_ready")) and asked.is_empty()
+	answers.append({"ok": false, "status": 409, "data": {"message": "No runs left."}})
+	sp.call("_on_run", 1, {"r": [9, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, PartyScript.COUNTING, 30, 0]})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	screen.call("paint")
+	check("with the party: Ready asks for nothing; the count asks for the run, and a no takes Ready back, said",
+		readied and asked.size() == 1 and str(asked[0][0]) == "/api/minigames/enter" and not bool(sp.get("said_ready"))
+		and str(screen.get("party_line").text).contains("No runs left."), [asked, screen.get("party_line").text])
+	screen.call("close")
+	lf.queue_free()
+	# The board's numbers read well.
+	check("  the board's gold reads with commas (20,000)", ScreenScript.thousands(20000) == "20,000"
+		and ScreenScript.thousands(999) == "999" and ScreenScript.thousands(1234567) == "1,234,567")
+	# THE OWNER'S SLIDERS, under the god switch.
+	screen = ScreenScript.new()
+	screen.set("may_be_god", func() -> bool: return true)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	var tune_button: Button = screen.get("tune_button")
+	tune_button.button_pressed = true
+	var rows: Dictionary = screen.get("_tune_rows")
+	var slider: HSlider = rows["party_health"][1]
+	slider.value = 0.2
+	var moved: bool = is_equal_approx(float(RunScript.tune["party_health"]), 0.2) \
+		and str((rows["party_health"][0] as Label).text).contains("20%")
+	screen.call("tune_defaults")
+	check("Tuning under the god switch: a slider a number, said as it moves, kept; Defaults puts them back",
+		tune_button.visible and screen.get("tune_panel").visible and rows.size() == RunScript.TUNE_ORDER.size()
+		and moved and not RunScript.tune_changed() and slider.focus_mode == Control.FOCUS_NONE)
+	screen.call("close")
+	screen = ScreenScript.new()
+	screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	check("  and nobody else sees it", not screen.get("tune_button").visible and not screen.get("tune_panel").visible)
+	screen.call("close")
+	# THE CARD: with the party, Go opens the start panel and asks for nothing.
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	var lobbies: Array = []
+	var entered: Array = []
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("healer_party", func() -> bool: return true)
+	card.set("open_lobby", func() -> void: lobbies.append(1))
+	card.set("enter_request", func(path: String, _b: Dictionary, _w: float) -> Dictionary:
+		entered.append(path)
+		return {"ok": false, "status": 0})
+	card.call("_on_healer_go")
+	check("the card's Go with the party opens the start panel, asking for no run yet",
+		lobbies.size() == 1 and entered.is_empty(), [lobbies, entered])
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  (the healer's run is fair: done)")
+
+
+func _hr_frames(games: Array, seconds: float, step: float = 1.0 / 30.0) -> void:
+	var t: float = 0.0
+	while t < seconds:
+		for g in games:
+			var run: Node = g[0]
+			if run.get("begun"):
+				run.call("step", step)
+			(g[1] as Node).call("_process", step)
+		t += step
+
+
+func _hr_foes(run: Node) -> Array:
+	var out: Array = []
+	for f in run.get("foes").get_children():
+		if int(f.get("batch")) >= 0:
+			out.append(f)
+	out.sort_custom(func(x: Node, y: Node) -> bool: return int(x.get("slot")) < int(y.get("slot")))
+	return out
 
 
 func _bursts_in(run: Node) -> int:

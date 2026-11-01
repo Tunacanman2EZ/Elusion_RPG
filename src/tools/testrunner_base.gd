@@ -108,6 +108,9 @@ func _play_in_a_world_of_its_own() -> void:
 	Keybinds.path = "user://_suite_keys.cfg"
 	PanelWindow.layout_path = "user://_suite_panels.cfg"
 	ControlsPanel.seen_path = "user://_suite_seen.cfg"
+	# The Healer's Run's tuning (the owner's sliders) - set through the script,
+	# which has no class_name.
+	(load("res://src/world/healerrun/healerrun.gd") as GDScript).set("tune_path", "user://_suite_healerrun_tuning.cfg")
 	# The game copy's login files: a remembered session, the devices it was
 	# told of, and its install id - which every login on the owner's PC is
 	# bound to, so a run that lost it would end them all.

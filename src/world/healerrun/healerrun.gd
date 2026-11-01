@@ -184,6 +184,15 @@ const HALF := Vector2(320.0, 180.0)
 const PATH_HALF := 240.0
 const WALL_PIECE := "res://scene/crypt/wallsidetall.tscn"
 const WALL_STEP := 58.0
+# NOTHING BREAKS OUT OF THE WALLS (0.105.0; the owner: "make everything
+# symetrical so nothing breaks out of the walls"): the side walls are drawn
+# over every monster, the party and the beam (under the darkness, the
+# hazards and every shot), so what comes in from a side comes from behind
+# them; every formation is laid even about the middle and kept off them
+# (WALL_ROOM), and a monster that is not crossing the path is held inside it.
+const WALL_Z := 13
+const WALL_ROOM := 20.0
+const WALL_SLIME_GAP := 34.0
 const TILE := 16
 const FLOOR_SET := "res://scene/world/underground.tres"
 const SECTION_LENGTH := 300.0
@@ -337,7 +346,40 @@ const ELITE_METEOR := 0.15
 # RANDOM EVENTS (0.104.0; the owner: "we need more randomness in the game"):
 # from the third wave, EVENT_CHANCE of the waves bring one of EVENTS with
 # them, never two waves running.
+# THE RUN WITH THE PARTY (0.105.0; healerparty.gd): each decision the leader
+# makes, sent as an event every game makes the same from.
+const EVENT_WAVE := 1
+const EVENT_BOSS := 2
+const EVENT_ELITE := 3
+const EVENT_RANDOM := 4
+const NET_KINDS := ["vee", "sweep", "mages", "slimes", "arcs", "snipers", "snake", "pincer", "ring", "wall", "swarm"]
+const NET_BATCH_SPAN := 2000
+# More players, more to fight: health, the keepers' health and bigger waves a
+# player more. The owner, after his first party run: "monsters are already
+# pretty tough need to lower the health increases" - from 0.3, 0.75 and 2.
+const PARTY_HEALTH := 0.12
+const PARTY_BOSS := 0.35
+const PARTY_CROWD := 1
 const EVENT_CHANCE := 0.25
+# THE OWNER'S TUNING (0.105.0; "as owner i want to change those vales live in
+# the game for fine tuning maybe under god mode on the minigame only i can
+# see"): the screen's sliders under the god switch set `tune`, kept on his
+# computer (tune_path) and read by every run he plays alone or leads. The four
+# that make monsters ride in each event's head, so every screen of a party
+# makes them the same; the line says when the leader's are not the defaults.
+# A run tuned away from the defaults pays nothing, as god mode.
+const TUNE_DEFAULTS := {"party_health": PARTY_HEALTH, "party_keeper": PARTY_BOSS, "party_crowd": float(PARTY_CROWD),
+	"health": 1.0, "fire": 1.0, "elite_gap": 1.0, "events": EVENT_CHANCE}
+# Each: [least, most, step].
+const TUNE_RANGES := {"party_health": [0.0, 1.0, 0.01], "party_keeper": [0.0, 2.0, 0.05],
+	"party_crowd": [0.0, 4.0, 1.0], "health": [0.25, 3.0, 0.05], "fire": [0.0, 3.0, 0.1],
+	"elite_gap": [0.25, 3.0, 0.05], "events": [0.0, 1.0, 0.05]}
+const TUNE_ORDER := ["party_health", "party_keeper", "party_crowd", "health", "fire", "elite_gap", "events"]
+const TUNE_NAMES := {"party_health": "Health a player more", "party_keeper": "Keeper health a player more",
+	"party_crowd": "Monsters a wave a player more", "health": "Monster health", "fire": "Fire speed",
+	"elite_gap": "Time between elites", "events": "Event chance"}
+static var tune: Dictionary = TUNE_DEFAULTS.duplicate()
+static var tune_path: String = "user://healerrun_tuning.cfg"
 const EVENTS := ["meteors", "power rain", "swarm", "treasure", "darkness"]
 const EVENT_NAMES := {"meteors": "Meteor shower", "power rain": "Power-up rain", "swarm": "Swarm",
 	"treasure": "A treasure runs past - catch it", "darkness": "Darkness falls"}
@@ -437,6 +479,13 @@ class Foe extends Node2D:
 	var elite: bool = false
 	var colour: Color = Color.WHITE
 	var casts: int = 0
+	# With the party (0.105.0): which event made it and which of it, the
+	# same on every screen - how a hit names it.
+	var batch: int = -1
+	var slot: int = -1
+	# Crossing the path (a sweep, the arcs, the pincer): in from behind a side
+	# wall and out behind one; it shoots only inside them.
+	var crossing: bool = false
 
 	func _draw() -> void:
 		if not elite or dying >= 0.0:
@@ -635,6 +684,23 @@ var _event_wave: int = -9
 var _last_kind: String = ""
 var darkness: ColorRect = null
 var _dark: float = 0.0
+# THE PARTY (0.105.0): its node (healerparty.gd, made by the screen), how
+# many play this run, whether it has begun, whether this player is out and
+# watching, and where the party's other healers are drawn.
+var party: Node = null
+var players: int = 1
+var begun: bool = false
+var ghost: bool = false
+var others: Node2D = null
+var _forced_rank: int = -1
+var _forced_land: int = -1
+var _net_batch: int = -1
+var _net_slot: int = 0
+var _net_foes: Dictionary = {}
+# The tuning an event was made with (its head), while it is made.
+var _heard_tune: Dictionary = {}
+# Tuned away from the defaults at any moment of this run: it pays nothing.
+var tune_used: bool = false
 var _section_top: float = -CLEAR_START
 var _obstacles: Array = []
 var _boss_cast: float = 0.0
@@ -759,6 +825,10 @@ func _ready() -> void:
 	darkness.material = dark_material
 	darkness.visible = false
 	add_child(darkness)
+	others = Node2D.new()
+	others.name = "others"
+	others.z_index = 5
+	add_child(others)
 	_lay_terrain()
 	_lay_landing()
 	banner = "Get ready"
@@ -834,7 +904,7 @@ func fire_rise() -> float:
 	var rise: float = FIRE_RISE + FIRE_RISE_PER_TIER * tier
 	if last_tier():
 		rise = rise * FIRE_LAST_PACE + minf(FIRE_HUNGER_MOST, FIRE_HUNGER * _starved)
-	return rise
+	return rise * tuned("fire")
 
 
 func fire_ceiling() -> float:
@@ -845,8 +915,17 @@ func fire_ceiling() -> float:
 	return minf(FIRE_HIGHEST, FIRE_MOST + FIRE_CLIMB * _starved)
 
 
+func push_fire() -> void:
+	"""A power-up taken - here, or by one of the party: the fire pushed back."""
+	_fire_push += FIRE_LAST_PUSH if last_tier() else FIRE_PUSH
+	_starved = 0.0
+
+
 func _burn(delta: float) -> void:
-	if run_seconds >= FIRE_AFTER:
+	if party != null and not leads():
+		# THE LEADER'S FIRE, eased to where it says.
+		fire_height = move_toward(fire_height, float(party.line_fire), 40.0 * delta)
+	elif run_seconds >= FIRE_AFTER:
 		if last_tier():
 			_starved += delta
 		# It only RISES to its ceiling: a ceiling that drops (a power-up)
@@ -1075,6 +1154,8 @@ func _make_shots() -> void:
 # =============================================================================
 
 func rank() -> int:
+	if _forced_rank >= 0:
+		return _forced_rank
 	return clampi(heat() + power + laser_level - setbacks, 0, RANK_MOST)
 
 
@@ -1124,6 +1205,8 @@ static func shot_offsets(count: int) -> Array:
 
 
 func land() -> int:
+	if _forced_land >= 0:
+		return _forced_land
 	return int(lands[mini(tier, TIERS - 1)])
 
 
@@ -1158,19 +1241,23 @@ func step(delta: float) -> void:
 			state = State.RUNNING
 			if healer_sprite.sprite_frames != null and healer_sprite.sprite_frames.has_animation("walkup"):
 				healer_sprite.play("walkup")
-			_start_wave()
+			if leads():
+				_start_wave()
 		return
 	run_seconds += delta
 	if god:
 		god_used = true
+	if leads() and tune_changed():
+		tune_used = true
 	untouchable = maxf(0.0, untouchable - delta)
 	laser = maxf(0.0, laser - delta)
 	frozen = maxf(0.0, frozen - delta)
 	_frost_proof = maxf(0.0, _frost_proof - delta)
 	gust = maxf(0.0, gust - delta)
 	_scroll(delta)
-	_move_healer(delta)
-	_fire(delta)
+	if not ghost:
+		_move_healer(delta)
+		_fire(delta)
 	_move_shots(delta)
 	_move_foes(delta)
 	_move_drops(delta)
@@ -1183,11 +1270,16 @@ func step(delta: float) -> void:
 	var hit: Vector2i = field.step(delta, healer.position + HITBOX_AT, HITBOX, 0.0, untouchable > 0.0)
 	if hit.x > 0:
 		_take_hits()
-	healer.visible = untouchable <= 0.0 or int(untouchable * 12.0) % 2 == 0
+	healer.visible = not ghost and (untouchable <= 0.0 or int(untouchable * 12.0) % 2 == 0)
 	_feel(delta)
+	if ghost and (party == null or not party.active() or leads() and party.everyone_out()):
+		# OUT, AND NOBODY LEFT TO WATCH (or nobody left in): the run is over.
+		_finish(false)
+		return
 	match state:
 		State.RUNNING:
-			_waves(delta)
+			if leads():
+				_waves(delta)
 		State.BOSS:
 			_boss_step(delta)
 		State.GOAL:
@@ -1352,8 +1444,13 @@ func _move_shots(delta: float) -> void:
 	_shot_mesh.visible_instance_count = _shot_pos.size()
 
 
-func _strike(f: Foe, damage: float) -> void:
+func _strike(f: Foe, damage: float, remote: bool = false) -> void:
+	if not remote and party != null and f.dying < 0.0 and f.health > 0.0 and f.health <= damage:
+		# THIS PLAYER'S BLOW FELLED IT: counted on the party's board.
+		party.kills += 1
 	f.health -= damage
+	if not remote and party != null and f.batch >= 0:
+		party.tell_hit(f.batch, f.slot, damage)
 	f.flash = 0.08
 	if (f == boss or f.elite) and f.dying < 0.0:
 		# A BOSS OR AN ELITE STRUCK sparks where it is hit; a boss shakes the
@@ -1419,7 +1516,7 @@ func _kill(f: Foe) -> void:
 func hurt() -> void:
 	"""One hit, one life: she blinks, loses a shot step, and the screen's
 	bullets go - a breath before the next."""
-	if untouchable > 0.0 or state == State.WON or state == State.LOST or state == State.READY:
+	if untouchable > 0.0 or ghost or state == State.WON or state == State.LOST or state == State.READY:
 		return
 	if god:
 		god_used = true
@@ -1439,12 +1536,18 @@ func hurt() -> void:
 	shake_by(HURT_SHAKE)
 	_burst(healer.position + HITBOX_AT, Color(1.0, 0.3, 0.25), 34.0, 12, 0.45)
 	if lives <= 0:
-		_finish(false)
+		if party != null and party.active():
+			_become_ghost()
+		else:
+			_finish(false)
 
 
 func gain_power() -> void:
-	_fire_push += FIRE_LAST_PUSH if last_tier() else FIRE_PUSH
-	_starved = 0.0
+	if party != null and not leads():
+		# The fire is the leader's: it is told, and pushes it back.
+		party.pushes += 1
+	else:
+		push_fire()
 	if power >= SHOT_STEPS.size() - 1:
 		# At eight shots, a power-up is the LASER - a level stronger each time.
 		laser_level = mini(LASER_LEVELS, laser_level + 1)
@@ -1498,7 +1601,7 @@ func _move_drops(delta: float) -> void:
 			icon.position += to_her.limit_length(MAGNET_SPEED * delta)
 		else:
 			icon.position.y += (scroll_speed() + 25.0) * delta
-		if icon.position.distance_to(healer.position + HITBOX_AT) <= PICKUP_REACH:
+		if not ghost and icon.position.distance_to(healer.position + HITBOX_AT) <= PICKUP_REACH:
 			match str(icon.get_meta(&"drop")):
 				"potion":
 					gain_life()
@@ -1542,7 +1645,7 @@ func _next_wave() -> void:
 	wave_in_tier += 1
 	if wave_in_tier >= WAVES_PER_TIER:
 		# THE TIER'S LAST WAVE PASSED: its land's boss.
-		_start_boss()
+		_decide(EVENT_BOSS, [])
 		return
 	_start_wave()
 
@@ -1560,25 +1663,25 @@ func _start_wave() -> void:
 		banner_left = BANNER_SECONDS
 	var kind: String = _pick_kind()
 	_last_kind = kind
-	spawn_wave(kind)
-	if waves_done >= 2 and _wave - _event_wave > 1 and _rng.randf() < EVENT_CHANCE:
-		start_event(str(EVENTS[_rng.randi_range(0, EVENTS.size() - 1)]))
+	_decide(EVENT_WAVE, [NET_KINDS.find(kind), 100])
+	if waves_done >= 2 and _wave - _event_wave > 1 and _rng.randf() < tuned("events"):
+		_decide(EVENT_RANDOM, [_rng.randi_range(0, EVENTS.size() - 1)])
 	var hot: int = heat()
 	if hot >= 1 and _rng.randf() < BOTH_CHANCE + BOTH_PER_HEAT * (hot - 1):
 		var other: String = kind
 		while other == kind:
 			other = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
-		spawn_wave(other, 0.5)
+		_decide(EVENT_WAVE, [NET_KINDS.find(other), 50])
 		if hot >= 3 and _rng.randf() < THIRD_CHANCE:
 			var third: String = other
 			while third == other or third == kind:
 				third = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
-			spawn_wave(third, 0.5)
+			_decide(EVENT_WAVE, [NET_KINDS.find(third), 50])
 
 
 func crowd() -> int:
 	"""How many more monsters each wave brings: one a heat (to four), and the rank's."""
-	return group_extra(rank()) + mini(heat(), 4)
+	return group_extra(rank()) + mini(heat(), 4) + roundi(tuned("party_crowd")) * (maxi(1, players) - 1)
 
 
 func _pick_kind() -> String:
@@ -1603,7 +1706,9 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 	match kind:
 		"vee":
 			var count: int = _sized(mini(13, 7 + crowd()), share)
-			var centre: float = _rng.randf_range(-PATH_HALF + 90.0, PATH_HALF - 90.0)
+			# The whole V inside the walls, wherever its middle falls.
+			var room: float = maxf(0.0, PATH_HALF - WALL_ROOM - float(count - 1) / 2.0 * 26.0)
+			var centre: float = _rng.randf_range(-room, room)
 			for i in count:
 				var off: float = float(i) - float(count - 1) / 2.0
 				var f := _foe("sprite", Vector2(centre + off * 26.0, top - absf(off) * 22.0))
@@ -1619,13 +1724,17 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				var f := _foe("sprite", Vector2(-side * (PATH_HALF + 20.0 + i * 30.0), row_y))
 				f.side = side
 				f.path = "sweep"
+				f.crossing = true
 				f.velocity = Vector2(side * 95.0, 10.0)
 				f.shoot_in = _rng.randf_range(0.8, 2.0)
 				made.append(f)
 		"mages":
 			var count: int = _sized(3 + (1 if r >= 4 else 0) + (1 if heat() >= 3 else 0), share)
+			# Even about the middle, closer together the more there are: the
+			# outside two never in the walls.
+			var gap: float = minf(150.0, (PATH_HALF - WALL_ROOM - 30.0) * 2.0 / maxf(1.0, float(count - 1)))
 			for i in count:
-				var x: float = (float(i) - float(count - 1) / 2.0) * 150.0
+				var x: float = (float(i) - float(count - 1) / 2.0) * gap
 				var f := _foe("mage", Vector2(x, top))
 				f.velocity = Vector2(0.0, 60.0)
 				f.stop_y = -HALF.y + 70.0 + _rng.randf_range(0.0, 30.0)
@@ -1647,6 +1756,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0), -HALF.y - 10.0 - float(i / 2) * 34.0))
 				f.side = side
 				f.path = "arc"
+				f.crossing = true
 				f.velocity = Vector2(-side * ARC_IN, 70.0)
 				f.shoot_in = _rng.randf_range(1.0, 2.0)
 				made.append(f)
@@ -1679,6 +1789,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				for i in count:
 					var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0 + i * 22.0), top - i * 26.0))
 					f.path = "dive"
+					f.crossing = true
 					f.velocity = Vector2(-side * 85.0, 80.0 + 4.0 * r)
 					f.shoot_in = _rng.randf_range(1.0, 2.2)
 					made.append(f)
@@ -1697,23 +1808,30 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 		"swarm":
 			# AN EVENT'S SWARM: sprites diving fast from all along the top.
 			var count: int = _sized(12 + crowd() * 2, share)
+			var reach: float = PATH_HALF - WALL_ROOM
 			for i in count:
-				var f := _foe("sprite", Vector2(_rng.randf_range(-PATH_HALF + 20.0, PATH_HALF - 20.0), top - i * 16.0))
+				var x: float = _rng.randf_range(-reach, reach)
+				var f := _foe("sprite", Vector2(x, top - i * 16.0))
 				f.path = "dive"
-				f.velocity = Vector2(_rng.randf_range(-30.0, 30.0), 150.0 + 6.0 * r)
+				# Its drift never takes it to a wall before it is past her.
+				f.velocity = Vector2(_rng.randf_range(maxf(-30.0, (-reach - x) / 3.0), minf(30.0, (reach - x) / 3.0)),
+					150.0 + 6.0 * r)
 				f.shoot_in = _rng.randf_range(1.4, 3.0)
 				made.append(f)
 		"wall":
-			# Slimes across the path, one way through.
-			var gap: float = _rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0)
-			var x: float = -PATH_HALF + 24.0
-			while x < PATH_HALF - 20.0:
+			# Slimes across the path, one way through: laid even about the
+			# middle, the same room to each wall, the way through between two
+			# of them and never at a wall.
+			var across: int = int(floor((PATH_HALF - WALL_ROOM - 4.0) * 2.0 / WALL_SLIME_GAP)) + 1
+			var first: float = -float(across - 1) / 2.0 * WALL_SLIME_GAP
+			var gap: float = first + (float(_rng.randi_range(1, across - 3)) + 0.5) * WALL_SLIME_GAP
+			for i in across:
+				var x: float = first + i * WALL_SLIME_GAP
 				if absf(x - gap) > 44.0:
 					var f := _foe("slime", Vector2(x, top))
 					f.velocity = Vector2(0.0, 30.0 + 2.0 * r)
 					f.side = 0.0
 					made.append(f)
-				x += 34.0
 	_vary(made)
 	return made
 
@@ -1769,8 +1887,13 @@ func _foe(kind: String, at: Vector2) -> Foe:
 	f.wave = _wave
 	var info: Dictionary = KINDS.get(kind, {})
 	var base: float = float(BOSS_HEALTH[mini(tier, TIERS - 1)]) if kind == "boss" else float(info.get("health", 3.0))
-	f.most = foe_health(base, rank())
+	f.most = foe_health(base, rank()) * party_share(kind == "boss") * tuned("health")
 	f.health = f.most
+	if _net_batch >= 0:
+		f.batch = _net_batch
+		f.slot = _net_slot
+		_net_slot += 1
+		_net_foes[_net_batch * 4096 + f.slot] = f
 	f.radius = float(info.get("radius", 9.0))
 	f.position = at
 	var look: Dictionary = look_of_scene("res://scene/enemy/%s.tscn" % scene_id)
@@ -1810,6 +1933,10 @@ func _move_foes(delta: float) -> void:
 			_elite_move(f, delta, r)
 		else:
 			_foe_move(f, delta, r, colour)
+		if not f.crossing and f.kind != "boss":
+			# HELD INSIDE THE WALLS: only what crosses the path goes behind them.
+			var inside: float = PATH_HALF - f.radius - 4.0
+			f.position.x = clampf(f.position.x, -inside, inside)
 		if f.kind != "boss":
 			if f.kind != "treasure" and f.position.distance_to(healer.position + HITBOX_AT) < f.radius + BODY - 2.0:
 				hurt()
@@ -1836,7 +1963,8 @@ func _foe_move(f: Foe, delta: float, r: int, colour: Color) -> void:
 			else:
 				f.position += f.velocity * delta
 			f.shoot_in -= delta
-			if f.shoot_in <= 0.0 and f.position.y > -HALF.y + 10.0 and f.position.y < HALF.y - 120.0:
+			if f.shoot_in <= 0.0 and f.position.y > -HALF.y + 10.0 and f.position.y < HALF.y - 120.0 \
+					and absf(f.position.x) < PATH_HALF - WALL_ROOM:
 				f.shoot_in = fire_gap(2.6, r)
 				_aimed(f.position, colour, bullet_speed(r))
 		"slime":
@@ -2123,12 +2251,229 @@ func _signature(from: Vector2, r: int, colour: Color, fired: int = -1) -> float:
 
 
 # =============================================================================
+# THE RUN WITH THE PARTY (0.105.0; healerparty.gd)
+# =============================================================================
+
+func leads() -> bool:
+	"""Whether this game makes the run's decisions: alone, or leading the party."""
+	return party == null or bool(party.leads())
+
+
+func party_share(keeper: bool = false) -> float:
+	"""How much tougher a monster is for the players in this run."""
+	var more: int = maxi(1, players) - 1
+	return 1.0 + tuned("party_keeper" if keeper else "party_health") * more
+
+
+func tuned(which: String) -> float:
+	"""One of the tuning numbers: the head of the event being made, else
+	this computer's (the owner's sliders; the defaults for everyone else)."""
+	if _heard_tune.has(which):
+		return float(_heard_tune[which])
+	return float(tune.get(which, TUNE_DEFAULTS.get(which, 1.0)))
+
+
+static func tune_changed() -> bool:
+	"""Whether this computer's tuning is away from the defaults."""
+	for which in TUNE_DEFAULTS:
+		if not is_equal_approx(float(tune.get(which, TUNE_DEFAULTS[which])), float(TUNE_DEFAULTS[which])):
+			return true
+	return false
+
+
+static func load_tune() -> void:
+	"""The owner's tuning, as he left it (each held to its range)."""
+	tune = TUNE_DEFAULTS.duplicate()
+	var file := ConfigFile.new()
+	if file.load(tune_path) != OK:
+		return
+	for which in TUNE_DEFAULTS:
+		var span: Array = TUNE_RANGES[which]
+		tune[which] = clampf(float(file.get_value("tune", which, TUNE_DEFAULTS[which])), float(span[0]), float(span[1]))
+
+
+static func save_tune() -> void:
+	var file := ConfigFile.new()
+	for which in TUNE_DEFAULTS:
+		file.set_value("tune", which, float(tune.get(which, TUNE_DEFAULTS[which])))
+	file.save(tune_path)
+
+
+func begin_run() -> void:
+	"""Start pressed (or the leader started it): the run begins, for this
+	many players."""
+	begun = true
+	if party != null and bool(party.active()):
+		players = maxi(players, int(party.members()))
+
+
+func _decide(type: int, args: Array) -> void:
+	"""One of the leader's decisions. Alone: made at once, as it always was.
+	With the party: numbered, sent, and made here from the same seed."""
+	if party == null or not bool(party.active()):
+		_apply(type, args)
+		return
+	var decided: Array = [type, _rng.randi_range(1, 2000000000), rank(), tier, wave_in_tier, land(), players,
+		roundi(tuned("party_health") * 1000.0), roundi(tuned("party_keeper") * 1000.0), roundi(tuned("party_crowd")),
+		roundi(tuned("health") * 1000.0)]
+	decided.append_array(args)
+	apply_event(party.announce(decided))
+
+
+# An event's head: key, number, type, seed, rank, tier, wave in tier, land,
+# players, and the tuning its monsters are made with (health a player more and
+# the keepers', in thousandths; monsters a wave a player more; all monsters'
+# health, in thousandths).
+const EVENT_HEAD := 13
+
+
+func apply_event(heard: Array) -> void:
+	"""An event - the leader's own or heard: its head (EVENT_HEAD) and its own
+	numbers - made here with its seed and tuning, so every screen makes the
+	same monsters in the same places with the same health."""
+	if heard.size() < EVENT_HEAD:
+		return
+	var saved: RandomNumberGenerator = _rng
+	_rng = RandomNumberGenerator.new()
+	_rng.seed = int(heard[3])
+	_forced_rank = maxi(0, int(heard[4]))
+	tier = clampi(int(heard[5]), 0, TIERS - 1)
+	wave_in_tier = clampi(int(heard[6]), 0, WAVES_PER_TIER - 1)
+	_forced_land = int(heard[7])
+	players = clampi(int(heard[8]), 1, 8)
+	_net_batch = int(heard[0]) * NET_BATCH_SPAN + int(heard[1])
+	_net_slot = 0
+	_heard_tune = {"party_health": clampf(float(heard[9]) / 1000.0, 0.0, 2.0),
+		"party_keeper": clampf(float(heard[10]) / 1000.0, 0.0, 4.0), "party_crowd": float(clampi(int(heard[11]), 0, 8)),
+		"health": clampf(float(heard[12]) / 1000.0, 0.1, 5.0)}
+	for which in _heard_tune:
+		if absf(float(_heard_tune[which]) - float(TUNE_DEFAULTS[which])) > 0.0015:
+			tune_used = true
+	_apply(int(heard[2]), heard.slice(EVENT_HEAD))
+	_heard_tune = {}
+	_rng = saved
+	_forced_rank = -1
+	_forced_land = -1
+	_net_batch = -1
+
+
+func _apply(type: int, args: Array) -> void:
+	match type:
+		EVENT_WAVE:
+			if args.size() >= 2 and int(args[0]) >= 0 and int(args[0]) < NET_KINDS.size():
+				spawn_wave(str(NET_KINDS[int(args[0])]), clampf(float(args[1]) / 100.0, 0.1, 1.0))
+		EVENT_BOSS:
+			_start_boss()
+		EVENT_ELITE:
+			if args.size() >= 3:
+				# Its health is reckoned now, from the event (its rank and
+				# tuning), not when it pops in: every screen's the same.
+				var kind: String = "mage" if int(args[2]) == 0 else "sniper"
+				_elite_marks.append({"at": Vector2(float(args[0]), float(args[1])), "warn": ELITE_WARN,
+					"kind": kind, "colour": Element.colour_for(land()), "batch": _net_batch,
+					"most": foe_health(float((KINDS.get(kind, {}) as Dictionary).get("health", 3.0)), rank())
+						* party_share() * tuned("health") * ELITE_HEALTH})
+		EVENT_RANDOM:
+			if args.size() >= 1 and int(args[0]) >= 0 and int(args[0]) < EVENTS.size():
+				start_event(str(EVENTS[int(args[0])]))
+
+
+func strike_remote(slot: int, batch: int, damage: float) -> void:
+	"""A party member's hit, on the same monster here."""
+	var found: Variant = _net_foes.get(batch * 4096 + slot)
+	if not is_instance_valid(found):
+		return
+	var f := found as Foe
+	if f != null and f.dying < 0.0 and f.get_parent() != null:
+		_strike(f, damage, true)
+	if _net_foes.size() > 3000:
+		for k in _net_foes.keys():
+			if not is_instance_valid(_net_foes[k]):
+				_net_foes.erase(k)
+
+
+func line() -> Array:
+	"""(Leader.) The run as it stands, for the party: key, state, tier, wave
+	in tier, waves done, bosses beaten, fire (tenths), players, clock (tenths),
+	the three lands, started (waiting, begun or counting down), the countdown
+	(tenths left) and whether the leader's run is tuned."""
+	var counting: float = float(party.get("counting")) if party != null else -1.0
+	var started: int = 1 if begun else (2 if counting >= 0.0 else 0)
+	return [int(party.key) if party != null else 0, state, tier, wave_in_tier, waves_done, bosses_beaten,
+		roundi(fire_height * 10.0), players, roundi(run_seconds * 10.0), int(lands[0]), int(lands[1]),
+		int(lands[2]), started, maxi(0, ceili(counting * 10.0)) if started == 2 else 0, 1 if tune_used else 0]
+
+
+func follow_line(heard: Array) -> void:
+	"""(Not leading.) The leader's line: its lands, its count of the run, and
+	its keeper's fall when ours still stands."""
+	if heard.size() < 13:
+		return
+	for i in 3:
+		lands[i] = int(heard[9 + i])
+	players = clampi(int(heard[7]), 1, 8)
+	if heard.size() >= 15 and int(heard[14]) == 1 and begun:
+		# THE LEADER'S RUN IS TUNED: so is this one, and it pays nothing.
+		tune_used = true
+	var their_state: int = int(heard[1])
+	if their_state == State.WON or their_state == State.LOST:
+		if ghost:
+			_finish(false)
+		return
+	if not begun:
+		return
+	waves_done = maxi(waves_done, int(heard[4]))
+	var their_tier: int = int(heard[2])
+	if their_tier > tier and state == State.BOSS and boss != null and is_instance_valid(boss) and boss.dying < 0.0:
+		# THE LEADER'S KEEPER FELL: so does ours.
+		_strike(boss, boss.health + 1.0, true)
+	tier = maxi(tier, their_tier)
+	if state == State.RUNNING:
+		wave_in_tier = int(heard[3])
+	bosses_beaten = maxi(bosses_beaten, int(heard[5]))
+	var their_clock: float = float(heard[8]) / 10.0
+	if absf(their_clock - run_seconds) > 1.5:
+		run_seconds = their_clock
+
+
+func take_over() -> void:
+	"""The leader went: this game makes the decisions from where it stands."""
+	_wave_due = run_seconds + wave_time(rank())
+	_between = -1.0
+	_elite_in = -1.0
+	_boss_adds_in = adds_gap()
+	_starved = 0.0
+
+
+func presence_state() -> Dictionary:
+	"""What this player's presence says while the run is played with the
+	party: where her healer is (out of sight once out of lives)."""
+	var at: Vector2 = healer.global_position
+	if ghost:
+		at.y = global_position.y + HALF.y + 80.0
+	var anim: String = str(healer_sprite.animation) if healer_sprite != null else "idleup"
+	return {"a": "healerrun", "at": at, "m": anim}
+
+
+func _become_ghost() -> void:
+	"""Out of lives with the party still in: she watches."""
+	ghost = true
+	lives = 0
+	healer.visible = false
+	untouchable = 1.0e9
+	frozen = 0.0
+	laser = 0.0
+	banner = "Out of lives - watching your party"
+	banner_left = BANNER_SECONDS * 2.0
+
+
+# =============================================================================
 # ELITES AND RANDOM EVENTS (0.104.0)
 # =============================================================================
 
 func _elites_step(delta: float) -> void:
 	"""From the second tier an elite now and then: its mark, then it pops in."""
-	if state == State.RUNNING and tier >= 1:
+	if state == State.RUNNING and tier >= 1 and leads():
 		if _elite_in < 0.0:
 			_elite_in = elite_gap()
 		_elite_in -= delta
@@ -2141,30 +2486,33 @@ func _elites_step(delta: float) -> void:
 		if float(m["warn"]) > 0.0:
 			still.append(m)
 		else:
-			pop_elite(m["at"], str(m["kind"]))
+			pop_elite(m["at"], str(m["kind"]), int(m.get("batch", -1)), float(m.get("most", -1.0)))
 	_elite_marks = still
 	hazards.marks = _elite_marks
 
 
 func elite_gap() -> float:
 	var span: Array = ELITE_GAP_LAST if last_tier() else ELITE_GAP
-	return _rng.randf_range(float(span[0]), float(span[1]))
+	return _rng.randf_range(float(span[0]), float(span[1])) * tuned("elite_gap")
 
 
 func mark_elite() -> void:
 	"""Where the next elite will pop in: a ring closing on a spot up the path."""
-	var at := Vector2(_rng.randf_range(-PATH_HALF + 60.0, PATH_HALF - 60.0), _rng.randf_range(-HALF.y + 55.0, -HALF.y + 110.0))
-	_elite_marks.append({"at": at, "warn": ELITE_WARN, "kind": "mage" if _rng.randf() < 0.5 else "sniper",
-		"colour": Element.colour_for(land())})
+	var at := Vector2(_rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0), _rng.randf_range(-HALF.y + 55.0, -HALF.y + 110.0))
+	_decide(EVENT_ELITE, [roundi(at.x), roundi(at.y), 0 if _rng.randf() < 0.5 else 1])
 
 
-func pop_elite(at: Vector2, kind: String) -> Foe:
+func pop_elite(at: Vector2, kind: String, batch: int = -1, most: float = -1.0) -> Foe:
 	"""An elite of this land pops in at `at`: bigger, glowing, ELITE_HEALTH
-	times as tough, with a flash and a jolt."""
+	times as tough, with a flash and a jolt. `batch`: its event's, with the
+	party; `most`: its health, reckoned when it was marked."""
+	_net_batch = batch
+	_net_slot = 0
 	var f := _foe(kind, at)
+	_net_batch = -1
 	f.elite = true
 	f.wave = -1
-	f.most *= ELITE_HEALTH
+	f.most = most if most > 0.0 else f.most * ELITE_HEALTH
 	f.health = f.most
 	f.radius *= ELITE_SIZE
 	f.sprite.scale *= ELITE_SIZE
@@ -2270,7 +2618,8 @@ func _boss_step(delta: float) -> void:
 	_boss_adds_in -= delta
 	if _boss_adds_in <= 0.0:
 		_boss_adds_in = adds_gap() * (ENRAGE_PACE if enraged else 1.0)
-		spawn_wave(str(BOSS_ADDS[_rng.randi_range(0, BOSS_ADDS.size() - 1)]), 0.5)
+		if leads():
+			_decide(EVENT_WAVE, [NET_KINDS.find(str(BOSS_ADDS[_rng.randi_range(0, BOSS_ADDS.size() - 1)])), 50])
 	if not enraged and boss_share() < ENRAGE_AT:
 		enraged = true
 		banner = "The keeper is enraged"
@@ -2449,6 +2798,7 @@ func _lay_terrain() -> void:
 		for x in [-PATH_HALF - 4.5, PATH_HALF + 4.5]:
 			var piece := (load(WALL_PIECE) as PackedScene).instantiate() as Node2D
 			piece.position = Vector2(x, float(_wall_top) * WALL_STEP)
+			piece.z_index = WALL_Z
 			piece.set_meta(&"wall", true)
 			props.add_child(piece)
 	# A section ahead every SECTION_LENGTH.
@@ -2498,12 +2848,12 @@ func _lay_section(at_y: float) -> void:
 		0:
 			pass  # a hall: nothing in the way
 		1:
-			# A row of pillars, gaps between.
+			# A row of pillars, gaps between - even about the middle.
 			var y: float = at_y + SECTION_LENGTH * 0.5
-			var x: float = -PATH_HALF + _rng.randf_range(50.0, 90.0)
-			while x < PATH_HALF - 40.0:
-				_pillar(Vector2(x, y))
-				x += _rng.randf_range(90.0, 130.0)
+			var count: int = _rng.randi_range(3, 4)
+			var gap: float = _rng.randf_range(90.0, 130.0)
+			for i in count:
+				_pillar(Vector2((float(i) - float(count - 1) / 2.0) * gap, y))
 		2:
 			# A colonnade: pillars down both sides of the middle.
 			var y: float = at_y + 40.0

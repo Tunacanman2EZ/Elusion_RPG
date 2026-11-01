@@ -38,10 +38,37 @@
 # (run.god_used) says so on the gold line and pays nothing: Leave finishes it
 # on the server with nothing reached.
 #
+# WITH THE PARTY (0.105.0; the owner: "make it to where you can join with your
+# party"). In a party (Party.members), with a server that seats the run a room
+# per party (Presence.healer_rooms()), the run gets a party node (healerparty.gd) and
+# this player's presence says where her healer runs (Presence.state_override)
+# while the party's healers are drawn in the run (Presence.world_override,
+# run.others). It opens on the start panel every time: the room's leader
+# presses Start for everyone, the others wait for it; alone, Start is yours.
+# Each player's own run of the day, each paid at Leave.
+#
+# READY, A COUNTDOWN, AND THE PARTY'S BOARD (0.105.0; the owner: "we need a
+# ready for all players then a countdown and still have the option to leave
+# incase some one goes afk", "i want the screen to show players and total
+# accumulation for the party and who is dead"). With the party in the room
+# the start panel lists who is here and who is ready, and Start is Ready
+# (Space too); everyone ready, every screen counts three seconds and begins
+# together (healerparty.gd). Opened from the card with the party
+# (`enter_at_start`), the screen has no run of the day yet: it asks for it
+# when the count starts (or at Start alone), so Leave before that costs
+# nothing - and Again goes back to the start panel. During and after the run
+# the board (`board`) lists each player - lives, out or through, kills, their
+# gold - and the party's gold added up.
+#
+# TUNING (the owner's): "Tuning" under the god switch opens sliders for the
+# run's numbers (healerrun.gd TUNE_*), kept on this computer; mouse only, as
+# every key is the run's. A tuned run pays nothing.
+#
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
 const LAYER := 90
 const COLOUR := Color(1.0, 0.86, 0.45)
 const COLOUR_HINT := Color(0.82, 0.78, 0.7)
@@ -79,6 +106,22 @@ var hud: Node = null
 var gold_line: Label = null
 var meteor_line: Label = null
 var tutorial: PanelContainer = null
+var party_line: Label = null
+var start_button: Button = null
+var board: RichTextLabel = null
+var tune_button: Button = null
+var tune_panel: PanelContainer = null
+var _tune_rows: Dictionary = {}
+# Opened with the party and no run of the day: it is asked for at the count.
+var enter_at_start: bool = false
+var _entering: bool = false
+# What the start panel says about asking for the run, when it went wrong.
+var _lobby_said: String = ""
+# The run began without a run of the day (the server said no): why.
+var _no_run: String = ""
+# The suite's door: whether the server seats the run a room per party.
+var party_rooms: Callable = Callable(self, "_party_rooms")
+var party_link: Node = null
 # The suite's doors: the two requests and the character's slot.
 var finish_request: Callable = Callable(Api, "post")
 var enter_request: Callable = Callable(Api, "post")
@@ -102,19 +145,21 @@ const TUTORIAL_LINES := [
 
 
 static func open(tree: SceneTree, run_seed: int = 0, run_on_server: int = 0, what_it_pays: Dictionary = {},
-		on_hud: Node = null) -> CanvasLayer:
+		on_hud: Node = null, with_party: bool = false) -> CanvasLayer:
 	var screen: CanvasLayer = (load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).new()
 	screen.name = "healerrunscreen"
 	screen.set("seed_value", run_seed)
 	screen.set("run_id", run_on_server)
 	screen.set("pays", what_it_pays)
 	screen.set("hud", on_hud)
+	screen.set("enter_at_start", with_party and run_on_server == 0)
 	tree.root.add_child(screen)
 	return screen
 
 
 func _ready() -> void:
 	layer = LAYER
+	RunScript.load_tune()
 	var back := ColorRect.new()
 	back.name = "back"
 	back.color = Color(0.0, 0.0, 0.0)
@@ -188,6 +233,30 @@ func _build_words() -> void:
 	god_switch.toggled.connect(_on_god_toggled)
 	god_switch.visible = false
 	add_child(god_switch)
+	tune_button = Button.new()
+	tune_button.name = "tunebutton"
+	tune_button.text = "Tuning"
+	tune_button.toggle_mode = true
+	tune_button.focus_mode = Control.FOCUS_NONE
+	_place(tune_button, Control.PRESET_TOP_RIGHT, Rect2(-110, 194, 94, 28))
+	tune_button.toggled.connect(_on_tune_toggled)
+	tune_button.visible = false
+	add_child(tune_button)
+	_build_tuning()
+	board = RichTextLabel.new()
+	board.name = "board"
+	board.bbcode_enabled = true
+	board.fit_content = true
+	board.scroll_active = false
+	board.autowrap_mode = TextServer.AUTOWRAP_OFF
+	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board.add_theme_font_size_override("normal_font_size", 15)
+	board.add_theme_color_override("default_color", COLOUR_HINT)
+	board.add_theme_color_override("font_outline_color", Color.BLACK)
+	board.add_theme_constant_override("outline_size", 5)
+	_place(board, Control.PRESET_TOP_LEFT, Rect2(18, 206, 300, 140))
+	board.visible = false
+	add_child(board)
 	results = PanelContainer.new()
 	results.name = "results"
 	results.visible = false
@@ -248,7 +317,14 @@ func _build_words() -> void:
 		line.add_theme_font_size_override("font_size", 17)
 		line.add_theme_color_override("font_color", COLOUR_HINT)
 		lines.add_child(line)
-	var start_button := Button.new()
+	party_line = Label.new()
+	party_line.name = "partyline"
+	party_line.add_theme_font_size_override("font_size", 17)
+	party_line.add_theme_color_override("font_color", COLOUR)
+	party_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	party_line.visible = false
+	lines.add_child(party_line)
+	start_button = Button.new()
 	start_button.name = "start"
 	start_button.text = "Start  (Space)"
 	start_button.focus_mode = Control.FOCUS_NONE
@@ -258,6 +334,99 @@ func _build_words() -> void:
 	lines.add_child(start_button)
 	tutorial.visible = false
 	add_child(tutorial)
+
+
+func _build_tuning() -> void:
+	"""The owner's sliders: one a number of RunScript.TUNE_ORDER, its value
+	beside its name, Defaults, and what tuning does."""
+	tune_panel = PanelContainer.new()
+	tune_panel.name = "tuning"
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.06, 0.92)
+	style.border_color = Color(0.85, 0.65, 0.25)
+	style.set_border_width_all(2)
+	style.set_content_margin_all(10)
+	tune_panel.add_theme_stylebox_override("panel", style)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 2)
+	tune_panel.add_child(column)
+	for which in RunScript.TUNE_ORDER:
+		var said := Label.new()
+		said.name = "%s_said" % which
+		said.add_theme_font_size_override("font_size", 13)
+		said.add_theme_color_override("font_color", COLOUR_HINT)
+		column.add_child(said)
+		var span: Array = RunScript.TUNE_RANGES[which]
+		var slider := HSlider.new()
+		slider.name = str(which)
+		slider.min_value = float(span[0])
+		slider.max_value = float(span[1])
+		slider.step = float(span[2])
+		slider.focus_mode = Control.FOCUS_NONE
+		slider.custom_minimum_size = Vector2(260, 16)
+		slider.value_changed.connect(_on_tune_changed.bind(str(which)))
+		column.add_child(slider)
+		_tune_rows[str(which)] = [said, slider]
+	var defaults := Button.new()
+	defaults.name = "defaults"
+	defaults.text = "Defaults"
+	defaults.focus_mode = Control.FOCUS_NONE
+	defaults.pressed.connect(tune_defaults)
+	column.add_child(defaults)
+	var note := Label.new()
+	note.text = "Your runs, and the runs you lead.\nA tuned run pays nothing."
+	note.add_theme_font_size_override("font_size", 12)
+	note.add_theme_color_override("font_color", COLOUR_BAD)
+	column.add_child(note)
+	_place(tune_panel, Control.PRESET_TOP_RIGHT, Rect2(-300, 226, 284, 0))
+	tune_panel.visible = false
+	add_child(tune_panel)
+
+
+func _on_tune_toggled(on: bool) -> void:
+	if not bool(may_be_god.call()):
+		tune_button.set_pressed_no_signal(false)
+		tune_button.visible = false
+		tune_panel.visible = false
+		return
+	tune_panel.visible = on
+	_show_tuning()
+
+
+func _show_tuning() -> void:
+	"""Each slider and its words, from the tuning as it stands."""
+	for which in _tune_rows:
+		var row: Array = _tune_rows[which]
+		var value: float = float(RunScript.tune.get(which, RunScript.TUNE_DEFAULTS[which]))
+		(row[1] as HSlider).set_value_no_signal(value)
+		(row[0] as Label).text = "%s: %s" % [str(RunScript.TUNE_NAMES[which]), tune_text(which, value)]
+
+
+static func tune_text(which: String, value: float) -> String:
+	"""A tuning number as the owner reads it: a share as a percent, a count
+	as a count, a scale as times."""
+	match which:
+		"party_health", "party_keeper", "events":
+			return "%d%%" % roundi(value * 100.0)
+		"party_crowd":
+			return "%d" % roundi(value)
+	return "x%.2f" % value
+
+
+func _on_tune_changed(value: float, which: String) -> void:
+	if not bool(may_be_god.call()):
+		return
+	RunScript.tune[which] = value
+	RunScript.save_tune()
+	_show_tuning()
+
+
+func tune_defaults() -> void:
+	if not bool(may_be_god.call()):
+		return
+	RunScript.tune = RunScript.TUNE_DEFAULTS.duplicate()
+	RunScript.save_tune()
+	_show_tuning()
 
 
 func _label(id: String, size: int, colour: Color, preset: int, at: Vector2) -> Label:
@@ -309,24 +478,58 @@ func start() -> void:
 	if not pays.is_empty():
 		run.set("pays", RunScript.pays_from(pays))
 	run.position = RunScript.HALF
+	var with_party: bool = bool(party_rooms.call())
+	if with_party:
+		var party: Node = PartyScript.new()
+		party.name = "party"
+		party.set("run", run)
+		if party_link != null:
+			party.set("link", party_link)
+		run.set("party", party)
+		run.add_child(party)
+		party.connect("start_now", _on_start_now)
+		party.connect("counting_began", _on_counting_began)
 	viewport.add_child(run)
+	if with_party and party_link == null:
+		Presence.state_override = Callable(run, "presence_state")
+		Presence.world_override = run.get("others")
 	var may: bool = bool(may_be_god.call())
 	god_switch.visible = may
 	run.set("god", may and GameState.god_mode)
 	god_switch.set_pressed_no_signal(may and GameState.god_mode)
+	tune_button.visible = may
+	if not may:
+		tune_button.set_pressed_no_signal(false)
+		tune_panel.visible = false
+	elif tune_panel.visible:
+		_show_tuning()
 	results.visible = false
+	_lobby_said = ""
+	_no_run = ""
 	_leave_armed = 0.0
 	_lives_seen = -1
 	_paid = false
 	# THE FIRST RUN OF A SESSION OPENS ON THE TUTORIAL, her standing still
 	# on the landing behind it until Start.
-	if not _tutorial_seen:
+	party_line.visible = with_party
+	# Opened without a run of the day, it opens there too: Start asks for it.
+	if not _tutorial_seen or with_party or enter_at_start:
 		run.set_process(false)
 		tutorial.visible = true
 		tutorial.reset_size()
 		tutorial.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		tutorial.grow_vertical = Control.GROW_DIRECTION_BOTH
 		tutorial.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+
+
+func _party_rooms() -> bool:
+	"""In a party, with a server that seats the run a room per party. Alone,
+	the run is as it always was."""
+	return Presence.healer_rooms() and Party.members.size() > 1
+
+
+func _party() -> Node:
+	return run.get("party") if run != null and is_instance_valid(run) else null
 
 
 func _may_be_god() -> bool:
@@ -345,10 +548,76 @@ func _on_god_toggled(on: bool) -> void:
 
 
 func begin() -> void:
-	"""The tutorial away: the run's "Get ready", then she walks."""
+	"""Start (or Space). With the party here it is Ready - and Not ready -
+	and the count starts everyone together; alone, the tutorial away and
+	the run's "Get ready" (with the run of the day asked for first, when the
+	screen was opened without one)."""
+	var party: Node = _party()
+	if party != null and bool(party.call("active")):
+		if float(party.get("counting")) < 0.0:
+			party.call("set_ready", not bool(party.get("said_ready")))
+		paint()
+		return
+	if not await _have_a_run():
+		paint()
+		return
+	if is_instance_valid(self) and tutorial.visible:
+		_go()
+
+
+func _on_start_now() -> void:
+	"""The count reached nought (or the leader's run began): go."""
+	if tutorial.visible:
+		_go()
+
+
+func _on_counting_began() -> void:
+	"""The count began: the run of the day, asked for now - when the server
+	says no, this player is not ready, and the count stops."""
+	if await _have_a_run():
+		return
+	if not is_instance_valid(self):
+		return
+	var party: Node = _party()
+	if run != null and is_instance_valid(run) and bool(run.get("begun")):
+		_no_run = _lobby_said
+	elif party != null:
+		party.call("set_ready", false)
+
+
+func _have_a_run() -> bool:
+	"""The day's run on the server: true when there is one (or the screen
+	needs none). Opened with the party, it is asked for here, once."""
+	if not enter_at_start or run_id != 0:
+		return true
+	if _entering:
+		return false
+	_entering = true
+	_lobby_said = "Asking the server for your run..."
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": "healerrun", "slot": int(slot_now.call())}, 6.0)
+	_entering = false
+	if not is_instance_valid(self):
+		return false
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		run_id = int(data["run"])
+		if data.get("pays") is Dictionary:
+			pays = data["pays"]
+			if run != null and is_instance_valid(run):
+				run.set("pays", RunScript.pays_from(pays))
+		_lobby_said = ""
+		return true
+	_lobby_said = str(data.get("message", "No runs left today.")) if int(res.get("status", 0)) == 409 \
+		else "Could not reach the server - try again."
+	return false
+
+
+func _go() -> void:
 	tutorial.visible = false
 	_tutorial_seen = true
 	if run != null and is_instance_valid(run):
+		run.call("begin_run")
 		run.set_process(true)
 
 
@@ -385,11 +654,39 @@ func paint() -> void:
 		+ ((" - laser %d" % int(run.get("laser_level"))) if float(run.get("laser")) > 0.0 else "")
 	rank_line.text = "Danger %d" % int(run.call("rank"))
 	slain_line.text = "Slain %d" % int(run.get("slain"))
-	gold_line.text = ("Gold %d - god mode, pays nothing" if bool(run.get("god_used")) else "Gold %d") \
-		% int(run.call("gold_now"))
+	gold_line.text = "Gold %d" % int(run.call("gold_now"))
+	if bool(run.get("god_used")):
+		gold_line.text += " - god mode, pays nothing"
+	elif bool(run.get("tune_used")):
+		gold_line.text += " - tuned, pays nothing"
+	elif _no_run != "":
+		gold_line.text += " - not paid: " + _no_run
 	var held_meteors: int = int(run.get("meteors"))
 	meteor_line.text = ("Meteors %d - Space" % held_meteors) if held_meteors > 0 else ""
 	banner_line.text = "" if tutorial.visible else str(run.get("banner"))
+	var party: Node = _party()
+	if party != null and party_line != null:
+		var here: bool = bool(party.call("active"))
+		if here:
+			party_line.text = lobby_text(party)
+			var counting: float = float(party.get("counting"))
+			start_button.text = ("Not ready  (Space)" if bool(party.get("said_ready")) else "Ready  (Space)")
+			start_button.disabled = counting >= 0.0 or _entering
+			if int(run.get("players")) > 1:
+				top_line.text += "   party of %d" % int(run.get("players"))
+		else:
+			party_line.text = "Your party joins when they press Go too - wait for them here, or Start alone." \
+				+ ("\n" + _lobby_said if _lobby_said != "" else "")
+			start_button.text = "Start alone  (Space)"
+			start_button.disabled = _entering
+		board.visible = not tutorial.visible and (here or int(run.get("players")) > 1)
+		if board.visible:
+			board.text = board_text(party)
+	elif party_line != null:
+		# Alone: the panel says only what went wrong asking for the run.
+		party_line.visible = _lobby_said != ""
+		party_line.text = _lobby_said
+		board.visible = false
 	boss_bar.visible = state == RunScript.State.BOSS
 	boss_bar.value = float(run.call("boss_share"))
 	if _leave_armed > 0.0:
@@ -397,8 +694,13 @@ func paint() -> void:
 	else:
 		leave_button.text = "Leave"
 	if (state == RunScript.State.WON or state == RunScript.State.LOST) and not results.visible:
-		result_line.text = "%s\n%d gold - yours when you Leave" % [str(run.call("result_text")), int(run.call("gold_now"))] \
-			if not bool(run.get("god_used")) else "%s\nGod mode - this run pays nothing" % str(run.call("result_text"))
+		result_line.text = "%s\n%d gold - yours when you Leave" % [str(run.call("result_text")), int(run.call("gold_now"))]
+		if bool(run.get("god_used")):
+			result_line.text = "%s\nGod mode - this run pays nothing" % str(run.call("result_text"))
+		elif bool(run.get("tune_used")):
+			result_line.text = "%s\nTuned - this run pays nothing" % str(run.call("result_text"))
+		elif _no_run != "":
+			result_line.text = "%s\nNot paid: %s" % [str(run.call("result_text")), _no_run]
 		results.visible = true
 		results.reset_size()
 		results.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -406,11 +708,63 @@ func paint() -> void:
 		results.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 
 
+func lobby_text(party: Node) -> String:
+	"""The start panel with the party here: who is, who is ready, the count."""
+	var lines: Array = []
+	var counting: float = float(party.get("counting"))
+	if counting >= 0.0:
+		lines.append("Starting in %d..." % maxi(1, ceili(counting)))
+	else:
+		lines.append("Your party - everyone presses Ready, then a count of three.")
+	for row in party.call("roster"):
+		var is_ready: bool = int(row["flags"]) & 1 != 0
+		lines.append("%s%s - %s" % [str(row["name"]), " (you)" if bool(row["me"]) else "",
+			"ready" if is_ready else ("joining..." if not bool(row["heard"]) else "not ready")])
+	if _lobby_said != "":
+		lines.append(_lobby_said)
+	return "\n".join(lines)
+
+
+func board_text(party: Node) -> String:
+	"""The party's board: each player - lives, out or through, kills, gold -
+	and the party's gold added up."""
+	var rows: Array = party.call("roster")
+	var lines: Array = ["[color=#%s]Party of %d - %s gold[/color]" % [COLOUR.to_html(false), rows.size(),
+		thousands(int(party.call("party_gold")))]]
+	for row in rows:
+		var flags: int = int(row["flags"])
+		var status: String = "%d lives" % int(row["lives"])
+		var colour: Color = COLOUR_HINT
+		if flags & 2 != 0:
+			status = "through"
+			colour = COLOUR
+		elif flags & 4 != 0:
+			status = "out"
+			colour = COLOUR_BAD
+		elif int(row["lives"]) == 1:
+			status = "1 life"
+		lines.append("[color=#%s]%s - %s - %d slain - %s[/color]" % [colour.to_html(false),
+			str(row["name"]).replace("[", "[lb]"), status, int(row["kills"]), thousands(int(row["gold"]))])
+	return "\n".join(lines)
+
+
+static func thousands(n: int) -> String:
+	"""A whole number with commas: 20000 reads 20,000."""
+	var digits: String = str(absi(n))
+	var out: String = ""
+	while digits.length() > 3:
+		out = "," + digits.right(3) + out
+		digits = digits.left(digits.length() - 3)
+	return ("-" if n < 0 else "") + digits + out
+
+
 func ask_to_leave() -> void:
-	"""Leave - asked twice while a run is on; once it is over, at once."""
+	"""Leave - asked twice while a run is on; before it begins, and once it
+	is over, at once."""
 	var state: int = int(run.get("state")) if run != null and is_instance_valid(run) else RunScript.State.LOST
 	var over: bool = state == RunScript.State.WON or state == RunScript.State.LOST
-	if over or _leave_armed > 0.0:
+	var waiting: bool = run != null and is_instance_valid(run) and not bool(run.get("begun"))
+	if over or waiting or _leave_armed > 0.0:
 		leave()
 		return
 	_leave_armed = LEAVE_ARMED_SECONDS
@@ -436,6 +790,12 @@ func again() -> void:
 	if _busy:
 		return
 	if not await _pay():
+		return
+	if enter_at_start:
+		# WITH THE PARTY: back to the start panel; the next run of the day is
+		# asked for at the count.
+		run_id = 0
+		start()
 		return
 	if run_id == 0:
 		start()
@@ -474,8 +834,9 @@ func _pay() -> bool:
 	var state: int = int(run.get("state"))
 	var body := {"run": run_id, "waves": mini(int(run.get("waves_done")), RunScript.TIERS * RunScript.WAVES_PER_TIER),
 		"bosses": int(run.get("bosses_beaten")), "goal": state == RunScript.State.WON}
-	if bool(run.get("god_used")):
-		# GOD MODE PAYS NOTHING: the run is closed on the server, nothing reached.
+	if bool(run.get("god_used")) or bool(run.get("tune_used")):
+		# GOD MODE, AND A TUNED RUN, PAY NOTHING: the run is closed on the
+		# server, nothing reached.
 		body = {"run": run_id, "waves": 0, "bosses": 0, "goal": false}
 	var res: Dictionary = await finish_request.call("/api/minigames/finish", body, 8.0)
 	_busy = false
@@ -502,7 +863,15 @@ func close() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
 	_held = null
+	_let_presence_go()
 	queue_free()
+
+
+func _let_presence_go() -> void:
+	"""Back in town: this player's presence is the character's again."""
+	if party_link == null and Presence.state_override.is_valid():
+		Presence.state_override = Callable()
+		Presence.world_override = null
 
 
 func _input(event: InputEvent) -> void:
@@ -524,3 +893,4 @@ func _input(event: InputEvent) -> void:
 func _exit_tree() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
+	_let_presence_go()

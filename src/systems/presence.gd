@@ -208,6 +208,13 @@ var _server_relays: bool = false
 var _server_health: bool = false
 # Said in the welcome (0.93.3): the server passes the party's run on.
 var _server_runs: bool = false
+# THE HEALER'S RUN TOGETHER (0.105.0): the server seats the run a room per
+# party ("hr" in its welcome), so the run may say it is there.
+var _server_healer_rooms: bool = false
+# While the Healer's Run is played with the party: what this player's state
+# says instead of the world's - {"a", "x", "y", "m"} - and none of the
+# world's monster messages are heard (healerrunscreen.gd sets and clears it).
+var state_override: Callable = Callable()
 # Said in the lead (0.93.3): whether the server books this area's monsters
 # (a party's arena it does not). True until a lead says otherwise.
 var _lead_books: bool = true
@@ -302,6 +309,12 @@ func runs() -> bool:
 	"""True while the link is open to a server that passes a party's run
 	between the games in its arena (0.93.3)."""
 	return shares() and _server_runs
+
+
+func healer_rooms() -> bool:
+	"""True while the link is open to a server that seats the Healer's Run a
+	room per party (0.105.0)."""
+	return runs() and _server_healer_rooms
 
 
 func send_run(data: Dictionary, to: int = -1) -> void:
@@ -510,6 +523,7 @@ func _pump(delta: float, player: Node) -> void:
 		_server_relays = false
 		_server_health = false
 		_server_runs = false
+		_server_healer_rooms = false
 		_lead_books = true
 		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
@@ -604,14 +618,23 @@ func state_for(player: Node) -> Dictionary:
 		if node != null and node.visible:
 			fx.append(effect)
 	var at: Vector2 = (player as Node2D).global_position if player is Node2D else Vector2.ZERO
+	var area: String = AreaRegistry.current_area_id()
+	if state_override.is_valid():
+		# IN THE HEALER'S RUN WITH THE PARTY: where her healer runs.
+		var over: Variant = state_override.call()
+		if over is Dictionary and not (over as Dictionary).is_empty():
+			area = str(over.get("a", area))
+			at = over.get("at", at)
+			anim = str(over.get("m", anim)) if _anim_rule.search(str(over.get("m", ""))) != null else anim
+			fx = []
 	return {
 		"t": "s",
-		"a": AreaRegistry.current_area_id(),
+		"a": area,
 		"x": snappedf(at.x, 0.1),
 		"y": snappedf(at.y, 0.1),
 		"m": anim,
 		"fx": fx,
-		"pet": str(player.get("active_pet_id")) if "active_pet_id" in player else "",
+		"pet": "" if area == "healerrun" else (str(player.get("active_pet_id")) if "active_pet_id" in player else ""),
 		# THEIR AIM AND THEIR HEALTH (0.41.0, remoteplayer.gd): where this
 		# player's aim ring points and how much health they have, for the
 		# others to draw.
@@ -704,6 +727,7 @@ func handle_message(message: Dictionary) -> void:
 			_server_relays = int(message.get("x", 0)) >= 1
 			_server_health = int(message.get("sh", 0)) >= SERVER_HEALTH
 			_server_runs = int(message.get("en", 0)) >= RUN_VERSION
+			_server_healer_rooms = int(message.get("hr", 0)) >= 1
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":
@@ -735,17 +759,21 @@ func handle_message(message: Dictionary) -> void:
 			_lead_sharers = maxi(int(message.get("n", 0)), 0)
 			lead_changed.emit(_lead_area, _leader_id, _lead_sharers)
 		"need":
-			world_needed.emit(int(message.get("id", -1)))
+			# Not while playing the Healer's Run with the party: the world's
+			# monsters are not where this player is.
+			if not state_override.is_valid():
+				world_needed.emit(int(message.get("id", -1)))
 		"w":
-			if message.get("d") is Dictionary:
+			if message.get("d") is Dictionary and not state_override.is_valid():
 				world_received.emit(message["d"])
 		"hp":
 			var rows: Variant = message.get("p", [])
 			var dead: Variant = message.get("d", [])
-			health_received.emit(rows if rows is Array else [], dead if dead is Array else [])
+			if not state_override.is_valid():
+				health_received.emit(rows if rows is Array else [], dead if dead is Array else [])
 		"h":
 			var batch: Variant = message.get("p")
-			if batch is Array:
+			if batch is Array and not state_override.is_valid():
 				hits_received.emit(int(message.get("from", -1)), batch)
 		"x":
 			_hear_attacks(int(message.get("id", -1)), message.get("e"))

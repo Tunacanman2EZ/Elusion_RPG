@@ -30,6 +30,11 @@
 # slot) and opens the run with its id and what it pays; the listing says how
 # many runs are left today, or when the next one is.
 #
+# WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
+# room per party (`healer_party`), Go opens the run's start panel without
+# asking (`open_lobby`): the run of the day is asked for when everyone is
+# ready and the count starts, so leaving while somebody is away costs nothing.
+#
 # Built by the HUD (attach()), no class_name, so a fresh checkout needs no
 # editor rescan.
 extends PanelContainer
@@ -63,6 +68,8 @@ var chest_count: Callable = Callable(self, "_chest_count")
 # The Healer's Run's doors: who sees it (the owner, in step 1) and what Go does.
 var shows_healer_run: Callable = Callable(self, "_shows_healer_run")
 var open_run: Callable = Callable(self, "_open_run")
+var healer_party: Callable = Callable(self, "_healer_party")
+var open_lobby: Callable = Callable(self, "_open_lobby")
 
 var hud: Node = null
 var title: Label = null
@@ -398,6 +405,11 @@ func _on_healer_go() -> void:
 	if str(area_now.call()) != TOWN or _healer_busy:
 		paint()
 		return
+	if bool(healer_party.call()):
+		# WITH THE PARTY: the start panel first; the run is asked for at the count.
+		close()
+		open_lobby.call()
+		return
 	_healer_busy = true
 	_healer_said = "Asking the server..."
 	paint()
@@ -430,6 +442,14 @@ func _shows_healer_run() -> bool:
 func _open_run(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:
 	(load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).call("open", get_tree(), 0, run_id,
 		what_it_pays, hud)
+
+
+func _healer_party() -> bool:
+	return Presence.healer_rooms() and Party.members.size() > 1
+
+
+func _open_lobby() -> void:
+	(load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).call("open", get_tree(), 0, 0, {}, hud, true)
 
 
 func chest_held() -> int:

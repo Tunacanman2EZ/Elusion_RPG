@@ -3021,6 +3021,95 @@ Healer's Run: three runs a day, its gold at Leave".
     the end it would take major focus".
   `_test_the_healers_run_gets_wilder()` (testrunner_9).
 
+- **With the party (0.105.0)** - the owner: "make it to where you can join
+  with your party", and of the gold: "each player". The plan is the commit
+  folder's HEALER_RUN_PARTY_PLAN.txt.
+  - **Where**: in a party (`Party.members`), with a server whose welcome says
+    `"hr"` (`Presence.healer_rooms()`), the screen gives the run a party
+    node (`healerparty.gd`) and hands presence over: `Presence.state_override`
+    (`run.presence_state()`: area "healerrun", where her healer is) and
+    `Presence.world_override` (`run.others`, where the party's characters
+    are drawn, as RemotePlayers). The server seats "healerrun" a room per
+    party, like the Endless. Closing gives presence back
+    (`_let_presence_go()`); while overridden presence hears none of the
+    world's monster messages.
+  - **Ready, then a count of three** (the owner: "we need a ready for all
+    players then a countdown and still have the option to leave incase some
+    one goes afk", "noone starts ahead everyone starts at the same time"):
+    the start panel lists who is in the room and who is ready (`roster()`);
+    Start (and Space) is Ready / Not ready (`set_ready()`, said in "me").
+    Everyone ready, the leader (the earliest in) counts `COUNTDOWN_SECONDS`
+    in its line (started `COUNTING`, the tenths left); every screen counts
+    from what it heard and begins at nought (`start_now`) - two games on one
+    machine began 71 ms apart. Somebody not ready or new stops the count
+    (`counting_stopped`) unless under `CANCEL_LATE` is left; the button is
+    still while counting. A game that hears a run begun without having said
+    Ready plays its own (`ALONE`), as one that comes late: joining half way
+    would be paid for others' work. Alone in the room it is Start alone.
+  - **The run of the day at the count**: with the party the card's Go opens
+    the start panel without asking (`healer_party`, `open_lobby`; the screen's
+    `enter_at_start`), and the screen asks `POST /api/minigames/enter` when
+    the count begins (`counting_began`) or at Start alone (`_have_a_run()`).
+    A no takes Ready back and is said on the panel; Leave before the count
+    spends nothing; Again pays and goes back to the panel.
+  - **One run on every screen**: the leader's decisions go through
+    `_decide()` - alone they are made at once as before; with the party they
+    are numbered events (`party.announce()`) that every game makes from the
+    same seed, rank, tier, land and players (`apply_event()`). Each monster
+    is named by (batch, slot) (`Foe.batch`, `Foe.slot`; batch = key x 2000 +
+    event), every hit is sent (`tell_hit()`, whole points) and taken on
+    every screen (`strike_remote()`), so monsters die everywhere. Followers
+    follow the leader's line (`line()` / `follow_line()`): lands, waves
+    passed, bosses, the fire (their power-ups push it, `pushes`); a keeper
+    the leader felled falls here too. Bullets, drops and hazards are each
+    screen's own; monsters aim at this screen's healer.
+  - **Tougher for more**: `party_share()` - health +12% a player, keepers
+    +35%, waves `PARTY_CROWD` (1) bigger a player (the owner: "monsters are
+    already pretty tough need to lower the health increases"; it was 30%,
+    75% and 2). An elite's health is reckoned when it is marked, from the
+    event, so every screen's is the same (it was reckoned at the pop, from
+    each screen's own rank).
+  - **The board**: each "me" is [key, flags (`READY`, `DONE`, `OUT`),
+    power-ups, lives, kills, gold], everyone's to everyone (presence.py's
+    `RUN_ME_MOST` 8); the screen's `board` (top left, during and after)
+    lists each player - lives, out or through, kills (`party.kills`, this
+    player's killing blows), gold - and the party's gold added up
+    (`party_gold()`).
+  - **Inside the walls** (the owner: "make everything symetrical so nothing
+    breaks out of the walls"): the side walls draw at `WALL_Z` (13), over
+    monsters, the party and the beam, under the dark, hazards and shots; the
+    V's middle is held so the whole V fits, the mages close up to fit, the
+    wall of slimes is laid even with its way through between two and never
+    at a wall, a swarm's drift never reaches a wall, pillar rows are even
+    about the middle; every monster not `crossing` (sweep, arcs, pincer) is
+    held `radius + 4` inside, and a crossing one shoots only inside
+    `WALL_ROOM`.
+  - **The owner's tuning** ("change those vales live in the game for fine
+    tuning maybe under god mode"): Tuning under the screen's god switch (the
+    same gate) opens sliders for `TUNE_ORDER` - health a player more, keeper
+    health a player more, monsters a wave a player more, monster health, fire
+    speed, time between elites, event chance - kept in
+    `user://healerrun_tuning.cfg` (`tune_path`; the suite's is its own) and
+    read by every run he plays alone or leads (`tuned()`). The four that make
+    monsters ride in each event's head (`EVENT_HEAD` 13), the line's last
+    number says the leader's are tuned; a tuned run (`tune_used`) pays
+    nothing, like god mode. Mouse only: every key is the run's.
+  - **Out of lives** with the party in: she watches (`ghost`); the leader
+    ends the run when nobody is in (`everyone_out()`), and every screen
+    with it. Each player pays their own run at Leave, by the party's waves
+    and bosses; the goal only for those who walk to it.
+  - Played with two games against a scratch server (zz/hrparty.gd): the
+    same wave on both, each drawn on the other's screen.
+  `_test_the_healers_run_with_a_party()` (testrunner_9): two games on
+  stand-in links - the key and lands, Ready and the count (stopped, then
+  both beginning together), the same wave, hits and kills across, the fire
+  pushed, the waves counted, the keeper, watching, the board, the end, a
+  latecomer alone, presence's override, the start panel.
+  `_test_the_healers_run_is_fair()`: every wave inside the walls all the way
+  down, the even formations, the walls' z, the tuning carried to another
+  screen and paying nothing, Start alone and the count asking for the run,
+  Again and Leave on the panel, the sliders, and the card's Go.
+
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
 taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the
