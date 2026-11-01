@@ -36,6 +36,9 @@ const NO_ANSWER_TRIES := 5
 var post_request: Callable = Callable(Api, "post")
 var opener: Callable = Callable(self, "_open")
 var wait_between: Callable = Callable(self, "_wait")
+# This computer's trusted-computer tokens, sent with every poll: a staff
+# account signs in with Google only on a computer it proved (0.103.0).
+var device_tokens: Callable = Callable(Api, "all_device_tokens")
 
 var code: String = ""
 ## The short code the page shows too ("K7Q-4MX").
@@ -84,7 +87,7 @@ func wait_for_page() -> Dictionary:
 		asked += poll_every
 		if mine != _generation:
 			return {"ok": false, "cancelled": true}
-		var res: Dictionary = await post_request.call(POLL_PATH, {"code": code}, 0.0)
+		var res: Dictionary = await post_request.call(POLL_PATH, {"code": code, "devices": device_tokens.call()}, 0.0)
 		if mine != _generation:
 			return {"ok": false, "cancelled": true}
 		var status: int = int(res.get("status", 0))

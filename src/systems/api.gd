@@ -104,7 +104,7 @@ const BUILD := 7
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.102.1"
+const DISPLAY_VERSION := "0.103.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -1121,6 +1121,21 @@ func device_token_for(user: String) -> String:
 	if file.load(DEVICES_PATH) != OK:
 		return ""
 	return str(file.get_value("devices", user.strip_edges().to_lower(), ""))
+
+
+func all_device_tokens() -> Array:
+	"""Every trusted-computer token this computer holds, whoever's (0.103.0):
+	a staff Google sign-in sends them, since the game does not know the
+	account until the server says. Five at most."""
+	var file := ConfigFile.new()
+	var out: Array = []
+	if file.load(DEVICES_PATH) != OK or not file.has_section("devices"):
+		return out
+	for key: String in file.get_section_keys("devices"):
+		var token: String = str(file.get_value("devices", key, ""))
+		if token != "" and out.size() < 5:
+			out.append(token)
+	return out
 
 
 func _remember_device(user: String, device: String) -> void:

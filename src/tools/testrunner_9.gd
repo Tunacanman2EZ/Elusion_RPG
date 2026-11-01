@@ -1948,6 +1948,7 @@ func _test_google_sign_in() -> void:
 		return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0}
 	google.opener = func(url: String) -> void: opened.append(url)
 	google.wait_between = func(_seconds: float) -> void: pass
+	google.device_tokens = func() -> Array: return ["this-computer"]
 	var began: Dictionary = await google.begin()
 	check("Sign in with Google asks the server for a code and opens its page in the web browser",
 		began.get("ok", false) and sent[0][0] == GoogleScript.START_PATH and opened == [began["data"]["url"]]
@@ -1955,7 +1956,7 @@ func _test_google_sign_in() -> void:
 	var done: Dictionary = await google.wait_for_page()
 	check("  it asks until the page is done - through a moment with no answer - and hears \"pick a name\"",
 		done.get("data", {}).get("needs_name", false) and sent.size() == 5
-		and sent[1] == [GoogleScript.POLL_PATH, {"code": google.code}], sent.size())
+		and sent[1] == [GoogleScript.POLL_PATH, {"code": google.code, "devices": ["this-computer"]}], sent.size())
 	var made: Dictionary = await google.register("newbie")
 	check("  the name goes with the code, and the account comes back signed in",
 		sent[5] == [GoogleScript.REGISTER_PATH, {"code": google.code, "username": "newbie"}]
@@ -2076,6 +2077,12 @@ func _test_google_sign_in() -> void:
 	check("Options has a Google row under the recovery email, hidden until the server says it may be linked",
 		row != null and row.get_parent() == options.get("account_email_value").get_parent().get_parent()
 		and row.get_index() == options.get("account_email_value").get_parent().get_index() + 1 and not row.visible)
+	var shown: Callable = Callable(options, "google_row_shown")
+	check("  staff see it too, on a server that says they may link Google (0.103.0); an older server hides it",
+		shown.call({"ok": true, "data": {"available": true, "staff": true, "staff_may_link": true}})
+		and not shown.call({"ok": true, "data": {"available": true, "staff": true}})
+		and shown.call({"ok": true, "data": {"available": true, "staff": false}})
+		and not shown.call({"ok": true, "data": {"available": false, "staff": false}}))
 	options.queue_free()
 	print("  (signing in with Google: done)")
 

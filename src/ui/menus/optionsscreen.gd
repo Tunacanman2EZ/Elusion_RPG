@@ -859,6 +859,20 @@ func _build_google_row() -> void:
 	add_child(account_google)
 
 
+const GOOGLE_STAFF_NOTE := "Staff: Google signs you in only on a computer that has signed in with your password and email code before. Admin tools still ask for your password."
+
+
+static func google_row_shown(res: Dictionary) -> bool:
+	"""Whether the Google row shows for the server's answer: Google set up on
+	the server, and for staff only a server that says they may link it
+	(0.103.0; the owner: "add sync to google on settings hub in game so when
+	i click sign in with google it just signs me in") - an older one refuses."""
+	var data: Variant = res.get("data", {})
+	if not res.get("ok", false) or not (data is Dictionary) or not bool((data as Dictionary).get("available", false)):
+		return false
+	return not bool(data.get("staff", false)) or bool(data.get("staff_may_link", false))
+
+
 func _refresh_google() -> void:
 	if account_google_row == null:
 		return
@@ -867,11 +881,12 @@ func _refresh_google() -> void:
 		return
 	var res: Dictionary = await Api.get_json("/api/account/google", Api.PROBE_TIMEOUT)
 	var data: Variant = res.get("data", {})
-	if not res.get("ok", false) or not (data is Dictionary) or bool(data.get("staff", false)) \
-			or not bool(data.get("available", false)):
+	var staff: bool = data is Dictionary and bool(data.get("staff", false))
+	if not google_row_shown(res):
 		account_google_row.visible = false
 		return
 	account_google_row.visible = true
+	account_google_button.tooltip_text = GOOGLE_STAFF_NOTE if staff else ""
 	_google_linked = bool(data.get("linked", false))
 	if _google_linked:
 		var email: String = str(data.get("email", ""))

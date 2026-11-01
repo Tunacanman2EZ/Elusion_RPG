@@ -3030,6 +3030,16 @@ plan is the commit folder's GOOGLE_SIGNIN_PLAN.txt.
   A press is `claim()` (`CLAIM_PATH`): the server links it and answers as a
   login. A name taken at "Start playing" now says to sign in with the
   password and link Google in Options (the server's words).
+- **Staff with Google (0.103.0)** - the owner: "add sync to google on
+  settings hub in game so when i click sign in with google it just signs me
+  in no password needed". Options shows the Google row to staff when the
+  server says `staff_may_link` (`google_row_shown()`), with a tooltip saying
+  the rules (`GOOGLE_STAFF_NOTE`). Every poll sends this computer's
+  trusted-computer tokens (`device_tokens`, `Api.all_device_tokens()`, five
+  at most from `user://devices.cfg`): the server signs staff in only on a
+  computer proved with the password and emailed code, and that session is
+  not confirmed, so the GM tools ask the password first (Api's step-up, as
+  after a resume). Elsewhere the login screen shows the server's words.
 - **The name box says who it is for (0.102.1)** - the owner, signed in with
   Google as the GM and asked for a name: "it should know anyone with a
   account already not go to add name unless a new player". The server can
