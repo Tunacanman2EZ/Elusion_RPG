@@ -238,10 +238,41 @@ const PICKUP_REACH := 20.0
 const MAGNET_REACH := 56.0
 const MAGNET_SPEED := 260.0
 const LASER_HALF := 7.0
-const LASER_LEVELS := 5
-# Each level's layer, from the inside out.
+const LASER_LEVELS := 7
+# Each level's layer, from the inside out (the beam has BEAM_LAYERS at most;
+# the last two are the critical levels' colours, rung out when they are won).
 const LASER_COLOURS := [Color(0.55, 1.0, 0.62), Color(0.35, 0.95, 0.9), Color(0.4, 0.6, 1.0),
-	Color(0.75, 0.45, 1.0), Color(1.0, 0.8, 0.3)]
+	Color(0.75, 0.45, 1.0), Color(1.0, 0.8, 0.3), Color(1.0, 0.35, 0.25), Color(1.0, 0.15, 0.12)]
+const BEAM_LAYERS := 5
+# THE CRITICAL BEAM (0.106.0; the owner: "the red beam should be our critical
+# beam", "the next upgrade should increase the size of the red beam and get
+# rid of some white beams", "fade the white beams a tiny bit also and keep red
+# strong"): from CRIT_LEVEL the beam's middle is red, and what stands in the
+# red takes CRIT_MULT times the beam's damage, sparking red. Each level past
+# it widens the red (CRIT_HEART, its share of the beam's half width) and takes
+# side beams away (side_beams()). The white of the beams is a little faded
+# (WHITE_FADE); the red is drawn strong.
+const CRIT_LEVEL := 5
+const CRIT_MULT := [1.5, 2.0, 2.6]
+const CRIT_HEART := [0.3, 0.55, 0.8]
+const CRIT_SPARK_GAP := 0.1
+const WHITE_FADE := 0.78
+# The outer pair of side beams leans out toward the path's far corners.
+const OUTER_TILT := 0.2
+# THE METEOR SHIELD (0.106.0; the owner: "a meteor shield that we can pick up
+# with meteors circling the char preventing 1 hit of damage"): a drop - from a
+# mage or sniper now and then (SHIELD_DROP), an elite more often (ELITE_SHIELD)
+# - that puts SHIELD_METEORS small meteors circling her. The next hit breaks it
+# instead of taking a life, a laser level or a shot step, and she blinks for
+# SHIELD_BLINK. One at a time.
+const SHIELD_METEORS := 3
+const SHIELD_REACH := 16.0
+const SHIELD_SPIN := 3.4
+const SHIELD_DROP := 0.05
+const ELITE_SHIELD := 0.3
+const SHIELD_BLINK := 1.0
+const SHIELD_Z := 11
+const SHIELD_COLOUR := Color(1.0, 0.62, 0.25)
 # Side beams: this far either side of the main one, at this share of its damage.
 const LASER_HEART := Color(1.0, 0.18, 0.15, 0.95)
 const BEAM_Z := 10
@@ -506,25 +537,52 @@ class Beam extends Node2D:
 	var length: float = 300.0
 	var flicker: float = 0.0
 	var level: int = 1
-	# Set by the run each frame: the main beam's half width, where side beams stand.
+	# Set by the run each frame: the main beam's half width, and the side
+	# beams - [x, tilt] each.
 	var half: float = LASER_HALF
 	var sides: Array = []
+	# The red's share of the main beam's half width (crit_heart()).
+	var red: float = 0.0
 
 	func _draw() -> void:
 		var pulse: float = 1.0 + 0.15 * sin(flicker * 40.0)
-		_one(0.0, half * pulse, level)
-		for x in sides:
-			_one(float(x), LASER_HALF * 0.6 * pulse, maxi(1, level - 2))
+		var layers: int = mini(level, BEAM_LAYERS)
+		for side in sides:
+			_one(float(side[0]), float(side[1]), LASER_HALF * 0.6 * pulse, maxi(1, layers - 2), 0.0)
+		_one(0.0, 0.0, half * pulse, layers, red)
 
-	func _one(x: float, wide: float, layers: int) -> void:
+	func _one(x: float, tilt: float, wide: float, layers: int, red: float) -> void:
+		"""One beam from (x, 0) up, leaning `tilt`: its layers, a little
+		faded, and its heart - red and strong when `red` (its share of the
+		width), else white."""
+		draw_set_transform(Vector2(x, 0.0), tilt, Vector2.ONE)
+		var reach: float = length / maxf(0.2, cos(tilt))
 		for i in range(layers - 1, -1, -1):
 			var colour: Color = LASER_COLOURS[i]
 			var w: float = wide * (0.45 + 0.55 * float(i + 1) / float(layers))
-			colour.a = 0.3 + 0.35 * (1.0 - float(i) / float(maxi(1, layers)))
-			draw_rect(Rect2(x - w, -length, w * 2.0, length), colour)
-		var heart: Color = LASER_HEART if layers >= LASER_LEVELS else Color(0.9, 1.0, 0.95, 0.85)
-		draw_rect(Rect2(x - wide * 0.3, -length, wide * 0.6, length), heart)
-		draw_rect(Rect2(x - 1.0, -length, 2.0, length), Color(1.0, 1.0, 1.0, 0.95))
+			colour.a = (0.3 + 0.35 * (1.0 - float(i) / float(maxi(1, layers)))) * WHITE_FADE
+			draw_rect(Rect2(-w, -reach, w * 2.0, reach), colour)
+		if red > 0.0:
+			var heart: Color = LASER_HEART
+			heart.a = 1.0
+			draw_rect(Rect2(-wide * red - 1.0, -reach, (wide * red + 1.0) * 2.0, reach), Color(heart, 0.45))
+			draw_rect(Rect2(-wide * red, -reach, wide * red * 2.0, reach), heart)
+			draw_rect(Rect2(-1.0, -reach, 2.0, reach), Color(1.0, 0.75, 0.7, 0.95))
+		else:
+			draw_rect(Rect2(-wide * 0.3, -reach, wide * 0.6, reach), Color(0.9, 1.0, 0.95, 0.85 * WHITE_FADE))
+			draw_rect(Rect2(-1.0, -reach, 2.0, reach), Color(1.0, 1.0, 1.0, 0.95 * WHITE_FADE))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+# THE METEOR SHIELD'S RING: a faint ring where its meteors circle (its
+# children), turning - round her, or round the drop.
+class Orbit extends Node2D:
+	var turn: float = 0.0
+	var reach: float = SHIELD_REACH
+
+	func _draw() -> void:
+		var pulse: float = 0.5 + 0.5 * sin(turn * 3.0)
+		draw_arc(Vector2.ZERO, reach + 2.0, 0.0, TAU, 28, Color(SHIELD_COLOUR, 0.25 + 0.2 * pulse), 1.5)
 
 
 # A HIT FELT: a ring and sparks flying out of a point, fading - a kill, a
@@ -732,6 +790,10 @@ var _home: Vector2 = Vector2.ZERO
 var _shine_left: float = 0.0
 var _boss_shook: float = 0.0
 var _spark_in: float = 0.0
+var _crit_spark_in: float = 0.0
+# The meteor shield: up or not, and the meteors circling her.
+var shield: bool = false
+var shield_orbit: Node2D = null
 # Only for the look of things, so the run's own dice are the same either way.
 var _fx_rng := RandomNumberGenerator.new()
 
@@ -839,6 +901,17 @@ func _make_healer() -> void:
 	healer = Node2D.new()
 	healer.name = "healer"
 	healer.position = Vector2(0.0, HALF.y - 50.0)
+	shield_orbit = Orbit.new()
+	shield_orbit.name = "shield"
+	shield_orbit.z_index = SHIELD_Z
+	shield_orbit.visible = false
+	for k in SHIELD_METEORS:
+		var rock := Sprite2D.new()
+		rock.texture = load(METEOR_TEXTURE) as Texture2D
+		rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		rock.scale = Vector2.ONE * 0.5
+		shield_orbit.add_child(rock)
+	add_child(shield_orbit)
 	var look: Dictionary = look_of_scene(HEALER_SCENE, false)
 	healer_sprite = AnimatedSprite2D.new()
 	healer_sprite.sprite_frames = look.get("frames") as SpriteFrames
@@ -974,12 +1047,34 @@ static func laser_seconds(level: int) -> float:
 
 
 static func side_beams(level: int) -> Array:
-	"""Where the side beams stand, either side of the main one."""
-	if level >= 5:
-		return [-SIDE_BEAM_GAP, SIDE_BEAM_GAP, -SIDE_BEAM_GAP * 2.0, SIDE_BEAM_GAP * 2.0]
+	"""The side beams, either side of the main one: [x, tilt] each. The outer
+	pair leans out toward the far corners (the owner: "the two outer beams
+	slightly outward towards the corners"); past CRIT_LEVEL they go, the
+	inner pair first - the red takes their place."""
+	if level >= CRIT_LEVEL + 2:
+		return []
+	if level == CRIT_LEVEL + 1:
+		return [[-SIDE_BEAM_GAP * 2.0, -OUTER_TILT], [SIDE_BEAM_GAP * 2.0, OUTER_TILT]]
+	if level >= CRIT_LEVEL:
+		return [[-SIDE_BEAM_GAP, 0.0], [SIDE_BEAM_GAP, 0.0], [-SIDE_BEAM_GAP * 2.0, -OUTER_TILT],
+			[SIDE_BEAM_GAP * 2.0, OUTER_TILT]]
 	if level >= 3:
-		return [-SIDE_BEAM_GAP, SIDE_BEAM_GAP]
+		return [[-SIDE_BEAM_GAP, 0.0], [SIDE_BEAM_GAP, 0.0]]
 	return []
+
+
+static func crit_heart(level: int) -> float:
+	"""The red's share of the main beam's half width: none below CRIT_LEVEL."""
+	if level < CRIT_LEVEL:
+		return 0.0
+	return float(CRIT_HEART[mini(level - CRIT_LEVEL, CRIT_HEART.size() - 1)])
+
+
+static func crit_mult(level: int) -> float:
+	"""What the red does, times the beam."""
+	if level < CRIT_LEVEL:
+		return 1.0
+	return float(CRIT_MULT[mini(level - CRIT_LEVEL, CRIT_MULT.size() - 1)])
 
 
 func _shine(delta: float) -> void:
@@ -992,20 +1087,44 @@ func _shine(delta: float) -> void:
 	beam.level = level
 	beam.half = laser_half(level)
 	beam.sides = side_beams(level)
+	beam.red = crit_heart(level)
 	beam.position = healer.position + Vector2(0.0, -18.0)
 	beam.length = beam.position.y + HALF.y
 	beam.flicker += delta
 	beam.queue_redraw()
-	var columns: Array = [[0.0, laser_half(level), laser_dps(level)]]
-	for x in side_beams(level):
-		columns.append([float(x), LASER_HALF * 0.6, laser_dps(level) * SIDE_BEAM_SHARE])
+	_crit_spark_in = maxf(0.0, _crit_spark_in - delta)
+	# Each column: x where it starts, its lean, half width, damage a second,
+	# and the red's half width (0: none).
+	var columns: Array = [[0.0, 0.0, laser_half(level), laser_dps(level), laser_half(level) * crit_heart(level)]]
+	for side in side_beams(level):
+		columns.append([float(side[0]), float(side[1]), LASER_HALF * 0.6, laser_dps(level) * SIDE_BEAM_SHARE, 0.0])
 	for foe in foes.get_children():
 		var f := foe as Foe
 		if f == null or f.dying >= 0.0 or f.position.y > beam.position.y or f.position.y < -HALF.y - 8.0:
 			continue
 		for column in columns:
-			if absf(f.position.x - beam.position.x - float(column[0])) <= float(column[1]) + f.radius:
-				_strike(f, float(column[2]) * delta)
+			var across: float = beam_across(f.position - beam.position, float(column[0]), float(column[1]))
+			if across > float(column[2]) + f.radius:
+				continue
+			if float(column[4]) > 0.0 and across <= float(column[4]) + f.radius:
+				# IN THE RED: a critical hit, sparking red now and then.
+				_strike(f, float(column[3]) * crit_mult(level) * delta)
+				if _crit_spark_in <= 0.0 and is_instance_valid(f):
+					_crit_spark_in = CRIT_SPARK_GAP
+					_burst(f.position + Vector2(_fx_rng.randf_range(-6.0, 6.0), -10.0), LASER_HEART, 12.0, 6, 0.2, false)
+			else:
+				_strike(f, float(column[3]) * delta)
+
+
+static func beam_across(from_her: Vector2, x: float, tilt: float) -> float:
+	"""How far `from_her` (a point, from where the beam starts) is from the
+	middle of a beam starting at (x, 0) leaning `tilt` - across it; INF
+	behind where it starts."""
+	var d: Vector2 = Vector2.UP.rotated(tilt)
+	var v: Vector2 = from_her - Vector2(x, 0.0)
+	if v.dot(d) < 0.0:
+		return INF
+	return absf(v.x * d.y - v.y * d.x)
 
 
 func gain_meteor() -> void:
@@ -1263,6 +1382,7 @@ func step(delta: float) -> void:
 	_move_drops(delta)
 	_burn(delta)
 	_shine(delta)
+	_shield_step(delta)
 	_meteors_fall(delta)
 	_elites_step(delta)
 	_events_step(delta)
@@ -1386,8 +1506,8 @@ func laser_edge() -> float:
 	a little more: where her shots start while it is on."""
 	var level: int = maxi(1, laser_level)
 	var edge: float = laser_half(level)
-	for x in side_beams(level):
-		edge = maxf(edge, absf(float(x)) + LASER_HALF * 0.6)
+	for side in side_beams(level):
+		edge = maxf(edge, absf(float(side[0])) + LASER_HALF * 0.6)
 	return edge + 3.0
 
 
@@ -1483,6 +1603,8 @@ func _kill(f: Foe) -> void:
 			_drop("potion", f.position + Vector2(10.0, 0.0))
 		elif _rng.randf() < ELITE_METEOR:
 			_drop("meteor", f.position + Vector2(10.0, 0.0))
+		elif _rng.randf() < ELITE_SHIELD:
+			_drop("shield", f.position + Vector2(10.0, 0.0))
 		return
 	if f.kind == "treasure":
 		# CAUGHT: it bursts in gold and spills its power-ups.
@@ -1499,6 +1621,8 @@ func _kill(f: Foe) -> void:
 			24.0 if big else 16.0, 10 if big else 7, 0.35 if big else 0.28)
 	if (f.kind == "mage" or f.kind == "sniper") and _rng.randf() < METEOR_DROP:
 		_drop("meteor", f.position)
+	elif (f.kind == "mage" or f.kind == "sniper") and _rng.randf() < SHIELD_DROP:
+		_drop("shield", f.position)
 	elif f.kind != "boss":
 		if _since_power >= POWER_PITY or _rng.randf() < float(info.get("power", 0.0)):
 			_drop("power", f.position)
@@ -1520,6 +1644,15 @@ func hurt() -> void:
 		return
 	if god:
 		god_used = true
+		return
+	if shield:
+		# THE SHIELD TAKES IT: the meteors fly apart, she blinks, and
+		# nothing else is lost.
+		shield = false
+		untouchable = SHIELD_BLINK
+		shake_by(METEOR_SHAKE)
+		_burst(healer.position + HITBOX_AT, SHIELD_COLOUR, 30.0, 12, 0.4)
+		_say("Shield broke")
 		return
 	lives -= 1
 	setbacks += 1
@@ -1560,6 +1693,32 @@ func gain_power() -> void:
 	_ring_out(SHOT_COLOUR)
 
 
+func gain_shield() -> void:
+	"""A meteor shield: up, if it is not already."""
+	if shield:
+		_say("Shield up already")
+		return
+	shield = true
+	_say("Meteor shield")
+	_ring_out(SHIELD_COLOUR)
+
+
+func _shield_step(delta: float) -> void:
+	"""Her shield's meteors, circling her."""
+	shield_orbit.visible = shield and not ghost
+	if not shield_orbit.visible:
+		return
+	shield_orbit.position = healer.position + HITBOX_AT
+	shield_orbit.turn += delta * SHIELD_SPIN
+	var k: int = 0
+	for rock in shield_orbit.get_children():
+		var at: float = shield_orbit.turn + TAU * k / maxi(1, SHIELD_METEORS)
+		(rock as Node2D).position = Vector2(cos(at), sin(at) * 0.75) * SHIELD_REACH
+		(rock as Node2D).rotation = at * 2.0
+		k += 1
+	shield_orbit.queue_redraw()
+
+
 func gain_life() -> void:
 	lives = mini(LIVES_MOST, lives + 1)
 	_say("A life more" if lives < LIVES_MOST else "Lives full")
@@ -1570,6 +1729,7 @@ func _say(words: String) -> void:
 	"""A short word in the banner - unless a tier's or the gate's is up."""
 	if banner_left > 1.2 and banner != "" and not banner.begins_with("Shots") and not banner.begins_with("A life") \
 			and not banner.begins_with("Lives") and not banner.begins_with("Laser") and not banner.begins_with("Meteor") \
+			and not banner.begins_with("Shield") \
 			and not banner.begins_with("The keeper"):
 		return
 	banner = words
@@ -1577,6 +1737,21 @@ func _say(words: String) -> void:
 
 
 func _drop(what: String, at: Vector2) -> void:
+	if what == "shield":
+		# A SHIELD: three small meteors circling, as it will circle her.
+		var held := Orbit.new()
+		held.set_meta(&"drop", what)
+		held.position = at
+		held.reach = 7.0
+		for k in SHIELD_METEORS:
+			var rock := Sprite2D.new()
+			rock.texture = load(METEOR_TEXTURE) as Texture2D
+			rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			rock.scale = Vector2.ONE * 0.32
+			rock.position = Vector2.from_angle(TAU * k / SHIELD_METEORS) * 6.0
+			held.add_child(rock)
+		drops.add_child(held)
+		return
 	var item_path: String = POTION_ITEM if what == "potion" else (METEOR_ITEM if what == "meteor"
 		else "res://data/items/materials/%s.tres" % str(ESSENCES.get(land(), "lightessence")))
 	var item: Resource = load(item_path) if ResourceLoader.exists(item_path) else null
@@ -1595,6 +1770,10 @@ func _drop(what: String, at: Vector2) -> void:
 func _move_drops(delta: float) -> void:
 	for node in drops.get_children():
 		var icon := node as Node2D
+		if icon is Orbit:
+			icon.rotation += delta * SHIELD_SPIN
+			(icon as Orbit).turn += delta
+			icon.queue_redraw()
 		var to_her: Vector2 = (healer.position + HITBOX_AT) - icon.position
 		if to_her.length() <= MAGNET_REACH:
 			# Drawn to her, from whichever side.
@@ -1605,6 +1784,8 @@ func _move_drops(delta: float) -> void:
 			match str(icon.get_meta(&"drop")):
 				"potion":
 					gain_life()
+				"shield":
+					gain_shield()
 				"meteor":
 					gain_meteor()
 				_:

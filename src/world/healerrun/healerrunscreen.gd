@@ -135,7 +135,8 @@ static var _tutorial_seen: bool = false
 const TUTORIAL_LINES := [
 	"Move with your move keys - she shoots by herself.",
 	"Hold sprint to slow down through tight gaps.",
-	"Grab an essence: more shots - 2, 4, 6, 8. Past eight, a laser - stronger each time.",
+	"Grab an essence: more shots - 2, 4, 6, 8. Past eight, a laser - its red middle hits critical.",
+	"Grab a meteor shield: it takes the next hit for you.",
 	"Grab a potion: one more life (up to 5).",
 	"Grab a meteor, then press Space: it finds the boss.",
 	"Three tiers, a boss at the end of each - every land's boss fights its own way.",

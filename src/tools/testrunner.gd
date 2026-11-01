@@ -207,6 +207,7 @@ func _run_all() -> void:
 	await _test_the_healers_run_gets_wilder()
 	await _test_the_healers_run_with_a_party()
 	await _test_the_healers_run_is_fair()
+	await _test_the_critical_beam_and_the_shield()
 	await _test_google_sign_in()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()

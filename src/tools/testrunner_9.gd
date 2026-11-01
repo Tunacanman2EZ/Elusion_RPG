@@ -1288,12 +1288,12 @@ func _test_the_healers_run() -> void:
 	var rank_at_one: int = run.rank()
 	for i in 6:
 		run.gain_power()
-	check("each power-up after is a laser level, to five: wider, harder, longer, side beams, and the rank with it",
-		run.laser_level == RunScript.LASER_LEVELS and run.laser == RunScript.laser_seconds(5)
+	check("each power-up after is a laser level, to seven: wider, harder, longer, side beams, and the rank with it",
+		run.laser_level == RunScript.LASER_LEVELS and RunScript.LASER_LEVELS == 7 and run.laser == RunScript.laser_seconds(7)
 		and is_equal_approx(RunScript.laser_dps(5), RunScript.LASER_DPS * (1.0 + 4.0 * RunScript.LASER_PER_LEVEL))
 		and RunScript.laser_half(5) > RunScript.laser_half(1)
 		and RunScript.side_beams(2).is_empty() and RunScript.side_beams(3).size() == 2 and RunScript.side_beams(5).size() == 4
-		and run.rank() >= mini(RunScript.RANK_MOST, rank_at_one + 4) and run.banner == "Laser 5",
+		and run.rank() >= mini(RunScript.RANK_MOST, rank_at_one + 4) and run.banner == "Laser 7",
 		[run.laser_level, run.rank(), rank_at_one])
 	check("  a layer of colour for each level, and red in the middle of the best one",
 		RunScript.LASER_COLOURS.size() == RunScript.LASER_LEVELS and RunScript.LASER_HEART.r > 0.9
@@ -1302,7 +1302,7 @@ func _test_the_healers_run() -> void:
 		run.beam.z_index < run.get_node("shots").z_index and run.beam.z_index < run.field.z_index)
 	# "bullets need to be an addition to laser the do not overlap".
 	var apart: bool = true
-	for level in [1, 3, 5]:
+	for level in [1, 3, 5, 6, 7]:
 		run.laser_level = level
 		run.laser = 5.0
 		var first_shot: int = run.shots_flying()
@@ -2705,6 +2705,103 @@ func _test_the_healers_run_is_fair() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  (the healer's run is fair: done)")
+
+
+func _test_the_critical_beam_and_the_shield() -> void:
+	section("THE HEALER'S RUN: THE CRITICAL BEAM AND THE METEOR SHIELD (0.106.0)")
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	var run = RunScript.new()
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	add_child(run)
+	run.set_process(false)
+	run.power = 4
+	run.healer.position = Vector2(0.0, 120.0)
+	var from: Vector2 = run.healer.position + Vector2(0.0, -18.0)
+	var hits: Callable = func(level: int, at: Vector2) -> float:
+		for f in run.foes.get_children():
+			run.foes.remove_child(f)
+			f.queue_free()
+		var f: Node2D = run.call("_foe", "mage", from + at)
+		f.set("velocity", Vector2.ZERO)
+		f.set("stop_y", -999.0)
+		f.set("most", 9999.0)
+		f.set("health", 9999.0)
+		run.laser_level = level
+		run.laser = 5.0
+		run.call("_shine", 0.1)
+		return 9999.0 - float(f.get("health"))
+	# "the two outer beams slightly outward towards the corners".
+	var five: Array = RunScript.side_beams(5)
+	var leaning: bool = five.size() == 4
+	for side in five:
+		var outer: bool = absf(float(side[0])) > RunScript.SIDE_BEAM_GAP * 1.5
+		leaning = leaning and (is_equal_approx(float(side[1]), signf(float(side[0])) * RunScript.OUTER_TILT) if outer
+			else float(side[1]) == 0.0)
+	var up: float = 150.0
+	var lean_x: float = RunScript.SIDE_BEAM_GAP * 2.0 + up * tan(RunScript.OUTER_TILT)
+	var on_lean: float = hits.call(5, Vector2(lean_x, -up))
+	var straight_up: float = hits.call(5, Vector2(RunScript.SIDE_BEAM_GAP * 2.0, -up))
+	var side_hit: float = RunScript.laser_dps(5) * RunScript.SIDE_BEAM_SHARE * 0.1
+	check("the outer pair of side beams leans out toward the far corners: what stands on the lean is hit, straight above them not",
+		leaning and RunScript.OUTER_TILT > 0.1 and RunScript.OUTER_TILT < 0.35 and absf(on_lean - side_hit) < 0.01
+		and straight_up == 0.0, [on_lean, side_hit, straight_up])
+	# "the red beam should be our critical beam".
+	var red_five: float = hits.call(5, Vector2(0.0, -up))
+	var red_seven: float = hits.call(7, Vector2(0.0, -up))
+	var edge_seven: float = hits.call(7, Vector2(RunScript.laser_half(7) + 9.0, -up))
+	check("in the red, a critical hit: %.1fx the beam at laser 5, %.1fx at 7; beside the red, the beam's own"
+		% [RunScript.crit_mult(5), RunScript.crit_mult(7)],
+		absf(red_five - RunScript.laser_dps(5) * RunScript.crit_mult(5) * 0.1) < 0.01
+		and absf(red_seven - RunScript.laser_dps(7) * RunScript.crit_mult(7) * 0.1) < 0.01
+		and absf(edge_seven - RunScript.laser_dps(7) * 0.1) < 0.01 and RunScript.crit_mult(4) == 1.0
+		and RunScript.crit_heart(4) == 0.0, [red_five, red_seven, edge_seven])
+	# "the next upgrade should increase the size of the red beam and get rid of some white beams".
+	check("  each level past it: the red wider and harder, the white side beams fewer (4, then the leaning 2, then none)",
+		RunScript.crit_heart(6) > RunScript.crit_heart(5) and RunScript.crit_heart(7) > RunScript.crit_heart(6)
+		and RunScript.crit_mult(7) > RunScript.crit_mult(6) and RunScript.crit_mult(6) > RunScript.crit_mult(5)
+		and RunScript.side_beams(6).size() == 2 and absf(float(RunScript.side_beams(6)[0][1])) > 0.0
+		and RunScript.side_beams(7).is_empty()
+		and RunScript.laser_dps(7) * RunScript.crit_mult(7) > RunScript.laser_dps(5) * RunScript.crit_mult(5),
+		[RunScript.side_beams(6), RunScript.side_beams(7)])
+	run.laser_level = 6
+	run.laser = 5.0
+	run.call("_shine", 0.0)
+	check("  \"fade the white beams a tiny bit and keep red strong\": the white drawn faded, the red at full",
+		RunScript.WHITE_FADE < 0.9 and RunScript.WHITE_FADE > 0.6 and RunScript.LASER_HEART.r > 0.9
+		and is_equal_approx(float(run.beam.get("red")), RunScript.crit_heart(6)) and (run.beam.get("sides") as Array).size() == 2)
+	# THE METEOR SHIELD.
+	for f in run.foes.get_children():
+		run.foes.remove_child(f)
+		f.queue_free()
+	run.laser_level = 6
+	run.laser = 0.0
+	run.state = RunScript.State.RUNNING
+	run.lives = 3
+	run.untouchable = 0.0
+	run.call("_drop", "shield", run.healer.position + Vector2(0.0, -30.0))
+	for i in 20:
+		run.call("_move_drops", 1.0 / 60.0)
+	run.call("_shield_step", 1.0 / 60.0)
+	var orbit: Node2D = run.get("shield_orbit")
+	var circling: bool = bool(run.get("shield")) and orbit.visible and orbit.get_child_count() == RunScript.SHIELD_METEORS
+	run.banner_left = 0.0
+	run.call("_drop", "shield", run.healer.position)
+	run.call("_move_drops", 1.0 / 60.0)
+	var already: String = str(run.banner)
+	run.hurt()
+	var held: bool = (run.lives == 3 and run.laser_level == 6 and run.power == 4 and not bool(run.get("shield"))
+		and is_equal_approx(run.untouchable, RunScript.SHIELD_BLINK))
+	run.call("_shield_step", 1.0 / 60.0)
+	run.untouchable = 0.0
+	run.hurt()
+	check("a meteor shield picked up: meteors circling her; the next hit breaks it and takes nothing else, then hits count again",
+		circling and already == "Shield up already" and held and not orbit.visible and run.lives == 2,
+		[circling, already, held, run.lives])
+	check("  shields drop now and then from mages and snipers, and from elites more often",
+		RunScript.SHIELD_DROP > 0.0 and RunScript.SHIELD_DROP < 0.15 and RunScript.ELITE_SHIELD > RunScript.SHIELD_DROP)
+	run.queue_free()
+	await get_tree().process_frame
+	print("  (the critical beam and the shield: done)")
 
 
 func _hr_frames(games: Array, seconds: float, step: float = 1.0 / 30.0) -> void:

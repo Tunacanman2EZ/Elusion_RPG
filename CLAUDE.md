@@ -3109,6 +3109,33 @@ Healer's Run: three runs a day, its gold at Leave".
   down, the even formations, the walls' z, the tuning carried to another
   screen and paying nothing, Start alone and the count asking for the run,
   Again and Leave on the panel, the sliders, and the card's Go.
+- **The critical beam and the meteor shield (0.106.0)** - the owner, with a
+  picture of laser 5: "i want the two outer beams slightly outward towards
+  the corners the red beam should be our critical beam also we should have a
+  meteor shield ... preventing 1 hit of damage the next upgrade should
+  increase the size of the red beam and get rid of some white beams", then
+  "fade the white beams a tiny bit also and keep red strong".
+  - **Seven laser levels** (`LASER_LEVELS`; the beam's layers stop at
+    `BEAM_LAYERS` 5). From `CRIT_LEVEL` (5) the beam's middle is red and
+    what stands in it takes `crit_mult()` times the beam (1.5, 2, 2.6),
+    sparking red every `CRIT_SPARK_GAP`; `crit_heart()` is the red's share
+    of the beam's half width (0.3, 0.55, 0.8), handed to the Beam as `red`
+    (an inner class cannot call the run's statics).
+  - **Side beams are [x, tilt]** (`side_beams()`): 3-4 the inner pair; 5 the
+    inner pair and the outer pair leaning out `OUTER_TILT` (0.2 rad) toward
+    the far corners; 6 the leaning pair only; 7 none. A leaning beam is hit
+    by distance across it (`beam_across()`), drawn with
+    `draw_set_transform()`. The white is drawn at `WHITE_FADE` (0.78); the
+    red at full.
+  - **The meteor shield**: a drop ("shield", an `Orbit` of three small
+    meteors) from a mage or sniper (`SHIELD_DROP` 5%) or an elite
+    (`ELITE_SHIELD` after its potion and meteor rolls). Picked up, three
+    meteors circle her (`shield_orbit`, z `SHIELD_Z`); the next `hurt()`
+    breaks it instead - no life, laser level or shot step - and she blinks
+    `SHIELD_BLINK`. One at a time ("Shield up already").
+  `_test_the_critical_beam_and_the_shield()` (testrunner_9): the lean (hit
+  on it, not straight above), the crit in the red and the beam's own beside
+  it, the levels past 5, the fade, the shield's pickup, hit and after.
 
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
