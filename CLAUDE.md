@@ -2903,6 +2903,17 @@ Healer's Run: three runs a day, its gold at Leave".
   need to be an addition to laser the do not overlap"): while it is on, each
   shot starts past the beam's outer edge on its own side (`laser_edge()`,
   side beams included), so the eight streams run either side of it.
+- **More of them, and a finish that fights back (0.99.1)** - the owner:
+  "incredible we need more enemies finishing should be pretty challenging".
+  Every wave brings a monster more each stretch on top of the rank's
+  (`crowd()`); a second half-size wave comes alongside more often
+  (`BOTH_CHANCE` 0.45, +0.15 a stretch), from stretch 4 sometimes a third
+  (`THIRD_CHANCE`), and from stretch 4 four mages and four snipers; waves come
+  sooner (`wave_time()`: 12 s less 0.6 a rank, never under 6). **The keeper
+  has 2400 health before rank** (it was 260 - a full laser melted it in two
+  seconds); every `BOSS_ADDS_SECONDS` (7) it calls a half-size wave
+  (`BOSS_ADDS`), and under `ENRAGE_AT` (half) it is enraged: casts
+  `ENRAGE_PACE` (0.65) as far apart, thicker rings, wider fans, adds sooner.
 - **Arcs swing deep**: in at `ARC_IN` (165) turning at `ARC_TURN` (75), about
   165 px into the path (it was 43). **New formations**: a snake weaving down,
   a pincer from both top corners, a ring turning as it comes, a wall of

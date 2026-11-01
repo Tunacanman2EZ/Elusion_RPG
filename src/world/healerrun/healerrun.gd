@@ -99,6 +99,17 @@
 # be an addition to laser the do not overlap"). At the top level
 # (LASER_LEVELS) its middle is red (LASER_HEART).
 #
+# MORE OF THEM, AND A FINISH THAT FIGHTS BACK (0.99.0). The owner: "we need
+# more enemies finishing should be pretty challenging".
+# - Every wave grows by a monster or so a stretch (crowd()), on top of the
+#   rank; a second, half-size wave comes alongside more often (BOTH_CHANCE,
+#   BOTH_PER_STRETCH), and from stretch 4 sometimes a third (THIRD_CHANCE);
+#   waves come sooner (wave_time()).
+# - The boss is a wall now: KINDS' 2400 health before rank - built for a
+#   full laser, shots and meteors. Every BOSS_ADDS_SECONDS it calls a half-size
+#   wave to its side, and under ENRAGE_AT of its health it is enraged: its
+#   casts come faster and closer together (ENRAGE_PACE), its rings thicker.
+#
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
@@ -180,8 +191,13 @@ const DEFAULT_PAYS := {"wave_gold": [10, 16, 24, 30, 40], "waves_per_stretch": 5
 	"goal_gold": 250, "most": 1000}
 # From the second stretch, the chance a wave brings a second, smaller one of
 # another kind alongside - more with each stretch.
-const BOTH_CHANCE := 0.3
-const BOTH_PER_STRETCH := 0.12
+const BOTH_CHANCE := 0.45
+const BOTH_PER_STRETCH := 0.15
+const THIRD_CHANCE := 0.3
+const BOSS_ADDS_SECONDS := 7.0
+const ENRAGE_AT := 0.5
+const ENRAGE_PACE := 0.65
+const BOSS_ADDS := ["vee", "arcs", "pincer", "snake", "ring", "sweep"]
 const FIRE_AFTER := 20.0
 const FIRE_RISE := 0.25
 const FIRE_MOST := 64.0
@@ -200,7 +216,7 @@ const KINDS := {
 	"slime": {"health": 7.0, "radius": 9.0, "power": 0.16, "potion": 0.04},
 	"mage": {"health": 12.0, "radius": 11.0, "power": 0.45, "potion": 0.07},
 	"sniper": {"health": 8.0, "radius": 10.0, "power": 0.4, "potion": 0.06},
-	"boss": {"health": 260.0, "radius": 24.0, "power": 0.0, "potion": 0.0},
+	"boss": {"health": 2400.0, "radius": 24.0, "power": 0.0, "potion": 0.0},
 }
 # After this many kills with no power-up, the next kill drops one.
 const POWER_PITY := 12
@@ -352,6 +368,8 @@ var _boss_cast: float = 0.0
 var _boss_casting: int = 0
 var _boss_shots: float = 0.0
 var _boss_fired: int = 0
+var _boss_adds_in: float = BOSS_ADDS_SECONDS
+var enraged: bool = false
 var _goal_paid: bool = false
 
 static var _looks: Dictionary = {}
@@ -712,7 +730,7 @@ static func group_extra(at_rank: int) -> int:
 
 
 static func wave_time(at_rank: int) -> float:
-	return maxf(8.0, 14.0 - 0.6 * at_rank)
+	return maxf(6.0, 12.0 - 0.6 * at_rank)
 
 
 func scroll_speed() -> float:
@@ -1014,7 +1032,8 @@ func gain_life() -> void:
 func _say(words: String) -> void:
 	"""A short word in the banner - unless a stretch's or the gate's is up."""
 	if banner_left > 1.2 and banner != "" and not banner.begins_with("Shots") and not banner.begins_with("A life") \
-			and not banner.begins_with("Lives") and not banner.begins_with("Laser") and not banner.begins_with("Meteor"):
+			and not banner.begins_with("Lives") and not banner.begins_with("Laser") and not banner.begins_with("Meteor") \
+			and not banner.begins_with("The keeper"):
 		return
 	banner = words
 	banner_left = 1.0
@@ -1109,6 +1128,16 @@ func _start_wave() -> void:
 		while other == kind:
 			other = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
 		spawn_wave(other, 0.5)
+		if stretch >= 3 and _rng.randf() < THIRD_CHANCE:
+			var third: String = other
+			while third == other or third == kind:
+				third = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
+			spawn_wave(third, 0.5)
+
+
+func crowd() -> int:
+	"""How many more monsters each wave brings: one a stretch, and the rank's."""
+	return group_extra(rank()) + mini(stretch, STRETCHES - 1)
 
 
 func _pick_kind() -> String:
@@ -1128,7 +1157,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 	var top: float = -HALF.y - 24.0
 	match kind:
 		"vee":
-			var count: int = _sized(mini(11, 7 + group_extra(r)), share)
+			var count: int = _sized(mini(13, 7 + crowd()), share)
 			var centre: float = _rng.randf_range(-PATH_HALF + 90.0, PATH_HALF - 90.0)
 			for i in count:
 				var off: float = float(i) - float(count - 1) / 2.0
@@ -1138,7 +1167,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = _rng.randf_range(1.2, 2.4)
 				made.append(f)
 		"sweep":
-			var count: int = _sized(mini(12, 8 + group_extra(r)), share)
+			var count: int = _sized(mini(14, 8 + crowd()), share)
 			var side: float = -1.0 if _rng.randf() < 0.5 else 1.0
 			var row_y: float = _rng.randf_range(-HALF.y + 40.0, -HALF.y + 90.0)
 			for i in count:
@@ -1149,7 +1178,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = _rng.randf_range(0.8, 2.0)
 				made.append(f)
 		"mages":
-			var count: int = _sized(3 + (1 if r >= 4 else 0), share)
+			var count: int = _sized(3 + (1 if r >= 4 else 0) + (1 if stretch >= 3 else 0), share)
 			for i in count:
 				var x: float = (float(i) - float(count - 1) / 2.0) * 150.0
 				var f := _foe("mage", Vector2(x, top))
@@ -1159,7 +1188,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = 1.0
 				made.append(f)
 		"slimes":
-			var count: int = _sized(6 + group_extra(r), share)
+			var count: int = _sized(6 + crowd(), share)
 			for i in count:
 				var f := _foe("slime", Vector2(_rng.randf_range(-PATH_HALF + 30.0, PATH_HALF - 30.0),
 					top - _rng.randf_range(0.0, 80.0)))
@@ -1167,7 +1196,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.side = _rng.randf_range(0.0, TAU)
 				made.append(f)
 		"arcs":
-			var count: int = _sized(8 + group_extra(r), share)
+			var count: int = _sized(8 + crowd(), share)
 			for i in count:
 				var side: float = -1.0 if i % 2 == 0 else 1.0
 				var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0), -HALF.y - 10.0 - float(i / 2) * 34.0))
@@ -1177,17 +1206,17 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = _rng.randf_range(1.0, 2.0)
 				made.append(f)
 		"snipers":
-			for side in [-1.0, 1.0]:
+			for side in ([-1.0, 1.0, -0.5, 0.5] if stretch >= 3 else [-1.0, 1.0]):
 				var f := _foe("sniper", Vector2(side * (PATH_HALF - 50.0), top))
 				f.velocity = Vector2(0.0, 55.0)
 				f.stop_y = -HALF.y + 45.0
 				f.side = side
-				f.casts_left = 6 + group_extra(r)
+				f.casts_left = 6 + crowd()
 				f.shoot_in = 1.0
 				made.append(f)
 		"snake":
 			# A column weaving down the path.
-			var count: int = _sized(8 + group_extra(r), share)
+			var count: int = _sized(8 + crowd(), share)
 			var centre: float = _rng.randf_range(-PATH_HALF + 90.0, PATH_HALF - 90.0)
 			for i in count:
 				var f := _foe("sprite", Vector2(centre, top - i * 24.0))
@@ -1200,7 +1229,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				made.append(f)
 		"pincer":
 			# Two lines in from the top corners, crossing in the middle.
-			var count: int = _sized(5 + group_extra(r), share)
+			var count: int = _sized(5 + crowd(), share)
 			for side in [-1.0, 1.0]:
 				for i in count:
 					var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0 + i * 22.0), top - i * 26.0))
@@ -1210,7 +1239,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 					made.append(f)
 		"ring":
 			# A ring turning round a point coming down.
-			var count: int = _sized(8 + group_extra(r), share)
+			var count: int = _sized(8 + crowd(), share)
 			var centre := Vector2(_rng.randf_range(-PATH_HALF + 80.0, PATH_HALF - 80.0), top - 60.0)
 			for i in count:
 				var f := _foe("sprite", centre)
@@ -1390,6 +1419,16 @@ func _boss_step(delta: float) -> void:
 	boss.position = boss.position.move_toward(home, 60.0 * delta)
 	var r: int = rank()
 	var colour: Color = Element.colour_for(land())
+	# ITS CALL: every BOSS_ADDS_SECONDS a half-size wave to its side.
+	_boss_adds_in -= delta
+	if _boss_adds_in <= 0.0:
+		_boss_adds_in = BOSS_ADDS_SECONDS * (ENRAGE_PACE if enraged else 1.0)
+		spawn_wave(str(BOSS_ADDS[_rng.randi_range(0, BOSS_ADDS.size() - 1)]), 0.5)
+	if not enraged and boss_share() < ENRAGE_AT:
+		enraged = true
+		banner = "The keeper is enraged"
+		banner_left = BANNER_SECONDS
+	var pace: float = ENRAGE_PACE if enraged else 1.0
 	_boss_cast -= delta
 	if _boss_casting < 0 and _boss_cast <= 0.0:
 		_boss_casting = _rng.randi_range(0, 3)
@@ -1403,14 +1442,14 @@ func _boss_step(delta: float) -> void:
 	var from: Vector2 = boss.position + Vector2(0.0, -12.0)
 	match _boss_casting:
 		0:
-			var n: int = 16 + 2 * r
+			var n: int = 16 + 2 * r + (8 if enraged else 0)
 			var turn: float = (PI / n) * float(_boss_fired % 2)
 			for k in n:
 				field.spawn(from, turn + TAU * k / n, bullet_speed(r) * 0.7, colour)
-			_boss_shots = 0.7
+			_boss_shots = 0.7 * pace
 		1:
-			_fan(from, colour, 7 + r / 2, 0.9, bullet_speed(r))
-			_boss_shots = 0.5
+			_fan(from, colour, 7 + r / 2 + (2 if enraged else 0), 0.9, bullet_speed(r))
+			_boss_shots = 0.5 * pace
 		2:
 			var gap_at: float = _rng.randf_range(-PATH_HALF + 40.0, PATH_HALF - 100.0)
 			var x: float = -PATH_HALF + 6.0
@@ -1418,7 +1457,7 @@ func _boss_step(delta: float) -> void:
 				if x < gap_at or x > gap_at + 64.0:
 					field.spawn(Vector2(x, -HALF.y + 4.0), PI / 2.0, bullet_speed(r) * 0.6, colour)
 				x += 20.0
-			_boss_shots = 1.0
+			_boss_shots = 1.0 * pace
 		3:
 			for k in 4:
 				field.spawn(from, _boss_fired * 0.23 + TAU * k / 4.0, bullet_speed(r) * 0.75, colour)
@@ -1427,7 +1466,7 @@ func _boss_step(delta: float) -> void:
 	var volleys: int = [3, 5, 3, 40][_boss_casting]
 	if _boss_fired >= volleys:
 		_boss_casting = -1
-		_boss_cast = 1.4
+		_boss_cast = 1.4 * pace
 
 
 func boss_share() -> float:

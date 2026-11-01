@@ -1197,11 +1197,11 @@ func _test_the_healers_run() -> void:
 		RunScript.shot_offsets(2) == [[-4.0, 0.0], [4.0, 0.0]]
 		and absf(float(RunScript.shot_offsets(8)[7][1])) > absf(float(RunScript.shot_offsets(6)[5][1])))
 	# ---- the hidden rank ----
-	check("harder with rank: tougher, faster bullets, quicker to shoot, bigger waves, waves sooner (never under 8 s)",
+	check("harder with rank: tougher, faster bullets, quicker to shoot, bigger waves, waves sooner (never under 6 s)",
 		RunScript.foe_health(3.0, 5) > RunScript.foe_health(3.0, 0) and RunScript.bullet_speed(6) > RunScript.bullet_speed(0)
 		and RunScript.fire_gap(2.0, 6) < RunScript.fire_gap(2.0, 0) and RunScript.fire_gap(2.0, 99) >= 1.0
 		and RunScript.group_extra(9) > RunScript.group_extra(0) and RunScript.wave_time(4) < RunScript.wave_time(0)
-		and RunScript.wave_time(99) >= 8.0)
+		and RunScript.wave_time(99) >= 6.0)
 	# ---- every land has its monsters ----
 	var missing: Array = []
 	for land in RunScript.LANDS:
@@ -1368,10 +1368,10 @@ func _test_the_healers_run() -> void:
 		float(RunScript.KINDS["mage"]["power"]) >= 0.4 and RunScript.POWER_PITY <= 12)
 	var waves_then: int = run.foes.get_child_count()
 	run.stretch = 3
-	var full_size: int = mini(11, 7 + RunScript.group_extra(run.rank()))
+	var full_size: int = mini(13, 7 + run.crowd())
 	var both: Array = run.spawn_wave("vee", 0.5)
 	run.stretch = 0
-	check("  more monsters: a V is seven and more; one alongside another comes at half its size, never under two",
+	check("  more monsters: a V is seven, and one more each stretch; one alongside another comes at half its size",
 		full_size >= 7 and both.size() == roundi(full_size * 0.5) and run.foes.get_child_count() == waves_then + both.size()
 		and RunScript._sized(3, 0.5) == 2, [full_size, both.size()])
 	var slain_then: int = run.slain
@@ -1437,6 +1437,20 @@ func _test_the_healers_run() -> void:
 		run.call("_meteors_fall", 1.0 / 60.0)
 	check("  and takes a sixth of its health or so", run.boss_share() <= 1.0 - RunScript.METEOR_BOSS_SHARE + 0.001,
 		run.boss_share())
+	# "we need more enemies finishing should be pretty challenging".
+	check("the finish is hard: the keeper has %d health before rank, waves come within %d s at most, a third wave late on"
+		% [int(RunScript.KINDS["boss"]["health"]), int(RunScript.wave_time(0))],
+		float(RunScript.KINDS["boss"]["health"]) >= 2400.0 and RunScript.wave_time(0) <= 12.0
+		and RunScript.wave_time(99) == 6.0 and RunScript.THIRD_CHANCE > 0.0)
+	var before_adds: int = run.foes.get_child_count()
+	for i in int((RunScript.BOSS_ADDS_SECONDS + 0.5) * 60.0):
+		run.untouchable = 1.0
+		run.call("_boss_step", 1.0 / 60.0)
+	check("  every few seconds it calls a wave to its side", run.foes.get_child_count() > before_adds,
+		[before_adds, run.foes.get_child_count()])
+	run.boss.health = run.boss.most * 0.4
+	run.call("_boss_step", 1.0 / 60.0)
+	check("  and under half its health it is enraged", run.enraged and run.banner == "The keeper is enraged")
 	run.call("_strike", run.boss, run.boss.most + 1.0)
 	check("  killed, the way is open and the goal marker laid ahead", run.state == RunScript.State.GOAL and run.goal != null
 		and run.goal.get_child_count() >= 3)
