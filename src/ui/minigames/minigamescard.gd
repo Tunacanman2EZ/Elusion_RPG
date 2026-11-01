@@ -25,9 +25,10 @@
 #
 # THE HEALER'S RUN (0.98.0, healerrun.gd) is the card's second minigame: a
 # shooter with the healer as the ship, played over the screen from town (Go
-# elsewhere says "Play it from town."). Step 1 of HEALER_RUN_PLAN.txt pays
-# nothing yet and is the owner's alone, to play and tune; the day and the
-# gold come with the server in step 3.
+# elsewhere says "Play it from town."). Since 0.99.0 everyone's, three runs a
+# day: Go asks the server (POST /api/minigames/enter, with the character's
+# slot) and opens the run with its id and what it pays; the listing says how
+# many runs are left today, or when the next one is.
 #
 # Built by the HUD (attach()), no class_name, so a fresh checkout needs no
 # editor rescan.
@@ -46,7 +47,8 @@ const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
 const BLURB := "A horde that never stops. Once a day."
 const UNREACHABLE := "Could not reach the server - try again."
-const HEALER_BLURB := "The healer, up a crypt path, shooting. Testing - nothing paid yet."
+const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 1000 gold a run, three runs a day."
+const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
@@ -72,6 +74,14 @@ var close_button: Button = null
 var healer_box: VBoxContainer = null
 var healer_status: Label = null
 var healer_go: Button = null
+# The Healer's Run's runs left today, and the wait when none are, as the
+# server said and when.
+var healer_left: int = 3
+var healer_wait: int = 0
+var _healer_known: bool = false
+var _healer_said_msec: int = 0
+var _healer_busy: bool = false
+var _healer_said: String = ""
 # Seconds of the wait left when the server last said, and when that was.
 var ready_in: int = 0
 var _said_at_msec: int = 0
@@ -199,6 +209,7 @@ func close() -> bool:
 
 func open() -> void:
 	_leave_armed = false
+	_healer_said = ""
 	visible = true
 	move_to_front()
 	_known = false
@@ -219,6 +230,11 @@ func take_listing(res: Dictionary) -> void:
 	_known = false
 	if res.get("ok", false) and res.get("data") is Dictionary:
 		for game in (res["data"] as Dictionary).get("games", []):
+			if game is Dictionary and str(game.get("id", "")) == HEALER_GAME:
+				healer_left = maxi(0, int(game.get("plays_left", 3)))
+				healer_wait = maxi(0, int(game.get("ready_in", 0)))
+				_healer_said_msec = Time.get_ticks_msec()
+				_healer_known = true
 			if game is Dictionary and str(game.get("id", "")) == GAME:
 				ready_in = maxi(0, int(game.get("ready_in", 0)))
 				_said_at_msec = Time.get_ticks_msec()
@@ -358,27 +374,62 @@ func _on_go() -> void:
 func _paint_healer() -> void:
 	healer_box.visible = bool(shows_healer_run.call())
 	var in_town: bool = str(area_now.call()) == TOWN
-	healer_status.text = "Ready" if in_town else FROM_TOWN
-	healer_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
-	healer_go.disabled = not in_town
+	var wait_left: int = maxi(0, healer_wait - int((Time.get_ticks_msec() - _healer_said_msec) / 1000)) \
+		if _healer_known else 0
+	var none_left: bool = _healer_known and healer_left <= 0 and wait_left > 0
+	if _healer_said != "":
+		healer_status.text = _healer_said
+	elif not in_town:
+		healer_status.text = FROM_TOWN
+	elif none_left:
+		healer_status.text = wait_text(wait_left)
+	elif _healer_known:
+		healer_status.text = "Ready - %d of 3 runs left today" % healer_left
+	else:
+		healer_status.text = "Ready"
+	var go_on: bool = in_town and not none_left and not _healer_busy
+	healer_status.add_theme_color_override("font_color", COLOUR_READY if go_on else (COLOUR_WAIT if none_left else COLOUR_HINT))
+	healer_go.disabled = not go_on
 	healer_go.tooltip_text = "Play the Healer's Run - your character waits in town" if in_town \
 		else "Go back to town first"
 
 
 func _on_healer_go() -> void:
-	if str(area_now.call()) != TOWN:
+	if str(area_now.call()) != TOWN or _healer_busy:
 		paint()
 		return
-	close()
-	open_run.call()
+	_healer_busy = true
+	_healer_said = "Asking the server..."
+	paint()
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": HEALER_GAME, "slot": int(CharacterData.active_character_index)}, 6.0)
+	_healer_busy = false
+	_healer_said = ""
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		healer_left = maxi(0, int(data.get("plays_left", 0)))
+		close()
+		open_run.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {})
+		return
+	if int(res.get("status", 0)) == 409:
+		healer_left = 0
+		healer_wait = maxi(0, int(data.get("ready_in", 0)))
+		_healer_said_msec = Time.get_ticks_msec()
+		_healer_known = true
+	else:
+		_healer_said = UNREACHABLE
+	paint()
 
 
 func _shows_healer_run() -> bool:
-	return bool(Api.is_owner)
+	return true
 
 
-func _open_run() -> void:
-	(load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).call("open", get_tree())
+func _open_run(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:
+	(load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).call("open", get_tree(), 0, run_id,
+		what_it_pays, hud)
 
 
 func chest_held() -> int:

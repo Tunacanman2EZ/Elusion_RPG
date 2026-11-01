@@ -12,6 +12,18 @@
 # Keys are kept from the rest of the game while it is up, so the bag, the map
 # and chat do not open behind it.
 #
+# GOLD AT LEAVE, THREE RUNS A DAY, A TUTORIAL (0.99.0). The owner: "gold
+# should be rewarded on the screen then moved to char when hitting leave",
+# "this minigame can be played 3 times a day", "a tutorial screen also before
+# char walks", "just press space to fire meteor". The card's Go asks the
+# server first (POST /api/minigames/enter) and hands this its run's id and
+# what it pays; the gold counts up on screen (run.gold_now()), and Leave - or
+# Again - finishes the run on the server (POST /api/minigames/finish), which
+# pays it into the character's purse and answers with the purse. Again asks
+# for the next run of the day. The first run of a session opens on the
+# tutorial, the healer standing on her landing until Start (or Space).
+# Space calls a meteor (run.fire_meteor()).
+#
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
@@ -46,12 +58,39 @@ var _lives_seen: int = -1
 var flash: ColorRect = null
 const HIT_FLASH := 0.35
 var seed_value: int = 0
+# The run on the server (its Go), what it pays, and the HUD to say the gold in.
+var run_id: int = 0
+var pays: Dictionary = {}
+var hud: Node = null
+var gold_line: Label = null
+var meteor_line: Label = null
+var tutorial: PanelContainer = null
+# The suite's doors: the two requests and the character's slot.
+var finish_request: Callable = Callable(Api, "post")
+var enter_request: Callable = Callable(Api, "post")
+var slot_now: Callable = Callable(self, "_slot")
+var _paid: bool = false
+var _busy: bool = false
+static var _tutorial_seen: bool = false
+const TUTORIAL_LINES := [
+	"Move with your move keys - she shoots by herself.",
+	"Hold sprint to slow down through tight gaps.",
+	"Grab an essence: more shots - 2, 4, 6, 8. Past eight, a laser - stronger each time.",
+	"Grab a potion: one more life (up to 5).",
+	"Grab a meteor, then press Space: it finds the boss.",
+	"A fire rises behind you - keep moving.",
+	"Gold counts up as you go. Leave to take it.",
+]
 
 
-static func open(tree: SceneTree, run_seed: int = 0) -> CanvasLayer:
+static func open(tree: SceneTree, run_seed: int = 0, run_on_server: int = 0, what_it_pays: Dictionary = {},
+		on_hud: Node = null) -> CanvasLayer:
 	var screen: CanvasLayer = (load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).new()
 	screen.name = "healerrunscreen"
 	screen.set("seed_value", run_seed)
+	screen.set("run_id", run_on_server)
+	screen.set("pays", what_it_pays)
+	screen.set("hud", on_hud)
 	tree.root.add_child(screen)
 	return screen
 
@@ -100,6 +139,8 @@ func _build_words() -> void:
 	shots_line = _label("shots", 18, COLOUR_HINT, Control.PRESET_TOP_LEFT, Vector2(18, 120))
 	rank_line = _label("rank", 14, COLOUR_HINT, Control.PRESET_TOP_LEFT, Vector2(18, 148))
 	slain_line = _label("slain", 18, COLOUR_HINT, Control.PRESET_TOP_RIGHT, Vector2(-18, 90))
+	gold_line = _label("gold", 22, COLOUR, Control.PRESET_TOP_RIGHT, Vector2(-18, 120))
+	meteor_line = _label("meteors", 16, COLOUR_HINT, Control.PRESET_TOP_LEFT, Vector2(18, 176))
 	banner_line = _label("banner", 30, COLOUR, Control.PRESET_CENTER, Vector2(0, -60))
 	boss_bar = ProgressBar.new()
 	boss_bar.name = "boss"
@@ -144,16 +185,49 @@ func _build_words() -> void:
 	again_button.text = "Again"
 	again_button.focus_mode = Control.FOCUS_NONE
 	again_button.custom_minimum_size = Vector2(110, 34)
-	again_button.pressed.connect(start)
+	again_button.pressed.connect(again)
 	row.add_child(again_button)
 	var out := Button.new()
 	out.name = "out"
 	out.text = "Leave"
 	out.focus_mode = Control.FOCUS_NONE
 	out.custom_minimum_size = Vector2(110, 34)
-	out.pressed.connect(close)
+	out.pressed.connect(leave)
 	row.add_child(out)
 	add_child(results)
+	tutorial = PanelContainer.new()
+	tutorial.name = "tutorial"
+	var how := StyleBoxFlat.new()
+	how.bg_color = Color(0.1, 0.08, 0.07, 0.94)
+	how.border_color = Color(0.85, 0.65, 0.25)
+	how.set_border_width_all(3)
+	how.set_content_margin_all(20)
+	tutorial.add_theme_stylebox_override("panel", how)
+	var lines := VBoxContainer.new()
+	lines.add_theme_constant_override("separation", 8)
+	tutorial.add_child(lines)
+	var title := Label.new()
+	title.text = "The Healer's Run"
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", COLOUR)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lines.add_child(title)
+	for words in TUTORIAL_LINES:
+		var line := Label.new()
+		line.text = str(words)
+		line.add_theme_font_size_override("font_size", 17)
+		line.add_theme_color_override("font_color", COLOUR_HINT)
+		lines.add_child(line)
+	var start_button := Button.new()
+	start_button.name = "start"
+	start_button.text = "Start  (Space)"
+	start_button.focus_mode = Control.FOCUS_NONE
+	start_button.custom_minimum_size = Vector2(160, 36)
+	start_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	start_button.pressed.connect(begin)
+	lines.add_child(start_button)
+	tutorial.visible = false
+	add_child(tutorial)
 
 
 func _label(id: String, size: int, colour: Color, preset: int, at: Vector2) -> Label:
@@ -202,11 +276,31 @@ func start() -> void:
 	run = RunScript.new()
 	run.name = "run"
 	run.set("seed_value", seed_value)
+	if not pays.is_empty():
+		run.set("pays", pays.duplicate(true))
 	run.position = RunScript.HALF
 	viewport.add_child(run)
 	results.visible = false
 	_leave_armed = 0.0
 	_lives_seen = -1
+	_paid = false
+	# THE FIRST RUN OF A SESSION OPENS ON THE TUTORIAL, her standing still
+	# on the landing behind it until Start.
+	if not _tutorial_seen:
+		run.set_process(false)
+		tutorial.visible = true
+		tutorial.reset_size()
+		tutorial.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		tutorial.grow_vertical = Control.GROW_DIRECTION_BOTH
+		tutorial.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+
+
+func begin() -> void:
+	"""The tutorial away: the run's "Get ready", then she walks."""
+	tutorial.visible = false
+	_tutorial_seen = true
+	if run != null and is_instance_valid(run):
+		run.set_process(true)
 
 
 func _process(delta: float) -> void:
@@ -236,10 +330,13 @@ func paint() -> void:
 	lives_line.text = "Lives %d" % lives
 	lives_line.add_theme_color_override("font_color", COLOUR_BAD if int(run.get("lives")) <= 1 else COLOUR)
 	shots_line.text = "Shots %d" % int(RunScript.SHOT_STEPS[int(run.get("power"))]) \
-		+ (" - overcharge" if float(run.get("overcharge")) > 0.0 else "")
+		+ ((" - laser %d" % int(run.get("laser_level"))) if float(run.get("laser")) > 0.0 else "")
 	rank_line.text = "Danger %d" % int(run.call("rank"))
 	slain_line.text = "Slain %d" % int(run.get("slain"))
-	banner_line.text = str(run.get("banner"))
+	gold_line.text = "Gold %d" % int(run.call("gold_now"))
+	var held_meteors: int = int(run.get("meteors"))
+	meteor_line.text = ("Meteors %d - Space" % held_meteors) if held_meteors > 0 else ""
+	banner_line.text = "" if tutorial.visible else str(run.get("banner"))
 	boss_bar.visible = state == RunScript.State.BOSS
 	boss_bar.value = float(run.call("boss_share"))
 	if _leave_armed > 0.0:
@@ -247,7 +344,7 @@ func paint() -> void:
 	else:
 		leave_button.text = "Leave"
 	if (state == RunScript.State.WON or state == RunScript.State.LOST) and not results.visible:
-		result_line.text = str(run.call("result_text"))
+		result_line.text = "%s\n%d gold - yours when you Leave" % [str(run.call("result_text")), int(run.call("gold_now"))]
 		results.visible = true
 		results.reset_size()
 		results.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -260,10 +357,88 @@ func ask_to_leave() -> void:
 	var state: int = int(run.get("state")) if run != null and is_instance_valid(run) else RunScript.State.LOST
 	var over: bool = state == RunScript.State.WON or state == RunScript.State.LOST
 	if over or _leave_armed > 0.0:
-		close()
+		leave()
 		return
 	_leave_armed = LEAVE_ARMED_SECONDS
 	paint()
+
+
+func leave() -> void:
+	"""Leave: the run's gold paid into the character's purse by the server,
+	then out. Not reached, the screen says so and stays - Leave again tries
+	again."""
+	if _busy:
+		return
+	if not await _pay():
+		return
+	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
+	if hud != null and is_instance_valid(hud) and hud.has_method("_push_message") and gold > 0:
+		hud.call("_push_message", "The Healer's Run: %d gold, into your purse." % gold, COLOUR, 0, true)
+	close()
+
+
+func again() -> void:
+	"""Again: this run's gold paid, then the day's next run - when there is one."""
+	if _busy:
+		return
+	if not await _pay():
+		return
+	if run_id == 0:
+		start()
+		return
+	_busy = true
+	result_line.text = "Asking for another run..."
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": "healerrun", "slot": int(slot_now.call())}, 6.0)
+	_busy = false
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		run_id = int(data["run"])
+		if data.get("pays") is Dictionary:
+			pays = data["pays"]
+		start()
+		return
+	if int(res.get("status", 0)) == 409:
+		result_line.text = str(data.get("message", "No runs left today."))
+		again_button.disabled = true
+		return
+	result_line.text = "Could not reach the server - try again."
+
+
+func _pay() -> bool:
+	"""This run finished on the server and its gold paid - once. True when it
+	is (or there is no run on the server: a test, or the owner's own)."""
+	if run_id == 0 or _paid:
+		return true
+	if run == null or not is_instance_valid(run):
+		return true
+	_busy = true
+	# Still while it is settled: what is sent is what was reached.
+	run.set_process(false)
+	var state: int = int(run.get("state"))
+	var body := {"run": run_id, "waves": mini(int(run.get("waves_done")), RunScript.STRETCHES * RunScript.WAVES_PER_STRETCH),
+		"boss": bool(run.get("boss_beaten")), "goal": state == RunScript.State.WON}
+	var res: Dictionary = await finish_request.call("/api/minigames/finish", body, 8.0)
+	_busy = false
+	if not is_instance_valid(self):
+		return false
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) or int(res.get("status", 0)) == 409:
+		_paid = true
+		var status: Dictionary = data.get("status", {}) if data.get("status") is Dictionary else {}
+		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
+			_held.call("set_gold", int(status["gold"]))
+		return true
+	banner_line.text = "Could not reach the server - Leave again to try once more."
+	results.visible = true
+	result_line.text = "Your gold is waiting: Leave again to take it."
+	return false
+
+
+func _slot() -> int:
+	return int(CharacterData.active_character_index)
 
 
 func close() -> void:
@@ -281,6 +456,11 @@ func _input(event: InputEvent) -> void:
 		var key := event as InputEventKey
 		if key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
 			ask_to_leave()
+		elif key.pressed and not key.echo and key.keycode == KEY_SPACE:
+			if tutorial.visible:
+				begin()
+			elif run != null and is_instance_valid(run):
+				run.call("fire_meteor")
 		get_viewport().set_input_as_handled()
 
 

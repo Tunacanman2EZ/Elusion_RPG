@@ -1272,10 +1272,98 @@ func _test_the_healers_run() -> void:
 	run.gain_power()
 	run.gain_power()
 	check("  and power-ups stop at eight", run.power == 4 and int(RunScript.SHOT_STEPS[run.power]) == 8)
+	run.laser_level = 0
+	run.laser = 0.0
 	run.gain_power()
-	check("  past it, a power-up is overcharge: twice the rate of fire for a while",
-		run.power == 4 and run.overcharge == RunScript.OVERCHARGE_SECONDS and run.banner == "Overcharge")
-	run.overcharge = 0.0
+	check("  past it, a power-up is the laser for a while (the owner: \"lets add a laser\")",
+		run.power == 4 and run.laser == RunScript.LASER_SECONDS and run.laser_level == 1 and run.banner == "Laser 1")
+	var in_line: Node2D = run.call("_foe", "mage", run.healer.position + Vector2(0.0, -120.0))
+	in_line.set("velocity", Vector2.ZERO)
+	in_line.set("stop_y", -999.0)
+	var was_health: float = in_line.get("health")
+	run.call("_shine", 0.5)
+	check("  a beam straight up from her, through what stands in it", run.beam.visible
+		and float(in_line.get("health")) < was_health - RunScript.LASER_DPS * 0.4, [was_health, in_line.get("health")])
+	# "add layers to the lasers add some color more upgrades should make you stronger".
+	var rank_at_one: int = run.rank()
+	for i in 6:
+		run.gain_power()
+	check("each power-up after is a laser level, to five: wider, harder, longer, side beams, and the rank with it",
+		run.laser_level == RunScript.LASER_LEVELS and run.laser == RunScript.laser_seconds(5)
+		and RunScript.laser_dps(5) == RunScript.LASER_DPS * 3.0 and RunScript.laser_half(5) > RunScript.laser_half(1)
+		and RunScript.side_beams(2).is_empty() and RunScript.side_beams(3).size() == 2 and RunScript.side_beams(5).size() == 4
+		and run.rank() >= mini(RunScript.RANK_MOST, rank_at_one + 4) and run.banner == "Laser 5",
+		[run.laser_level, run.rank(), rank_at_one])
+	check("  a layer of colour for each level, and red in the middle of the best one",
+		RunScript.LASER_COLOURS.size() == RunScript.LASER_LEVELS and RunScript.LASER_HEART.r > 0.9
+		and RunScript.LASER_HEART.g < 0.3)
+	check("  her shots and the monsters' bullets are drawn over the laser, never hidden in it",
+		run.beam.z_index < run.get_node("shots").z_index and run.beam.z_index < run.field.z_index)
+	# "bullets need to be an addition to laser the do not overlap".
+	var apart: bool = true
+	for level in [1, 3, 5]:
+		run.laser_level = level
+		run.laser = 5.0
+		var first_shot: int = run.shots_flying()
+		run.call("_fire", RunScript.SHOT_GAP)
+		var edge: float = run.laser_edge()
+		for k in range(first_shot, run.shots_flying()):
+			apart = apart and absf(run._shot_pos[k].x - run.healer.position.x) > edge
+		apart = apart and run.shots_flying() - first_shot == 8
+	check("  with the laser on, all eight shots start beside it, past its outer edge - at every level", apart)
+	run.laser_level = 5
+	run.laser = 5.0
+	run.untouchable = 0.0
+	var lives_then: int = run.lives
+	run.hurt()
+	check("  a hit takes a laser level before a shot step", run.laser_level == 4 and run.power == 4
+		and run.lives == lives_then - 1)
+	run.lives = lives_then
+	run.laser_level = 0
+	run.laser = 0.0
+	run.call("_shine", 0.0)
+	# THE METEOR: "we can loot a meteor for a special weapon for the bosses",
+	# "just press space to fire meteor will auto lock".
+	check("no meteor held, Space does nothing", not run.fire_meteor())
+	run.gain_meteor()
+	run.gain_meteor()
+	run.gain_meteor()
+	run.gain_meteor()
+	var tough: Node2D = run.meteor_target()
+	check("  a meteor picked up is held (up to three); it locks on the toughest monster standing",
+		run.meteors == RunScript.METEORS_MOST and tough != null, tough)
+	var tough_health: float = tough.get("health")
+	check("  and Space calls it down", run.fire_meteor() and run.meteors == RunScript.METEORS_MOST - 1)
+	for i in 40:
+		run.untouchable = 1.0
+		run.step(1.0 / 60.0)
+	check("  where it lands it strikes", not is_instance_valid(tough) or float(tough.get("health")) < tough_health
+		or float(tough.get("dying")) >= 0.0)
+	# ARCS SWING DEEP: "the enemies on the left and right do not sway far enough into the map".
+	var arc: Node2D = run.call("_foe", "sprite", Vector2(RunScript.PATH_HALF + 16.0, -150.0))
+	arc.set("side", 1.0)
+	arc.set("path", "arc")
+	arc.set("velocity", Vector2(-RunScript.ARC_IN, 70.0))
+	arc.set("shoot_in", 99.0)
+	var deepest: float = 999.0
+	for i in 180:
+		run.untouchable = 1.0
+		run.call("_move_foes", 1.0 / 60.0)
+		if is_instance_valid(arc) and arc.get_parent() != null:
+			deepest = minf(deepest, absf(arc.position.x))
+	check("an arc swings deep into the path - %d px in from the wall" % int(RunScript.PATH_HALF - deepest),
+		RunScript.PATH_HALF - deepest >= 150.0, deepest)
+	var kinds_made: Dictionary = {}
+	for kind in ["snake", "pincer", "ring", "wall"]:
+		kinds_made[kind] = run.spawn_wave(kind).size()
+	check("more formations: a snake, a pincer, a ring and a wall of slimes with a way through",
+		RunScript.WAVE_KINDS.size() == 10 and kinds_made["snake"] >= 8 and kinds_made["pincer"] >= 10
+		and kinds_made["ring"] >= 8 and kinds_made["wall"] >= 8, kinds_made)
+	# GOLD: "gold should be rewarded on the screen then moved to char when hitting leave".
+	var waves_were: int = run.waves_done
+	run.waves_done = 7
+	check("the gold on screen: seven waves are 50 and two of 16", run.gold_now() == 82, run.gold_now())
+	run.waves_done = waves_were
 	check("more power-ups: a mage drops one nearly half the time, and never more than 12 kills without one",
 		float(RunScript.KINDS["mage"]["power"]) >= 0.4 and RunScript.POWER_PITY <= 12)
 	var waves_then: int = run.foes.get_child_count()
@@ -1333,9 +1421,22 @@ func _test_the_healers_run() -> void:
 	# ---- the gate and the goal ----
 	var won: Array = []
 	run.finished.connect(func(did_win: bool) -> void: won.append(did_win))
+	run.waves_done = 25
+	for left in run.foes.get_children():
+		left.queue_free()
 	run.call("_start_boss")
-	check("after the last stretch, the gate: its keeper is the last land's boss, at full health",
-		run.state == RunScript.State.BOSS and run.boss != null and is_equal_approx(run.boss_share(), 1.0))
+	var gate_meteor: bool = false
+	for drop in run.drops.get_children():
+		gate_meteor = gate_meteor or str(drop.get_meta(&"drop", "")) == "meteor"
+	check("after the last stretch, the gate: its keeper is the last land's boss, at full health, and a meteor falls ahead",
+		run.state == RunScript.State.BOSS and run.boss != null and is_equal_approx(run.boss_share(), 1.0) and gate_meteor)
+	run.meteors = 1
+	check("  Space locks on the boss", run.meteor_target() == run.boss and run.fire_meteor())
+	for i in 40:
+		run.untouchable = 1.0
+		run.call("_meteors_fall", 1.0 / 60.0)
+	check("  and takes a sixth of its health or so", run.boss_share() <= 1.0 - RunScript.METEOR_BOSS_SHARE + 0.001,
+		run.boss_share())
 	run.call("_strike", run.boss, run.boss.most + 1.0)
 	check("  killed, the way is open and the goal marker laid ahead", run.state == RunScript.State.GOAL and run.goal != null
 		and run.goal.get_child_count() >= 3)
@@ -1344,9 +1445,9 @@ func _test_the_healers_run() -> void:
 			break
 		run.untouchable = 1.0
 		run.step(1.0 / 60.0)
-	check("  and walking to it wins the run - in the time it took",
-		run.state == RunScript.State.WON and won == [true] and run.result_text().begins_with("Cleared in "),
-		[run.state, won, run.result_text()])
+	check("  and walking to it wins the run - in the time it took - and the whole thousand",
+		run.state == RunScript.State.WON and won == [true] and run.result_text().begins_with("Cleared in ")
+		and run.gold_now() == 1000, [run.state, won, run.result_text(), run.gold_now()])
 	run.queue_free()
 	var lost = RunScript.new()
 	lost.set("seed_value", 3)
@@ -1369,6 +1470,13 @@ func _test_the_healers_run() -> void:
 	check("the screen opens over everything with the run in a world of its own, and the character waits, still",
 		screen.layer == ScreenScript.LAYER and screen.run != null and screen.viewport.world_2d != get_viewport().world_2d
 		and stand_in.process_mode == Node.PROCESS_MODE_DISABLED)
+	check("  the first run opens on the tutorial (\"a tutorial screen also before char walks\"), the run held behind it",
+		screen.tutorial.visible and not screen.run.is_processing())
+	var space := InputEventKey.new()
+	space.keycode = KEY_SPACE
+	space.pressed = true
+	screen._input(space)
+	check("  Space starts it", not screen.tutorial.visible and screen.run.is_processing())
 	var escape := InputEventKey.new()
 	escape.keycode = KEY_ESCAPE
 	escape.pressed = true
@@ -1379,6 +1487,29 @@ func _test_the_healers_run() -> void:
 	await get_tree().process_frame
 	check("  and the second time leaves - the character let go", not is_instance_valid(screen)
 		and stand_in.process_mode == Node.PROCESS_MODE_INHERIT)
+	# LEAVE PAYS: a run the server knows is finished there, its gold paid.
+	var paid: Array = []
+	var paying = ScreenScript.open(get_tree(), 4, 77, {"wave_gold": [10, 16, 24, 30, 40], "waves_per_stretch": 5,
+		"boss_gold": 150, "goal_gold": 250, "most": 1000})
+	paying.finish_request = func(path: String, body: Dictionary, _wait: float) -> Dictionary:
+		paid.append([path, body])
+		return {"ok": true, "status": 200, "data": {"gold": 26, "status": {"gold": 1026}}}
+	await get_tree().process_frame
+	paying.run.waves_done = 2
+	paying.leave()
+	await get_tree().process_frame
+	check("Leave finishes the run on the server - how far it got - and goes",
+		paid.size() == 1 and paid[0][0] == "/api/minigames/finish" and paid[0][1] == {"run": 77, "waves": 2,
+		"boss": false, "goal": false} and not is_instance_valid(paying), paid)
+	var refused = ScreenScript.open(get_tree(), 5, 78)
+	refused.finish_request = func(_path: String, _body: Dictionary, _wait: float) -> Dictionary:
+		return {"ok": false, "status": 0}
+	await get_tree().process_frame
+	refused.leave()
+	await get_tree().process_frame
+	check("  not reached, it stays and says the gold is waiting", is_instance_valid(refused)
+		and refused.result_line.text.contains("gold is waiting"))
+	refused.close()
 	stand_in.queue_free()
 	# ---- the Minigames card ----
 	var Card: GDScript = load("res://src/ui/minigames/minigamescard.gd") as GDScript
@@ -1386,19 +1517,23 @@ func _test_the_healers_run() -> void:
 	add_child(hud)
 	var card = Card.call("attach", hud)
 	var opened: Array = []
-	card.set("shows_healer_run", func() -> bool: return true)
-	card.set("open_run", func() -> void: opened.append(true))
+	card.set("open_run", func(run_id: int, what_it_pays: Dictionary) -> void: opened.append([run_id, what_it_pays]))
+	card.set("enter_request", func(_path: String, body: Dictionary, _wait: float) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"run": 42, "plays_left": 2, "pays": {"most": 1000}, "game": body["game"]}})
 	card.set("area_now", func() -> String: return "field")
 	card.call("paint")
-	check("the Minigames card has the Healer's Run under the Endless: away from town, \"Play it from town.\"",
+	check("the Minigames card has the Healer's Run under the Endless, for everyone: away from town, \"Play it from town.\"",
 		card.healer_box.visible and card.healer_status.text == "Play it from town." and card.healer_go.disabled)
 	card.set("area_now", func() -> String: return "elusion")
-	card.call("paint")
+	card.call("take_listing", {"ok": true, "data": {"games": [{"id": "healerrun", "plays_left": 2, "ready_in": 0}]}})
+	check("  in town it says the runs left today (\"3 times a day\")", not card.healer_go.disabled
+		and card.healer_status.text == "Ready - 2 of 3 runs left today", card.healer_status.text)
 	card.healer_go.pressed.emit()
-	check("  in town, Go opens it", not card.healer_go.disabled and opened == [true])
-	card.set("shows_healer_run", func() -> bool: return false)
-	card.call("paint")
-	check("  and only the owner sees it while it pays nothing (step 1)", not card.healer_box.visible)
+	await get_tree().process_frame
+	check("  Go asks the server, and opens the run it gives", opened == [[42, {"most": 1000}]], opened)
+	card.call("take_listing", {"ok": true, "data": {"games": [{"id": "healerrun", "plays_left": 0, "ready_in": 7200}]}})
+	check("  none left: when the next one is, and no Go", card.healer_go.disabled
+		and card.healer_status.text == "Back in 2h", card.healer_status.text)
 	hud.queue_free()
 	await get_tree().process_frame
 	print("  the healer's run: a shooter of her own, in a world of its own, from town")

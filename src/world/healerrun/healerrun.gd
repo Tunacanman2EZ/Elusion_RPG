@@ -62,6 +62,43 @@
 #   and it costs a life. Drawn as a glow and embers (BulletField orbs), no
 #   new art.
 #
+# GOLD, A LASER, A METEOR AND MORE FORMATIONS (0.99.0). The owner: "the
+# enemies on the left and right do not sway far enough into the map", "gold
+# should be rewarded on the screen then moved to char when hitting leave",
+# "we also need more enemy formations", "we can loot a meteor for a special
+# weapon for the bosses", "just press space to fire meteor will auto lock",
+# "when hitting overcharge nothing happens after lets add a laser".
+# - Arcs swing deep into the path (ARC_IN, ARC_TURN): about 180 px in.
+# - New formations: a snake weaving down, a pincer from both top corners, a
+#   ring turning as it comes, and a wall of slimes with gaps.
+# - Gold counts on screen (gold_now()), from the table the server hands the
+#   game at Go (`pays`; DEFAULT_PAYS until then): each wave passed, the boss,
+#   the goal. The server pays it at Leave (healerrunscreen.gd).
+# - At eight shots a power-up is a LASER (LASER_SECONDS): a beam straight up
+#   from her, through everything in it. It replaces 0.98.1's overcharge, which
+#   nobody could see.
+# - A METEOR drops now and then from a mage or a sniper, and one falls ahead
+#   of her at the gate; Space calls it down on the boss - or, before the
+#   gate, the toughest monster standing (fire_meteor()). Up to METEORS_MOST.
+#
+# THE LASER GROWS (0.99.0). The owner: "now we need to add layers to the
+# lasers add some color more upgrades should make you stronger". Every
+# power-up past eight shots is a laser level, to LASER_LEVELS (5), kept for the
+# run: each adds a layer of colour (LASER_COLOURS - green, teal, blue, violet,
+# gold), more width and damage (laser_half(), laser_dps()), longer time
+# (laser_seconds()), and from level 3 a pair of side beams, from level 5 two.
+# A hit takes a laser level before a shot step. The rank counts the levels too,
+# so the stronger she is, the harder it gets.
+#
+# BULLETS OVER THE LASER, AND A RED HEART TO THE BEST ONE (0.99.0). The owner:
+# "we need to make sure bullets are a layer to the lasers also we can add some
+# red in the middle of the best laser". The laser is drawn at BEAM_Z, under her
+# shots (SHOTS_Z) and the monsters' bullets (BULLETS_Z) - a bullet in the beam
+# is still seen, and dodged - and her shots keep firing beside it, starting
+# past its outer edge so the two never overlap (laser_edge(): "bullets need to
+# be an addition to laser the do not overlap"). At the top level
+# (LASER_LEVELS) its middle is red (LASER_HEART).
+#
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
@@ -112,7 +149,35 @@ const SCROLL_START := 28.0
 const SCROLL_PER_SECOND := 0.1
 const SCROLL_PER_RANK := 1.5
 const SCROLL_MOST := 95.0
-const OVERCHARGE_SECONDS := 6.0
+const LASER_SECONDS := 6.0
+const LASER_DPS := 34.0
+const LASER_HALF := 7.0
+const LASER_LEVELS := 5
+# Each level's layer, from the inside out.
+const LASER_COLOURS := [Color(0.55, 1.0, 0.62), Color(0.35, 0.95, 0.9), Color(0.4, 0.6, 1.0),
+	Color(0.75, 0.45, 1.0), Color(1.0, 0.8, 0.3)]
+# Side beams: this far either side of the main one, at this share of its damage.
+const LASER_HEART := Color(1.0, 0.18, 0.15, 0.95)
+const BEAM_Z := 10
+const SHOTS_Z := 20
+const BULLETS_Z := 21
+const SIDE_BEAM_GAP := 18.0
+const SIDE_BEAM_SHARE := 0.5
+const METEORS_MOST := 3
+const METEOR_FALL := 0.45
+const METEOR_REACH := 70.0
+const METEOR_HIT := 30.0
+# A meteor takes this share of a boss's health (never less than METEOR_HIT).
+const METEOR_BOSS_SHARE := 0.15
+const METEOR_DROP := 0.05
+const METEOR_TEXTURE := "res://art/maincharacter/meteor.png"
+const METEOR_ITEM := "res://data/items/weapons/meteorite.tres"
+# Arcs: in from a side this fast, turning back this hard - about 180 px in.
+const ARC_IN := 165.0
+const ARC_TURN := 75.0
+# Until the server says (its answer to Go): the same table as minigames/services.py.
+const DEFAULT_PAYS := {"wave_gold": [10, 16, 24, 30, 40], "waves_per_stretch": 5, "boss_gold": 150,
+	"goal_gold": 250, "most": 1000}
 # From the second stretch, the chance a wave brings a second, smaller one of
 # another kind alongside - more with each stretch.
 const BOTH_CHANCE := 0.3
@@ -139,7 +204,7 @@ const KINDS := {
 }
 # After this many kills with no power-up, the next kill drops one.
 const POWER_PITY := 12
-const WAVE_KINDS := ["vee", "sweep", "mages", "slimes", "arcs", "snipers"]
+const WAVE_KINDS := ["vee", "sweep", "mages", "slimes", "arcs", "snipers", "snake", "pincer", "ring", "wall"]
 
 const LANDS := [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
 	Element.Type.EARTH, Element.Type.FIRE, Element.Type.DARK]
@@ -183,9 +248,39 @@ class Foe extends Node2D:
 	var dying: float = -1.0
 	var wave: int = 0
 	# How a sprite flies: "dive" straight down, "sweep" across, "arc" in from a
-	# side and back out the way it came.
+	# side and back out the way it came, "snake" weaving down, "ring" turning
+	# round a point that comes down.
 	var path: String = ""
+	var anchor: Vector2 = Vector2.ZERO
+	var phase: float = 0.0
 	var sprite: AnimatedSprite2D = null
+
+
+# THE LASER, drawn: a white core and a layer of colour for each level, the
+# newest outermost; side beams from level 3.
+class Beam extends Node2D:
+	var length: float = 300.0
+	var flicker: float = 0.0
+	var level: int = 1
+	# Set by the run each frame: the main beam's half width, where side beams stand.
+	var half: float = LASER_HALF
+	var sides: Array = []
+
+	func _draw() -> void:
+		var pulse: float = 1.0 + 0.15 * sin(flicker * 40.0)
+		_one(0.0, half * pulse, level)
+		for x in sides:
+			_one(float(x), LASER_HALF * 0.6 * pulse, maxi(1, level - 2))
+
+	func _one(x: float, wide: float, layers: int) -> void:
+		for i in range(layers - 1, -1, -1):
+			var colour: Color = LASER_COLOURS[i]
+			var w: float = wide * (0.45 + 0.55 * float(i + 1) / float(layers))
+			colour.a = 0.3 + 0.35 * (1.0 - float(i) / float(maxi(1, layers)))
+			draw_rect(Rect2(x - w, -length, w * 2.0, length), colour)
+		var heart: Color = LASER_HEART if layers >= LASER_LEVELS else Color(0.9, 1.0, 0.95, 0.85)
+		draw_rect(Rect2(x - wide * 0.3, -length, wide * 0.6, length), heart)
+		draw_rect(Rect2(x - 1.0, -length, 2.0, length), Color(1.0, 1.0, 1.0, 0.95))
 
 
 # The suite's doors: which way she is steered, and whether she is focusing.
@@ -237,7 +332,15 @@ var _shot_buffer := PackedFloat32Array()
 var _painted_top: int = floori((HALF.y + 64.0) / TILE) + 1
 var _painted_bottom: int = floori((HALF.y + 64.0) / TILE)
 var _wall_top: int = floori((HALF.y + 64.0) / WALL_STEP) + 1
-var overcharge: float = 0.0
+var laser: float = 0.0
+# How strong her laser is (0: none yet): kept for the run, one lost to a hit.
+var laser_level: int = 0
+var meteors: int = 0
+var boss_beaten: bool = false
+# What a wave, the boss and the goal pay (the server's answer to Go).
+var pays: Dictionary = DEFAULT_PAYS.duplicate(true)
+var beam: Beam = null
+var _falling: Array = []
 var fire_height: float = 0.0
 var embers: BulletField = null
 var fire_glow: TextureRect = null
@@ -305,10 +408,20 @@ func _ready() -> void:
 	_make_shots()
 	field = BulletField.new()
 	field.name = "bullets"
+	field.z_index = BULLETS_Z
 	field.capacity = 2500
 	field.bounds = Rect2(-HALF - Vector2(24, 24), VIEW + Vector2(48, 48))
 	add_child(field)
 	_make_fire()
+	beam = Beam.new()
+	beam.name = "laser"
+	beam.z_index = BEAM_Z
+	var glow := CanvasItemMaterial.new()
+	glow.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	# Mixed, not added: added, the layers of a strong laser all came out white.
+	beam.material = glow
+	beam.visible = false
+	add_child(beam)
 	_lay_terrain()
 	_lay_landing()
 	banner = "Get ready"
@@ -398,6 +511,155 @@ func _burn(delta: float) -> void:
 		healer.position.y = minf(healer.position.y, fire_top() - 24.0)
 
 
+static func laser_half(level: int) -> float:
+	return LASER_HALF * (1.0 + 0.25 * (maxi(1, level) - 1))
+
+
+static func laser_dps(level: int) -> float:
+	return LASER_DPS * (1.0 + 0.5 * (maxi(1, level) - 1))
+
+
+static func laser_seconds(level: int) -> float:
+	return LASER_SECONDS + 1.5 * (maxi(1, level) - 1)
+
+
+static func side_beams(level: int) -> Array:
+	"""Where the side beams stand, either side of the main one."""
+	if level >= 5:
+		return [-SIDE_BEAM_GAP, SIDE_BEAM_GAP, -SIDE_BEAM_GAP * 2.0, SIDE_BEAM_GAP * 2.0]
+	if level >= 3:
+		return [-SIDE_BEAM_GAP, SIDE_BEAM_GAP]
+	return []
+
+
+func _shine(delta: float) -> void:
+	"""The laser: up from her through everything in its column - and its
+	side beams' - harder at each level."""
+	beam.visible = laser > 0.0
+	if laser <= 0.0:
+		return
+	var level: int = maxi(1, laser_level)
+	beam.level = level
+	beam.half = laser_half(level)
+	beam.sides = side_beams(level)
+	beam.position = healer.position + Vector2(0.0, -18.0)
+	beam.length = beam.position.y + HALF.y
+	beam.flicker += delta
+	beam.queue_redraw()
+	var columns: Array = [[0.0, laser_half(level), laser_dps(level)]]
+	for x in side_beams(level):
+		columns.append([float(x), LASER_HALF * 0.6, laser_dps(level) * SIDE_BEAM_SHARE])
+	for foe in foes.get_children():
+		var f := foe as Foe
+		if f == null or f.dying >= 0.0 or f.position.y > beam.position.y or f.position.y < -HALF.y - 8.0:
+			continue
+		for column in columns:
+			if absf(f.position.x - beam.position.x - float(column[0])) <= float(column[1]) + f.radius:
+				_strike(f, float(column[2]) * delta)
+
+
+func gain_meteor() -> void:
+	meteors = mini(METEORS_MOST, meteors + 1)
+	_say("Meteor - press Space")
+
+
+func meteor_target() -> Foe:
+	"""The boss at the gate; before it, the toughest monster on screen."""
+	if boss != null and is_instance_valid(boss) and boss.dying < 0.0:
+		return boss
+	var best: Foe = null
+	for foe in foes.get_children():
+		var f := foe as Foe
+		if f == null or f.dying >= 0.0 or f.position.y < -HALF.y or f.position.y > HALF.y:
+			continue
+		if best == null or f.health > best.health:
+			best = f
+	return best
+
+
+func fire_meteor() -> bool:
+	"""Space: a meteor called down on meteor_target(). False with none held,
+	nothing to aim at, or the run not on."""
+	if meteors <= 0 or (state != State.RUNNING and state != State.BOSS):
+		return false
+	var target: Foe = meteor_target()
+	if target == null:
+		return false
+	meteors -= 1
+	var rock := Sprite2D.new()
+	rock.texture = load(METEOR_TEXTURE) as Texture2D
+	rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rock.z_index = 35
+	rock.position = Vector2(target.position.x, -HALF.y - 40.0)
+	add_child(rock)
+	_falling.append({"rock": rock, "target": target, "left": METEOR_FALL, "from": rock.position})
+	return true
+
+
+func _meteors_fall(delta: float) -> void:
+	var still: Array = []
+	for fall in _falling:
+		var rock: Sprite2D = fall["rock"]
+		var target: Foe = fall["target"] if is_instance_valid(fall["target"]) else null
+		var to: Vector2 = target.position + Vector2(0.0, -8.0) if target != null else rock.position + Vector2(0.0, 40.0)
+		fall["left"] = float(fall["left"]) - delta
+		var done: float = 1.0 - clampf(float(fall["left"]) / METEOR_FALL, 0.0, 1.0)
+		rock.position = (fall["from"] as Vector2).lerp(to, done * done)
+		rock.rotation += delta * 6.0
+		if float(fall["left"]) > 0.0:
+			still.append(fall)
+			continue
+		_land_meteor(rock.position, target)
+		rock.queue_free()
+	_falling = still
+
+
+func _land_meteor(at: Vector2, target: Foe) -> void:
+	if target != null and target == boss and target.dying < 0.0:
+		_strike(target, maxf(METEOR_HIT, target.most * METEOR_BOSS_SHARE))
+	for foe in foes.get_children():
+		var f := foe as Foe
+		if f != null and f != boss and f.dying < 0.0 and f.position.distance_to(at) <= METEOR_REACH:
+			_strike(f, METEOR_HIT)
+	var burst := Polygon2D.new()
+	var ring := PackedVector2Array()
+	for k in 20:
+		ring.append(Vector2.from_angle(TAU * k / 20.0) * METEOR_REACH * 0.6)
+	burst.polygon = ring
+	burst.color = Color(1.0, 0.75, 0.35, 0.7)
+	burst.position = at
+	burst.z_index = 34
+	var glow := CanvasItemMaterial.new()
+	glow.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	glow.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	burst.material = glow
+	add_child(burst)
+	var fade := burst.create_tween()
+	fade.tween_property(burst, "scale", Vector2.ONE * 1.6, 0.3)
+	fade.parallel().tween_property(burst, "modulate:a", 0.0, 0.3)
+	fade.tween_callback(burst.queue_free)
+
+
+# =============================================================================
+# GOLD
+# =============================================================================
+
+func gold_now() -> int:
+	"""What the run has earned so far, by the server's table: each wave
+	passed, the boss, the goal."""
+	var table: Array = pays.get("wave_gold", DEFAULT_PAYS["wave_gold"])
+	var per: int = maxi(1, int(pays.get("waves_per_stretch", 5)))
+	var passed: int = mini(waves_done, STRETCHES * WAVES_PER_STRETCH)
+	var gold: int = 0
+	for i in passed:
+		gold += int(table[mini(i / per, table.size() - 1)])
+	if passed == STRETCHES * WAVES_PER_STRETCH and boss_beaten:
+		gold += int(pays.get("boss_gold", 0))
+		if state == State.WON:
+			gold += int(pays.get("goal_gold", 0))
+	return gold
+
+
 func _make_shots() -> void:
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE
@@ -414,6 +676,7 @@ func _make_shots() -> void:
 	shading.shader = shader
 	var drawer := MultiMeshInstance2D.new()
 	drawer.name = "shots"
+	drawer.z_index = SHOTS_Z
 	drawer.multimesh = _shot_mesh
 	drawer.texture = BulletField.orb_texture()
 	drawer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -429,7 +692,7 @@ func _make_shots() -> void:
 # =============================================================================
 
 func rank() -> int:
-	return clampi(stretch + power - setbacks, 0, RANK_MOST)
+	return clampi(stretch + power + laser_level - setbacks, 0, RANK_MOST)
 
 
 static func foe_health(base: float, at_rank: int) -> float:
@@ -510,7 +773,7 @@ func step(delta: float) -> void:
 		return
 	run_seconds += delta
 	untouchable = maxf(0.0, untouchable - delta)
-	overcharge = maxf(0.0, overcharge - delta)
+	laser = maxf(0.0, laser - delta)
 	_scroll(delta)
 	_move_healer(delta)
 	_fire(delta)
@@ -518,6 +781,8 @@ func step(delta: float) -> void:
 	_move_foes(delta)
 	_move_drops(delta)
 	_burn(delta)
+	_shine(delta)
+	_meteors_fall(delta)
 	var hit: Vector2i = field.step(delta, healer.position + HITBOX_AT, HITBOX, 0.0, untouchable > 0.0)
 	if hit.x > 0:
 		hurt()
@@ -602,13 +867,30 @@ func _fire(delta: float) -> void:
 	_shot_in -= delta
 	if _shot_in > 0.0:
 		return
-	_shot_in += SHOT_GAP * (0.5 if overcharge > 0.0 else 1.0)
+	_shot_in += SHOT_GAP
 	var from: Vector2 = healer.position + Vector2(0.0, -16.0)
+	# WITH THE LASER ON, HER SHOTS GO BESIDE IT, never through it (the owner:
+	# "bullets need to be an addition to laser the do not overlap"): each
+	# starts out past the beam's outer edge, its own side.
+	var clear: float = laser_edge() if laser > 0.0 else 0.0
 	for shot in shot_offsets(int(SHOT_STEPS[power])):
 		if _shot_pos.size() >= SHOT_MOST:
 			break
-		_shot_pos.append(from + Vector2(float(shot[0]), 0.0))
+		var x: float = float(shot[0])
+		if clear > 0.0:
+			x = signf(x if x != 0.0 else float(shot[1])) * (clear + absf(x))
+		_shot_pos.append(from + Vector2(x, 0.0))
 		_shot_vel.append(Vector2.UP.rotated(deg_to_rad(float(shot[1]))) * SHOT_SPEED)
+
+
+func laser_edge() -> float:
+	"""How far either side of her the laser reaches, side beams and all, and
+	a little more: where her shots start while it is on."""
+	var level: int = maxi(1, laser_level)
+	var edge: float = laser_half(level)
+	for x in side_beams(level):
+		edge = maxf(edge, absf(float(x)) + LASER_HALF * 0.6)
+	return edge + 3.0
 
 
 func shots_flying() -> int:
@@ -677,7 +959,9 @@ func _kill(f: Foe) -> void:
 	_since_power += 1
 	var info: Dictionary = KINDS.get(f.kind, {})
 	var potion_odds: float = float(info.get("potion", 0.0)) * maxf(0.4, 1.0 - 0.12 * stretch)
-	if f.kind != "boss":
+	if (f.kind == "mage" or f.kind == "sniper") and _rng.randf() < METEOR_DROP:
+		_drop("meteor", f.position)
+	elif f.kind != "boss":
 		if _since_power >= POWER_PITY or _rng.randf() < float(info.get("power", 0.0)):
 			_drop("power", f.position)
 			_since_power = 0
@@ -698,7 +982,13 @@ func hurt() -> void:
 		return
 	lives -= 1
 	setbacks += 1
-	power = maxi(0, power - 1)
+	# A laser level goes first, then a shot step.
+	if laser_level > 0:
+		laser_level -= 1
+		if laser_level == 0:
+			laser = 0.0
+	else:
+		power = maxi(0, power - 1)
 	untouchable = BLINK_SECONDS
 	field.clear()
 	if lives <= 0:
@@ -707,9 +997,10 @@ func hurt() -> void:
 
 func gain_power() -> void:
 	if power >= SHOT_STEPS.size() - 1:
-		# At eight shots, a power-up is OVERCHARGE: twice the rate for a while.
-		overcharge = OVERCHARGE_SECONDS
-		_say("Overcharge")
+		# At eight shots, a power-up is the LASER - a level stronger each time.
+		laser_level = mini(LASER_LEVELS, laser_level + 1)
+		laser = laser_seconds(laser_level)
+		_say("Laser %d" % laser_level)
 		return
 	power += 1
 	_say("Shots %d" % int(SHOT_STEPS[power]))
@@ -723,15 +1014,15 @@ func gain_life() -> void:
 func _say(words: String) -> void:
 	"""A short word in the banner - unless a stretch's or the gate's is up."""
 	if banner_left > 1.2 and banner != "" and not banner.begins_with("Shots") and not banner.begins_with("A life") \
-			and not banner.begins_with("Lives") and banner != "Overcharge":
+			and not banner.begins_with("Lives") and not banner.begins_with("Laser") and not banner.begins_with("Meteor"):
 		return
 	banner = words
 	banner_left = 1.0
 
 
 func _drop(what: String, at: Vector2) -> void:
-	var item_path: String = POTION_ITEM if what == "potion" \
-		else "res://data/items/materials/%s.tres" % str(ESSENCES.get(land(), "lightessence"))
+	var item_path: String = POTION_ITEM if what == "potion" else (METEOR_ITEM if what == "meteor"
+		else "res://data/items/materials/%s.tres" % str(ESSENCES.get(land(), "lightessence")))
 	var item: Resource = load(item_path) if ResourceLoader.exists(item_path) else null
 	var icon := Sprite2D.new()
 	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -750,10 +1041,13 @@ func _move_drops(delta: float) -> void:
 		var icon := node as Node2D
 		icon.position.y += (scroll_speed() + 25.0) * delta
 		if icon.position.distance_to(healer.position + HITBOX_AT) <= 16.0:
-			if str(icon.get_meta(&"drop")) == "potion":
-				gain_life()
-			else:
-				gain_power()
+			match str(icon.get_meta(&"drop")):
+				"potion":
+					gain_life()
+				"meteor":
+					gain_meteor()
+				_:
+					gain_power()
 			_gone(icon)
 		elif icon.position.y > HALF.y + 20.0:
 			_gone(icon)
@@ -879,7 +1173,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0), -HALF.y - 10.0 - float(i / 2) * 34.0))
 				f.side = side
 				f.path = "arc"
-				f.velocity = Vector2(-side * 110.0, 70.0)
+				f.velocity = Vector2(-side * ARC_IN, 70.0)
 				f.shoot_in = _rng.randf_range(1.0, 2.0)
 				made.append(f)
 		"snipers":
@@ -891,6 +1185,52 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.casts_left = 6 + group_extra(r)
 				f.shoot_in = 1.0
 				made.append(f)
+		"snake":
+			# A column weaving down the path.
+			var count: int = _sized(8 + group_extra(r), share)
+			var centre: float = _rng.randf_range(-PATH_HALF + 90.0, PATH_HALF - 90.0)
+			for i in count:
+				var f := _foe("sprite", Vector2(centre, top - i * 24.0))
+				f.path = "snake"
+				f.anchor = Vector2(centre, 0.0)
+				f.side = 70.0
+				f.phase = -i * 0.5
+				f.velocity = Vector2(0.0, 62.0 + 4.0 * r)
+				f.shoot_in = _rng.randf_range(1.2, 2.6)
+				made.append(f)
+		"pincer":
+			# Two lines in from the top corners, crossing in the middle.
+			var count: int = _sized(5 + group_extra(r), share)
+			for side in [-1.0, 1.0]:
+				for i in count:
+					var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0 + i * 22.0), top - i * 26.0))
+					f.path = "dive"
+					f.velocity = Vector2(-side * 85.0, 80.0 + 4.0 * r)
+					f.shoot_in = _rng.randf_range(1.0, 2.2)
+					made.append(f)
+		"ring":
+			# A ring turning round a point coming down.
+			var count: int = _sized(8 + group_extra(r), share)
+			var centre := Vector2(_rng.randf_range(-PATH_HALF + 80.0, PATH_HALF - 80.0), top - 60.0)
+			for i in count:
+				var f := _foe("sprite", centre)
+				f.path = "ring"
+				f.anchor = centre
+				f.phase = TAU * i / count
+				f.velocity = Vector2(0.0, 45.0 + 3.0 * r)
+				f.shoot_in = _rng.randf_range(1.5, 3.0)
+				made.append(f)
+		"wall":
+			# Slimes across the path, one way through.
+			var gap: float = _rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0)
+			var x: float = -PATH_HALF + 24.0
+			while x < PATH_HALF - 20.0:
+				if absf(x - gap) > 44.0:
+					var f := _foe("slime", Vector2(x, top))
+					f.velocity = Vector2(0.0, 30.0 + 2.0 * r)
+					f.side = 0.0
+					made.append(f)
+				x += 34.0
 	return made
 
 
@@ -959,8 +1299,16 @@ func _move_foes(delta: float) -> void:
 			"sprite":
 				if f.path == "arc":
 					# In from a side, bending back out the way it came.
-					f.velocity.x += f.side * 140.0 * delta
-				f.position += f.velocity * delta
+					f.velocity.x += f.side * ARC_TURN * delta
+				if f.path == "snake":
+					f.position.y += f.velocity.y * delta
+					f.position.x = f.anchor.x + sin(f.age * 2.2 + f.phase) * f.side
+				elif f.path == "ring":
+					f.anchor.y += f.velocity.y * delta
+					var turn: float = f.phase + f.age * 1.4
+					f.position = f.anchor + Vector2(cos(turn), sin(turn)) * 52.0
+				else:
+					f.position += f.velocity * delta
 				f.shoot_in -= delta
 				if f.shoot_in <= 0.0 and f.position.y > -HALF.y + 10.0 and f.position.y < HALF.y - 120.0:
 					f.shoot_in = fire_gap(2.6, r)
@@ -1029,6 +1377,8 @@ func _start_boss() -> void:
 	banner_left = BANNER_SECONDS
 	_wave += 1
 	boss = _foe("boss", Vector2(0.0, -HALF.y - 60.0))
+	# A METEOR AT THE GATE, falling ahead of her: Space calls it on the boss.
+	_drop("meteor", Vector2(clampf(healer.position.x, -PATH_HALF + 30.0, PATH_HALF - 30.0), -HALF.y + 50.0))
 	_boss_cast = 2.5
 	_boss_casting = -1
 
@@ -1088,6 +1438,7 @@ func boss_share() -> float:
 
 func _boss_down() -> void:
 	state = State.GOAL
+	boss_beaten = true
 	field.clear()
 	banner = "The way is open"
 	banner_left = BANNER_SECONDS
@@ -1103,7 +1454,7 @@ func _boss_down() -> void:
 	var arrow: Node2D = (load("res://src/shared/beckonarrow.gd") as GDScript).call("make", Vector2(0.0, -22.0))
 	goal.add_child(arrow)
 	var goal_sign := Label.new()
-	goal_sign.text = "GOAL - 1000 gold"
+	goal_sign.text = "GOAL - %d gold" % int(pays.get("most", 1000))
 	goal_sign.add_theme_font_size_override("font_size", 10)
 	goal_sign.add_theme_color_override("font_color", Color(1.0, 0.86, 0.45))
 	goal_sign.add_theme_color_override("font_outline_color", Color.BLACK)

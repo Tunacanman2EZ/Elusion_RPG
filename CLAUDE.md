@@ -2783,10 +2783,10 @@ add some upgrades drop some enemies and healer trys to avoid running into
 enemies but can also kill them i was thinking power up like those old space
 games", "players goal is to kill everything as quick as possible", "first
 power up 2 bullets then 4 then 6 the 8", "make the path wider". The whole plan
-is the commit folder's HEALER_RUN_PLAN.txt; **this is step 1** - the run, to
-play and tune. It pays nothing and is the owner's alone on the Minigames card
-(`_shows_healer_run()`, `Api.is_owner`); the gold, the day and the High scores
-tab are step 3, with the server.
+is the commit folder's HEALER_RUN_PLAN.txt; this began as step 1 - the run, to
+play and tune, the owner's alone and paying nothing. Since 0.99.0 it is
+everyone's, three runs a day, and pays gold at Leave (below); the High scores
+tab is still to come.
 
 - **Its own world, over the screen.** `src/world/healerrun/healerrunscreen.gd`
   (a CanvasLayer at 90, opened by the card's second Go, **in town only** -
@@ -2849,6 +2849,64 @@ want the healer to be standing on a platform not walking in from the black".
   `FIRE_MOST` (64). Her hitbox in it costs a life and puts her above it. Drawn
   as an unshaded gradient glow (a `GradientTexture2D`, as the Endless washes
   its floor) and embers - a second BulletField that hits nothing. No new art.
+
+**Gold, three runs a day, a laser, a meteor, a tutorial (0.99.0)** - and now
+everyone's. The owner: "the enemies on the left and right do not sway far
+enough into the map", "gold should be rewarded on the screen then moved to char
+when hitting leave this minigame can be played 3 times a day", "we also need
+more enemy formations i was thinking a tutorial screen also before char walks
+and we can loot a meteor for a special weapon for the bosses", "just press
+space to fire meteor will auto lock", "when hitting overcharge nothing happens
+after lets add a laser". The server's half is the API's CLAUDE.md, "The
+Healer's Run: three runs a day, its gold at Leave".
+
+- **Three runs a day, from the card** (minigamescard.gd): Go asks the server
+  (`POST /api/minigames/enter` with the slot) and opens the run with its id
+  and what it pays (`open_run.call(run_id, pays)`); the listing says "Ready -
+  N of 3 runs left today", or "Back in 2h" with no Go.
+- **Gold on screen, paid at Leave** (healerrunscreen.gd): "Gold N" counts up
+  (`run.gold_now()`, by the server's `pays`; `DEFAULT_PAYS` until then):
+  each wave passed, the boss, the goal. Leave - or Again - finishes the run on
+  the server (`_pay()`, `POST /api/minigames/finish` with waves, boss, goal),
+  the run held still while it does; the purse in the answer is the
+  character's (`set_gold()` on the waiting character) and the HUD says it.
+  Not reached, the screen stays: "Your gold is waiting: Leave again to take
+  it." Again pays, then asks for the day's next run (a 409 says when).
+- **The tutorial**: the first run of a session opens on it, the healer standing
+  on her landing behind it, the run not stepping (`set_process(false)`) until
+  Start or Space (`begin()`).
+- **The laser** replaces overcharge: at eight shots a power-up is
+  `LASER_SECONDS` (6) of a beam straight up from her (`Beam`, drawn, added and
+  unshaded), `LASER_DPS` (34) to everything within `LASER_HALF` of it
+  (`_shine()`).
+- **The meteor**: a mage or sniper drops one now and then (`METEOR_DROP` 5%),
+  and one falls ahead of her at the gate. Space calls it (`fire_meteor()`):
+  the meteor's own rock (art/maincharacter/meteor.png) falls on
+  `meteor_target()` - the boss, or before the gate the toughest monster on
+  screen - for `METEOR_BOSS_SHARE` (15%) of a boss or `METEOR_HIT` (30) round
+  it. Up to `METEORS_MOST` (3) held; the screen says "Meteors N - Space".
+- **The laser grows** (the owner: "now we need to add layers to the lasers
+  add some color more upgrades should make you stronger"): every power-up past
+  eight shots is a laser level, to `LASER_LEVELS` (5), kept for the run. Each
+  adds a layer of colour (`LASER_COLOURS`: green, teal, blue, violet, gold;
+  drawn mixed, not added - added, a strong laser's layers all came out
+  white), width (`laser_half()`), damage (`laser_dps()`: x3 at five) and time
+  (`laser_seconds()`); side beams from level 3, two pairs at 5
+  (`side_beams()`, half the damage). A hit takes a laser level before a shot
+  step, and the rank counts the levels.
+- **Bullets over the laser** (the owner: "we need to make sure bullets are a
+  layer to the lasers also we can add some red in the middle of the best
+  laser"): the beam is drawn at `BEAM_Z` (10), under her shots (`SHOTS_Z`
+  20) and the monsters' bullets (`BULLETS_Z` 21) - at 30 it hid every bullet
+  in its column - and her shots keep firing beside it. At level 5 its middle
+  is red (`LASER_HEART`). **Her shots never overlap it** (the owner: "bullets
+  need to be an addition to laser the do not overlap"): while it is on, each
+  shot starts past the beam's outer edge on its own side (`laser_edge()`,
+  side beams included), so the eight streams run either side of it.
+- **Arcs swing deep**: in at `ARC_IN` (165) turning at `ARC_TURN` (75), about
+  165 px into the path (it was 43). **New formations**: a snake weaving down,
+  a pincer from both top corners, a ring turning as it comes, a wall of
+  slimes with one way through (`WAVE_KINDS`, ten).
 
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
