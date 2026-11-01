@@ -2811,7 +2811,8 @@ tab is still to come.
   over everything, so monsters come in from behind them.
 - **The run**: 5 stretches of 5 waves, each stretch a land (shuffled), then the
   last land's boss at the gate, then the goal marker ("GOAL - 1000 gold",
-  two pillars and the gold arrow) - walking to it wins. A wave comes when the
+  two pillars and the gold arrow) - walking to it wins. (Since 0.100.0: 3
+  tiers of 8, a boss each, up to 5000 - below.) A wave comes when the
   last is dead (`WAVE_GAP`) or when `wave_time()` is up, on top of what is
   left. Waves: a V, a sweep, mages (fans), slimes, arcs, snipers.
 - **Her shots**: always firing, 1 then 2, 4, 6, 8 (`SHOT_STEPS`,
@@ -2923,6 +2924,60 @@ Healer's Run: three runs a day, its gold at Leave".
   `MAGNET_SPEED` (260) from whichever side, and picked up within
   `PICKUP_REACH` (20): one that had fallen past her could only be reached at
   the bottom of the screen, where she cannot go and the fire is.
+- **Three tiers, a boss for each land, hits you can feel (0.100.0)** - the
+  owner: "lets progress tiers after round 8 to the next difficulty diff boss
+  and effects when hit" (a boss every 8 waves), then "up to 5000 gold for
+  passing phase 2 the fire at the bottom gets a bit taller and upgrades push
+  it back down". `TIERS` (3) of `WAVES_PER_TIER` (8), each in its land
+  (`lands[tier]`) and ending with that land's boss (`_next_wave()` ->
+  `_start_boss()`, `BOSS_HEALTH` 700 / 1300 / 2400 before rank). Beaten
+  (`_boss_down()`), it bursts with everything on screen (counted, no drops),
+  leaves a power-up and a potion, and the next tier starts in the next land;
+  the third opens the way to the goal. `heat()` (two a tier, one more half
+  way through) replaced the stretch in the rank, the crowd, the second and
+  third waves and the potion odds, so a tier starts hotter than the last
+  ended. The earlier bosses call their waves less often (`adds_gap()`).
+  - **Each land's boss fights its own way**: every other cast, the first
+    first, is its land's (`SIGNATURES`, `_signature()`, named in the
+    banner): Fire rain (fireballs from above and an ember that lies
+    burning), Frost volley (fans of freezing shots: `FREEZE_MARK` in a
+    bullet's damage; one reaching her freezes her for `FREEZE_SECONDS` -
+    no moving, no shooting, no laser, tinted `ICE_TINT` - instead of taking
+    a life, then `FROST_PROOF` so it never chains; `_take_hits()`), Gale (a
+    gust shoving her `GUST_PUSH` px/s sideways under crosswinds), Tide (rows
+    of weaving drops, a gap in each), Rockfall (rocks marked on the floor,
+    the first where she stands, landing in a ring of shards; `_rocks`),
+    Pillars of light (columns marked, then burning; one on her; `_pillars`),
+    Dark coils (orbs curling as they fly, BulletField's `turn`). The marks,
+    the pillars and the wind's streaks are drawn by the inner class
+    `Hazards`, unshaded, under her shots.
+  - **Hits felt**, all code-drawn (`Burst`, a ring and sparks, added light
+    under the bullets): every kill bursts in its land's colour, a struck
+    boss sparks and shakes the screen a little (`BOSS_SHAKE`, at most every
+    `BOSS_SHAKE_GAP`), harder for a meteor, a rock, a hit on her
+    (`HURT_SHAKE`) and a boss down; a power-up, potion or meteor rings out
+    from her and she shines. The shake moves the run's node about `_home`
+    (where the screen put it), so nothing the run measures moves.
+  - **The fire** rises `FIRE_RISE` a second plus `FIRE_RISE_PER_TIER` a
+    tier, to `FIRE_MOST` (96; it was 64 and rose with the clock alone), and
+    every power-up pushes it down `FIRE_PUSH`, eased (`_fire_push`).
+  - **Gold** by the server's tiers table (the API's `healer_tier_pays()`,
+    handed over as `pays.tiers` at Go; `RunScript.pays_from()`): 10 / 25 /
+    100 a wave by tier, the bosses 120 / 300 / 1500, the goal 2000 - up to
+    5000 a run, 700 of it by the second boss. Leave sends `bosses` (how many
+    fell) instead of `boss`; **the server goes first**, as it pays an old
+    game by the old table.
+  - **God mode, the owner's** ("i need a godmode switch that only i can see
+    on the screen for this mini game so i can test"): a switch under the
+    gold (`god_switch`), shown only past `Api.GOD_MODE_MIN_ROLE` - the GM
+    panel's own gate - and asked again when pressed (`may_be_god`, a seam).
+    It is `GameState.god_mode` itself, so on here is on in the world too.
+    With `run.god` on, `hurt()` takes nothing (a freezing shot still
+    freezes); `god_used` marks the run, the gold line says it pays nothing,
+    and Leave closes it on the server with nothing reached.
+  `_test_each_keeper_fights_its_own_way()` (testrunner_9) drives every
+  land's cast, the freeze and its thaw, the gust, the rocks and pillars
+  costing a life, the order of casts, every effect, and god mode.
 - **Arcs swing deep**: in at `ARC_IN` (165) turning at `ARC_TURN` (75), about
   165 px into the path (it was 43). **New formations**: a snake weaving down,
   a pincer from both top corners, a ring turning as it comes, a wall of

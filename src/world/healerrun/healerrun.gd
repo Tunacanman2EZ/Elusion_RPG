@@ -26,9 +26,10 @@
 # hall, a row of pillars with gaps, a colonnade, a crossing with one way
 # through - "like a dungeon". What scrolls off the bottom is freed.
 #
-# THE RUN: STRETCHES stretches of WAVES_PER_STRETCH waves, each stretch one of
-# the lands (a random order, so no two runs are alike), then that last land's
-# boss, then the goal marker. A wave comes when the last is dead - or when its
+# THE RUN: TIERS tiers of WAVES_PER_TIER waves, each tier one of the lands (a
+# random order, so no two runs are alike) and ending with that land's boss;
+# after the third, the goal marker (0.100.0 - it was five stretches of five and
+# one boss). A wave comes when the last is dead - or when its
 # time is up, on top of what is left: killing fast makes the run fast.
 #
 # HER SHOTS: unlimited, always firing (SHOT_GAP); a power-up takes her from 1
@@ -36,8 +37,8 @@
 # potion one more (to LIVES_MOST); one hit is one life, then BLINK_SECONDS
 # untouchable, one shot step lost and the screen's bullets cleared.
 #
-# IT GETS HARDER WITH HER (the old games' hidden rank): rank() is the stretch
-# plus her shot step, less one for every life lost, held to 0..RANK_MOST. Rank
+# IT GETS HARDER WITH HER (the old games' hidden rank): rank() is the run's
+# heat (two a tier, one more half way through it) plus her shot step, less one for every life lost, held to 0..RANK_MOST. Rank
 # makes the monsters tougher (foe_health()), their bullets faster
 # (bullet_speed()), their shots more often (fire_gap()), the waves bigger
 # (group_extra()) and quicker to come (wave_time()), and the scroll a little
@@ -123,6 +124,51 @@
 #   as ahead. Going back for one that had fallen past meant reaching for it
 #   at the bottom of the screen, where she cannot go and the fire is.
 #
+# THREE TIERS, A BOSS FOR EACH LAND, AND HITS YOU CAN FEEL (0.100.0). The
+# owner: "lets progress tiers after round 8 to the next difficulty diff boss
+# and effects when hit", choosing a boss every 8 waves.
+# - TIERS of WAVES_PER_TIER: every eighth wave ends with its land's boss
+#   (BOSS_HEALTH by tier, before rank). Beaten, it bursts with every monster on
+#   screen, drops a power-up and a potion, and the next tier starts in the next
+#   land, hotter: heat() is two a tier, and it feeds the rank, the crowd, the
+#   second and third waves and the bosses' rings. After the third, the goal.
+# - Gold by tier (the server's healer_tier_pays(), DEFAULT_PAYS until Go
+#   answers): 10, 25, 100 a wave, the bosses 120, 300, 1500, the goal 2000 -
+#   up to 5000 a run, 700 of it by the second boss (the owner: "up to 5000
+#   gold for passing phase 2").
+# - THE FIRE CLIMBS HIGHER, AND POWER PUSHES IT BACK (the owner: "the fire at
+#   the bottom gets a bit taller and upgrades push it back down"): it rises
+#   FIRE_RISE a second, FIRE_RISE_PER_TIER more each tier, to FIRE_MOST (it
+#   was 64), and every power-up - a shot step or a laser level - pushes it
+#   down FIRE_PUSH, eased over a moment (_fire_push).
+# - EACH LAND'S BOSS FIGHTS ITS OWN WAY: every other cast is its land's own
+#   (SIGNATURES, _signature()), said in the banner -
+#   fire: Fire rain, fireballs from above and embers that lie burning;
+#   ice: Frost volley, fans of freezing shots - one FREEZES her
+#     (FREEZE_SECONDS: no moving, no shooting, tinted ice) instead of taking a
+#     life, then FROST_PROOF to break free;
+#   wind: Gale, a gust shoving her sideways (GUST_PUSH) under crosswinds;
+#   water: Tide, rows of weaving drops, a way through each;
+#   earth: Rockfall, rocks marked on the floor where she stands, landing in
+#     rings of shards with a shake;
+#   light: Pillars of light, columns marked then burning down the path;
+#   dark: Dark coils, orbs curling in from both sides.
+#   The marks, the pillars and the wind are drawn by Hazards; the boss's first
+#   (BOSS_ADDS_SECONDS + ADDS_PER_TIER) calls its waves less often.
+# - Hits felt (code-drawn, as the meteor's burst): every kill bursts in its
+#   land's colour (Burst), a boss struck sparks and the screen shakes a little
+#   (BOSS_SHAKE), harder for a meteor, a rock, a hit on her (HURT_SHAKE) and a
+#   boss down; a power-up, potion or meteor rings out from her and she shines.
+#   The shake moves this node about where it was put (_home), so nothing the
+#   run measures moves with it.
+# - GOD MODE, the owner's (0.100.0): "i need a godmode switch that only i can
+#   see on the screen for this mini game so i can test". With `god` on (the
+#   screen's switch sets it) hurt() takes nothing - no life, no shot step, no
+#   laser level - from a bullet, a monster, a pillar, a rock, the fire or the
+#   scroll; the fire and the scroll still push her clear. A freezing shot
+#   still freezes: that is a thing to test, not a hit. `god_used` remembers it
+#   was on at any moment of the run, and such a run pays nothing.
+#
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
@@ -143,8 +189,10 @@ const SECTION_LENGTH := 300.0
 # The first stretch of path is bare: it starts easy.
 const CLEAR_START := 700.0
 
-const STRETCHES := 5
-const WAVES_PER_STRETCH := 5
+const TIERS := 3
+const WAVES_PER_TIER := 8
+# The run's heat: this much a tier, and one more half way through one.
+const HEAT_PER_TIER := 2
 const READY_SECONDS := 1.6
 const BANNER_SECONDS := 2.2
 const WAVE_GAP := 1.0
@@ -203,21 +251,58 @@ const METEOR_ITEM := "res://data/items/weapons/meteorite.tres"
 # Arcs: in from a side this fast, turning back this hard - about 180 px in.
 const ARC_IN := 165.0
 const ARC_TURN := 75.0
-# Until the server says (its answer to Go): the same table as minigames/services.py.
-const DEFAULT_PAYS := {"wave_gold": [10, 16, 24, 30, 40], "waves_per_stretch": 5, "boss_gold": 150,
-	"goal_gold": 250, "most": 1000}
-# From the second stretch, the chance a wave brings a second, smaller one of
-# another kind alongside - more with each stretch.
+# Until the server says (its answer to Go, "tiers"): the same table as
+# minigames/services.py's healer_tier_pays().
+const DEFAULT_PAYS := {"wave_gold": [10, 25, 100], "waves_per_tier": 8, "boss_gold": [120, 300, 1500],
+	"goal_gold": 2000, "most": 5000}
+# From the second heat, the chance a wave brings a second, smaller one of
+# another kind alongside - more with each.
 const BOTH_CHANCE := 0.45
-const BOTH_PER_STRETCH := 0.15
+const BOTH_PER_HEAT := 0.15
 const THIRD_CHANCE := 0.3
 const BOSS_ADDS_SECONDS := 7.0
+# The earlier bosses call their waves this much less often a tier before the last.
+const ADDS_PER_TIER := 2.0
+# Each tier's boss's health before rank: the third is the old gate's wall.
+const BOSS_HEALTH := [700.0, 1300.0, 2400.0]
+# THE BOSSES' OWN CASTS, by land: what the banner says, and how many volleys.
+const SIGNATURE := 4
+const SIGNATURES := {Element.Type.FIRE: "Fire rain", Element.Type.ICE: "Frost volley",
+	Element.Type.WIND: "Gale", Element.Type.WATER: "Tide", Element.Type.EARTH: "Rockfall",
+	Element.Type.LIGHT: "Pillars of light", Element.Type.DARK: "Dark coils"}
+const SIGNATURE_VOLLEYS := {Element.Type.FIRE: 6, Element.Type.ICE: 4, Element.Type.WIND: 7,
+	Element.Type.WATER: 4, Element.Type.EARTH: 3, Element.Type.LIGHT: 3, Element.Type.DARK: 7}
+# A freezing shot carries this in its damage; the rest carry 0.
+const FREEZE_MARK := 1
+const FREEZE_SECONDS := 0.9
+const FROST_PROOF := 1.5
+const ICE_TINT := Color(0.55, 0.8, 1.7)
+const GUST_SECONDS := 2.6
+const GUST_PUSH := 95.0
+const PILLAR_HALF := 9.0
+const PILLAR_WARN := 0.9
+const PILLAR_BURN := 0.45
+const ROCK_WARN := 0.9
+const ROCK_REACH := 20.0
+# Hits felt: how hard the screen shakes (px), and how fast it settles.
+const SHAKE_FADE := 18.0
+const SHAKE_MOST := 8.0
+const BOSS_SHAKE := 1.5
+const BOSS_SHAKE_GAP := 0.3
+const HURT_SHAKE := 6.0
+const METEOR_SHAKE := 4.0
+const ROCK_SHAKE := 2.5
+const BOSS_DOWN_SHAKE := 8.0
+const BURST_Z := 19
+const HAZARD_Z := 15
 const ENRAGE_AT := 0.5
 const ENRAGE_PACE := 0.65
 const BOSS_ADDS := ["vee", "arcs", "pincer", "snake", "ring", "sweep"]
 const FIRE_AFTER := 20.0
-const FIRE_RISE := 0.25
-const FIRE_MOST := 64.0
+const FIRE_RISE := 0.4
+const FIRE_RISE_PER_TIER := 0.15
+const FIRE_MOST := 96.0
+const FIRE_PUSH := 16.0
 const FIRE_COLOURS := [Color(1.0, 0.45, 0.12), Color(1.0, 0.7, 0.2), Color(1.0, 0.25, 0.1)]
 # The landing she starts on: the crypt's wall behind her, end to end between
 # the side walls (wallrun pieces 101 and 51 wide, pillars 17).
@@ -316,6 +401,75 @@ class Beam extends Node2D:
 		draw_rect(Rect2(x - 1.0, -length, 2.0, length), Color(1.0, 1.0, 1.0, 0.95))
 
 
+# A HIT FELT: a ring and sparks flying out of a point, fading - a kill, a
+# struck boss, a power-up. Drawn, not art; gone when it is spent.
+class Burst extends Node2D:
+	var colour: Color = Color.WHITE
+	var life: float = 0.3
+	var most: float = 0.3
+	var reach: float = 16.0
+	var sparks: int = 8
+	var ring: bool = true
+	var turn: float = 0.0
+
+	func _process(delta: float) -> void:
+		life -= delta
+		if life <= 0.0:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var done: float = 1.0 - clampf(life / maxf(most, 0.001), 0.0, 1.0)
+		var fade: float = 1.0 - done
+		var r: float = reach * (0.3 + 0.7 * sqrt(done))
+		if ring:
+			draw_arc(Vector2.ZERO, r, 0.0, TAU, 24, Color(colour, 0.85 * fade), 1.0 + 2.0 * fade)
+		for k in sparks:
+			var dir: Vector2 = Vector2.from_angle(turn + TAU * k / maxi(1, sparks))
+			draw_line(dir * r * 0.5, dir * r * (0.9 + 0.4 * fade), Color(colour.lightened(0.4), fade), 2.0)
+		draw_circle(Vector2.ZERO, r * 0.35 * fade, Color(1.0, 1.0, 1.0, 0.9 * fade))
+
+
+# WHAT A BOSS'S OWN CAST MARKS ON THE PATH, drawn from the run's lists each
+# frame: light's pillars (a thin warning line, then the column burning), the
+# rocks' marks (a ring closing on the spot), and the wind's streaks.
+class Hazards extends Node2D:
+	var pillars: Array = []
+	var rocks: Array = []
+	var gust: float = 0.0
+	var gust_side: float = 1.0
+	var clock: float = 0.0
+	var rock_colour: Color = Color(0.75, 0.55, 0.3)
+
+	func _draw() -> void:
+		for p in pillars:
+			var x: float = float(p["x"])
+			if float(p["warn"]) > 0.0:
+				var blink: float = 0.35 + 0.35 * sin(clock * 30.0)
+				draw_rect(Rect2(x - 1.0, -HALF.y, 2.0, VIEW.y), Color(1.0, 0.95, 0.6, blink))
+				draw_rect(Rect2(x - PILLAR_HALF, -HALF.y, PILLAR_HALF * 2.0, VIEW.y), Color(1.0, 0.95, 0.6, 0.08))
+			else:
+				var burn: float = clampf(float(p["burn"]) / PILLAR_BURN, 0.0, 1.0)
+				draw_rect(Rect2(x - PILLAR_HALF * 1.5, -HALF.y, PILLAR_HALF * 3.0, VIEW.y), Color(1.0, 0.9, 0.45, 0.25 * burn))
+				draw_rect(Rect2(x - PILLAR_HALF, -HALF.y, PILLAR_HALF * 2.0, VIEW.y), Color(1.0, 0.95, 0.7, 0.75 * burn))
+				draw_rect(Rect2(x - 2.0, -HALF.y, 4.0, VIEW.y), Color(1.0, 1.0, 1.0, burn))
+		for rock in rocks:
+			var at: Vector2 = rock["at"]
+			var left: float = clampf(float(rock["warn"]) / ROCK_WARN, 0.0, 1.0)
+			draw_circle(at, ROCK_REACH, Color(0.0, 0.0, 0.0, 0.35 * (1.0 - left) + 0.1))
+			draw_arc(at, ROCK_REACH * (0.6 + 1.4 * left), 0.0, TAU, 28, Color(rock_colour, 0.9), 2.0)
+			draw_arc(at, ROCK_REACH, 0.0, TAU, 28, Color(rock_colour, 0.5), 1.0)
+		if gust > 0.0:
+			var strength: float = clampf(gust / 0.5, 0.0, 1.0)
+			for i in 18:
+				var y: float = -HALF.y + 12.0 + fmod(float(i) * 37.0, VIEW.y - 24.0)
+				var run: float = fmod(clock * 520.0 + float(i) * 113.0, PATH_HALF * 2.0 + 120.0) - 60.0
+				var x: float = -PATH_HALF + run if gust_side > 0.0 else PATH_HALF - run
+				draw_line(Vector2(x, y), Vector2(x - gust_side * (26.0 + float(i % 3) * 10.0), y),
+					Color(0.85, 1.0, 0.95, 0.45 * strength), 1.0)
+
+
 # The suite's doors: which way she is steered, and whether she is focusing.
 var steer: Callable = Callable(self, "_read_steer")
 var focusing: Callable = Callable(self, "_read_focus")
@@ -325,8 +479,9 @@ var state: int = State.READY
 var lives: int = LIVES_START
 var power: int = 0
 var setbacks: int = 0
-var stretch: int = 0
-var wave_in_stretch: int = 0
+# Which tier (0 to TIERS - 1), and how many of its waves have passed.
+var tier: int = 0
+var wave_in_tier: int = 0
 var waves_done: int = 0
 var run_seconds: float = 0.0
 var slain: int = 0
@@ -352,7 +507,7 @@ var _state_left: float = READY_SECONDS
 var _wave: int = 0
 var _wave_due: float = 0.0
 var _wave_started: float = 0.0
-# During a stretch's banner, when its first wave comes; -1 otherwise.
+# During a tier's banner, when its first wave comes; -1 otherwise.
 var _between: float = -1.0
 var _since_power: int = 0
 var _shot_in: float = 0.0
@@ -369,12 +524,15 @@ var laser: float = 0.0
 # How strong her laser is (0: none yet): kept for the run, one lost to a hit.
 var laser_level: int = 0
 var meteors: int = 0
-var boss_beaten: bool = false
+# How many bosses are down (0 to TIERS): the server is told at Leave.
+var bosses_beaten: int = 0
 # What a wave, the boss and the goal pay (the server's answer to Go).
 var pays: Dictionary = DEFAULT_PAYS.duplicate(true)
 var beam: Beam = null
 var _falling: Array = []
 var fire_height: float = 0.0
+# How much of a power-up's push the fire has still to give back.
+var _fire_push: float = 0.0
 var embers: BulletField = null
 var fire_glow: TextureRect = null
 var _ember_in: float = 0.0
@@ -388,6 +546,30 @@ var _boss_fired: int = 0
 var _boss_adds_in: float = BOSS_ADDS_SECONDS
 var enraged: bool = false
 var _goal_paid: bool = false
+var _boss_casts: int = 0
+# Where she was when the run ended (for result_text()).
+var _fell_in: int = State.RUNNING
+# God mode (the owner's switch on the screen), and whether it was on at all this run.
+var god: bool = false
+var god_used: bool = false
+# Frozen by a freezing shot: still, not shooting, tinted - then a moment
+# no freezing shot can take her again.
+var frozen: float = 0.0
+var _frost_proof: float = 0.0
+# The wind's shove: how long left, and which way.
+var gust: float = 0.0
+var gust_side: float = 1.0
+var hazards: Hazards = null
+var _pillars: Array = []
+var _rocks: Array = []
+# Hits felt: how hard the screen shakes now, where the run was put, and her shine.
+var shake: float = 0.0
+var _home: Vector2 = Vector2.ZERO
+var _shine_left: float = 0.0
+var _boss_shook: float = 0.0
+var _spark_in: float = 0.0
+# Only for the look of things, so the run's own dice are the same either way.
+var _fx_rng := RandomNumberGenerator.new()
 
 static var _looks: Dictionary = {}
 
@@ -396,6 +578,8 @@ func _ready() -> void:
 	# Moved every frame from _process: nothing to blend between physics ticks.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_rng.seed = seed_value if seed_value != 0 else int(Time.get_ticks_usec())
+	_fx_rng.seed = _rng.seed + 1
+	_home = position
 	lands = LANDS.duplicate()
 	for i in range(lands.size() - 1, 0, -1):
 		var j: int = _rng.randi_range(0, i)
@@ -457,6 +641,11 @@ func _ready() -> void:
 	beam.material = glow
 	beam.visible = false
 	add_child(beam)
+	hazards = Hazards.new()
+	hazards.name = "hazards"
+	hazards.z_index = HAZARD_Z
+	hazards.material = _glow_material()
+	add_child(hazards)
 	_lay_terrain()
 	_lay_landing()
 	banner = "Get ready"
@@ -523,7 +712,13 @@ func fire_top() -> float:
 
 
 func _burn(delta: float) -> void:
-	fire_height = clampf((run_seconds - FIRE_AFTER) * FIRE_RISE, 0.0, FIRE_MOST)
+	if run_seconds >= FIRE_AFTER:
+		fire_height = minf(FIRE_MOST, fire_height + (FIRE_RISE + FIRE_RISE_PER_TIER * tier) * delta)
+	if _fire_push > 0.0:
+		# PUSHED BACK by a power-up, over a moment.
+		var give: float = minf(_fire_push, FIRE_PUSH * 4.0 * delta)
+		_fire_push -= give
+		fire_height = maxf(0.0, fire_height - give)
 	if fire_height > 0.0 and not _fire_told:
 		_fire_told = true
 		_say("The fire is behind you")
@@ -570,8 +765,8 @@ static func side_beams(level: int) -> Array:
 func _shine(delta: float) -> void:
 	"""The laser: up from her through everything in its column - and its
 	side beams' - harder at each level."""
-	beam.visible = laser > 0.0
-	if laser <= 0.0:
+	beam.visible = laser > 0.0 and frozen <= 0.0
+	if laser <= 0.0 or frozen > 0.0:
 		return
 	var level: int = maxi(1, laser_level)
 	beam.level = level
@@ -596,6 +791,7 @@ func _shine(delta: float) -> void:
 func gain_meteor() -> void:
 	meteors = mini(METEORS_MOST, meteors + 1)
 	_say("Meteor - press Space")
+	_ring_out(Color(1.0, 0.7, 0.3))
 
 
 func meteor_target() -> Foe:
@@ -673,6 +869,7 @@ func _land_meteor(at: Vector2, target: Foe) -> void:
 	fade.tween_property(burst, "scale", Vector2.ONE * 1.6, 0.3)
 	fade.parallel().tween_property(burst, "modulate:a", 0.0, 0.3)
 	fade.tween_callback(burst.queue_free)
+	shake_by(METEOR_SHAKE)
 
 
 # =============================================================================
@@ -681,18 +878,28 @@ func _land_meteor(at: Vector2, target: Foe) -> void:
 
 func gold_now() -> int:
 	"""What the run has earned so far, by the server's table: each wave
-	passed, the boss, the goal."""
-	var table: Array = pays.get("wave_gold", DEFAULT_PAYS["wave_gold"])
-	var per: int = maxi(1, int(pays.get("waves_per_stretch", 5)))
-	var passed: int = mini(waves_done, STRETCHES * WAVES_PER_STRETCH)
+	passed by its tier, each boss down, the goal."""
+	var table: Array = pays.get("wave_gold") if pays.get("wave_gold") is Array else DEFAULT_PAYS["wave_gold"]
+	var bosses: Array = pays.get("boss_gold") if pays.get("boss_gold") is Array else DEFAULT_PAYS["boss_gold"]
+	var per: int = maxi(1, int(pays.get("waves_per_tier", WAVES_PER_TIER)))
+	var passed: int = mini(waves_done, TIERS * WAVES_PER_TIER)
 	var gold: int = 0
 	for i in passed:
 		gold += int(table[mini(i / per, table.size() - 1)])
-	if passed == STRETCHES * WAVES_PER_STRETCH and boss_beaten:
-		gold += int(pays.get("boss_gold", 0))
-		if state == State.WON:
-			gold += int(pays.get("goal_gold", 0))
+	for k in mini(bosses_beaten, bosses.size()):
+		gold += int(bosses[k])
+	if state == State.WON:
+		gold += int(pays.get("goal_gold", DEFAULT_PAYS["goal_gold"]))
 	return gold
+
+
+static func pays_from(answer: Dictionary) -> Dictionary:
+	"""The table to count by, from the server's answer to Go: its "tiers"
+	(0.100.0); the default when it has none - a server not yet updated, whose
+	old table is for five stretches."""
+	if answer.get("tiers") is Dictionary and (answer["tiers"] as Dictionary).get("wave_gold") is Array:
+		return (answer["tiers"] as Dictionary).duplicate(true)
+	return DEFAULT_PAYS.duplicate(true)
 
 
 func _make_shots() -> void:
@@ -727,7 +934,13 @@ func _make_shots() -> void:
 # =============================================================================
 
 func rank() -> int:
-	return clampi(stretch + power + laser_level - setbacks, 0, RANK_MOST)
+	return clampi(heat() + power + laser_level - setbacks, 0, RANK_MOST)
+
+
+func heat() -> int:
+	"""How far the run is in: HEAT_PER_TIER a tier, and one more half way
+	through one - 0 to 5. The next tier starts hotter than the last ended."""
+	return tier * HEAT_PER_TIER + (1 if wave_in_tier >= WAVES_PER_TIER / 2 else 0)
 
 
 static func foe_health(base: float, at_rank: int) -> float:
@@ -770,7 +983,7 @@ static func shot_offsets(count: int) -> Array:
 
 
 func land() -> int:
-	return int(lands[mini(stretch, STRETCHES - 1)])
+	return int(lands[mini(tier, TIERS - 1)])
 
 
 func time_text() -> String:
@@ -807,8 +1020,13 @@ func step(delta: float) -> void:
 			_start_wave()
 		return
 	run_seconds += delta
+	if god:
+		god_used = true
 	untouchable = maxf(0.0, untouchable - delta)
 	laser = maxf(0.0, laser - delta)
+	frozen = maxf(0.0, frozen - delta)
+	_frost_proof = maxf(0.0, _frost_proof - delta)
+	gust = maxf(0.0, gust - delta)
 	_scroll(delta)
 	_move_healer(delta)
 	_fire(delta)
@@ -818,10 +1036,12 @@ func step(delta: float) -> void:
 	_burn(delta)
 	_shine(delta)
 	_meteors_fall(delta)
+	_hazards_step(delta)
 	var hit: Vector2i = field.step(delta, healer.position + HITBOX_AT, HITBOX, 0.0, untouchable > 0.0)
 	if hit.x > 0:
-		hurt()
+		_take_hits()
 	healer.visible = untouchable <= 0.0 or int(untouchable * 12.0) % 2 == 0
+	_feel(delta)
 	match state:
 		State.RUNNING:
 			_waves(delta)
@@ -851,8 +1071,13 @@ func _move_healer(delta: float) -> void:
 	var dir: Vector2 = steer.call()
 	if dir.length() > 1.0:
 		dir = dir.normalized()
+	if frozen > 0.0:
+		dir = Vector2.ZERO
 	var speed: float = FOCUS_SPEED if bool(focusing.call()) else MOVE_SPEED
 	var at: Vector2 = healer.position + dir * speed * delta
+	if gust > 0.0:
+		# THE GALE shoves her; she can walk against it, slowly.
+		at.x += gust_side * GUST_PUSH * delta
 	at.x = clampf(at.x, -PATH_HALF + 8.0, PATH_HALF - 8.0)
 	at.y = clampf(at.y, -HALF.y + 30.0, HALF.y - 12.0)
 	for o in _obstacles:
@@ -901,6 +1126,9 @@ func _read_focus() -> bool:
 func _fire(delta: float) -> void:
 	_shot_in -= delta
 	if _shot_in > 0.0:
+		return
+	if frozen > 0.0:
+		_shot_in = 0.0
 		return
 	_shot_in += SHOT_GAP
 	var from: Vector2 = healer.position + Vector2(0.0, -16.0)
@@ -984,6 +1212,15 @@ func _move_shots(delta: float) -> void:
 func _strike(f: Foe, damage: float) -> void:
 	f.health -= damage
 	f.flash = 0.08
+	if f == boss and f.dying < 0.0:
+		# A BOSS STRUCK sparks where it is hit, and the screen shakes a little.
+		if _boss_shook <= 0.0:
+			_boss_shook = BOSS_SHAKE_GAP
+			shake_by(BOSS_SHAKE)
+		if _spark_in <= 0.0:
+			_spark_in = 0.08
+			var at: Vector2 = f.position + Vector2(_fx_rng.randf_range(-14.0, 14.0), _fx_rng.randf_range(-26.0, -4.0))
+			_burst(at, Color(1.0, 0.95, 0.8), 9.0, 5, 0.15, false)
 	if f.health <= 0.0:
 		_kill(f)
 
@@ -993,7 +1230,12 @@ func _kill(f: Foe) -> void:
 	slain += 1
 	_since_power += 1
 	var info: Dictionary = KINDS.get(f.kind, {})
-	var potion_odds: float = float(info.get("potion", 0.0)) * maxf(0.4, 1.0 - 0.12 * stretch)
+	var potion_odds: float = float(info.get("potion", 0.0)) * maxf(0.4, 1.0 - 0.1 * heat())
+	if f.kind != "boss":
+		# EVERY KILL BURSTS, in its land's colour.
+		var big: bool = f.kind == "mage" or f.kind == "sniper"
+		_burst(f.position + Vector2(0.0, -8.0), Element.colour_for(land()).lightened(0.25),
+			24.0 if big else 16.0, 10 if big else 7, 0.35 if big else 0.28)
 	if (f.kind == "mage" or f.kind == "sniper") and _rng.randf() < METEOR_DROP:
 		_drop("meteor", f.position)
 	elif f.kind != "boss":
@@ -1015,6 +1257,9 @@ func hurt() -> void:
 	bullets go - a breath before the next."""
 	if untouchable > 0.0 or state == State.WON or state == State.LOST or state == State.READY:
 		return
+	if god:
+		god_used = true
+		return
 	lives -= 1
 	setbacks += 1
 	# A laser level goes first, then a shot step.
@@ -1026,28 +1271,35 @@ func hurt() -> void:
 		power = maxi(0, power - 1)
 	untouchable = BLINK_SECONDS
 	field.clear()
+	frozen = 0.0
+	shake_by(HURT_SHAKE)
+	_burst(healer.position + HITBOX_AT, Color(1.0, 0.3, 0.25), 34.0, 12, 0.45)
 	if lives <= 0:
 		_finish(false)
 
 
 func gain_power() -> void:
+	_fire_push += FIRE_PUSH
 	if power >= SHOT_STEPS.size() - 1:
 		# At eight shots, a power-up is the LASER - a level stronger each time.
 		laser_level = mini(LASER_LEVELS, laser_level + 1)
 		laser = laser_seconds(laser_level)
 		_say("Laser %d" % laser_level)
+		_ring_out(LASER_COLOURS[laser_level - 1])
 		return
 	power += 1
 	_say("Shots %d" % int(SHOT_STEPS[power]))
+	_ring_out(SHOT_COLOUR)
 
 
 func gain_life() -> void:
 	lives = mini(LIVES_MOST, lives + 1)
 	_say("A life more" if lives < LIVES_MOST else "Lives full")
+	_ring_out(Color(1.0, 0.45, 0.5))
 
 
 func _say(words: String) -> void:
-	"""A short word in the banner - unless a stretch's or the gate's is up."""
+	"""A short word in the banner - unless a tier's or the gate's is up."""
 	if banner_left > 1.2 and banner != "" and not banner.begins_with("Shots") and not banner.begins_with("A life") \
 			and not banner.begins_with("Lives") and not banner.begins_with("Laser") and not banner.begins_with("Meteor") \
 			and not banner.begins_with("The keeper"):
@@ -1122,18 +1374,16 @@ func wave_left() -> int:
 
 func _next_wave() -> void:
 	waves_done += 1
-	wave_in_stretch += 1
-	if wave_in_stretch >= WAVES_PER_STRETCH:
-		wave_in_stretch = 0
-		stretch += 1
-		if stretch >= STRETCHES:
-			_start_boss()
-			return
-		banner = "Stretch %d - the %s lands" % [stretch + 1, land_name(land())]
-		banner_left = BANNER_SECONDS
-		_between = run_seconds + BANNER_SECONDS
+	wave_in_tier += 1
+	if wave_in_tier >= WAVES_PER_TIER:
+		# THE TIER'S LAST WAVE PASSED: its land's boss.
+		_start_boss()
 		return
 	_start_wave()
+
+
+func tier_banner() -> String:
+	return "Tier %d - the %s lands" % [tier + 1, land_name(land())]
 
 
 func _start_wave() -> void:
@@ -1141,16 +1391,17 @@ func _start_wave() -> void:
 	_wave_started = run_seconds
 	_wave_due = run_seconds + wave_time(rank())
 	if waves_done == 0:
-		banner = "Stretch 1 - the %s lands" % land_name(land())
+		banner = tier_banner()
 		banner_left = BANNER_SECONDS
 	var kind: String = _pick_kind()
 	spawn_wave(kind)
-	if stretch >= 1 and _rng.randf() < BOTH_CHANCE + BOTH_PER_STRETCH * (stretch - 1):
+	var hot: int = heat()
+	if hot >= 1 and _rng.randf() < BOTH_CHANCE + BOTH_PER_HEAT * (hot - 1):
 		var other: String = kind
 		while other == kind:
 			other = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
 		spawn_wave(other, 0.5)
-		if stretch >= 3 and _rng.randf() < THIRD_CHANCE:
+		if hot >= 3 and _rng.randf() < THIRD_CHANCE:
 			var third: String = other
 			while third == other or third == kind:
 				third = str(WAVE_KINDS[_rng.randi_range(0, WAVE_KINDS.size() - 1)])
@@ -1158,8 +1409,8 @@ func _start_wave() -> void:
 
 
 func crowd() -> int:
-	"""How many more monsters each wave brings: one a stretch, and the rank's."""
-	return group_extra(rank()) + mini(stretch, STRETCHES - 1)
+	"""How many more monsters each wave brings: one a heat (to four), and the rank's."""
+	return group_extra(rank()) + mini(heat(), 4)
 
 
 func _pick_kind() -> String:
@@ -1172,7 +1423,7 @@ func _pick_kind() -> String:
 
 
 func spawn_wave(kind: String, share: float = 1.0) -> Array:
-	"""One wave of `kind`, of this stretch's land - `share` of its size when it
+	"""One wave of `kind`, of this tier's land - `share` of its size when it
 	comes alongside another. Returned for the suite."""
 	var made: Array = []
 	var r: int = rank()
@@ -1200,7 +1451,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = _rng.randf_range(0.8, 2.0)
 				made.append(f)
 		"mages":
-			var count: int = _sized(3 + (1 if r >= 4 else 0) + (1 if stretch >= 3 else 0), share)
+			var count: int = _sized(3 + (1 if r >= 4 else 0) + (1 if heat() >= 3 else 0), share)
 			for i in count:
 				var x: float = (float(i) - float(count - 1) / 2.0) * 150.0
 				var f := _foe("mage", Vector2(x, top))
@@ -1228,7 +1479,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 				f.shoot_in = _rng.randf_range(1.0, 2.0)
 				made.append(f)
 		"snipers":
-			for side in ([-1.0, 1.0, -0.5, 0.5] if stretch >= 3 else [-1.0, 1.0]):
+			for side in ([-1.0, 1.0, -0.5, 0.5] if heat() >= 3 else [-1.0, 1.0]):
 				var f := _foe("sniper", Vector2(side * (PATH_HALF - 50.0), top))
 				f.velocity = Vector2(0.0, 55.0)
 				f.stop_y = -HALF.y + 45.0
@@ -1309,7 +1560,8 @@ func _foe(kind: String, at: Vector2) -> Foe:
 	f.kind = kind
 	f.wave = _wave
 	var info: Dictionary = KINDS.get(kind, {})
-	f.most = foe_health(float(info.get("health", 3.0)), rank())
+	var base: float = float(BOSS_HEALTH[mini(tier, TIERS - 1)]) if kind == "boss" else float(info.get("health", 3.0))
+	f.most = foe_health(base, rank())
 	f.health = f.most
 	f.radius = float(info.get("radius", 9.0))
 	f.position = at
@@ -1417,21 +1669,235 @@ func _fan(from: Vector2, colour: Color, count: int, spread: float, speed: float)
 
 
 # =============================================================================
+# HITS FELT
+# =============================================================================
+
+static var _materials: Dictionary = {}
+
+
+static func _glow_material(added: bool = false) -> CanvasItemMaterial:
+	"""Unshaded (the crypt's dark does not dim it); added light for bursts."""
+	if not _materials.has(added):
+		var glow := CanvasItemMaterial.new()
+		glow.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		if added:
+			glow.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_materials[added] = glow
+	return _materials[added]
+
+
+func shake_by(amount: float) -> void:
+	"""The screen shakes this hard (px), or harder if it already is."""
+	shake = minf(SHAKE_MOST, maxf(shake, amount))
+
+
+func _burst(at: Vector2, colour: Color, reach: float, sparks: int, life: float, ring: bool = true) -> Burst:
+	var b := Burst.new()
+	b.colour = colour
+	b.reach = reach
+	b.sparks = sparks
+	b.life = life
+	b.most = life
+	b.ring = ring
+	b.turn = _fx_rng.randf() * TAU
+	b.position = at
+	b.z_index = BURST_Z
+	b.material = _glow_material(true)
+	add_child(b)
+	return b
+
+
+func _ring_out(colour: Color) -> void:
+	"""A power-up, a potion or a meteor taken: a ring out from her, and she shines."""
+	_burst(healer.position + HITBOX_AT, colour, 30.0, 6, 0.35)
+	_shine_left = 0.15
+
+
+func _feel(delta: float) -> void:
+	"""The look of the hits: the shake settling, her shine and her frost."""
+	_boss_shook = maxf(0.0, _boss_shook - delta)
+	_spark_in = maxf(0.0, _spark_in - delta)
+	_shine_left = maxf(0.0, _shine_left - delta)
+	shake = maxf(0.0, shake - SHAKE_FADE * delta)
+	if shake > 0.05:
+		position = (_home + Vector2(_fx_rng.randf_range(-1.0, 1.0), _fx_rng.randf_range(-1.0, 1.0)) * shake).round()
+	else:
+		position = _home
+	if healer_sprite.sprite_frames == null:
+		return
+	if frozen > 0.0:
+		healer_sprite.modulate = ICE_TINT
+		if healer_sprite.is_playing():
+			healer_sprite.pause()
+	else:
+		healer_sprite.modulate = Color(2.0, 2.0, 2.0) if _shine_left > 0.0 else Color.WHITE
+		if not healer_sprite.is_playing():
+			healer_sprite.play()
+
+
+func _take_hits() -> void:
+	"""What reached her this frame: a freezing shot freezes her (once, then
+	FROST_PROOF to break free); anything else is a life."""
+	var harm: bool = false
+	var chill: bool = false
+	for hit in field.hits:
+		if hit.x == FREEZE_MARK:
+			chill = true
+		else:
+			harm = true
+	if harm:
+		hurt()
+	elif chill and frozen <= 0.0 and _frost_proof <= 0.0:
+		freeze()
+
+
+func freeze() -> void:
+	frozen = FREEZE_SECONDS
+	_frost_proof = FREEZE_SECONDS + FROST_PROOF
+	_say("Frozen")
+	_burst(healer.position + HITBOX_AT, Color(0.7, 0.95, 1.0), 26.0, 8, 0.4)
+
+
+func _hazards_step(delta: float) -> void:
+	"""Light's pillars burning down and earth's rocks landing, then drawn."""
+	var her: Vector2 = healer.position + HITBOX_AT
+	var still: Array = []
+	for p in _pillars:
+		if float(p["warn"]) > 0.0:
+			p["warn"] = float(p["warn"]) - delta
+		else:
+			p["burn"] = float(p["burn"]) - delta
+			if absf(her.x - float(p["x"])) <= PILLAR_HALF + HITBOX:
+				hurt()
+			if float(p["burn"]) <= 0.0:
+				continue
+		still.append(p)
+	_pillars = still
+	still = []
+	for rock in _rocks:
+		rock["warn"] = float(rock["warn"]) - delta
+		if float(rock["warn"]) > 0.0:
+			still.append(rock)
+		else:
+			_land_rock(rock["at"], rock["colour"])
+	_rocks = still
+	hazards.clock += delta
+	hazards.pillars = _pillars
+	hazards.rocks = _rocks
+	hazards.gust = gust
+	hazards.gust_side = gust_side
+	hazards.queue_redraw()
+
+
+func _land_rock(at: Vector2, colour: Color) -> void:
+	if (healer.position + HITBOX_AT).distance_to(at) <= ROCK_REACH:
+		hurt()
+	for k in 10:
+		field.spawn(at, TAU * k / 10.0 + 0.2, bullet_speed(rank()) * 0.55, colour)
+	_burst(at, Color(0.85, 0.65, 0.4), 30.0, 10, 0.4)
+	shake_by(ROCK_SHAKE)
+
+
+func _signature(from: Vector2, r: int, colour: Color) -> float:
+	"""One volley of this land's boss's own cast (SIGNATURES); answers the
+	wait before the next, before the boss's pace."""
+	var her: Vector2 = healer.position + HITBOX_AT
+	var speed: float = bullet_speed(r)
+	var element: int = land()
+	if element == Element.Type.FIRE:
+		# FIRE RAIN: fireballs from above, and an ember that lies burning.
+		for k in 3 + tier:
+			var x: float = _rng.randf_range(-PATH_HALF + 12.0, PATH_HALF - 12.0)
+			field.spawn(Vector2(x, -HALF.y - 6.0), PI / 2.0 + _rng.randf_range(-0.15, 0.15),
+				speed * _rng.randf_range(0.8, 1.1), Color(1.0, 0.5, 0.15), true)
+		field.spawn_settling(Vector2(_rng.randf_range(-PATH_HALF + 20.0, PATH_HALF - 20.0), -HALF.y - 6.0),
+			PI / 2.0, speed * 0.9, Color(1.0, 0.35, 0.1), _rng.randf_range(140.0, 300.0), 1.8, 0, 0, true)
+		return 0.4
+	if element == Element.Type.ICE:
+		# FROST VOLLEY: a fan of freezing shots at her, a ring of shards between.
+		var aim: float = (her - from).angle()
+		var count: int = 5 + tier
+		for k in count:
+			var share: float = float(k) / float(count - 1) - 0.5
+			field.spawn(from, aim + share * 0.8, speed * 0.85, Color(0.7, 0.95, 1.0), true, 0.0, 0.0, 14.0,
+				FREEZE_MARK)
+		if _boss_fired % 2 == 1:
+			for k in 10:
+				field.spawn(from, TAU * k / 10.0 + 0.3, speed * 0.6, colour)
+		return 0.7
+	if element == Element.Type.WIND:
+		# GALE: the gust shoves her, and crosswinds blow with it.
+		if _boss_fired == 0:
+			gust_side = -1.0 if _rng.randf() < 0.5 else 1.0
+			gust = GUST_SECONDS
+		for k in 3 + tier:
+			var y: float = _rng.randf_range(-HALF.y + 40.0, HALF.y - 60.0)
+			field.spawn(Vector2(-gust_side * (PATH_HALF - 4.0), y), 0.0 if gust_side > 0.0 else PI, speed * 0.9,
+				Color(0.8, 1.0, 0.9))
+		return 0.38
+	if element == Element.Type.WATER:
+		# TIDE: a row of weaving drops across the path, a way through each.
+		var gap_at: float = _rng.randf_range(-PATH_HALF + 60.0, PATH_HALF - 60.0)
+		var x: float = -PATH_HALF + 10.0
+		while x < PATH_HALF - 4.0:
+			if absf(x - gap_at) > 46.0:
+				field.spawn_swaying(Vector2(x, -HALF.y + 2.0), PI / 2.0, speed * 0.55, Color(0.45, 0.75, 1.0),
+					12.0, 0.0, 4.0, x * 0.04)
+			x += 24.0
+		return 1.0
+	if element == Element.Type.EARTH:
+		# ROCKFALL: rocks marked on the floor - the first where she stands.
+		for k in 2 + tier:
+			var at: Vector2 = her if k == 0 else Vector2(_rng.randf_range(-PATH_HALF + 30.0, PATH_HALF - 30.0),
+				_rng.randf_range(-HALF.y + 120.0, HALF.y - 30.0))
+			_rocks.append({"at": at, "warn": ROCK_WARN + 0.12 * k, "colour": colour})
+		return 1.2
+	if element == Element.Type.LIGHT:
+		# PILLARS OF LIGHT: columns marked, then burning down the path - one on her.
+		var xs: Array = [clampf(her.x, -PATH_HALF + 10.0, PATH_HALF - 10.0)]
+		var tries: int = 0
+		while xs.size() < 2 + tier and tries < 40:
+			tries += 1
+			var x: float = _rng.randf_range(-PATH_HALF + 16.0, PATH_HALF - 16.0)
+			var clear: bool = true
+			for other in xs:
+				clear = clear and absf(x - float(other)) > 48.0
+			if clear:
+				xs.append(x)
+		for x in xs:
+			_pillars.append({"x": x, "warn": PILLAR_WARN, "burn": PILLAR_BURN})
+		_fan(from, colour, 5, 0.6, speed * 0.8)
+		return 1.1
+	# DARK COILS: orbs curling in, each volley the other way.
+	var turn: float = 0.9 if _boss_fired % 2 == 0 else -0.9
+	for k in 6:
+		field.spawn(from, TAU * k / 6.0 + _boss_fired * 0.2, speed * 0.7, Color(0.65, 0.4, 0.95), true, turn)
+	return 0.35
+
+
+# =============================================================================
 # THE BOSS AND THE GOAL
 # =============================================================================
 
 func _start_boss() -> void:
 	state = State.BOSS
-	stretch = STRETCHES - 1
-	wave_in_stretch = WAVES_PER_STRETCH - 1
-	banner = "The gate - and its keeper"
+	wave_in_tier = WAVES_PER_TIER - 1
+	banner = "The gate - and its keeper" if tier >= TIERS - 1 else "The %s keeper" % land_name(land())
 	banner_left = BANNER_SECONDS
 	_wave += 1
 	boss = _foe("boss", Vector2(0.0, -HALF.y - 60.0))
+	enraged = false
 	# A METEOR AT THE GATE, falling ahead of her: Space calls it on the boss.
 	_drop("meteor", Vector2(clampf(healer.position.x, -PATH_HALF + 30.0, PATH_HALF - 30.0), -HALF.y + 50.0))
 	_boss_cast = 2.5
 	_boss_casting = -1
+	_boss_casts = 0
+	_boss_adds_in = adds_gap()
+
+
+func adds_gap() -> float:
+	"""How often this tier's boss calls a wave: less often before the last."""
+	return BOSS_ADDS_SECONDS + ADDS_PER_TIER * (TIERS - 1 - mini(tier, TIERS - 1))
 
 
 func _boss_step(delta: float) -> void:
@@ -1444,7 +1910,7 @@ func _boss_step(delta: float) -> void:
 	# ITS CALL: every BOSS_ADDS_SECONDS a half-size wave to its side.
 	_boss_adds_in -= delta
 	if _boss_adds_in <= 0.0:
-		_boss_adds_in = BOSS_ADDS_SECONDS * (ENRAGE_PACE if enraged else 1.0)
+		_boss_adds_in = adds_gap() * (ENRAGE_PACE if enraged else 1.0)
 		spawn_wave(str(BOSS_ADDS[_rng.randi_range(0, BOSS_ADDS.size() - 1)]), 0.5)
 	if not enraged and boss_share() < ENRAGE_AT:
 		enraged = true
@@ -1453,9 +1919,13 @@ func _boss_step(delta: float) -> void:
 	var pace: float = ENRAGE_PACE if enraged else 1.0
 	_boss_cast -= delta
 	if _boss_casting < 0 and _boss_cast <= 0.0:
-		_boss_casting = _rng.randi_range(0, 3)
+		# EVERY OTHER CAST IS THE LAND'S OWN, the first of them first.
+		_boss_casting = SIGNATURE if _boss_casts % 2 == 0 else _rng.randi_range(0, 3)
+		_boss_casts += 1
 		_boss_shots = 0.0
 		_boss_fired = 0
+		if _boss_casting == SIGNATURE:
+			_say(str(SIGNATURES.get(land(), "")))
 	if _boss_casting < 0:
 		return
 	_boss_shots -= delta
@@ -1484,8 +1954,11 @@ func _boss_step(delta: float) -> void:
 			for k in 4:
 				field.spawn(from, _boss_fired * 0.23 + TAU * k / 4.0, bullet_speed(r) * 0.75, colour)
 			_boss_shots = 0.07
+		SIGNATURE:
+			_boss_shots = _signature(from, r, colour) * pace
 	_boss_fired += 1
-	var volleys: int = [3, 5, 3, 40][_boss_casting]
+	var volleys: int = int(SIGNATURE_VOLLEYS.get(land(), 3)) if _boss_casting == SIGNATURE \
+		else int([3, 5, 3, 40][_boss_casting])
 	if _boss_fired >= volleys:
 		_boss_casting = -1
 		_boss_cast = 1.4 * pace
@@ -1498,9 +1971,41 @@ func boss_share() -> float:
 
 
 func _boss_down() -> void:
-	state = State.GOAL
-	boss_beaten = true
+	bosses_beaten += 1
 	field.clear()
+	_pillars.clear()
+	_rocks.clear()
+	gust = 0.0
+	frozen = 0.0
+	# IT GOES WITH A BANG, and every monster on screen with it (counted, no drops).
+	var at := Vector2(0.0, -HALF.y + 70.0)
+	if boss != null and is_instance_valid(boss):
+		at = boss.position + Vector2(0.0, -12.0)
+	var colour: Color = Element.colour_for(land()).lightened(0.3)
+	shake_by(BOSS_DOWN_SHAKE)
+	_burst(at, colour, 84.0, 18, 0.8)
+	_burst(at, Color(1.0, 1.0, 1.0), 44.0, 10, 0.5)
+	for foe in foes.get_children():
+		var f := foe as Foe
+		if f == null or f == boss or f.dying >= 0.0:
+			continue
+		f.dying = 0.25
+		slain += 1
+		_burst(f.position + Vector2(0.0, -8.0), colour, 16.0, 7, 0.28)
+	if bosses_beaten < TIERS:
+		# THE NEXT TIER: the boss's spoils, then the next land, hotter.
+		_drop("power", at + Vector2(-16.0, 16.0))
+		_drop("potion", at + Vector2(16.0, 16.0))
+		state = State.RUNNING
+		boss = null
+		enraged = false
+		tier += 1
+		wave_in_tier = 0
+		banner = tier_banner()
+		banner_left = BANNER_SECONDS
+		_between = run_seconds + BANNER_SECONDS
+		return
+	state = State.GOAL
 	banner = "The way is open"
 	banner_left = BANNER_SECONDS
 	# THE GOAL MARKER, laid ahead on the path: two pillars, the gold arrow
@@ -1515,7 +2020,7 @@ func _boss_down() -> void:
 	var arrow: Node2D = (load("res://src/shared/beckonarrow.gd") as GDScript).call("make", Vector2(0.0, -22.0))
 	goal.add_child(arrow)
 	var goal_sign := Label.new()
-	goal_sign.text = "GOAL - %d gold" % int(pays.get("most", 1000))
+	goal_sign.text = "GOAL - %d gold" % int(pays.get("most", DEFAULT_PAYS["most"]))
 	goal_sign.add_theme_font_size_override("font_size", 10)
 	goal_sign.add_theme_color_override("font_color", Color(1.0, 0.86, 0.45))
 	goal_sign.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -1526,7 +2031,10 @@ func _boss_down() -> void:
 
 
 func _finish(won: bool) -> void:
+	_fell_in = state
 	state = State.WON if won else State.LOST
+	shake = 0.0
+	position = _home
 	field.clear()
 	_shot_pos.resize(0)
 	_shot_vel.resize(0)
@@ -1538,10 +2046,12 @@ func _finish(won: bool) -> void:
 func result_text() -> String:
 	if state == State.WON:
 		return "Cleared in %s - %d slain" % [time_text(), slain]
-	if stretch >= STRETCHES or state == State.BOSS:
+	if _fell_in == State.GOAL:
 		return "Fell at the gate after %s - %d slain" % [time_text(), slain]
-	return "Fell in stretch %d, wave %d, after %s - %d slain" % [mini(stretch + 1, STRETCHES),
-		wave_in_stretch + 1, time_text(), slain]
+	if _fell_in == State.BOSS:
+		return "Fell to the %s keeper in tier %d, after %s - %d slain" % [land_name(land()), tier + 1,
+			time_text(), slain]
+	return "Fell in tier %d, wave %d, after %s - %d slain" % [tier + 1, wave_in_tier + 1, time_text(), slain]
 
 
 func goal_reached() -> bool:

@@ -203,6 +203,7 @@ func _run_all() -> void:
 	await _test_levers_have_arrows()
 	await _test_the_swell()
 	await _test_the_healers_run()
+	await _test_each_keeper_fights_its_own_way()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()

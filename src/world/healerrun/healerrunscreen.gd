@@ -1,6 +1,6 @@
 # healerrunscreen.gd - the Healer's Run on screen (0.98.0): the run's own
 # world in a SubViewport, drawn over everything at a whole multiple, and the
-# words round it - the clock, the stretch, lives, shots, the boss's health, a
+# words round it - the clock, the tier and wave, lives, shots, the boss's health, a
 # banner, and at the end what you did with Again and Leave.
 #
 # Opened from the Minigames card, in town only (minigamescard.gd): the
@@ -23,6 +23,20 @@
 # for the next run of the day. The first run of a session opens on the
 # tutorial, the healer standing on her landing until Start (or Space).
 # Space calls a meteor (run.fire_meteor()).
+#
+# THREE TIERS (0.100.0): the stage line says the tier and its wave ("Tier 2 of
+# 3 - wave 5 of 8") or its keeper; Leave sends how many bosses fell
+# (`bosses`, 0-3), and the run counts by the server's "tiers" table
+# (RunScript.pays_from()).
+#
+# GOD MODE (0.100.0), the owner's: "i need a godmode switch that only i can
+# see on the screen for this mini game so i can test". A switch under the gold,
+# shown only to those the world's god mode is for (Api.GOD_MODE_MIN_ROLE, the
+# same gate as the GM panel's Testing tab) and re-checked when pressed. It IS
+# that switch - GameState.god_mode - so turning it on here turns it on in the
+# world too, and the other way round. A run with it on at any moment
+# (run.god_used) says so on the gold line and pays nothing: Leave finishes it
+# on the server with nothing reached.
 #
 # No class_name; open() is how it is made.
 extends CanvasLayer
@@ -71,6 +85,9 @@ var enter_request: Callable = Callable(Api, "post")
 var slot_now: Callable = Callable(self, "_slot")
 var _paid: bool = false
 var _busy: bool = false
+var god_switch: CheckButton = null
+# The suite's door: may this player see the god mode switch.
+var may_be_god: Callable = Callable(self, "_may_be_god")
 static var _tutorial_seen: bool = false
 const TUTORIAL_LINES := [
 	"Move with your move keys - she shoots by herself.",
@@ -78,6 +95,7 @@ const TUTORIAL_LINES := [
 	"Grab an essence: more shots - 2, 4, 6, 8. Past eight, a laser - stronger each time.",
 	"Grab a potion: one more life (up to 5).",
 	"Grab a meteor, then press Space: it finds the boss.",
+	"Three tiers, a boss at the end of each - every land's boss fights its own way.",
 	"A fire rises behind you - keep moving.",
 	"Gold counts up as you go. Leave to take it.",
 ]
@@ -158,6 +176,18 @@ func _build_words() -> void:
 	_place(leave_button, Control.PRESET_TOP_RIGHT, Rect2(-100, 14, 84, 32))
 	leave_button.pressed.connect(ask_to_leave)
 	add_child(leave_button)
+	god_switch = CheckButton.new()
+	god_switch.name = "god"
+	god_switch.text = "God mode"
+	god_switch.focus_mode = Control.FOCUS_NONE
+	god_switch.add_theme_color_override("font_color", COLOUR_HINT)
+	# On, it reads in the warning colour: there is no mistaking a run that pays nothing.
+	god_switch.add_theme_color_override("font_pressed_color", COLOUR_BAD)
+	god_switch.add_theme_color_override("font_hover_pressed_color", COLOUR_BAD)
+	_place(god_switch, Control.PRESET_TOP_RIGHT, Rect2(-170, 160, 154, 30))
+	god_switch.toggled.connect(_on_god_toggled)
+	god_switch.visible = false
+	add_child(god_switch)
 	results = PanelContainer.new()
 	results.name = "results"
 	results.visible = false
@@ -277,9 +307,13 @@ func start() -> void:
 	run.name = "run"
 	run.set("seed_value", seed_value)
 	if not pays.is_empty():
-		run.set("pays", pays.duplicate(true))
+		run.set("pays", RunScript.pays_from(pays))
 	run.position = RunScript.HALF
 	viewport.add_child(run)
+	var may: bool = bool(may_be_god.call())
+	god_switch.visible = may
+	run.set("god", may and GameState.god_mode)
+	god_switch.set_pressed_no_signal(may and GameState.god_mode)
 	results.visible = false
 	_leave_armed = 0.0
 	_lives_seen = -1
@@ -293,6 +327,21 @@ func start() -> void:
 		tutorial.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		tutorial.grow_vertical = Control.GROW_DIRECTION_BOTH
 		tutorial.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+
+
+func _may_be_god() -> bool:
+	return Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
+func _on_god_toggled(on: bool) -> void:
+	"""The world's god mode, from here: for the owner only, asked again."""
+	if not bool(may_be_god.call()):
+		god_switch.set_pressed_no_signal(false)
+		god_switch.visible = false
+		return
+	GameState.god_mode = on
+	if run != null and is_instance_valid(run):
+		run.set("god", on)
 
 
 func begin() -> void:
@@ -315,14 +364,17 @@ func paint() -> void:
 		return
 	var state: int = int(run.get("state"))
 	top_line.text = "Healer's Run   %s" % str(run.call("time_text"))
-	var stretch: int = int(run.get("stretch"))
+	var tier: int = int(run.get("tier"))
 	if state == RunScript.State.WON:
 		stage_line.text = "Through the gate"
-	elif state == RunScript.State.BOSS or state == RunScript.State.GOAL:
+	elif state == RunScript.State.GOAL:
 		stage_line.text = "The gate"
+	elif state == RunScript.State.BOSS:
+		stage_line.text = "Tier %d of %d - the %s keeper" % [tier + 1, RunScript.TIERS,
+			str(run.call("land_name", int(run.call("land"))))]
 	else:
-		stage_line.text = "Stretch %d of %d - wave %d" % [mini(stretch + 1, RunScript.STRETCHES),
-			RunScript.STRETCHES, int(run.get("wave_in_stretch")) + 1]
+		stage_line.text = "Tier %d of %d - wave %d of %d" % [tier + 1, RunScript.TIERS,
+			int(run.get("wave_in_tier")) + 1, RunScript.WAVES_PER_TIER]
 	var lives: int = int(run.get("lives"))
 	if _lives_seen >= 0 and lives < _lives_seen:
 		flash.color.a = 0.35
@@ -333,7 +385,8 @@ func paint() -> void:
 		+ ((" - laser %d" % int(run.get("laser_level"))) if float(run.get("laser")) > 0.0 else "")
 	rank_line.text = "Danger %d" % int(run.call("rank"))
 	slain_line.text = "Slain %d" % int(run.get("slain"))
-	gold_line.text = "Gold %d" % int(run.call("gold_now"))
+	gold_line.text = ("Gold %d - god mode, pays nothing" if bool(run.get("god_used")) else "Gold %d") \
+		% int(run.call("gold_now"))
 	var held_meteors: int = int(run.get("meteors"))
 	meteor_line.text = ("Meteors %d - Space" % held_meteors) if held_meteors > 0 else ""
 	banner_line.text = "" if tutorial.visible else str(run.get("banner"))
@@ -344,7 +397,8 @@ func paint() -> void:
 	else:
 		leave_button.text = "Leave"
 	if (state == RunScript.State.WON or state == RunScript.State.LOST) and not results.visible:
-		result_line.text = "%s\n%d gold - yours when you Leave" % [str(run.call("result_text")), int(run.call("gold_now"))]
+		result_line.text = "%s\n%d gold - yours when you Leave" % [str(run.call("result_text")), int(run.call("gold_now"))] \
+			if not bool(run.get("god_used")) else "%s\nGod mode - this run pays nothing" % str(run.call("result_text"))
 		results.visible = true
 		results.reset_size()
 		results.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -418,8 +472,11 @@ func _pay() -> bool:
 	# Still while it is settled: what is sent is what was reached.
 	run.set_process(false)
 	var state: int = int(run.get("state"))
-	var body := {"run": run_id, "waves": mini(int(run.get("waves_done")), RunScript.STRETCHES * RunScript.WAVES_PER_STRETCH),
-		"boss": bool(run.get("boss_beaten")), "goal": state == RunScript.State.WON}
+	var body := {"run": run_id, "waves": mini(int(run.get("waves_done")), RunScript.TIERS * RunScript.WAVES_PER_TIER),
+		"bosses": int(run.get("bosses_beaten")), "goal": state == RunScript.State.WON}
+	if bool(run.get("god_used")):
+		# GOD MODE PAYS NOTHING: the run is closed on the server, nothing reached.
+		body = {"run": run_id, "waves": 0, "bosses": 0, "goal": false}
 	var res: Dictionary = await finish_request.call("/api/minigames/finish", body, 8.0)
 	_busy = false
 	if not is_instance_valid(self):

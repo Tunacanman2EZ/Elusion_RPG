@@ -1248,7 +1248,7 @@ func _test_the_healers_run() -> void:
 		first.append(f.kind)
 	check("  then she walks, and the first wave comes: a V of seven sprites of the first land, the land named",
 		run.state == RunScript.State.RUNNING and first.size() == 7 and first.count("sprite") == 7
-		and run.banner.begins_with("Stretch 1 - the ") and run.healer_sprite.animation == &"walkup", [first, run.banner])
+		and run.banner.begins_with("Tier 1 - the ") and run.healer_sprite.animation == &"walkup", [first, run.banner])
 	var slow: float = run.scroll_speed()
 	run.run_seconds += 120.0
 	var later: float = run.scroll_speed()
@@ -1363,16 +1363,35 @@ func _test_the_healers_run() -> void:
 	# GOLD: "gold should be rewarded on the screen then moved to char when hitting leave".
 	var waves_were: int = run.waves_done
 	run.waves_done = 7
-	check("the gold on screen: seven waves are 50 and two of 16", run.gold_now() == 82, run.gold_now())
+	var seven: int = run.gold_now()
+	run.waves_done = 10
+	run.bosses_beaten = 1
+	var ten_and_one: int = run.gold_now()
+	run.bosses_beaten = 0
 	run.waves_done = waves_were
+	check("the gold on screen, by tier: seven waves are 70; ten waves and the first boss 80 + 50 + 120 (up to 5000)",
+		seven == 70 and ten_and_one == 80 + 50 + 120 and RunScript.DEFAULT_PAYS["most"] == 5000, [seven, ten_and_one])
 	check("more power-ups: a mage drops one nearly half the time, and never more than 12 kills without one",
 		float(RunScript.KINDS["mage"]["power"]) >= 0.4 and RunScript.POWER_PITY <= 12)
 	var waves_then: int = run.foes.get_child_count()
-	run.stretch = 3
+	var tier_was: int = run.tier
+	var wave_was: int = run.wave_in_tier
+	run.tier = 0
+	run.wave_in_tier = 0
+	var cool: int = run.heat()
+	run.wave_in_tier = 4
+	var half_way: int = run.heat()
+	run.tier = 1
+	run.wave_in_tier = 0
+	var next_tier: int = run.heat()
+	run.wave_in_tier = 4
 	var full_size: int = mini(13, 7 + run.crowd())
 	var both: Array = run.spawn_wave("vee", 0.5)
-	run.stretch = 0
-	check("  more monsters: a V is seven, and one more each stretch; one alongside another comes at half its size",
+	run.tier = tier_was
+	run.wave_in_tier = wave_was
+	check("THE NEXT TIER STARTS HOTTER: heat 0, 1 half way through the first, 2 at the second's start",
+		cool == 0 and half_way == 1 and next_tier == 2, [cool, half_way, next_tier])
+	check("  more monsters: a V is seven, and one more each heat; one alongside another comes at half its size",
 		full_size >= 7 and both.size() == roundi(full_size * 0.5) and run.foes.get_child_count() == waves_then + both.size()
 		and RunScript._sized(3, 0.5) == 2, [full_size, both.size()])
 	var slain_then: int = run.slain
@@ -1411,37 +1430,105 @@ func _test_the_healers_run() -> void:
 	var full_laser: float = RunScript.laser_dps(5) * (1.0 + 4.0 * RunScript.SIDE_BEAM_SHARE)
 	check("the laser balanced: a full laser and its side beams do %d a second (it was about 300)" % int(full_laser),
 		full_laser < 150.0 and RunScript.laser_dps(1) < 30.0 and RunScript.laser_seconds(5) <= 10.0, full_laser)
-	# THE FIRE BEHIND HER (the owner: "maybe a fire from behind").
+	# THE FIRE BEHIND HER (the owner: "maybe a fire from behind"; then "the
+	# fire at the bottom gets a bit taller and upgrades push it back down").
 	var lives_before: int = run.lives
 	run.untouchable = 0.0
 	var then_seconds: float = run.run_seconds
+	var tier_then: int = run.tier
+	run.tier = 0
+	run.fire_height = 0.0
+	run.set("_fire_push", 0.0)
 	run.run_seconds = RunScript.FIRE_AFTER - 1.0
-	run.call("_burn", 1.0 / 60.0)
+	run.call("_burn", 10.0)
 	var none_yet: bool = run.fire_height == 0.0 and not run.fire_glow.visible
-	run.run_seconds = RunScript.FIRE_AFTER + 120.0
+	run.run_seconds = RunScript.FIRE_AFTER + 1.0
 	run.healer.position.y = RunScript.HALF.y - 12.0
-	run.call("_burn", 1.0 / 60.0)
-	check("from %d s a fire rises behind her - %.0f px after two minutes, held to %d - and standing in it costs a life"
-		% [RunScript.FIRE_AFTER, run.fire_height, RunScript.FIRE_MOST],
-		none_yet and is_equal_approx(run.fire_height, 120.0 * RunScript.FIRE_RISE) and run.fire_glow.visible
+	run.call("_burn", 60.0)
+	check("from %d s a fire rises behind her - %.0f px a minute in the first tier - and standing in it costs a life"
+		% [RunScript.FIRE_AFTER, run.fire_height],
+		none_yet and is_equal_approx(run.fire_height, 60.0 * RunScript.FIRE_RISE) and run.fire_glow.visible
 		and run.lives == lives_before - 1 and run.healer.position.y < run.fire_top(), [run.fire_height, run.lives])
+	run.healer.position.y = 0.0
+	run.call("_burn", 9999.0)
+	var tallest: float = run.fire_height
+	run.tier = 2
+	run.fire_height = 0.0
+	run.call("_burn", 60.0)
+	var faster: float = run.fire_height
+	run.call("_burn", 9999.0)
+	var power_then: int = run.power
+	run.gain_power()
+	for i in 60:
+		run.call("_burn", 1.0 / 60.0)
+	var pushed_to: float = run.fire_height
+	check("  taller now - held to %d (it was 64), climbing faster each tier - and a power-up pushes it back %d"
+		% [int(RunScript.FIRE_MOST), int(RunScript.FIRE_PUSH)],
+		RunScript.FIRE_MOST > 64.0 and tallest == RunScript.FIRE_MOST and faster > 60.0 * RunScript.FIRE_RISE
+		and pushed_to < RunScript.FIRE_MOST - RunScript.FIRE_PUSH + 1.0 and pushed_to > RunScript.FIRE_MOST - RunScript.FIRE_PUSH - 2.0,
+		[tallest, faster, pushed_to])
+	run.power = power_then
+	run.tier = tier_then
 	run.run_seconds = then_seconds
 	run.fire_height = 0.0
+	run.set("_fire_push", 0.0)
 	run.lives = 2
 	var pushed: Vector2 = RunScript._pushed_out(Vector2(5, 5), 2.0, Rect2(0, 0, 20, 8))
 	check("a pillar's foot stops her: put out the shortest way", pushed == Vector2(5, 10), pushed)
+	# ---- a boss each tier ("lets progress tiers after round 8 to the next difficulty diff boss") ----
+	for left in run.foes.get_children():
+		left.queue_free()
+	for drop in run.drops.get_children():
+		drop.queue_free()
+	await get_tree().process_frame
+	run.state = RunScript.State.RUNNING
+	run.tier = 0
+	run.wave_in_tier = RunScript.WAVES_PER_TIER - 1
+	run.waves_done = RunScript.WAVES_PER_TIER - 1
+	run.bosses_beaten = 0
+	run.call("_next_wave")
+	var first_keeper: Node2D = run.boss
+	var first_land: int = run.land()
+	check("the eighth wave passed, the first land's keeper: its boss, its name, %d health before rank (the last %d)"
+		% [int(RunScript.BOSS_HEALTH[0]), int(RunScript.BOSS_HEALTH[2])],
+		run.state == RunScript.State.BOSS and first_keeper != null and run.waves_done == RunScript.WAVES_PER_TIER
+		and run.banner == "The %s keeper" % run.land_name(first_land)
+		and is_equal_approx(float(first_keeper.get("most")), RunScript.foe_health(RunScript.BOSS_HEALTH[0], run.rank()))
+		and RunScript.BOSS_HEALTH[0] < RunScript.BOSS_HEALTH[1] and RunScript.BOSS_HEALTH[1] < RunScript.BOSS_HEALTH[2]
+		and run.adds_gap() > RunScript.BOSS_ADDS_SECONDS, [run.banner, first_keeper.get("most")])
+	var hangers_on: Array = run.spawn_wave("vee", 0.5)
+	var slain_at_boss: int = run.slain
+	run.call("_strike", first_keeper, float(first_keeper.get("most")) + 1.0)
+	var spoils: Array = []
+	for drop in run.drops.get_children():
+		spoils.append(str(drop.get_meta(&"drop", "")))
+	var all_burst: bool = true
+	for f in hangers_on:
+		all_burst = all_burst and float(f.get("dying")) >= 0.0
+	check("  beaten: its crowd bursts with it, it leaves a power-up and a potion, and the next tier starts in the next land",
+		run.state == RunScript.State.RUNNING and run.bosses_beaten == 1 and run.tier == 1 and run.wave_in_tier == 0
+		and run.boss == null and all_burst and run.slain == slain_at_boss + 1 + hangers_on.size()
+		and spoils.has("power") and spoils.has("potion") and run.land() != first_land
+		and run.banner == "Tier 2 - the %s lands" % run.land_name(run.land()) and run.heat() == 2
+		and run.shake > 0.0, [run.state, run.tier, spoils, run.banner])
 	# ---- the gate and the goal ----
 	var won: Array = []
 	run.finished.connect(func(did_win: bool) -> void: won.append(did_win))
-	run.waves_done = 25
 	for left in run.foes.get_children():
 		left.queue_free()
+	for drop in run.drops.get_children():
+		drop.queue_free()
+	await get_tree().process_frame
+	run.tier = RunScript.TIERS - 1
+	run.waves_done = RunScript.TIERS * RunScript.WAVES_PER_TIER
+	run.bosses_beaten = RunScript.TIERS - 1
 	run.call("_start_boss")
 	var gate_meteor: bool = false
 	for drop in run.drops.get_children():
 		gate_meteor = gate_meteor or str(drop.get_meta(&"drop", "")) == "meteor"
-	check("after the last stretch, the gate: its keeper is the last land's boss, at full health, and a meteor falls ahead",
-		run.state == RunScript.State.BOSS and run.boss != null and is_equal_approx(run.boss_share(), 1.0) and gate_meteor)
+	check("after the last tier, the gate: its keeper is the third land's boss, at full health, and a meteor falls ahead",
+		run.state == RunScript.State.BOSS and run.boss != null and is_equal_approx(run.boss_share(), 1.0) and gate_meteor
+		and run.banner == "The gate - and its keeper" and run.adds_gap() == RunScript.BOSS_ADDS_SECONDS)
 	run.meteors = 1
 	check("  Space locks on the boss", run.meteor_target() == run.boss and run.fire_meteor())
 	for i in 40:
@@ -1451,8 +1538,8 @@ func _test_the_healers_run() -> void:
 		run.boss_share())
 	# "we need more enemies finishing should be pretty challenging".
 	check("the finish is hard: the keeper has %d health before rank, waves come within %d s at most, a third wave late on"
-		% [int(RunScript.KINDS["boss"]["health"]), int(RunScript.wave_time(0))],
-		float(RunScript.KINDS["boss"]["health"]) >= 2400.0 and RunScript.wave_time(0) <= 12.0
+		% [int(RunScript.BOSS_HEALTH[2]), int(RunScript.wave_time(0))],
+		float(RunScript.BOSS_HEALTH[2]) >= 2400.0 and RunScript.wave_time(0) <= 12.0
 		and RunScript.wave_time(99) == 6.0 and RunScript.THIRD_CHANCE > 0.0)
 	var before_adds: int = run.foes.get_child_count()
 	for i in int((RunScript.BOSS_ADDS_SECONDS + 0.5) * 60.0):
@@ -1461,6 +1548,8 @@ func _test_the_healers_run() -> void:
 	check("  every few seconds it calls a wave to its side", run.foes.get_child_count() > before_adds,
 		[before_adds, run.foes.get_child_count()])
 	run.boss.health = run.boss.most * 0.4
+	run.set("_boss_casting", 1)
+	run.set("_boss_shots", 5.0)
 	run.call("_boss_step", 1.0 / 60.0)
 	check("  and under half its health it is enraged", run.enraged and run.banner == "The keeper is enraged")
 	run.call("_strike", run.boss, run.boss.most + 1.0)
@@ -1471,9 +1560,9 @@ func _test_the_healers_run() -> void:
 			break
 		run.untouchable = 1.0
 		run.step(1.0 / 60.0)
-	check("  and walking to it wins the run - in the time it took - and the whole thousand",
+	check("  and walking to it wins the run - in the time it took - and the whole 5000",
 		run.state == RunScript.State.WON and won == [true] and run.result_text().begins_with("Cleared in ")
-		and run.gold_now() == 1000, [run.state, won, run.result_text(), run.gold_now()])
+		and run.gold_now() == 5000 and run.bosses_beaten == 3, [run.state, won, run.result_text(), run.gold_now()])
 	run.queue_free()
 	var lost = RunScript.new()
 	lost.set("seed_value", 3)
@@ -1485,8 +1574,21 @@ func _test_the_healers_run() -> void:
 	lost.untouchable = 0.0
 	lost.hurt()
 	check("the last life gone: the run is over, and says how far it got",
-		lost.state == RunScript.State.LOST and lost.result_text().begins_with("Fell in stretch 1"), lost.result_text())
+		lost.state == RunScript.State.LOST and lost.result_text().begins_with("Fell in tier 1, wave 1"), lost.result_text())
 	lost.queue_free()
+	var at_keeper = RunScript.new()
+	at_keeper.set("seed_value", 5)
+	add_child(at_keeper)
+	at_keeper.set_process(false)
+	at_keeper.tier = 1
+	at_keeper.call("_start_boss")
+	at_keeper.lives = 1
+	at_keeper.untouchable = 0.0
+	at_keeper.state = RunScript.State.BOSS
+	at_keeper.hurt()
+	check("  fallen to a keeper, it says which", at_keeper.result_text().begins_with("Fell to the %s keeper in tier 2"
+		% at_keeper.land_name(at_keeper.land())), at_keeper.result_text())
+	at_keeper.queue_free()
 	# ---- on screen ----
 	var stand_in := Node2D.new()
 	stand_in.add_to_group("player")
@@ -1516,17 +1618,21 @@ func _test_the_healers_run() -> void:
 	# LEAVE PAYS: a run the server knows is finished there, its gold paid.
 	var paid: Array = []
 	var paying = ScreenScript.open(get_tree(), 4, 77, {"wave_gold": [10, 16, 24, 30, 40], "waves_per_stretch": 5,
-		"boss_gold": 150, "goal_gold": 250, "most": 1000})
+		"boss_gold": 150, "goal_gold": 250, "most": 1000, "tiers": {"wave_gold": [10, 25, 100], "waves_per_tier": 8,
+		"boss_gold": [120, 300, 1500], "goal_gold": 2000, "most": 5000}})
 	paying.finish_request = func(path: String, body: Dictionary, _wait: float) -> Dictionary:
 		paid.append([path, body])
 		return {"ok": true, "status": 200, "data": {"gold": 26, "status": {"gold": 1026}}}
 	await get_tree().process_frame
-	paying.run.waves_done = 2
+	var counted_by: Dictionary = paying.run.pays.duplicate()
+	paying.run.waves_done = 9
+	paying.run.bosses_beaten = 1
 	paying.leave()
 	await get_tree().process_frame
-	check("Leave finishes the run on the server - how far it got - and goes",
-		paid.size() == 1 and paid[0][0] == "/api/minigames/finish" and paid[0][1] == {"run": 77, "waves": 2,
-		"boss": false, "goal": false} and not is_instance_valid(paying), paid)
+	check("Leave finishes the run on the server - how far it got, the bosses down - and goes; counted by the server's tiers",
+		paid.size() == 1 and paid[0][0] == "/api/minigames/finish" and paid[0][1] == {"run": 77, "waves": 9,
+		"bosses": 1, "goal": false} and not is_instance_valid(paying) and counted_by.get("most") == 5000
+		and RunScript.pays_from({"most": 1000}) == RunScript.DEFAULT_PAYS, [paid, counted_by])
 	var refused = ScreenScript.open(get_tree(), 5, 78)
 	refused.finish_request = func(_path: String, _body: Dictionary, _wait: float) -> Dictionary:
 		return {"ok": false, "status": 0}
@@ -1563,3 +1669,257 @@ func _test_the_healers_run() -> void:
 	hud.queue_free()
 	await get_tree().process_frame
 	print("  the healer's run: a shooter of her own, in a world of its own, from town")
+
+
+func _test_each_keeper_fights_its_own_way() -> void:
+	section("THE HEALER'S RUN: EACH LAND'S BOSS FIGHTS ITS OWN WAY, AND HITS ARE FELT (0.100.0)")
+	# The owner: "lets progress tiers after round 8 to the next difficulty diff
+	# boss and effects when hit".
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	var run = RunScript.new()
+	run.set("seed_value", 21)
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	add_child(run)
+	run.set_process(false)
+	for i in 120:
+		run.step(1.0 / 60.0)
+	for left in run.foes.get_children():
+		left.queue_free()
+	await get_tree().process_frame
+	# Held between waves, with no boss: everything runs but the waves.
+	run.state = RunScript.State.BOSS
+	run.boss = null
+	run.field.clear()
+	var named: bool = RunScript.SIGNATURES.size() == RunScript.LANDS.size()
+	for land in RunScript.LANDS:
+		named = named and str(RunScript.SIGNATURES.get(land, "")) != "" and int(RunScript.SIGNATURE_VOLLEYS.get(land, 0)) > 0
+	check("every land's boss has a cast of its own, by name", named)
+	var from := Vector2(0.0, -110.0)
+	var her: Vector2 = run.healer.position + RunScript.HITBOX_AT
+	# FIRE
+	run.lands[0] = Element.Type.FIRE
+	run.set("_boss_fired", 0)
+	run.call("_signature", from, 0, Color.RED)
+	var settling: int = 0
+	var from_above: int = 0
+	for i in run.field.count:
+		settling += 1 if run.field.brake_of(i) > 0.0 else 0
+		from_above += 1 if run.field.position_of(i).y < -RunScript.HALF.y else 0
+	check("fire: Fire rain - fireballs from above, and an ember that will lie burning",
+		run.field.count == 4 and from_above == 4 and settling == 1, [run.field.count, from_above, settling])
+	# ICE
+	run.field.clear()
+	run.lands[0] = Element.Type.ICE
+	run.call("_signature", from, 0, Color.CYAN)
+	var freezing: int = 0
+	for i in run.field.count:
+		freezing += 1 if run.field.damage_of(i) == RunScript.FREEZE_MARK else 0
+	check("ice: Frost volley - a fan of freezing shots at her", freezing == 5 and run.field.count == 5, freezing)
+	run.field.clear()
+	run.untouchable = 0.0
+	run.lives = 3
+	run.field.spawn(her + Vector2(0.0, -2.0), PI / 2.0, 10.0, Color.CYAN, true, 0.0, 0.0, 14.0, RunScript.FREEZE_MARK)
+	run.step(1.0 / 60.0)
+	var frozen_then: bool = run.frozen > 0.0 and run.lives == 3
+	var still_at: Vector2 = run.healer.position
+	run.set("steer", func() -> Vector2: return Vector2.RIGHT)
+	var flying: int = run.shots_flying()
+	for i in 20:
+		run.step(1.0 / 60.0)
+	check("  a freezing shot freezes her instead of taking a life: she cannot move or shoot, and is tinted ice",
+		frozen_then and run.healer.position == still_at and run.shots_flying() <= flying
+		and run.healer_sprite.modulate == RunScript.ICE_TINT and not run.beam.visible, [frozen_then, run.healer.position])
+	for i in int(RunScript.FREEZE_SECONDS * 60.0):
+		run.step(1.0 / 60.0)
+	run.field.spawn(run.healer.position + RunScript.HITBOX_AT + Vector2(0.0, -2.0), PI / 2.0, 10.0, Color.CYAN, true,
+		0.0, 0.0, 14.0, RunScript.FREEZE_MARK)
+	run.step(1.0 / 60.0)
+	check("  thawed, she moves again, and a moment no freezing shot takes her (\"frozen\" never chains)",
+		run.frozen == 0.0 and run.healer.position.x > still_at.x and run.lives == 3
+		and run.healer_sprite.modulate != RunScript.ICE_TINT, [run.frozen, run.healer.position])
+	run.set("steer", func() -> Vector2: return Vector2.ZERO)
+	run.healer.position.x = 0.0
+	# WIND
+	run.field.clear()
+	run.lands[0] = Element.Type.WIND
+	run.set("_boss_fired", 0)
+	run.call("_signature", from, 0, Color.GREEN)
+	var side: float = run.gust_side
+	var x0: float = run.healer.position.x
+	var crosswinds: int = run.field.count
+	for i in 30:
+		run.untouchable = 1.0
+		run.step(1.0 / 60.0)
+	check("wind: Gale - a gust shoves her sideways while crosswinds blow from the wall",
+		run.gust > 0.0 and absf((run.healer.position.x - x0) - side * RunScript.GUST_PUSH * 0.5) < 3.0
+		and crosswinds == 3, [run.healer.position.x - x0, crosswinds])
+	run.gust = 0.0
+	run.healer.position.x = 0.0
+	# WATER
+	run.field.clear()
+	run.lands[0] = Element.Type.WATER
+	run.call("_signature", from, 0, Color.BLUE)
+	var xs: Array = []
+	for i in run.field.count:
+		xs.append(run.field.position_of(i).x)
+	xs.sort()
+	var widest: float = 0.0
+	for i in range(1, xs.size()):
+		widest = maxf(widest, float(xs[i]) - float(xs[i - 1]))
+	check("water: Tide - a row of weaving drops across the path, with a way through", xs.size() >= 14 and widest >= 60.0,
+		[xs.size(), widest])
+	# EARTH
+	run.field.clear()
+	run.untouchable = 0.0
+	run.lives = 3
+	run.shake = 0.0
+	run.lands[0] = Element.Type.EARTH
+	run.call("_signature", from, 0, Color.BROWN)
+	var marked: Array = run.get("_rocks").duplicate()
+	var drawn_marks: int = run.hazards.rocks.size()
+	for i in int((RunScript.ROCK_WARN + 0.05) * 60.0):
+		run.step(1.0 / 60.0)
+	check("earth: Rockfall - rocks marked on the floor, one where she stands; staying there costs a life, and it lands with a shake",
+		marked.size() == 2 and (marked[0]["at"] as Vector2).distance_to(her) < 1.0 and run.lives == 2 and run.shake > 0.0
+		and run.field.count >= 10, [marked.size(), run.lives, run.field.count])
+	for i in 150:
+		run.step(1.0 / 60.0)
+	run.get("_rocks").clear()
+	run.hazards.rocks = []
+	check("  and the marks are drawn first", drawn_marks == 2)
+	# LIGHT
+	run.field.clear()
+	run.untouchable = 0.0
+	run.lives = 3
+	run.lands[0] = Element.Type.LIGHT
+	run.call("_signature", from, 0, Color.YELLOW)
+	var pillars: Array = run.get("_pillars").duplicate()
+	for i in int((RunScript.PILLAR_WARN + 0.1) * 60.0):
+		run.step(1.0 / 60.0)
+	check("light: Pillars of light - columns marked, then burning; one on her, and standing in it costs a life",
+		pillars.size() == 2 and absf(float(pillars[0]["x"]) - run.healer.position.x) < 1.0 and run.lives == 2,
+		[pillars.size(), run.lives])
+	for i in 150:
+		run.step(1.0 / 60.0)
+	# DARK
+	run.field.clear()
+	run.lands[0] = Element.Type.DARK
+	run.call("_signature", from, 0, Color.PURPLE)
+	var leaving: Vector2 = run.field.velocity_of(0)
+	run.field.step(0.5, Vector2(9999.0, 9999.0), 0.0, 0.0, true)
+	check("dark: Dark coils - six orbs curling as they fly", run.field.count == 6
+		and absf(leaving.angle_to(run.field.velocity_of(0))) > 0.3, run.field.count)
+	run.field.clear()
+	# THE KEEPER'S CASTS: every other one its own, the first first.
+	run.state = RunScript.State.RUNNING
+	run.tier = 0
+	run.lands[0] = Element.Type.FIRE
+	run.call("_start_boss")
+	var casts: Array = []
+	for i in 60 * 12:
+		run.untouchable = 1.0
+		run.lives = 3
+		var was: int = run.get("_boss_casting")
+		run.step(1.0 / 60.0)
+		var now: int = run.get("_boss_casting")
+		if now >= 0 and now != was:
+			casts.append(now)
+			if casts.size() == 1:
+				casts.append(run.banner)
+		if casts.size() >= 3:
+			break
+	check("a keeper's first cast is its land's own, said in the banner, and the next is one of the shared four",
+		casts.size() >= 3 and casts[0] == RunScript.SIGNATURE and casts[1] == "Fire rain" and int(casts[2]) < RunScript.SIGNATURE,
+		casts)
+	# ---- hits felt ----
+	var bursts := func() -> int:
+		var n: int = 0
+		for child in run.get_children():
+			n += 1 if child is RunScript.Burst else 0
+		return n
+	run.shake = 0.0
+	run.set("_boss_shook", 0.0)
+	var before: int = bursts.call()
+	run.call("_strike", run.boss, 1.0)
+	check("a boss struck sparks, and the screen shakes a little", run.shake == RunScript.BOSS_SHAKE
+		and bursts.call() == before + 1)
+	var mob: Node2D = run.call("_foe", "sprite", Vector2(0.0, -60.0))
+	before = bursts.call()
+	run.call("_strike", mob, 999.0)
+	var burst: Node2D = run.get_children()[run.get_child_count() - 1]
+	check("every kill bursts in its land's colour, drawn under the bullets", bursts.call() == before + 1
+		and burst is RunScript.Burst and burst.z_index < run.field.z_index and burst.z_index < run.get_node("shots").z_index)
+	burst.call("_process", 1.0)
+	check("  and is gone when spent", burst.is_queued_for_deletion())
+	before = bursts.call()
+	run.power = 0
+	run.gain_power()
+	check("a power-up rings out from her and she shines", bursts.call() == before + 1
+		and float(run.get("_shine_left")) > 0.0)
+	run.shake = 0.0
+	run.untouchable = 0.0
+	run.hurt()
+	check("a hit on her shakes the screen hard", run.shake == RunScript.HURT_SHAKE)
+	run.step(1.0 / 60.0)
+	var off: Vector2 = run.position - run.get("_home")
+	for i in 30:
+		run.step(1.0 / 60.0)
+	check("  about where the run was put, and settles back to it", off.length() > 0.0
+		and off.length() <= RunScript.HURT_SHAKE * 1.5 and run.shake == 0.0 and run.position == run.get("_home"), off)
+	check("the marks and the bursts are drawn as light the crypt's dark does not dim, under her shots",
+		run.hazards.z_index < run.get_node("shots").z_index and run.hazards.material is CanvasItemMaterial
+		and (run.hazards.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED)
+	run.queue_free()
+	# ---- god mode: "i need a godmode switch that only i can see on the screen for this mini game so i can test" ----
+	const ScreenScript := preload("res://src/world/healerrun/healerrunscreen.gd")
+	var godly = RunScript.new()
+	godly.set("seed_value", 8)
+	add_child(godly)
+	godly.set_process(false)
+	for i in 120:
+		godly.step(1.0 / 60.0)
+	godly.god = true
+	godly.untouchable = 0.0
+	godly.lives = 3
+	godly.power = 2
+	godly.hurt()
+	godly.healer.position.y = RunScript.HALF.y + 10.0
+	godly.step(1.0 / 60.0)
+	check("god mode: nothing takes a life or a shot step - a hit, or the scroll pushing her off - and the run remembers it was on",
+		godly.lives == 3 and godly.power == 2 and godly.untouchable == 0.0 and godly.god_used
+		and godly.healer.position.y < RunScript.HALF.y, [godly.lives, godly.power, godly.god_used])
+	godly.queue_free()
+	var god_was: bool = GameState.god_mode
+	GameState.god_mode = false
+	var screen = ScreenScript.open(get_tree(), 6, 91)
+	await get_tree().process_frame
+	check("  its switch is not on the screen for a player", not screen.god_switch.visible)
+	screen.may_be_god = func() -> bool: return true
+	screen.start()
+	var shown: bool = screen.god_switch.visible and not screen.god_switch.button_pressed and not screen.run.god
+	screen.god_switch.button_pressed = true
+	check("  for the owner it is, off at first; on, it is the world's god mode too, and the run's",
+		shown and GameState.god_mode and screen.run.god, [shown, GameState.god_mode])
+	var sent: Array = []
+	screen.finish_request = func(_path: String, body: Dictionary, _wait: float) -> Dictionary:
+		sent.append(body)
+		return {"ok": true, "status": 200, "data": {"gold": 0, "status": {}}}
+	screen.run.waves_done = 9
+	screen.run.bosses_beaten = 1
+	screen.run.god_used = true
+	screen.paint()
+	var said: String = screen.gold_line.text
+	screen.leave()
+	await get_tree().process_frame
+	check("  a run with it on says it pays nothing, and Leave closes it on the server with nothing reached",
+		said.contains("pays nothing") and sent == [{"run": 91, "waves": 0, "bosses": 0, "goal": false}], [said, sent])
+	var again = ScreenScript.open(get_tree(), 7)
+	await get_tree().process_frame
+	again.may_be_god = func() -> bool: return false
+	again.god_switch.visible = true
+	again.god_switch.button_pressed = true
+	check("  and pressed by anyone else it does nothing and hides", not again.god_switch.visible
+		and not again.god_switch.button_pressed and not again.run.god, again.god_switch.visible)
+	again.close()
+	GameState.god_mode = god_was
+	print("  (each keeper's own way, and hits felt: done)")
