@@ -1325,14 +1325,15 @@ func _test_the_healers_run() -> void:
 	run.call("_shine", 0.0)
 	# THE METEOR: "we can loot a meteor for a special weapon for the bosses",
 	# "just press space to fire meteor will auto lock".
+	var started_with: int = run.meteors
+	run.meteors = 0
 	check("no meteor held, Space does nothing", not run.fire_meteor())
-	run.gain_meteor()
-	run.gain_meteor()
-	run.gain_meteor()
-	run.gain_meteor()
+	for i in RunScript.METEORS_MOST + 1:
+		run.gain_meteor()
 	var tough: Node2D = run.meteor_target()
-	check("  a meteor picked up is held (up to three); it locks on the toughest monster standing",
-		run.meteors == RunScript.METEORS_MOST and tough != null, tough)
+	check("  a run starts with three; a meteor picked up is one more (up to five); it locks on the toughest monster standing",
+		started_with == RunScript.METEORS_BASE and RunScript.METEORS_BASE == 3 and run.meteors == RunScript.METEORS_MOST
+		and RunScript.METEORS_MOST == 5 and tough != null, [started_with, run.meteors])
 	var tough_health: float = tough.get("health")
 	check("  and Space calls it down", run.fire_meteor() and run.meteors == RunScript.METEORS_MOST - 1)
 	for i in 40:
@@ -2799,6 +2800,101 @@ func _test_the_critical_beam_and_the_shield() -> void:
 		[circling, already, held, run.lives])
 	check("  shields drop now and then from mages and snipers, and from elites more often",
 		RunScript.SHIELD_DROP > 0.0 and RunScript.SHIELD_DROP < 0.15 and RunScript.ELITE_SHIELD > RunScript.SHIELD_DROP)
+	# "we need that shield to actually be around the character make it 5 meteors".
+	run.shield = true
+	run.ghost = false
+	var shield_rocks: Array = []
+	var behind: int = 0
+	var in_front: int = 0
+	for i in 30:
+		run.call("_shield_step", 1.0 / 30.0)
+		for rock in orbit.get_children():
+			behind += 1 if int(rock.z_index) == 0 else 0
+			in_front += 1 if int(rock.z_index) > 0 else 0
+	for rock in orbit.get_children():
+		shield_rocks.append((rock as Node2D).position)
+	var lowest: float = -INF
+	var highest: float = INF
+	for at in shield_rocks:
+		lowest = maxf(lowest, (at as Vector2).y)
+		highest = minf(highest, (at as Vector2).y)
+	var middle: Vector2 = orbit.position - run.healer.position
+	check("  the shield is round her whole body: five meteors about her middle, behind her at the back and over her at the front",
+		orbit.get_child_count() == 5 and middle.is_equal_approx(RunScript.SHIELD_AT)
+		and RunScript.SHIELD_REACH * RunScript.SHIELD_SQUASH >= 19.0 and RunScript.SHIELD_AT.y > RunScript.HITBOX_AT.y
+		and behind > 0 and in_front > 0, [middle, behind, in_front])
+	# "i need that circle perfectly symetrical to the char": a true circle, its
+	# middle the middle of her picture - read from her own frame: the halo's
+	# columns (even about her) and her top and bottom.
+	var frame: Image = (run.healer_sprite.sprite_frames as SpriteFrames).get_frame_texture("idleup", 0).get_image()
+	var used: Rect2i = frame.get_used_rect()
+	var halo_left: int = frame.get_width()
+	var halo_right: int = -1
+	for x in frame.get_width():
+		if frame.get_pixel(x, used.position.y).a > 0.0:
+			halo_left = mini(halo_left, x)
+			halo_right = maxi(halo_right, x)
+	var corner: Vector2 = run.healer_sprite.offset - Vector2(frame.get_size()) / 2.0
+	var her_middle := Vector2(corner.x + (halo_left + halo_right + 1) / 2.0,
+		corner.y + used.position.y + used.size.y / 2.0)
+	var on_ring: bool = true
+	for at in shield_rocks:
+		on_ring = on_ring and absf((at as Vector2).length() - RunScript.SHIELD_REACH) < 0.01
+	check("  a true circle about the middle of her picture (%s), every meteor on it, wide enough for all of her"
+		% str(her_middle), RunScript.SHIELD_SQUASH == 1.0 and her_middle.is_equal_approx(RunScript.SHIELD_AT)
+		and on_ring and RunScript.SHIELD_REACH >= used.size.y / 2.0 + 2.0, [her_middle, RunScript.SHIELD_AT])
+	# THE METEORS ON HAND: "show 3 meteors at the bottom right meteor can
+	# increase if looted but it should have a recharge".
+	run.shield = false
+	run.state = RunScript.State.RUNNING
+	run.meteors = 0
+	run.meteor_charge = 0.0
+	for i in int(RunScript.METEOR_RECHARGE * 10.0) + 2:
+		run.call("_recharge_meteors", 0.1)
+	var one_back: int = run.meteors
+	for i in int(RunScript.METEOR_RECHARGE * 10.0 * 3.0) + 5:
+		run.call("_recharge_meteors", 0.1)
+	var at_base: int = run.meteors
+	run.gain_meteor()
+	for i in int(RunScript.METEOR_RECHARGE * 10.0) + 2:
+		run.call("_recharge_meteors", 0.1)
+	check("meteors spent come back, one every %d s, up to three; one looted is a fourth, and the recharge waits"
+		% int(RunScript.METEOR_RECHARGE), one_back == 1 and at_base == RunScript.METEORS_BASE
+		and run.meteors == RunScript.METEORS_BASE + 1 and is_equal_approx(float(run.meteor_charge), 0.0),
+		[one_back, at_base, run.meteors])
+	# With the party, a player's meteor takes its share of the boss over the players.
+	run.players = 2
+	run.call("_start_boss")
+	var boss_most: float = float(run.boss.get("most"))
+	var boss_was: float = float(run.boss.get("health"))
+	run.call("_land_meteor", run.boss.position, run.boss)
+	var took: float = boss_was - float(run.boss.get("health"))
+	check("  with a party of two, each one's meteor takes half its share of the keeper (the party's together, one player's)",
+		absf(took - maxf(RunScript.METEOR_HIT, boss_most * RunScript.METEOR_BOSS_SHARE / 2.0)) < 0.01, [took, boss_most])
+	# The bottom right.
+	const ScreenScript := preload("res://src/world/healerrun/healerrunscreen.gd")
+	var screen: CanvasLayer = ScreenScript.new()
+	screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	var srun: Node = screen.get("run")
+	srun.set("meteors", 1)
+	srun.set("meteor_charge", 0.5)
+	screen.call("paint_meteors")
+	var slots: Array = screen.get("meteor_slots")
+	var shown: Array = []
+	for slot in slots:
+		shown.append([slot.visible, snappedf(float(slot.value), 0.01)])
+	srun.set("meteors", 5)
+	screen.call("paint_meteors")
+	var five_shown: int = 0
+	for slot in slots:
+		five_shown += 1 if slot.visible and is_equal_approx(float(slot.value), 1.0) else 0
+	var box: Control = screen.get("meteor_box")
+	check("  bottom right: three meteors, held full, the next filling as it recharges, the rest dark; five when looted",
+		shown == [[true, 1.0], [true, 0.5], [true, 0.0], [false, 0.0], [false, 0.0]] and five_shown == 5
+		and box.anchor_left == 1.0 and box.anchor_top == 1.0 and str(screen.get("meteor_line").text) == "", shown)
+	screen.call("close")
 	run.queue_free()
 	await get_tree().process_frame
 	print("  (the critical beam and the shield: done)")

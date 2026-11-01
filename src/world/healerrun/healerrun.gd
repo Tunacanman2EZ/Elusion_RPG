@@ -265,8 +265,17 @@ const OUTER_TILT := 0.2
 # - that puts SHIELD_METEORS small meteors circling her. The next hit breaks it
 # instead of taking a life, a laser level or a shot step, and she blinks for
 # SHIELD_BLINK. One at a time.
-const SHIELD_METEORS := 3
-const SHIELD_REACH := 16.0
+const SHIELD_METEORS := 5
+# Round her whole body (the owner: "we need that shield to actually be around
+# the character", then "i need that circle perfectly symetrical to the
+# char"): a true circle (SHIELD_SQUASH 1) whose middle, SHIELD_AT, is the
+# middle of her picture - measured from her frames: her halo, head and legs
+# are even about x -1 (the staff in her right hand is not), and she runs from
+# y -22 (the halo's top) to 16 (her feet). The meteors ride the ring itself,
+# behind her at the back and in front at the front.
+const SHIELD_REACH := 22.0
+const SHIELD_SQUASH := 1.0
+const SHIELD_AT := Vector2(-1.0, -3.0)
 const SHIELD_SPIN := 3.4
 const SHIELD_DROP := 0.05
 const ELITE_SHIELD := 0.3
@@ -280,7 +289,16 @@ const SHOTS_Z := 20
 const BULLETS_Z := 21
 const SIDE_BEAM_GAP := 18.0
 const SIDE_BEAM_SHARE := 0.35
-const METEORS_MOST := 3
+# METEORS ON HAND (0.106.0; the owner: "show 3 meteors at the bottom right
+# meteor can increase if looted but it should have a recharge so players can
+# use it to knock down the bosses bit more"): a run starts with METEORS_BASE;
+# one spent comes back after METEOR_RECHARGE (up to METEORS_BASE, one at a
+# time, while the run is on); a meteor looted adds one, to METEORS_MOST. With
+# a party each player's meteor takes the boss's share over the players, so
+# the party's meteors together do what one player's do alone.
+const METEORS_BASE := 3
+const METEORS_MOST := 5
+const METEOR_RECHARGE := 30.0
 const METEOR_FALL := 0.45
 const METEOR_REACH := 70.0
 const METEOR_HIT := 30.0
@@ -579,10 +597,14 @@ class Beam extends Node2D:
 class Orbit extends Node2D:
 	var turn: float = 0.0
 	var reach: float = SHIELD_REACH
+	# How much taller than wide.
+	var squash: float = 1.0
 
 	func _draw() -> void:
 		var pulse: float = 0.5 + 0.5 * sin(turn * 3.0)
-		draw_arc(Vector2.ZERO, reach + 2.0, 0.0, TAU, 28, Color(SHIELD_COLOUR, 0.25 + 0.2 * pulse), 1.5)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, squash))
+		draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, Color(SHIELD_COLOUR, 0.25 + 0.2 * pulse), 1.5 / squash)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # A HIT FELT: a ring and sparks flying out of a point, fading - a kill, a
@@ -715,7 +737,9 @@ var _wall_top: int = floori((HALF.y + 64.0) / WALL_STEP) + 1
 var laser: float = 0.0
 # How strong her laser is (0: none yet): kept for the run, one lost to a hit.
 var laser_level: int = 0
-var meteors: int = 0
+var meteors: int = METEORS_BASE
+# The next meteor's recharge, 0 to 1, while fewer than METEORS_BASE are held.
+var meteor_charge: float = 0.0
 # How many bosses are down (0 to TIERS): the server is told at Leave.
 var bosses_beaten: int = 0
 # What a wave, the boss and the goal pay (the server's answer to Go).
@@ -901,15 +925,18 @@ func _make_healer() -> void:
 	healer = Node2D.new()
 	healer.name = "healer"
 	healer.position = Vector2(0.0, HALF.y - 50.0)
+	# The shield's ring is drawn behind her (made before her, at her z); each
+	# meteor is behind or in front as it goes round (_shield_step()).
 	shield_orbit = Orbit.new()
 	shield_orbit.name = "shield"
-	shield_orbit.z_index = SHIELD_Z
+	shield_orbit.squash = SHIELD_SQUASH
 	shield_orbit.visible = false
 	for k in SHIELD_METEORS:
 		var rock := Sprite2D.new()
 		rock.texture = load(METEOR_TEXTURE) as Texture2D
 		rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		rock.scale = Vector2.ONE * 0.5
+		rock.z_as_relative = false
 		shield_orbit.add_child(rock)
 	add_child(shield_orbit)
 	var look: Dictionary = look_of_scene(HEALER_SCENE, false)
@@ -1127,6 +1154,17 @@ static func beam_across(from_her: Vector2, x: float, tilt: float) -> float:
 	return absf(v.x * d.y - v.y * d.x)
 
 
+func _recharge_meteors(delta: float) -> void:
+	"""One spent meteor back every METEOR_RECHARGE, up to METEORS_BASE."""
+	if meteors >= METEORS_BASE or ghost or (state != State.RUNNING and state != State.BOSS):
+		meteor_charge = 0.0 if meteors >= METEORS_BASE else meteor_charge
+		return
+	meteor_charge += delta / METEOR_RECHARGE
+	if meteor_charge >= 1.0:
+		meteor_charge = 0.0
+		meteors += 1
+
+
 func gain_meteor() -> void:
 	meteors = mini(METEORS_MOST, meteors + 1)
 	_say("Meteor - press Space")
@@ -1186,7 +1224,7 @@ func _meteors_fall(delta: float) -> void:
 
 func _land_meteor(at: Vector2, target: Foe) -> void:
 	if target != null and target == boss and target.dying < 0.0:
-		_strike(target, maxf(METEOR_HIT, target.most * METEOR_BOSS_SHARE))
+		_strike(target, maxf(METEOR_HIT, target.most * METEOR_BOSS_SHARE / maxi(1, players)))
 	for foe in foes.get_children():
 		var f := foe as Foe
 		if f != null and f != boss and f.dying < 0.0 and f.position.distance_to(at) <= METEOR_REACH:
@@ -1383,6 +1421,7 @@ func step(delta: float) -> void:
 	_burn(delta)
 	_shine(delta)
 	_shield_step(delta)
+	_recharge_meteors(delta)
 	_meteors_fall(delta)
 	_elites_step(delta)
 	_events_step(delta)
@@ -1708,13 +1747,15 @@ func _shield_step(delta: float) -> void:
 	shield_orbit.visible = shield and not ghost
 	if not shield_orbit.visible:
 		return
-	shield_orbit.position = healer.position + HITBOX_AT
+	shield_orbit.position = healer.position + SHIELD_AT
 	shield_orbit.turn += delta * SHIELD_SPIN
 	var k: int = 0
 	for rock in shield_orbit.get_children():
 		var at: float = shield_orbit.turn + TAU * k / maxi(1, SHIELD_METEORS)
-		(rock as Node2D).position = Vector2(cos(at), sin(at) * 0.75) * SHIELD_REACH
+		(rock as Node2D).position = Vector2(cos(at), sin(at) * SHIELD_SQUASH) * SHIELD_REACH
 		(rock as Node2D).rotation = at * 2.0
+		# The back of the ring behind her, the front over her.
+		(rock as Node2D).z_index = 0 if sin(at) < 0.0 else SHIELD_Z
 		k += 1
 	shield_orbit.queue_redraw()
 
@@ -1742,13 +1783,13 @@ func _drop(what: String, at: Vector2) -> void:
 		var held := Orbit.new()
 		held.set_meta(&"drop", what)
 		held.position = at
-		held.reach = 7.0
+		held.reach = 8.0
 		for k in SHIELD_METEORS:
 			var rock := Sprite2D.new()
 			rock.texture = load(METEOR_TEXTURE) as Texture2D
 			rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			rock.scale = Vector2.ONE * 0.32
-			rock.position = Vector2.from_angle(TAU * k / SHIELD_METEORS) * 6.0
+			rock.scale = Vector2.ONE * 0.3
+			rock.position = Vector2.from_angle(TAU * k / SHIELD_METEORS) * 7.0
 			held.add_child(rock)
 		drops.add_child(held)
 		return

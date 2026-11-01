@@ -3136,6 +3136,32 @@ Healer's Run: three runs a day, its gold at Leave".
   `_test_the_critical_beam_and_the_shield()` (testrunner_9): the lean (hit
   on it, not straight above), the crit in the red and the beam's own beside
   it, the levels past 5, the fade, the shield's pickup, hit and after.
+- **The shield round her, and meteors on hand (0.107.0)** - the owner, with a
+  picture of the shield round her head: "we need that shield to actually be
+  around the character make it 5 meteors in that shield next we need to show
+  3 meteors at the bottom right meteor can increase if looted but it should
+  have a recharge so players can use it to knock down the bosses bit more".
+  - **The shield**: `SHIELD_METEORS` 5 on a true circle ("i need that
+    circle perfectly symetrical to the char": `SHIELD_SQUASH` 1,
+    `SHIELD_REACH` 22) about the middle of her picture, `SHIELD_AT` (-1, -3)
+    from where she stands - measured from her frames: halo, head and legs
+    even about x -1 (the staff in her right hand is not), y -22 to 16
+    (HITBOX_AT (0, -10) is her head). The ring is drawn where the meteors
+    ride. Each meteor is drawn at an absolute z: 0 at the back of the ring
+    (after the floor and monsters, before her - the orbit is made just
+    before her), `SHIELD_Z` at the front. The suite reads the middle from
+    her own frame, so a new picture of her that moves fails it.
+  - **Meteors on hand**: a run starts with `METEORS_BASE` (3); a spent one
+    comes back after `METEOR_RECHARGE` (30 s), one at a time, up to the
+    base, while the run is on (`_recharge_meteors()`, `meteor_charge`); a
+    looted one adds one, to `METEORS_MOST` (5). With a party a meteor takes
+    `METEOR_BOSS_SHARE / players` of a keeper, so the party's together do
+    what one player's do alone.
+  - **The bottom right** (the screen's `meteor_box`, `paint_meteors()`): a
+    meteor picture each (twice size, made from art/maincharacter/meteor.png
+    in code), a `TextureProgressBar` filling clockwise as it recharges, dark
+    when spent, over "Meteors - Space"; five when looted. The old top-left
+    line says nothing now.
 
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and

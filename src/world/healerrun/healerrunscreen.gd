@@ -109,6 +109,10 @@ var tutorial: PanelContainer = null
 var party_line: Label = null
 var start_button: Button = null
 var board: RichTextLabel = null
+# THE METEORS ON HAND, bottom right (0.106.0): one picture a meteor held, and
+# the next one filling as it recharges (RunScript.METEORS_BASE, METEOR_RECHARGE).
+var meteor_box: VBoxContainer = null
+var meteor_slots: Array = []
 var tune_button: Button = null
 var tune_panel: PanelContainer = null
 var _tune_rows: Dictionary = {}
@@ -138,7 +142,7 @@ const TUTORIAL_LINES := [
 	"Grab an essence: more shots - 2, 4, 6, 8. Past eight, a laser - its red middle hits critical.",
 	"Grab a meteor shield: it takes the next hit for you.",
 	"Grab a potion: one more life (up to 5).",
-	"Grab a meteor, then press Space: it finds the boss.",
+	"Space calls a meteor down on the boss - three to start, each back in 30 s; grab more.",
 	"Three tiers, a boss at the end of each - every land's boss fights its own way.",
 	"A fire rises behind you - keep moving.",
 	"Gold counts up as you go. Leave to take it.",
@@ -205,6 +209,7 @@ func _build_words() -> void:
 	slain_line = _label("slain", 18, COLOUR_HINT, Control.PRESET_TOP_RIGHT, Vector2(-18, 90))
 	gold_line = _label("gold", 22, COLOUR, Control.PRESET_TOP_RIGHT, Vector2(-18, 120))
 	meteor_line = _label("meteors", 16, COLOUR_HINT, Control.PRESET_TOP_LEFT, Vector2(18, 176))
+	_build_meteors()
 	banner_line = _label("banner", 30, COLOUR, Control.PRESET_CENTER, Vector2(0, -60))
 	boss_bar = ProgressBar.new()
 	boss_bar.name = "boss"
@@ -335,6 +340,67 @@ func _build_words() -> void:
 	lines.add_child(start_button)
 	tutorial.visible = false
 	add_child(tutorial)
+
+
+func _build_meteors() -> void:
+	"""The bottom right: METEORS_MOST meteor pictures (twice their size, each
+	a clock that fills as it recharges) over "Space"."""
+	meteor_box = VBoxContainer.new()
+	meteor_box.name = "meteorbox"
+	meteor_box.alignment = BoxContainer.ALIGNMENT_END
+	meteor_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := HBoxContainer.new()
+	row.name = "meteorrow"
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_theme_constant_override("separation", 4)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meteor_box.add_child(row)
+	var rock: Texture2D = load(RunScript.METEOR_TEXTURE) as Texture2D
+	var big: Texture2D = rock
+	if rock != null:
+		var image: Image = rock.get_image()
+		image.resize(image.get_width() * 2, image.get_height() * 2, Image.INTERPOLATE_NEAREST)
+		big = ImageTexture.create_from_image(image)
+	for i in RunScript.METEORS_MOST:
+		var slot := TextureProgressBar.new()
+		slot.name = "meteor%d" % i
+		slot.texture_under = big
+		slot.texture_progress = big
+		slot.tint_under = Color(0.25, 0.22, 0.2, 0.7)
+		slot.fill_mode = TextureProgressBar.FILL_CLOCKWISE
+		slot.min_value = 0.0
+		slot.max_value = 1.0
+		slot.step = 0.0
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(slot)
+		meteor_slots.append(slot)
+	var key := Label.new()
+	key.name = "meteorkey"
+	key.text = "Meteors - Space"
+	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	key.add_theme_font_size_override("font_size", 14)
+	key.add_theme_color_override("font_color", COLOUR_HINT)
+	key.add_theme_color_override("font_outline_color", Color.BLACK)
+	key.add_theme_constant_override("outline_size", 5)
+	meteor_box.add_child(key)
+	_place(meteor_box, Control.PRESET_BOTTOM_RIGHT, Rect2(-260, -84, 244, 70))
+	add_child(meteor_box)
+
+
+func paint_meteors() -> void:
+	"""Each slot: held (full), recharging (filling), to come back (dark) or
+	not there at all (past METEORS_BASE, unless looted)."""
+	var held: int = int(run.get("meteors"))
+	var charge: float = float(run.get("meteor_charge"))
+	for i in meteor_slots.size():
+		var slot: TextureProgressBar = meteor_slots[i]
+		slot.visible = i < maxi(held, RunScript.METEORS_BASE)
+		if i < held:
+			slot.value = 1.0
+		elif i == held:
+			slot.value = charge
+		else:
+			slot.value = 0.0
 
 
 func _build_tuning() -> void:
@@ -662,8 +728,9 @@ func paint() -> void:
 		gold_line.text += " - tuned, pays nothing"
 	elif _no_run != "":
 		gold_line.text += " - not paid: " + _no_run
-	var held_meteors: int = int(run.get("meteors"))
-	meteor_line.text = ("Meteors %d - Space" % held_meteors) if held_meteors > 0 else ""
+	# The meteors are the bottom right's now (paint_meteors()).
+	meteor_line.text = ""
+	paint_meteors()
 	banner_line.text = "" if tutorial.visible else str(run.get("banner"))
 	var party: Node = _party()
 	if party != null and party_line != null:
