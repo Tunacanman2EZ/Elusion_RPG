@@ -14,7 +14,10 @@ extends Node
 ##   3. wait_for_page() asks every `poll_every` seconds until the code is done:
 ##      signed in (the login's own answer), "pick a name" (a new Google
 ##      account), linked, or refused (a ban, a staff account, run out).
-##   4. register() makes the account with the name the player picked.
+##   4. register() makes the account with the name the player picked - or,
+##      when the server found accounts whose confirmed recovery email is this
+##      Google account's ("found", 0.102.0), claim() signs into one of them
+##      and links it.
 ## The code is this computer's alone: the server lets only the install that
 ## began it collect it.
 ##
@@ -25,6 +28,7 @@ const START_PATH := "/api/auth/google/start"
 const LINK_PATH := "/api/account/google/link"
 const POLL_PATH := "/api/auth/google/poll"
 const REGISTER_PATH := "/api/auth/google/register"
+const CLAIM_PATH := "/api/auth/google/claim"
 # A request with no answer is asked again this many times before giving up.
 const NO_ANSWER_TRIES := 5
 
@@ -98,6 +102,24 @@ func wait_for_page() -> Dictionary:
 func register(username: String) -> Dictionary:
 	"""A new account, for a new Google account, with the name picked."""
 	return await post_request.call(REGISTER_PATH, {"code": code, "username": username}, 0.0)
+
+
+func claim(username: String) -> Dictionary:
+	"""Sign into an account the server found by this Google account's email,
+	and link it. The login's answer, or a refusal (a ban, 404, run out)."""
+	return await post_request.call(CLAIM_PATH, {"code": code, "username": username}, 0.0)
+
+
+static func found_in(res: Dictionary) -> Array:
+	"""The names a "pick a name" answer offers - accounts already on this
+	Google account's email. Names only, never more than the server's four."""
+	var data: Variant = res.get("data", {})
+	var out: Array = []
+	if data is Dictionary and (data as Dictionary).get("found") is Array:
+		for one: Variant in (data as Dictionary)["found"]:
+			if one is String and str(one) != "" and out.size() < 4:
+				out.append(str(one))
+	return out
 
 
 func cancel() -> void:

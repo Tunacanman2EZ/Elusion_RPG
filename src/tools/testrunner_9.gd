@@ -1960,6 +1960,14 @@ func _test_google_sign_in() -> void:
 	check("  the name goes with the code, and the account comes back signed in",
 		sent[5] == [GoogleScript.REGISTER_PATH, {"code": google.code, "username": "newbie"}]
 		and made.get("data", {}).get("token", "") == "t", sent[5])
+	answers.append({"ok": true, "status": 200, "data": {"token": "t2", "username": "oldhand"}})
+	var claimed: Dictionary = await google.claim("oldhand")
+	check("  an account found by the email is claimed with the code and its name (0.102.0)",
+		sent[6] == [GoogleScript.CLAIM_PATH, {"code": google.code, "username": "oldhand"}]
+		and claimed.get("data", {}).get("username", "") == "oldhand", sent[6])
+	check("  the names found are read as names, four at most",
+		GoogleScript.found_in({"data": {"needs_name": true, "found": ["a", 3, "", "b", "c", "d", "e"]}})
+		== ["a", "b", "c", "d"] and GoogleScript.found_in({"data": {"needs_name": true}}).is_empty())
 	google.open_page()
 	check("  and the page can be opened again", opened.size() == 2)
 	answers = [{"ok": true, "status": 200, "data": {"code": "y".repeat(32), "check": "AAA-BBB", "url": "u"}}]
@@ -2030,6 +2038,33 @@ func _test_google_sign_in() -> void:
 	check("  a banned account hears its ban, as at the password login",
 		str(menu.get_node("%errorlabel").text).begins_with("This account is banned permanently"),
 		menu.get_node("%errorlabel").text)
+	# AN ACCOUNT ALREADY THERE (0.102.0): the owner, "also need to look for
+	# existing accounts".
+	answers.append({"ok": true, "status": 200, "data": {"code": "v".repeat(32), "check": "OLD-ONE", "url": "u"}})
+	answers.append({"ok": true, "status": 200, "data": {"needs_name": true, "found": ["oldhand"]}})
+	menu.call("_on_google_pressed")
+	for i in 4:
+		await get_tree().process_frame
+	var found: Control = menu.get("google_found")
+	var as_them: Button = found.get_child(0) as Button if found.get_child_count() > 0 else null
+	check("an account on the same email is offered first: \"Sign in as\" it, \"Make a new account\" under it",
+		form.visible and found.visible and found.get_child_count() == 1 and as_them.text == "Sign in as oldhand"
+		and not menu.get("google_name").visible and menu.get("google_go").text == "Make a new account",
+		[found.visible, found.get_child_count()])
+	var before: int = sent.size()
+	answers.append({"ok": false, "status": 404, "data": {"message": "That account cannot be signed into with this Google account."}})
+	as_them.emit_signal("pressed")
+	for i in 3:
+		await get_tree().process_frame
+	check("  pressed, it claims that name; a refusal says so and stays on the offer",
+		sent.size() == before + 1 and sent[before] == [GoogleScript.CLAIM_PATH, {"code": "v".repeat(32),
+		"username": "oldhand"}] and found.visible and str(menu.get("google_status").text).begins_with("That account"),
+		sent.slice(before))
+	menu.call("_on_google_go")
+	check("  \"Make a new account\" goes to the name box", menu.get("google_name").visible and not found.visible
+		and menu.get("google_go").text == "Start playing" and sent.size() == before + 1)
+	menu.call("_on_google_back")
+	check("  and Cancel takes the offer down", not form.visible and found.get_child_count() == 0)
 	menu.queue_free()
 	# ---- Options ----
 	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control

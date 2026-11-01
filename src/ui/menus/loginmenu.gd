@@ -482,10 +482,15 @@ func _create_account(username: String, password: String) -> void:
 # screen shows the same check code the page does while it waits, then either
 # signs in or asks for a name for a new account. Staff sign in with their
 # password and code - the server refuses Google for them and says so here.
+# AN ACCOUNT ALREADY THERE (0.102.0, the owner: "also need to look for
+# existing accounts"): when Google's email is an account's confirmed recovery
+# address, the server says so ("found") and this screen offers "Sign in as
+# NAME" first, with "Make a new account" under it.
 
 const GOOGLE_BUTTON_TEXT := "Sign in with Google"
 const GOOGLE_OPEN_AGAIN := "Open the page again"
 const GOOGLE_START_PLAYING := "Start playing"
+const GOOGLE_MAKE_NEW := "Make a new account"
 
 var google: Node = null
 var google_button: Button = null
@@ -496,6 +501,9 @@ var google_name: LineEdit = null
 var google_go: Button = null
 var google_status: Label = null
 var google_back: Button = null
+var google_found: VBoxContainer = null
+# The names offered, while "Sign in as" is on screen.
+var google_offered: Array = []
 
 
 func _build_google() -> void:
@@ -531,6 +539,11 @@ func _build_google() -> void:
 	google_check.add_theme_font_size_override("font_size", 30)
 	google_check.add_theme_color_override("font_color", Color(1.0, 0.85, 0.47))
 	google_form.add_child(google_check)
+	google_found = VBoxContainer.new()
+	google_found.name = "googlefound"
+	google_found.add_theme_constant_override("separation", 6)
+	google_found.visible = false
+	google_form.add_child(google_found)
 	google_name = LineEdit.new()
 	google_name.name = "googlename"
 	google_name.placeholder_text = "Your name in Elusion"
@@ -573,6 +586,8 @@ func _show_google(on: bool) -> void:
 		google_form.visible = on
 	if not on and google_name != null:
 		google_name.visible = false
+	if not on:
+		_google_offer([])
 
 
 func _on_google_pressed() -> void:
@@ -593,6 +608,7 @@ func _on_google_pressed() -> void:
 	google_check.text = google.check
 	google_check.visible = true
 	google_name.visible = false
+	_google_offer([])
 	google_go.text = GOOGLE_OPEN_AGAIN
 	google_go.disabled = false
 	_google_say("Waiting for Google...", SAY_WORKING)
@@ -607,15 +623,17 @@ func _google_answer(res: Dictionary) -> void:
 	"""What the poll, or a new account, came back with."""
 	var data: Variant = res.get("data", {})
 	if res.get("ok", false) and data is Dictionary and bool(data.get("needs_name", false)):
-		google_intro.text = "Signed in with Google. Pick your name in Elusion - it is what other players see, never your Google name."
+		var found: Array = GoogleScript.found_in(res)
+		if found.is_empty():
+			_google_ask_name()
+			return
+		google_intro.text = "Signed in with Google. Your Google email is on an Elusion account already:"
 		google_check.visible = false
-		google_name.visible = true
-		google_name.text = ""
-		google_go.text = GOOGLE_START_PLAYING
+		google_name.visible = false
+		_google_offer(found)
+		google_go.text = GOOGLE_MAKE_NEW
 		google_go.disabled = false
-		_google_say("Letters, numbers and _ only, 3 to 20 of them.", SAY_WORKING)
-		if google_name.is_inside_tree():
-			google_name.grab_focus()
+		_google_say("", SAY_WORKING)
 		return
 	if res.get("ok", false) and data is Dictionary and str(data.get("token", "")) != "":
 		await _google_signed_in(data)
@@ -626,6 +644,57 @@ func _google_answer(res: Dictionary) -> void:
 	var line: String = describe_login_refusal(res) if status == 403 and data is Dictionary \
 		and data.get("ban") is Dictionary else GoogleScript.refusal_text(res)
 	_say(line, _refusal_colour(res))
+
+
+func _google_ask_name() -> void:
+	"""A new account: the name box."""
+	_google_offer([])
+	google_intro.text = "Signed in with Google. Pick your name in Elusion - it is what other players see, never your Google name."
+	google_check.visible = false
+	google_name.visible = true
+	google_name.text = ""
+	google_go.text = GOOGLE_START_PLAYING
+	google_go.disabled = false
+	_google_say("Letters, numbers and _ only, 3 to 20 of them.", SAY_WORKING)
+	if google_name.is_inside_tree():
+		google_name.grab_focus()
+
+
+func _google_offer(names: Array) -> void:
+	"""A "Sign in as NAME" button for each account found; none takes them down."""
+	google_offered = names.duplicate()
+	if google_found == null:
+		return
+	for old: Node in google_found.get_children():
+		google_found.remove_child(old)
+		old.queue_free()
+	for one: Variant in names:
+		var as_them := Button.new()
+		as_them.name = "googleclaim_" + str(one)
+		as_them.text = "Sign in as %s" % str(one)
+		as_them.pressed.connect(_on_google_claim.bind(str(one)))
+		google_found.add_child(as_them)
+	google_found.visible = not names.is_empty()
+
+
+func _on_google_claim(username: String) -> void:
+	if google == null or not google_offered.has(username):
+		return
+	for one: Node in google_found.get_children():
+		(one as Button).disabled = true
+	google_go.disabled = true
+	_google_say("Signing in as %s..." % username, SAY_WORKING)
+	var res: Dictionary = await google.claim(username)
+	google_go.disabled = false
+	for one: Node in google_found.get_children():
+		(one as Button).disabled = false
+	if res.get("ok", false):
+		await _google_signed_in(res.get("data", {}))
+		return
+	if int(res.get("status", 0)) == 404:
+		_google_say(GoogleScript.refusal_text(res), SAY_REFUSED)
+		return
+	await _google_answer(res)
 
 
 func _google_signed_in(data: Dictionary) -> void:
@@ -645,6 +714,9 @@ func _google_signed_in(data: Dictionary) -> void:
 
 func _on_google_go() -> void:
 	if google == null or google_go.disabled:
+		return
+	if not google_offered.is_empty():
+		_google_ask_name()
 		return
 	if not google_name.visible:
 		google.open_page()

@@ -3021,10 +3021,23 @@ plan is the commit folder's GOOGLE_SIGNIN_PLAN.txt.
   account made with Google keeps it (no Unlink).
 - **Staff never sign in with Google**: the server refuses it and the screen
   says why. Remember me works as for a password login.
+- **An account already there (0.102.0)** - the owner: "also need to look for
+  existing accounts". When Google's verified email is an account's CONFIRMED
+  recovery address, the poll's `needs_name` carries `found` (names, four at
+  most; `GoogleScript.found_in()`), and the form offers "Sign in as NAME" for
+  each (`google_found`, `_google_offer()`) with "Make a new account" under
+  them (`GOOGLE_MAKE_NEW`, which goes to the name box, `_google_ask_name()`).
+  A press is `claim()` (`CLAIM_PATH`): the server links it and answers as a
+  login. A name taken at "Start playing" now says to sign in with the
+  password and link Google in Options (the server's words).
+- **The page goes back to the game (0.102.0)** - the owner: "need a go back
+  button or redirection". Done, it shows "Back to the game" and closes itself
+  when the game's own tab opened it (the browser build); a tab the computer
+  opened cannot be closed by a page, so it says "close this tab".
 
 `_test_google_sign_in()` (testrunner_9): the road on stand-in requests, the
 login screen's form (the check code, the name, a name taken, Cancel, not set
-up, a ban), and the Options row.
+up, a ban, an account found and claimed), and the Options row.
 
 ### Deleting inert code is how you find out what it was for
 
