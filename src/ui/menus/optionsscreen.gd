@@ -34,6 +34,7 @@ extends Control
 # editor's debugger.
 const ApiScript := preload("res://src/systems/api.gd")
 const SettingsScript := preload("res://src/systems/settings.gd")
+const GoogleScript := preload("res://src/systems/googlesignin.gd")
 
 
 # =============================================================================
@@ -522,6 +523,11 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	# A link still waiting stops asking: the page finishes it on the server anyway.
+	if account_google != null:
+		account_google.cancel()
+		if account_google_button != null:
+			account_google_button.disabled = false
 	closed.emit()
 
 
@@ -641,6 +647,7 @@ func _connect_account() -> void:
 			button.pressed.connect(handler)
 
 	_build_delete_account()
+	_build_google_row()
 	_show_account_form(null)
 
 
@@ -675,6 +682,7 @@ func _refresh_account() -> void:
 		account_email_value.text = "not signed in"
 		return
 
+	_refresh_google()
 	var res: Dictionary = await Api.get_json("/api/account/email", Api.PROBE_TIMEOUT)
 	if not res.get("ok", false):
 		account_email_value.text = "unavailable"
@@ -806,6 +814,108 @@ func _on_account_password_save() -> void:
 # character, the bank, friends, guild seat, chat lines and sign-ins; the name is
 # free again. Built in code under the password form, like character select's
 # delete, so the scene file is untouched.
+
+# GOOGLE (0.101.0): link Google to an account made with a password, so either
+# signs in - or take it off. Linking opens Google in the web browser exactly as
+# signing in does (googlesignin.gd), and asks for the password first if this
+# session has not typed it lately (the server's step-up). Not shown to staff,
+# who always sign in with their password and code; an account made with
+# Google keeps it.
+
+var account_google_row: HBoxContainer = null
+var account_google_value: Label = null
+var account_google_button: Button = null
+var account_google: Node = null
+var _google_linked: bool = false
+
+
+func _build_google_row() -> void:
+	if account_google_row != null or account_email_value == null:
+		return
+	var email_row: Node = account_email_value.get_parent()
+	var column: Node = email_row.get_parent()
+	account_google_row = HBoxContainer.new()
+	account_google_row.name = "accountgooglerow"
+	account_google_row.add_theme_constant_override("separation", 6)
+	account_google_row.visible = false
+	var label := Label.new()
+	label.name = "label"
+	label.text = "Google"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	account_google_row.add_child(label)
+	account_google_value = Label.new()
+	account_google_value.name = "accountgooglevalue"
+	account_google_value.add_theme_font_size_override("font_size", 12)
+	account_google_row.add_child(account_google_value)
+	account_google_button = Button.new()
+	account_google_button.name = "accountgooglebutton"
+	account_google_button.add_theme_font_size_override("font_size", 12)
+	account_google_button.pressed.connect(_on_account_google_button)
+	account_google_row.add_child(account_google_button)
+	column.add_child(account_google_row)
+	column.move_child(account_google_row, email_row.get_index() + 1)
+	account_google = GoogleScript.new()
+	account_google.name = "accountgoogle"
+	add_child(account_google)
+
+
+func _refresh_google() -> void:
+	if account_google_row == null:
+		return
+	if not Api.is_logged_in():
+		account_google_row.visible = false
+		return
+	var res: Dictionary = await Api.get_json("/api/account/google", Api.PROBE_TIMEOUT)
+	var data: Variant = res.get("data", {})
+	if not res.get("ok", false) or not (data is Dictionary) or bool(data.get("staff", false)) \
+			or not bool(data.get("available", false)):
+		account_google_row.visible = false
+		return
+	account_google_row.visible = true
+	_google_linked = bool(data.get("linked", false))
+	if _google_linked:
+		var email: String = str(data.get("email", ""))
+		account_google_value.text = ("linked - %s" % email) if email != "" else "linked"
+		account_google_value.add_theme_color_override("font_color", ACCOUNT_OK)
+		account_google_button.text = "Unlink"
+		# Made with Google: it is the only way in, so it stays.
+		account_google_button.visible = not bool(data.get("made_with_google", false))
+	else:
+		account_google_value.text = "not linked"
+		account_google_value.add_theme_color_override("font_color", ACCOUNT_PLAIN)
+		account_google_button.text = "Link Google"
+		account_google_button.visible = true
+
+
+func _on_account_google_button() -> void:
+	if account_google == null or account_google_button.disabled:
+		return
+	account_google_button.disabled = true
+	if _google_linked:
+		var off: Dictionary = await Api.post("/api/account/google/unlink", {})
+		account_google_button.disabled = false
+		_account_say(GoogleScript.refusal_text(off) if not off.get("ok", false)
+			else "Google is no longer linked.", ACCOUNT_BAD if not off.get("ok", false) else ACCOUNT_OK)
+		_refresh_google()
+		return
+	var res: Dictionary = await account_google.begin(GoogleScript.LINK_PATH)
+	if not account_google.waiting():
+		account_google_button.disabled = false
+		_account_say(GoogleScript.refusal_text(res), ACCOUNT_BAD)
+		return
+	_account_say("Finish in your web browser - its page shows %s." % account_google.check, ACCOUNT_PLAIN)
+	var done: Dictionary = await account_google.wait_for_page()
+	account_google_button.disabled = false
+	if done.get("cancelled", false):
+		return
+	var data: Variant = done.get("data", {})
+	if done.get("ok", false) and data is Dictionary and bool(data.get("linked", false)):
+		_account_say("Google is linked - it signs you in too now.", ACCOUNT_OK)
+	else:
+		_account_say(GoogleScript.refusal_text(done), ACCOUNT_BAD)
+	account_google.cancel()
+	_refresh_account()
+
 
 func _build_delete_account() -> void:
 	if account_delete_button != null or account_password_form == null:

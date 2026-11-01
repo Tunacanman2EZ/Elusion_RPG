@@ -61,6 +61,7 @@ const ApiScript := preload("res://src/systems/api.gd")
 const MIN_PASSWORD_LENGTH := 8
 
 const WebPage := preload("res://src/systems/webpage.gd")
+const GoogleScript := preload("res://src/systems/googlesignin.gd")
 
 # Colours for the connection banner. Deliberately NOT the red that %errorlabel
 # uses: "the server is down" is a statement about the world, not a complaint
@@ -250,6 +251,7 @@ func _ready() -> void:
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
 	_build_code_box()
 	_build_create_account()
+	_build_google()
 	_add_version_label()
 
 	# NEW: the banner follows reachability for as long as this screen is open,
@@ -470,6 +472,207 @@ func _create_account(username: String, password: String) -> void:
 	_say(line, _refusal_colour(created))
 	if int(created.get("status", 0)) == 0:
 		_no_answer_line = line
+
+
+# =============================================================================
+# SIGNING IN WITH GOOGLE (0.101.0)
+# =============================================================================
+# A player: "Google account to play or I am not registering". The button opens
+# Google in the web browser on our page (googlesignin.gd has the road); this
+# screen shows the same check code the page does while it waits, then either
+# signs in or asks for a name for a new account. Staff sign in with their
+# password and code - the server refuses Google for them and says so here.
+
+const GOOGLE_BUTTON_TEXT := "Sign in with Google"
+const GOOGLE_OPEN_AGAIN := "Open the page again"
+const GOOGLE_START_PLAYING := "Start playing"
+
+var google: Node = null
+var google_button: Button = null
+var google_form: VBoxContainer = null
+var google_intro: Label = null
+var google_check: Label = null
+var google_name: LineEdit = null
+var google_go: Button = null
+var google_status: Label = null
+var google_back: Button = null
+
+
+func _build_google() -> void:
+	var form: Node = get_node_or_null("%loginform")
+	var login: Node = get_node_or_null("%loginbutton")
+	if form == null or login == null or google_button != null:
+		return
+	google = GoogleScript.new()
+	google.name = "google"
+	add_child(google)
+	google_button = Button.new()
+	google_button.name = "googlebutton"
+	google_button.text = GOOGLE_BUTTON_TEXT
+	google_button.pressed.connect(_on_google_pressed)
+	form.add_child(google_button)
+	form.move_child(google_button, login.get_index() + 1)
+
+	# ITS OWN FORM, in the login form's place while it waits - so nothing on
+	# the password form can be pressed halfway through a Google sign-in.
+	google_form = VBoxContainer.new()
+	google_form.name = "googleform"
+	google_form.add_theme_constant_override("separation", 8)
+	google_form.visible = false
+	google_intro = Label.new()
+	google_intro.name = "googleintro"
+	google_intro.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	google_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	google_intro.custom_minimum_size = Vector2(300, 0)
+	google_form.add_child(google_intro)
+	google_check = Label.new()
+	google_check.name = "googlecheck"
+	google_check.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	google_check.add_theme_font_size_override("font_size", 30)
+	google_check.add_theme_color_override("font_color", Color(1.0, 0.85, 0.47))
+	google_form.add_child(google_check)
+	google_name = LineEdit.new()
+	google_name.name = "googlename"
+	google_name.placeholder_text = "Your name in Elusion"
+	google_name.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	google_name.max_length = 20
+	google_name.visible = false
+	google_name.text_submitted.connect(func(_text: String) -> void: _on_google_go())
+	google_form.add_child(google_name)
+	google_go = Button.new()
+	google_go.name = "googlego"
+	google_go.pressed.connect(_on_google_go)
+	google_form.add_child(google_go)
+	google_status = Label.new()
+	google_status.name = "googlestatus"
+	google_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	google_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	google_status.custom_minimum_size = Vector2(300, 0)
+	google_form.add_child(google_status)
+	google_back = Button.new()
+	google_back.name = "googleback"
+	google_back.text = "Cancel"
+	google_back.flat = true
+	google_back.pressed.connect(_on_google_back)
+	google_form.add_child(google_back)
+	var column: Node = form.get_parent()
+	column.add_child(google_form)
+	column.move_child(google_form, form.get_index() + 1)
+
+
+func _google_say(message: String, color: Color) -> void:
+	if google_status != null:
+		google_status.text = message
+		google_status.add_theme_color_override("font_color", color)
+
+
+func _show_google(on: bool) -> void:
+	if login_form != null:
+		login_form.visible = not on
+	if google_form != null:
+		google_form.visible = on
+	if not on and google_name != null:
+		google_name.visible = false
+
+
+func _on_google_pressed() -> void:
+	if _request_in_flight or google == null:
+		return
+	Api.keep_signed_in = %rememberme.button_pressed
+	_set_busy(true, false)
+	google_button.disabled = true
+	_say("Opening Google in your web browser...", SAY_WORKING)
+	var res: Dictionary = await google.begin()
+	_set_busy(false, false)
+	google_button.disabled = false
+	if not google.waiting():
+		_say(GoogleScript.refusal_text(res), _refusal_colour(res))
+		return
+	_say("", SAY_WORKING)
+	google_intro.text = "Finish signing in with Google in your web browser. Its page shows this code - it should be the same:"
+	google_check.text = google.check
+	google_check.visible = true
+	google_name.visible = false
+	google_go.text = GOOGLE_OPEN_AGAIN
+	google_go.disabled = false
+	_google_say("Waiting for Google...", SAY_WORKING)
+	_show_google(true)
+	var done: Dictionary = await google.wait_for_page()
+	if done.get("cancelled", false):
+		return
+	await _google_answer(done)
+
+
+func _google_answer(res: Dictionary) -> void:
+	"""What the poll, or a new account, came back with."""
+	var data: Variant = res.get("data", {})
+	if res.get("ok", false) and data is Dictionary and bool(data.get("needs_name", false)):
+		google_intro.text = "Signed in with Google. Pick your name in Elusion - it is what other players see, never your Google name."
+		google_check.visible = false
+		google_name.visible = true
+		google_name.text = ""
+		google_go.text = GOOGLE_START_PLAYING
+		google_go.disabled = false
+		_google_say("Letters, numbers and _ only, 3 to 20 of them.", SAY_WORKING)
+		if google_name.is_inside_tree():
+			google_name.grab_focus()
+		return
+	if res.get("ok", false) and data is Dictionary and str(data.get("token", "")) != "":
+		await _google_signed_in(data)
+		return
+	google.cancel()
+	_show_google(false)
+	var status: int = int(res.get("status", 0))
+	var line: String = describe_login_refusal(res) if status == 403 and data is Dictionary \
+		and data.get("ban") is Dictionary else GoogleScript.refusal_text(res)
+	_say(line, _refusal_colour(res))
+
+
+func _google_signed_in(data: Dictionary) -> void:
+	Api.adopt_login(data)
+	google.cancel()
+	_show_google(false)
+	save_remembered_user(Api.username if Api.keep_signed_in else "")
+	_welcome(Api.username)
+	_set_busy(true)
+	# STRAIGHT IN: no recovery address to ask for - Google is the way back in,
+	# and the server says so (needs_email false).
+	await _complete_login(Api.username)
+	_set_busy(false)
+	if not CharacterData.load_failed:
+		_say("", SAY_WORKING)
+
+
+func _on_google_go() -> void:
+	if google == null or google_go.disabled:
+		return
+	if not google_name.visible:
+		google.open_page()
+		_google_say("Opened again - finish in your web browser.", SAY_WORKING)
+		return
+	var chosen: String = google_name.text.strip_edges()
+	if not is_valid_username(chosen):
+		_google_say("Letters, numbers and _ only, 3 to 20 of them.", SAY_REFUSED)
+		return
+	google_go.disabled = true
+	_google_say("Making your account...", SAY_WORKING)
+	var res: Dictionary = await google.register(chosen)
+	google_go.disabled = false
+	if res.get("ok", false):
+		await _google_signed_in(res.get("data", {}))
+		return
+	var status: int = int(res.get("status", 0))
+	if status == 409 or status == 400:
+		_google_say(GoogleScript.refusal_text(res), SAY_REFUSED)
+		return
+	await _google_answer(res)
+
+
+func _on_google_back() -> void:
+	if google != null:
+		google.cancel()
+	_show_google(false)
+	_say("", SAY_WORKING)
 
 
 func _on_connection_changed(online: bool) -> void:

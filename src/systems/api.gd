@@ -104,7 +104,7 @@ const BUILD := 7
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.100.0"
+const DISPLAY_VERSION := "0.101.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -1459,6 +1459,12 @@ func forget_session(notice: String) -> void:
 # =============================================================================
 # SESSION PERSISTENCE
 # =============================================================================
+
+func adopt_login(data: Dictionary) -> void:
+	"""A sign-in answer from elsewhere than login() and register() - signing
+	in with Google (googlesignin.gd) - taken exactly as theirs is."""
+	_adopt_session(data)
+
 
 func _adopt_session(data: Dictionary) -> void:
 	token = data.get("token", "")

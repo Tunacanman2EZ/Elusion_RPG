@@ -1923,3 +1923,126 @@ func _test_each_keeper_fights_its_own_way() -> void:
 	again.close()
 	GameState.god_mode = god_was
 	print("  (each keeper's own way, and hits felt: done)")
+
+
+func _test_google_sign_in() -> void:
+	section("SIGNING IN WITH GOOGLE (0.101.0)")
+	# A player: "Google account to play or I am not registering". The server's
+	# half is the API's test_googlesignin.py; this is the game's.
+	const GoogleScript := preload("res://src/systems/googlesignin.gd")
+	var google = GoogleScript.new()
+	add_child(google)
+	var sent: Array = []
+	var opened: Array = []
+	var answers: Array = [
+		{"ok": true, "status": 200, "data": {"code": "c0de" + "x".repeat(28), "check": "K7Q-4MX",
+			"url": "https://api.example/api/auth/google/page?c=c0de", "expires_in": 600, "poll_every": 2}},
+		{"ok": true, "status": 202, "data": {"waiting": true}},
+		{"ok": false, "status": 0, "data": {}},
+		{"ok": true, "status": 202, "data": {"waiting": true}},
+		{"ok": true, "status": 200, "data": {"needs_name": true}},
+		{"ok": true, "status": 201, "data": {"token": "t", "username": "newbie", "role": "player"}},
+	]
+	google.post_request = func(path: String, body: Dictionary, _wait: float) -> Dictionary:
+		sent.append([path, body])
+		return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0}
+	google.opener = func(url: String) -> void: opened.append(url)
+	google.wait_between = func(_seconds: float) -> void: pass
+	var began: Dictionary = await google.begin()
+	check("Sign in with Google asks the server for a code and opens its page in the web browser",
+		began.get("ok", false) and sent[0][0] == GoogleScript.START_PATH and opened == [began["data"]["url"]]
+		and google.check == "K7Q-4MX" and google.waiting(), [sent, opened])
+	var done: Dictionary = await google.wait_for_page()
+	check("  it asks until the page is done - through a moment with no answer - and hears \"pick a name\"",
+		done.get("data", {}).get("needs_name", false) and sent.size() == 5
+		and sent[1] == [GoogleScript.POLL_PATH, {"code": google.code}], sent.size())
+	var made: Dictionary = await google.register("newbie")
+	check("  the name goes with the code, and the account comes back signed in",
+		sent[5] == [GoogleScript.REGISTER_PATH, {"code": google.code, "username": "newbie"}]
+		and made.get("data", {}).get("token", "") == "t", sent[5])
+	google.open_page()
+	check("  and the page can be opened again", opened.size() == 2)
+	answers = [{"ok": true, "status": 200, "data": {"code": "y".repeat(32), "check": "AAA-BBB", "url": "u"}}]
+	await google.begin()
+	var waiting_on: Array = []
+	google.wait_between = func(_seconds: float) -> void:
+		waiting_on.append(1)
+		google.cancel()
+	var stopped: Dictionary = await google.wait_for_page()
+	check("Cancel stops it asking", stopped.get("cancelled", false) and not google.waiting())
+	check("refusals say the server's own words, or that it could not be reached",
+		GoogleScript.refusal_text({"status": 403, "data": {"message": "Staff accounts sign in with their password and code, not Google."}})
+		.begins_with("Staff accounts") and GoogleScript.refusal_text({"status": 0}).contains("reach"))
+	google.queue_free()
+	# ---- on the login screen ----
+	var menu: Control = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate() as Control
+	add_child(menu)
+	await get_tree().process_frame
+	var button: Button = menu.get("google_button")
+	var login: Button = menu.get_node("%loginbutton")
+	check("the login screen has \"Sign in with Google\" just under the sign-in button",
+		button != null and button.text == "Sign in with Google" and button.get_parent() == login.get_parent()
+		and button.get_index() == login.get_index() + 1)
+	var g = menu.get("google")
+	sent.clear()
+	opened.clear()
+	answers = [
+		{"ok": true, "status": 200, "data": {"code": "z".repeat(32), "check": "QQQ-777", "url": "https://x/page"}},
+		{"ok": true, "status": 200, "data": {"needs_name": true}},
+	]
+	g.post_request = google_stand_in.bind(sent, answers)
+	g.opener = func(url: String) -> void: opened.append(url)
+	g.wait_between = func(_seconds: float) -> void: pass
+	menu.call("_on_google_pressed")
+	for i in 4:
+		await get_tree().process_frame
+	var form: Control = menu.get("google_form")
+	check("  pressed: the page opens, the screen shows the same check code, then asks for a name",
+		opened == ["https://x/page"] and form.visible and not menu.get_node("%loginform").visible
+		and menu.get("google_name").visible and menu.get("google_go").text == "Start playing", [opened, form.visible])
+	menu.get("google_name").text = "no spaces"
+	menu.call("_on_google_go")
+	await get_tree().process_frame
+	check("  a name the rules do not take is caught before it is sent", sent.size() == 2
+		and str(menu.get("google_status").text).contains("Letters"))
+	answers.append({"ok": false, "status": 409, "data": {"message": "That name is taken. Pick another."}})
+	menu.get("google_name").text = "taken_name"
+	menu.call("_on_google_go")
+	for i in 3:
+		await get_tree().process_frame
+	check("  a name taken says so and stays on the name", sent.size() == 3 and form.visible
+		and str(menu.get("google_status").text) == "That name is taken. Pick another.")
+	menu.call("_on_google_back")
+	check("  Cancel goes back to the sign-in form", not form.visible and menu.get_node("%loginform").visible
+		and not g.waiting())
+	answers.append({"ok": false, "status": 503, "data": {"message": "Google sign-in is not set up on this server yet."}})
+	menu.call("_on_google_pressed")
+	for i in 3:
+		await get_tree().process_frame
+	check("  a server without it set up says so on the form", not form.visible
+		and str(menu.get_node("%errorlabel").text) == "Google sign-in is not set up on this server yet.")
+	answers.append({"ok": true, "status": 200, "data": {"code": "w".repeat(32), "check": "BAN-NED", "url": "u"}})
+	answers.append({"ok": false, "status": 403, "data": {"message": "This account is banned.",
+		"ban": {"permanent": true, "reason": "cheating"}}})
+	menu.call("_on_google_pressed")
+	for i in 4:
+		await get_tree().process_frame
+	check("  a banned account hears its ban, as at the password login",
+		str(menu.get_node("%errorlabel").text).begins_with("This account is banned permanently"),
+		menu.get_node("%errorlabel").text)
+	menu.queue_free()
+	# ---- Options ----
+	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(options)
+	await get_tree().process_frame
+	var row: Control = options.get("account_google_row")
+	check("Options has a Google row under the recovery email, hidden until the server says it may be linked",
+		row != null and row.get_parent() == options.get("account_email_value").get_parent().get_parent()
+		and row.get_index() == options.get("account_email_value").get_parent().get_index() + 1 and not row.visible)
+	options.queue_free()
+	print("  (signing in with Google: done)")
+
+
+func google_stand_in(path: String, body: Dictionary, _wait: float, sent: Array, answers: Array) -> Dictionary:
+	sent.append([path, body])
+	return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0}

@@ -2989,6 +2989,43 @@ taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the
 gate, the goal, a loss; the screen (its own world, the character held and let
 go, Escape twice); the card (town only, owner only).
 
+### Signing in with Google (0.101.0)
+
+A player: "Google account to play or I am not registering". The owner: "lets
+do it because i agree i can still use my key for admin stuff". The server's
+half is the API's googlesignin/ (its CLAUDE.md, "Signing in with Google"); the
+plan is the commit folder's GOOGLE_SIGNIN_PLAN.txt.
+
+- **`src/systems/googlesignin.gd`** (preloaded, a Node made by whoever shows
+  it) is the whole road: `begin()` asks the server for a code
+  (`START_PATH`, or `LINK_PATH` for an account already signed in) and opens
+  its page in the web browser (`OS.shell_open`, the browser build too);
+  `wait_for_page()` asks `POLL_PATH` every `poll_every` seconds - through up
+  to `NO_ANSWER_TRIES` requests with no answer - until it is done: a sign-in
+  (the login's own answer), `needs_name`, `linked`, or a refusal; `register()`
+  sends the name picked; `cancel()` stops a wait. Seams for the suite:
+  `post_request`, `opener`, `wait_between`.
+- **The login screen** (loginmenu.gd, SIGNING IN WITH GOOGLE): "Sign in with
+  Google" just under the sign-in button. Pressed, a form of its own takes the
+  login form's place (`google_form`): the check code the page shows too,
+  "Open the page again", Cancel; then for a new Google account a name box and
+  "Start playing". Signed in, `Api.adopt_login()` takes the answer as
+  `login()` would and it goes straight to the characters - no recovery
+  address to ask for (Google is the way back in). A ban is said as the
+  password login says it (`describe_login_refusal()`); anything else in the
+  server's own words (`GoogleScript.refusal_text()`).
+- **Options > Account** has a Google row under the recovery email
+  (`_build_google_row()`): "Link Google" (the server asks for the password
+  first through the step-up, as Api does for any route), "linked - t***@..."
+  and Unlink, hidden for staff and while the server has no Client ID. An
+  account made with Google keeps it (no Unlink).
+- **Staff never sign in with Google**: the server refuses it and the screen
+  says why. Remember me works as for a password login.
+
+`_test_google_sign_in()` (testrunner_9): the road on stand-in requests, the
+login screen's form (the check code, the name, a name taken, Cancel, not set
+up, a ban), and the Options row.
+
 ### Deleting inert code is how you find out what it was for
 
 E-2 closed by making all six skills server-granted, which left machinery behind
