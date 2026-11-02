@@ -3163,6 +3163,49 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The Mage's Stand: the wall breaks anywhere, and bombers (0.110.0)
+
+The owner, after playing 0.109.0: "its not super fun enemies just run in a
+line when door is broken focus fire at gate easy could survive days"; of
+the wall breaking anywhere: "2 sounds great bombers sound cool too". Still
+the owner's alone. (0.111.0 is to be elemental elites: wind leaps, dark
+teleports, earth tough, water heals, light shields, ice unburnable, fire
+hastens.)
+
+- **The wall in stretches** (magestand.gd, THE WALL IN STRETCHES): either
+  side of the gate, three - `STRETCH_EDGES` (39, 140, 241, 334.5 out),
+  matching the face pieces exactly, each `WALL_MOST` (300).
+  `stretches[i]` = {side, from, to, health, broken, pieces, rubble}, left
+  0-2 from the gate out, right 3-5. `choose_target()`: the gate for
+  `GATE_SHARE` (0.35), never for a bomber; else the stretch nearest where
+  it came in, give or take 120 px. `send_to(m, target)` sets `m.target`
+  and where along it it stops. Up to `WALL_HITTERS` (8) hit a stretch at
+  once, at the gate's rate.
+- **A breach** (`_breach()`): a stretch at nought - its face pieces
+  hidden, two rubble piles (scene/crypt/rubble4) in the gap, the caps
+  left over it for her to walk - and what goes for it runs through
+  (`target_open()`, `_in_opening()`) for the portal. A bar on each struck
+  stretch (`WallBars`, red under `GATE_LOW`).
+- **Repair** (the patch card, renamed): mends the weakest of the gate and
+  the stretches (`weakest()`, `_repair()`), rebuilding a breach
+  (`_rebuild()`); offered while anything is short, always while anything
+  is broken. "A breach to mend" / "Wall 40% now" / "Gate 70% now".
+- **Bombers** (`KINDS["bomber"]`, the land's slime, a red ring and a lit
+  fuse - `Fuse` - pulsing): `bomber_chance()` of each group from wave
+  `BOMBERS_FROM` (4), 5% rising 1% a wave to 12%. At the wall
+  (`_bomb_the_wall()`) it blows `BOMB_HIT` (120) off its stretch and is
+  gone, no kill; slain on the way it blows up where it stands
+  (`_blow_up()`), `BOMB_DAMAGE` to everything within `BOMB_REACH` -
+  other bombers too.
+- **Craters do not stack** (`_burn()`): a monster burns from one crater
+  at a time - stacked on the gate they melted everything.
+- `_test_the_mages_stand()`: craters do not stack; six stretches, the
+  horde aimed at the gate and both sides, a bomber never the gate; a
+  breach (faces down, rubble, attackers through to the portal, the gate
+  untouched); Repair offered and rebuilding it; a bomber at the wall and
+  one slain; when bombers come. Watched fail: craters stacking, everyone
+  at the gate, a breach that leaves the face up.
+
 ### The Mage's Stand: upgrades every 3 waves, evolutions, a tidy screen (0.109.0)
 
 The owner, of a mockup of an upgrade to pick between waves: "looks good

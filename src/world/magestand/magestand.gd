@@ -52,6 +52,19 @@
 # among them (`picks_left`).
 # Before each group comes in, an arrow at the top shows where (`next_x`).
 #
+# THE WALL IN STRETCHES (0.110.0; the owner: "enemies just run in a line
+# when door is broken focus fire at gate easy could survive days", and of
+# the wall breaking anywhere and bombers: "sounds great"): either side of the
+# gate the wall is three stretches (STRETCH_EDGES), each with WALL_MOST of
+# its own. A monster goes for the gate (GATE_SHARE of them) or the stretch
+# nearest where it came in (send_to()); a stretch at nought is a BREACH - its
+# face down, rubble in the gap, the caps left over it for her to walk - and
+# what was hitting it runs through for the portal. The Repair card mends the
+# weakest of the gate and the stretches, rebuilding a breach. BOMBERS (from
+# wave BOMBERS_FROM, the land's slime with a lit fuse) make for a stretch and
+# blow BOMB_HIT off it; one slain on the way blows up where it stands,
+# hurting its neighbours. And a monster burns from one crater at a time.
+#
 # No god mode here (the owner: "we also do not need godmode on this mode").
 #
 # Step 3 brings elites, keepers, shooters and lives; step 4 the
@@ -110,6 +123,21 @@ const DOOR_HIT := 4.0
 const GATE_HITTERS := 10
 # Under this share of its most, the gate's bar pulses red.
 const GATE_LOW := 0.25
+# THE WALL IN STRETCHES: their edges from the gate out (each side), what
+# each holds, and how many hit one at once.
+const STRETCH_EDGES := [GATE_HALF, 140.0, 241.0, PATH_HALF + 4.5]
+const WALL_MOST := 300.0
+const WALL_HITTERS := 8
+const GATE_SHARE := 0.35
+# BOMBERS.
+const BOMBERS_FROM := 4
+const BOMBER_CHANCE := 0.05
+const BOMBER_MORE := 0.01
+const BOMBER_MOST := 0.12
+const BOMB_HIT := 120.0
+const BOMB_REACH := 44.0
+const BOMB_DAMAGE := 30.0
+const RUBBLE_SCENE := "res://scene/crypt/rubble4.tscn"
 # THE WAVES.
 const READY_SECONDS := 1.5
 const BETWEEN_SECONDS := 3.0
@@ -133,7 +161,7 @@ const UPGRADES := {
 	"crit": {"name": "Sharper aim", "does": "8% more criticals"},
 	"double": {"name": "Double cast", "does": "15% chance of a second meteor"},
 	"pull": {"name": "The pull", "does": "10% chance a blast drags a pack in"},
-	"patch": {"name": "Gate patch", "does": "Mends the gate 30%"},
+	"patch": {"name": "Repair", "does": "Mends the weakest wall 30%"},
 	"firestorm": {"name": "Firestorm", "does": "Craters burn twice as wide and hot", "evolves": ["blast", "burn"]},
 	"shower": {"name": "Meteor shower", "does": "Criticals split into three", "evolves": ["crit", "double"]},
 	"comet": {"name": "Comet", "does": "Every 5th meteor is a comet", "evolves": ["cast", "power"]},
@@ -163,7 +191,8 @@ const PATCH_SHARE := 0.3
 # After the pick, a moment before the next wave.
 const AFTER_PICK_SECONDS := 1.5
 const KINDS := {"sprite": {"health": 6.0, "speed": 48.0, "radius": 8.0, "drain": 1},
-	"slime": {"health": 14.0, "speed": 32.0, "radius": 9.0, "drain": 2}}
+	"slime": {"health": 14.0, "speed": 32.0, "radius": 9.0, "drain": 2},
+	"bomber": {"health": 10.0, "speed": 44.0, "radius": 9.0, "drain": 2}}
 const MONSTER_Z := 0
 const HER_Z := 6
 # The ground's marks under the monsters, over the floor.
@@ -187,7 +216,38 @@ class Monster extends Node2D:
 	var flash: float = 0.0
 	var dying: float = -1.0
 	var sprite: AnimatedSprite2D = null
+	# Where it goes: -1 the gate, else a stretch of the wall.
+	var target: int = -1
+	var fuse: Node2D = null
 
+
+# A bomber's lit fuse, drawn over it.
+class Fuse extends Node2D:
+	func _draw() -> void:
+		draw_set_transform(Vector2(0, 2), 0.0, Vector2(1.0, 0.5))
+		draw_arc(Vector2.ZERO, 13.0, 0.0, TAU, 24, Color(1.0, 0.3, 0.15, 0.8), 2.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_line(Vector2(0, -12), Vector2(-3, -20), Color(0.3, 0.22, 0.15), 2.0)
+		draw_circle(Vector2(-3, -21), 7.0, Color(1.0, 0.45, 0.1, 0.35))
+		draw_circle(Vector2(-3, -21), 3.5, Color(1.0, 0.85, 0.4))
+
+
+# The wall's stretches: a bar on each one struck, a mark on each breach.
+class WallBars extends Node2D:
+	var run: Node2D = null
+
+	func _draw() -> void:
+		if run == null:
+			return
+		for one in run.get("stretches"):
+			var mid: float = float(one["side"]) * (float(one["from"]) + float(one["to"])) / 2.0
+			var share: float = float(one["health"]) / WALL_MOST
+			if bool(one["broken"]) or share >= 1.0:
+				continue
+			var at := Vector2(mid - 24.0, FOOT - 14.0)
+			draw_rect(Rect2(at, Vector2(48.0, 5.0)), Color(0.0, 0.0, 0.0, 0.6))
+			var colour: Color = Color(1.0, 0.25, 0.15) if share < GATE_LOW else Color(0.9, 0.6, 0.3)
+			draw_rect(Rect2(at + Vector2(1, 1), Vector2(46.0 * share, 3.0)), colour)
 
 # The ground's marks and the sky's trails, drawn from the run's lists each
 # frame: one node each, not one a meteor.
@@ -274,6 +334,9 @@ var called_early: int = 0
 var next_x: float = 0.0
 # The gate struck this frame: it shakes and flashes.
 var gate_struck: bool = false
+# The wall's stretches: {side, from, to, health, broken, pieces, rubble}.
+var stretches: Array = []
+var wall_bars: WallBars = null
 var falling: Array = []
 var craters: Array = []
 var casts: int = 0
@@ -354,6 +417,11 @@ func _build() -> void:
 	sky_marks.sky = true
 	sky_marks.z_index = SKY_Z
 	add_child(sky_marks)
+	wall_bars = WallBars.new()
+	wall_bars.name = "wallbars"
+	wall_bars.run = self
+	wall_bars.z_index = HER_Z - 1
+	add_child(wall_bars)
 	# Beyond the side walls, dark over everything.
 	for x in [-HALF.x - 40.0, PATH_HALF + 9.0]:
 		var beyond := ColorRect.new()
@@ -377,12 +445,20 @@ func _lay_walls() -> void:
 	# the gate out (the owner: "there is a gap on the right side of the
 	# wall" - laid left to right, the right end stopped 13 px short), the last
 	# piece running on under the side wall, where it is not seen.
+	stretches = []
+	for side in [-1.0, 1.0]:
+		for k in STRETCH_EDGES.size() - 1:
+			stretches.append({"side": side, "from": float(STRETCH_EDGES[k]), "to": float(STRETCH_EDGES[k + 1]),
+				"health": WALL_MOST, "broken": false, "pieces": [], "rubble": []})
 	for side in [-1.0, 1.0]:
 		var x0: float = GATE_HALF
 		while x0 < PATH_HALF + 4.5:
 			var room: float = PATH_HALF + 4.5 - x0
 			var w: int = 101 if room >= 101.0 else (51 if room >= 51.0 else 26)
-			_piece(str(WALL_PIECES[w]), Vector2(side * (x0 + w / 2.0), FOOT), world)
+			var face: Node2D = _piece(str(WALL_PIECES[w]), Vector2(side * (x0 + w / 2.0), FOOT), world)
+			var at_stretch: int = stretch_at(side, x0 + w / 2.0)
+			if face != null and at_stretch >= 0:
+				(stretches[at_stretch]["pieces"] as Array).append(face)
 			x0 += w
 	# Its top, where she walks: the crypt's caps (the side walls' column,
 	# turned to run along it), two rows, stopping at the gatehouse. Not in
@@ -506,6 +582,8 @@ func step(delta: float) -> void:
 	"""One frame; the suite calls it with its own delta."""
 	ground_marks.queue_redraw()
 	sky_marks.queue_redraw()
+	if wall_bars != null:
+		wall_bars.queue_redraw()
 	if state == State.LOST:
 		return
 	if state == State.PICK:
@@ -656,18 +734,25 @@ func _pull(at: Vector2, reach: float) -> void:
 
 
 func _burn(delta: float) -> void:
+	"""Craters burn what stands in them - from ONE crater at a time, however
+	many overlap (0.110.0: stacked on the gate they melted everything)."""
 	var still: Array = []
 	for crater in craters:
 		crater["left"] = float(crater["left"]) - delta
-		if float(crater["left"]) <= 0.0:
-			continue
-		still.append(crater)
-		var at: Vector2 = crater["at"]
-		for node in monsters.get_children():
-			var m := node as Monster
-			if m != null and m.dying < 0.0 and m.position.distance_to(at) <= burn_reach() + m.radius:
-				hurt(m, burn_dps() * delta)
+		if float(crater["left"]) > 0.0:
+			still.append(crater)
 	craters = still
+	if craters.is_empty():
+		return
+	var reach: float = burn_reach()
+	for node in monsters.get_children():
+		var m := node as Monster
+		if m == null or m.dying >= 0.0:
+			continue
+		for crater in craters:
+			if m.position.distance_to(crater["at"]) <= reach + m.radius:
+				hurt(m, burn_dps() * delta)
+				break
 
 
 func hurt(m: Monster, damage: float) -> void:
@@ -678,6 +763,30 @@ func hurt(m: Monster, damage: float) -> void:
 	if m.health <= 0.0:
 		m.dying = 0.25
 		slain += 1
+		if m.kind == "bomber":
+			_blow_up(m.position)
+
+
+func _blow_up(at: Vector2) -> void:
+	"""A bomber slain on its way: it goes up where it stands, hurting what is
+	round it (other bombers too)."""
+	_bang(at, BOMB_REACH)
+	for node in monsters.get_children():
+		var other := node as Monster
+		if other != null and other.dying < 0.0 and other.position.distance_to(at) <= BOMB_REACH + other.radius:
+			hurt(other, BOMB_DAMAGE)
+
+
+func _bang(at: Vector2, reach: float) -> void:
+	var burst = RunScript.Burst.new()
+	burst.position = at
+	burst.colour = Color(1.0, 0.75, 0.3)
+	burst.reach = reach
+	burst.sparks = 16
+	burst.life = 0.4
+	burst.most = 0.4
+	burst.z_index = SKY_Z - 1
+	add_child(burst)
 
 
 # =============================================================================
@@ -695,6 +804,13 @@ static func wave_speed(n: int) -> float:
 
 static func wave_health(n: int) -> float:
 	return 1.0 + 0.15 * (maxi(1, n) - 1)
+
+
+static func bomber_chance(n: int) -> float:
+	"""A share of each group are bombers from BOMBERS_FROM, more each wave."""
+	if n < BOMBERS_FROM:
+		return 0.0
+	return minf(BOMBER_MOST, BOMBER_CHANCE + BOMBER_MORE * (n - BOMBERS_FROM))
 
 
 static func wave_hit(n: int) -> float:
@@ -732,8 +848,8 @@ func spawn(kind: String, at: Vector2) -> Monster:
 	m.speed = float(info["speed"]) * wave_speed(wave) * _rng.randf_range(0.85, 1.15)
 	m.radius = float(info["radius"])
 	m.drain = int(info["drain"])
-	m.stop_x = _rng.randf_range(-GATE_HALF + 6.0, GATE_HALF - 6.0)
 	m.stop_y = pow(_rng.randf(), 1.5) * 70.0
+	send_to(m, choose_target(kind, at.x))
 	m.position = at
 	m.z_index = MONSTER_Z
 	var look: Dictionary = RunScript.look_of_scene("res://scene/enemy/%s.tscn" % scene_id)
@@ -748,12 +864,129 @@ func spawn(kind: String, at: Vector2) -> Monster:
 	var walk: String = str(look.get("walk", ""))
 	if walk != "":
 		m.sprite.play(walk)
+	if kind == "bomber":
+		m.sprite.self_modulate = Color(1.5, 0.7, 0.55)
+		m.fuse = Fuse.new()
+		m.add_child(m.fuse)
 	monsters.add_child(m)
 	return m
 
 
+func stretch_at(side: float, out: float) -> int:
+	"""Which stretch is `out` from the gate on `side` (-1 left, 1 right)."""
+	for k in STRETCH_EDGES.size() - 1:
+		if out >= float(STRETCH_EDGES[k]) and out < float(STRETCH_EDGES[k + 1]):
+			return k + (0 if side < 0.0 else STRETCH_EDGES.size() - 1)
+	return -1
+
+
+func choose_target(kind: String, from_x: float) -> int:
+	"""The gate for GATE_SHARE of them (never a bomber); else the stretch
+	nearest where it came in, give or take."""
+	if kind != "bomber" and _rng.randf() < GATE_SHARE:
+		return -1
+	var near_x: float = from_x + _rng.randf_range(-120.0, 120.0)
+	var best: int = 0
+	var best_far: float = INF
+	for i in stretches.size():
+		var one: Dictionary = stretches[i]
+		var mid: float = float(one["side"]) * (float(one["from"]) + float(one["to"])) / 2.0
+		if absf(mid - near_x) < best_far:
+			best_far = absf(mid - near_x)
+			best = i
+	return best
+
+
+func send_to(m: Monster, target: int) -> void:
+	"""Point a monster at the gate (-1) or a stretch: where along it it stops."""
+	m.target = target
+	if target < 0 or target >= stretches.size():
+		m.target = -1
+		m.stop_x = _rng.randf_range(-GATE_HALF + 6.0, GATE_HALF - 6.0)
+		return
+	var one: Dictionary = stretches[target]
+	var out: float = _rng.randf_range(float(one["from"]) + 10.0, minf(float(one["to"]), PATH_HALF) - 12.0)
+	m.stop_x = float(one["side"]) * out
+
+
+func target_open(m: Monster) -> bool:
+	"""Is the way through where it is going open: the gate broken, or its
+	stretch breached?"""
+	if m.target < 0:
+		return door <= 0.0
+	return bool(stretches[m.target]["broken"])
+
+
+func _in_opening(m: Monster) -> bool:
+	if m.target < 0:
+		return absf(m.position.x) <= GATE_HALF
+	var one: Dictionary = stretches[m.target]
+	return signf(m.position.x) == float(one["side"]) and absf(m.position.x) >= float(one["from"]) - 4.0 \
+		and absf(m.position.x) <= float(one["to"]) + 4.0
+
+
+func _breach(i: int) -> void:
+	"""A stretch at nought: its face down, rubble in the gap."""
+	var one: Dictionary = stretches[i]
+	one["health"] = 0.0
+	one["broken"] = true
+	for face in one["pieces"]:
+		if is_instance_valid(face):
+			(face as Node2D).visible = false
+	var mid: float = float(one["side"]) * (float(one["from"]) + minf(float(one["to"]), PATH_HALF)) / 2.0
+	for dx in [-22.0, 18.0]:
+		var rubble: Node2D = _piece(RUBBLE_SCENE, Vector2(mid + dx, FOOT - 4.0), world)
+		if rubble != null:
+			(one["rubble"] as Array).append(rubble)
+	banner = "The wall is breached!"
+	banner_left = BANNER_SECONDS
+
+
+func _rebuild(i: int, share: float) -> void:
+	var one: Dictionary = stretches[i]
+	one["health"] = minf(WALL_MOST, float(one["health"]) + WALL_MOST * share)
+	if bool(one["broken"]):
+		one["broken"] = false
+		for face in one["pieces"]:
+			if is_instance_valid(face):
+				(face as Node2D).visible = true
+		for rubble in one["rubble"]:
+			if is_instance_valid(rubble):
+				(rubble as Node).queue_free()
+		one["rubble"] = []
+
+
+func breaches() -> int:
+	var count: int = 0
+	for one in stretches:
+		count += 1 if bool(one["broken"]) else 0
+	return count
+
+
+func weakest() -> int:
+	"""The weakest of the wall, by share of its most: -1 the gate, else a
+	stretch (a breach is nought). -2 when all of it is whole."""
+	var low: float = door / maxf(1.0, door_most)
+	var which: int = -1
+	for i in stretches.size():
+		var share: float = 0.0 if bool(stretches[i]["broken"]) else float(stretches[i]["health"]) / WALL_MOST
+		if share < low:
+			low = share
+			which = i
+	return -2 if low >= 1.0 else which
+
+
+func _repair(share: float) -> void:
+	var which: int = weakest()
+	if which == -1:
+		_mend_gate(share)
+	elif which >= 0:
+		_rebuild(which, share)
+
+
 func _move_monsters(delta: float) -> void:
-	var hitters: int = 0
+	# How many hit each part of the wall (-1 the gate, else a stretch).
+	var hits: Dictionary = {}
 	for node in monsters.get_children():
 		var m := node as Monster
 		if m == null:
@@ -766,7 +999,14 @@ func _move_monsters(delta: float) -> void:
 			continue
 		m.flash = maxf(0.0, m.flash - delta)
 		m.modulate = Color(2.2, 2.2, 2.2) if m.flash > 0.0 else Color.WHITE
-		if not m.through and door <= 0.0 and m.position.y >= FOOT - 40.0 and absf(m.position.x) <= GATE_HALF:
+		if m.fuse != null:
+			# A bomber: its fuse flickers and it pulses red.
+			var pulse: float = absf(sin(run_seconds * 7.0 + m.stop_y))
+			m.fuse.modulate.a = 0.55 + 0.45 * absf(sin(run_seconds * 13.0 + m.stop_y))
+			if m.flash <= 0.0:
+				m.modulate = Color(1.0 + 0.7 * pulse, 1.0 - 0.45 * pulse, 1.0 - 0.45 * pulse)
+		var open: bool = target_open(m)
+		if not m.through and open and m.position.y >= FOOT - 40.0 and _in_opening(m):
 			m.through = true
 		if m.through:
 			# THROUGH THE GATE: for the portal.
@@ -777,24 +1017,51 @@ func _move_monsters(delta: float) -> void:
 			m.position += to_portal.limit_length(m.speed * delta)
 			continue
 		var goal := Vector2(m.stop_x, FOOT - 26.0 - m.stop_y)
-		if door <= 0.0:
-			goal = Vector2(m.stop_x * 0.6, FOOT - 20.0)
+		if m.kind == "bomber":
+			goal.y = FOOT - 24.0
+		if open:
+			goal = Vector2(m.stop_x * (0.6 if m.target < 0 else 1.0), FOOT - 20.0)
 		var to_goal: Vector2 = goal - m.position
 		if to_goal.length() <= 1.5:
 			m.position = goal
-			m.at_gate = door > 0.0
+			m.at_gate = not open
 		else:
 			m.at_gate = false
 			m.position += to_goal.limit_length(m.speed * delta)
+		if m.at_gate and m.kind == "bomber":
+			_bomb_the_wall(m)
+			continue
 		if m.at_gate:
-			hitters += 1
-	gate_struck = door > 0.0 and hitters > 0
+			hits[m.target] = int(hits.get(m.target, 0)) + 1
+	var strength: float = DOOR_HIT * wave_hit(wave) * delta
+	gate_struck = door > 0.0 and int(hits.get(-1, 0)) > 0
 	if gate_struck:
-		door = maxf(0.0, door - DOOR_HIT * wave_hit(wave) * mini(hitters, GATE_HITTERS) * delta)
+		door = maxf(0.0, door - strength * mini(int(hits[-1]), GATE_HITTERS))
 		if door <= 0.0:
 			gate_struck = false
 			_break_gate()
+	for i in stretches.size():
+		var count: int = int(hits.get(i, 0))
+		if count > 0 and not bool(stretches[i]["broken"]):
+			stretches[i]["health"] = maxf(0.0, float(stretches[i]["health"]) - strength * mini(count, WALL_HITTERS))
+			if float(stretches[i]["health"]) <= 0.0:
+				_breach(i)
 	_shake_gate()
+
+
+func _bomb_the_wall(m: Monster) -> void:
+	"""A bomber at the wall: BOMB_HIT off its stretch (or the gate), and gone -
+	no kill to anyone."""
+	if m.target < 0:
+		door = maxf(0.0, door - BOMB_HIT)
+		if door <= 0.0:
+			_break_gate()
+	elif not bool(stretches[m.target]["broken"]):
+		stretches[m.target]["health"] = maxf(0.0, float(stretches[m.target]["health"]) - BOMB_HIT)
+		if float(stretches[m.target]["health"]) <= 0.0:
+			_breach(m.target)
+	_bang(m.position, BOMB_REACH)
+	_gone(m)
 
 
 func _break_gate() -> void:
@@ -912,6 +1179,8 @@ func _spawn_group() -> void:
 	next_x = _group_x()
 	for i in size:
 		var kind: String = "sprite" if _rng.randf() < 0.5 else "slime"
+		if wave >= BOMBERS_FROM and _rng.randf() < bomber_chance(wave):
+			kind = "bomber"
 		var at := Vector2(clampf(centre + _rng.randf_range(-70.0, 70.0), -PATH_HALF + 12.0, PATH_HALF - 12.0),
 			-HALF.y - 12.0 - _rng.randf_range(0.0, 40.0))
 		spawn(kind, at)
@@ -1007,14 +1276,14 @@ func roll_offers() -> Array:
 	for id in EVOLUTIONS:
 		if evolution_ready(id):
 			sure.append(id)
-	if door <= 0.0:
+	if door <= 0.0 or breaches() > 0:
 		sure.append("patch")
 	var pool: Array = []
 	for id in UPGRADE_ORDER:
 		if sure.has(id):
 			continue
 		if id == "patch":
-			if door < door_most:
+			if weakest() != -2:
 				pool.append(id)
 		elif level(id) < UPGRADE_MOST:
 			pool.append(id)
@@ -1040,7 +1309,13 @@ func offer_level_text(id: String) -> String:
 	run (the owner: "we only want to see how many times been upgraded"), or
 	for the patch where the gate stands."""
 	if id == "patch":
-		return "Gate broken" if door <= 0.0 else "Gate %d%% now" % roundi(door / maxf(1.0, door_most) * 100.0)
+		var which: int = weakest()
+		if which == -1:
+			return "Gate broken" if door <= 0.0 else "Gate %d%% now" % roundi(door / maxf(1.0, door_most) * 100.0)
+		if which >= 0:
+			return "A breach to mend" if bool(stretches[which]["broken"]) \
+				else "Wall %d%% now" % roundi(float(stretches[which]["health"]) / WALL_MOST * 100.0)
+		return "All whole"
 	if EVOLUTIONS.has(id):
 		return "Evolution"
 	return "Upgraded %d of %d" % [level(id), UPGRADE_MOST]
@@ -1053,8 +1328,8 @@ func pick(index: int) -> bool:
 		return false
 	var id: String = str(offers[index])
 	if id == "patch":
-		_mend_gate(PATCH_SHARE)
-		banner = "The gate is patched"
+		_repair(PATCH_SHARE)
+		banner = "Repaired"
 	elif EVOLUTIONS.has(id):
 		levels[id] = 1
 		banner = "%s!" % str(UPGRADES[id]["name"])

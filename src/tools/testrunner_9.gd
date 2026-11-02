@@ -2901,7 +2901,7 @@ func _test_the_critical_beam_and_the_shield() -> void:
 
 
 func _test_the_mages_stand() -> void:
-	section("THE MAGE'S STAND (0.108.0 step 2; 0.109.0 the pick)")
+	section("THE MAGE'S STAND (0.108.0 step 2; 0.109.0 the pick; 0.110.0 the wall)")
 	# The owner: "mage would use mythic weapon stand on a wall and protect the
 	# portal from enemies going in", "we can use the door as the gate enemies
 	# break it then run through to the portal", "no limit on meteors", "make
@@ -3031,10 +3031,109 @@ func _test_the_mages_stand() -> void:
 		stand.step(1.0 / 60.0)
 	check("  each leaves the ground burning: a crater hurts what stands in it",
 		absf((100.0 - float(burnt.get("health"))) - StandScript.BURN_DPS) < 0.2, burnt.get("health"))
+	# 0.110.0: craters do not stack - five on one spot burn as one.
+	burnt.set("health", 100.0)
+	stand.craters.clear()
+	for i in 5:
+		stand.craters.append({"at": Vector2(100.0, 0.0), "left": StandScript.BURN_SECONDS, "seed": 1.0})
+	for i in 60:
+		stand.step(1.0 / 60.0)
+	check("  and craters do not stack: five on one spot burn as one",
+		absf((100.0 - float(burnt.get("health"))) - StandScript.BURN_DPS) < 0.2, burnt.get("health"))
 	for m in stand.monsters.get_children():
 		stand.monsters.remove_child(m)
 		m.queue_free()
 	stand.craters.clear()
+	# THE WALL IN STRETCHES (0.110.0): "enemies just run in a line when door
+	# is broken focus fire at gate easy".
+	var stretch_count: int = stand.stretches.size()
+	var all_faced: bool = stretch_count == 6
+	for one in stand.stretches:
+		all_faced = all_faced and not (one["pieces"] as Array).is_empty() and is_equal_approx(float(one["health"]), StandScript.WALL_MOST)
+	var aims := {"gate": 0, "left": 0, "right": 0}
+	for i in 90:
+		var came_x: float = -300.0 + 600.0 * float(i) / 89.0
+		var where: int = stand.choose_target("sprite", came_x)
+		if where < 0:
+			aims["gate"] += 1
+		elif float(stand.stretches[where]["side"]) < 0.0:
+			aims["left"] += 1
+		else:
+			aims["right"] += 1
+	var bomber_aims: bool = true
+	for i in 30:
+		bomber_aims = bomber_aims and stand.choose_target("bomber", -200.0 + 13.0 * i) >= 0
+	check("the wall is six stretches either side of the gate; the horde goes for the gate and for both sides (%s), a bomber never the gate" % str(aims),
+		all_faced and int(aims["gate"]) > 10 and int(aims["left"]) > 10 and int(aims["right"]) > 10 and bomber_aims, aims)
+	stand.wave = 1
+	stand.state = StandScript.State.WAVE
+	stand.set("_to_spawn", 0)
+	var breakers: Array = []
+	for i in 8:
+		var m: Node2D = stand.spawn("slime", Vector2.ZERO)
+		stand.send_to(m, 1)
+		m.position = Vector2(float(m.get("stop_x")), StandScript.FOOT - 26.0 - float(m.get("stop_y")))
+		m.set("health", 1000.0)
+		breakers.append(m)
+	stand.stretches[1]["health"] = 10.0
+	for i in 30:
+		stand.step(1.0 / 30.0)
+	var breached: bool = bool(stand.stretches[1]["broken"]) and stand.breaches() == 1
+	var faces_down: bool = true
+	for face in stand.stretches[1]["pieces"]:
+		faces_down = faces_down and not (face as Node2D).visible
+	var rubble_laid: bool = (stand.stretches[1]["rubble"] as Array).size() > 0
+	for i in 240:
+		stand.step(1.0 / 30.0)
+	var went_through: int = 0
+	for m in breakers:
+		if not is_instance_valid(m) or bool(m.get("through")):
+			went_through += 1
+	check("  a stretch hit to nought is breached - its face down, rubble in the gap - and its attackers run through for the portal",
+		breached and faces_down and rubble_laid and went_through == breakers.size() and stand.portal < StandScript.PORTAL_MOST
+		and stand.door == stand.door_most, [breached, faces_down, rubble_laid, went_through])
+	stand.portal = StandScript.PORTAL_MOST
+	var weakest_was: int = stand.weakest()
+	var patch_sure: bool = stand.roll_offers().has("patch")
+	var said: String = stand.offer_level_text("patch")
+	stand.state = StandScript.State.PICK
+	stand.picks_left = 1
+	stand.offers = ["patch"]
+	stand.pick(0)
+	var rebuilt: bool = not bool(stand.stretches[1]["broken"]) and is_equal_approx(float(stand.stretches[1]["health"]), StandScript.WALL_MOST * StandScript.PATCH_SHARE)
+	for face in stand.stretches[1]["pieces"]:
+		rebuilt = rebuilt and (face as Node2D).visible
+	await get_tree().process_frame
+	for rubble in stand.stretches[1]["rubble"]:
+		rebuilt = false
+	check("  a breach always brings the Repair card (\"%s\"), which mends the weakest - rebuilding the breach" % said,
+		weakest_was == 1 and patch_sure and said == "A breach to mend" and rebuilt, [weakest_was, patch_sure, said])
+	# BOMBERS.
+	for m in stand.monsters.get_children():
+		stand.monsters.remove_child(m)
+		m.queue_free()
+	stand.state = StandScript.State.WAVE
+	var slain_was: int = stand.slain
+	var bomber: Node2D = stand.spawn("bomber", Vector2.ZERO)
+	stand.send_to(bomber, 4)
+	bomber.position = Vector2(float(bomber.get("stop_x")), StandScript.FOOT - 24.0)
+	stand.step(1.0 / 30.0)
+	var bombed: bool = is_equal_approx(float(stand.stretches[4]["health"]), StandScript.WALL_MOST - StandScript.BOMB_HIT) \
+		and not is_instance_valid(bomber) or (is_instance_valid(bomber) and bomber.get_parent() == null)
+	bombed = bombed and is_equal_approx(float(stand.stretches[4]["health"]), StandScript.WALL_MOST - StandScript.BOMB_HIT) and stand.slain == slain_was
+	var lit: Node2D = stand.spawn("bomber", Vector2(0.0, -100.0))
+	var near: Node2D = stand.spawn("slime", Vector2(12.0, -100.0))
+	near.set("health", StandScript.BOMB_DAMAGE - 1.0)
+	stand.hurt(lit, 9999.0)
+	check("  a bomber at the wall blows %d off its stretch and is gone, no kill; one slain on its way blows up its neighbours; from wave %d"
+		% [int(StandScript.BOMB_HIT), StandScript.BOMBERS_FROM], bombed and float(near.get("dying")) >= 0.0
+		and StandScript.bomber_chance(StandScript.BOMBERS_FROM - 1) == 0.0 and StandScript.bomber_chance(StandScript.BOMBERS_FROM) > 0.0
+		and is_equal_approx(StandScript.bomber_chance(60), StandScript.BOMBER_MOST) and lit.get("fuse") != null,
+		[stand.stretches[4]["health"], stand.slain - slain_was, near.get("health")])
+	for m in stand.monsters.get_children():
+		stand.monsters.remove_child(m)
+		m.queue_free()
+	stand.state = StandScript.State.BETWEEN
 	# THE GATE AND THE PORTAL: "enemies break it then run through to the portal".
 	stand.wave = 1
 	stand.state = StandScript.State.WAVE
@@ -3042,6 +3141,7 @@ func _test_the_mages_stand() -> void:
 	var crowd: Array = []
 	for i in 14:
 		var m: Node2D = stand.spawn("sprite" if i % 2 == 0 else "slime", Vector2.ZERO)
+		stand.send_to(m, -1)
 		m.position = Vector2(float(m.get("stop_x")), StandScript.FOOT - 26.0 - float(m.get("stop_y")))
 		m.set("health", 1000.0)
 		crowd.append(m)
@@ -3154,6 +3254,7 @@ func _test_the_mages_stand() -> void:
 	fresh.door = fresh.door_most * 0.2
 	fresh.state = StandScript.State.WAVE
 	var striker: Node2D = fresh.spawn("slime", Vector2(0.0, StandScript.FOOT - 30.0))
+	fresh.send_to(striker, -1)
 	striker.set("stop_x", 0.0)
 	striker.set("stop_y", 4.0)
 	for i in 20:
@@ -3341,7 +3442,7 @@ func _test_the_mages_stand() -> void:
 	screen.call("_input", key)
 	var reroll_shown: String = str((screen.get("reroll_button") as Button).text)
 	check("  a pick shows its cards (\"%s\", \"%s\") and \"%s\", no numbers on them, holds her meteors, and 2 takes the second"
-		% [card_name, times, reroll_shown], cards_up and card_name == "Gate patch" and times == "Upgraded 2 of 5"
+		% [card_name, times, reroll_shown], cards_up and card_name == "Repair" and times == "Upgraded 2 of 5"
 		and reroll_shown == "Reroll (1 left)"
 		and card_one.get_node("words").get_node_or_null("key") == null and no_cast and srun.get("state") == StandScript.State.BETWEEN
 		and float(srun.get("door")) > float(srun.get("door_most")) * 0.5 and not pick_panel.visible)
