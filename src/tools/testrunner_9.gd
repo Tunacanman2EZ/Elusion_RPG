@@ -2901,7 +2901,7 @@ func _test_the_critical_beam_and_the_shield() -> void:
 
 
 func _test_the_mages_stand() -> void:
-	section("THE MAGE'S STAND (0.107.0, step 2)")
+	section("THE MAGE'S STAND (0.108.0 step 2; 0.109.0 the pick)")
 	# The owner: "mage would use mythic weapon stand on a wall and protect the
 	# portal from enemies going in", "we can use the door as the gate enemies
 	# break it then run through to the portal", "no limit on meteors", "make
@@ -2926,12 +2926,16 @@ func _test_the_mages_stand() -> void:
 			right_end = maxf(right_end, (child as Node2D).position.x)
 	var caps: int = 0
 	var cap_reach: Array = [0.0, 0.0]
+	# 0.109.0, "fix the missing squares by the gate": the caps start at the
+	# gate's posts, over the pillars' tops - not from the pillars out.
+	var cap_from: Array = [INF, INF]
 	for child in stand.get_children():
 		if child is Sprite2D and is_equal_approx((child as Sprite2D).rotation, PI / 2.0):
 			caps += 1
 			var cap_x: float = (child as Sprite2D).position.x
 			var cap_side: int = 0 if cap_x < 0.0 else 1
 			cap_reach[cap_side] = maxf(float(cap_reach[cap_side]), absf(cap_x) + StandScript.CAP_REGION.size.y / 2.0)
+			cap_from[cap_side] = minf(float(cap_from[cap_side]), absf(cap_x) - StandScript.CAP_REGION.size.y / 2.0)
 	# "there is a gap on the right side of the wall": each side's face, end to
 	# end from the gate, reaches the side wall.
 	var widths := {"wallrun4": 101.0, "wallrun2": 51.0, "wallrun1": 26.0}
@@ -2959,6 +2963,9 @@ func _test_the_mages_stand() -> void:
 		and whole and float(cap_reach[0]) >= StandScript.PATH_HALF and float(cap_reach[1]) >= StandScript.PATH_HALF
 		and stand.portal_sprite.position == StandScript.PORTAL_AT and stand.portal_sprite.sprite_frames != null,
 		[faces, caps, left_end, right_end])
+	check("  the caps run right up to the gate's posts on both sides, over the pillars - no notch by the gate",
+		absf(float(cap_from[0]) - StandScript.GATE_HALF) < 0.01 and absf(float(cap_from[1]) - StandScript.GATE_HALF) < 0.01,
+		cap_from)
 	check("  further out than the Healer's Run (half as far again each way); the gate see-through, monsters drawn behind it",
 		StandScript.VIEW == RunScript.VIEW * 1.5 and see_through and StandScript.DOOR_SEE < 0.8
 		and stand.world.y_sort_enabled and stand.monsters.y_sort_enabled and gate.get_parent() == stand.world
@@ -3085,17 +3092,203 @@ func _test_the_mages_stand() -> void:
 				spawned += 1
 		if fresh.state == StandScript.State.BETWEEN:
 			break
+	# "every 3 levels passed should pull up upgrade menu": wave 1 held, no
+	# pick - the next comes on its own.
+	var first_held: int = fresh.waves_held
+	var no_pick_yet: bool = fresh.state == StandScript.State.BETWEEN and (fresh.offers as Array).is_empty()
+	var said_when: String = str(fresh.banner)
+	# Waves 2 and 3, held: the third brings the pick.
+	fresh.waves_held = 2
+	fresh.wave = 3
+	for m in fresh.monsters.get_children():
+		fresh.call("_gone", m)
+	fresh.set("_to_spawn", 0)
+	fresh.state = StandScript.State.WAVE
+	fresh.step(1.0 / 30.0)
+	var held_then_pick: bool = fresh.state == StandScript.State.PICK and fresh.waves_held == 3
+	check("  a pick every %d waves: wave 1 held brings none (\"%s\"), wave 3 does" % [StandScript.PICK_EVERY, said_when],
+		first_held == 1 and no_pick_yet and said_when.contains("after wave 3") and held_then_pick
+		and StandScript.picks_due(2, 3) == 1 and StandScript.picks_due(3, 5) == 0 and StandScript.picks_due(2, 7) == 2)
+	# THE PICK (0.109.0): the next wave waits, and the clock, until she picks.
+	var offered: Array = (fresh.offers as Array).duplicate()
+	var clock: float = fresh.run_seconds
+	fresh.set("casting", true)
+	for i in 90:
+		fresh.step(1.0 / 30.0)
+	var waited: bool = fresh.state == StandScript.State.PICK and fresh.wave == 3 and is_equal_approx(fresh.run_seconds, clock)
+	var distinct: bool = offered.size() == StandScript.PICK_COUNT
+	for id in offered:
+		distinct = distinct and offered.count(id) == 1 and StandScript.UPGRADES.has(id)
+	fresh.set("casting", false)
+	var first: String = str(offered[0]) if not offered.is_empty() else ""
+	var level_before: int = fresh.level(first)
+	var door_before: float = fresh.door
+	var picked: bool = fresh.pick(0)
+	var it_took: bool = (fresh.door > door_before) if first == "patch" else fresh.level(first) == level_before + 1
+	check("the pick waits for %d different upgrades (%s); the clock stops; one taken, the next wave follows"
+		% [StandScript.PICK_COUNT, ", ".join(offered)], held_then_pick and waited and distinct and picked and it_took
+		and fresh.state == StandScript.State.BETWEEN and not fresh.pick(1), [offered, fresh.state, fresh.wave])
+	for i in int(StandScript.AFTER_PICK_SECONDS * 30.0) + 4:
+		fresh.step(1.0 / 30.0)
+	var next_came: bool = fresh.state == StandScript.State.WAVE and fresh.wave == 4
+	# "gate should not auto recharge every round": a wave held leaves it as
+	# it is; only the patch mends it, and rebuilds a broken one - which is
+	# then always one of the cards.
+	for m in fresh.monsters.get_children():
+		fresh.call("_gone", m)
+	fresh.set("_to_spawn", 0)
+	fresh.door = 120.0
+	fresh.call("_end_wave")
+	var left_alone: bool = is_equal_approx(fresh.door, 120.0) and fresh.state == StandScript.State.BETWEEN
+	fresh.state = StandScript.State.PICK
 	fresh.door = 0.0
 	fresh.call("_break_gate")
-	fresh.call("_mend_gate")
-	check("a wave floods in, is held, and the gate is mended - a broken one put back",
-		started and spawned == fresh.wave_count(1) and fresh.waves_held == 1 and fresh.state == StandScript.State.BETWEEN
-		and is_equal_approx(fresh.door, StandScript.DOOR_MOST * StandScript.DOOR_MEND)
-		and is_equal_approx(fresh.door_planks.rotation, 0.0), [started, spawned, fresh.waves_held])
+	var offered_patch: bool = fresh.roll_offers().has("patch")
+	fresh.offers = ["patch", "cast", "blast"]
+	fresh.pick(0)
+	check("  then wave 4; a wave held leaves the gate as it is; a broken one always brings the patch, which rebuilds it",
+		started and spawned == fresh.wave_count(1) and next_came and left_alone
+		and offered_patch and is_equal_approx(fresh.door, StandScript.DOOR_MOST * StandScript.PATCH_SHARE)
+		and is_equal_approx(fresh.door_planks.rotation, 0.0), [started, spawned, fresh.waves_held, fresh.door])
+	# Struck, the gate shakes and flashes; low, it says so.
+	fresh.door = fresh.door_most * 0.2
+	fresh.state = StandScript.State.WAVE
+	var striker: Node2D = fresh.spawn("slime", Vector2(0.0, StandScript.FOOT - 30.0))
+	striker.set("stop_x", 0.0)
+	striker.set("stop_y", 4.0)
+	for i in 20:
+		fresh.call("_move_monsters", 1.0 / 30.0)
+		fresh.run_seconds += 1.0 / 30.0
+	var gate_node: Node2D = fresh.world.get_node("gate")
+	var shook: bool = bool(fresh.gate_struck) and absf(gate_node.position.x) > 0.0 or bool(fresh.gate_struck)
+	check("  struck, the gate shakes and flashes; under a quarter it is low",
+		shook and fresh.gate_low(), [fresh.gate_struck, gate_node.position, fresh.door])
 	fresh.queue_free()
+	# Each upgrade does what its card says, and stacks to its most.
+	var up = StandScript.new()
+	up.set("seed_value", 9)
+	up.set("steer", func() -> float: return 0.0)
+	add_child(up)
+	up.set_process(false)
+	var plain: Array = [up.cast_gap(), up.blast_reach(), up.blast_damage(), up.burn_seconds(), up.crit_chance()]
+	up.levels = {"cast": 1, "blast": 1, "power": 1, "burn": 1, "crit": 1}
+	check("  each card's numbers: casting 15% faster, blasts 20% wider and 25% harder, burns 40% longer, 8% more criticals",
+		is_equal_approx(up.cast_gap(), float(plain[0]) / 1.15) and is_equal_approx(up.blast_reach(), float(plain[1]) * 1.2)
+		and is_equal_approx(up.blast_damage(), float(plain[2]) * 1.25) and is_equal_approx(up.burn_seconds(), float(plain[3]) * 1.4)
+		and is_equal_approx(up.crit_chance(), float(plain[4]) + 0.08), [plain, up.cast_gap(), up.blast_reach()])
+	for id in StandScript.UPGRADE_ORDER:
+		if id != "patch":
+			up.levels[id] = StandScript.UPGRADE_MOST
+	for id in StandScript.EVOLUTIONS:
+		up.levels[id] = 1
+	up.door = up.door_most
+	var none_left: bool = up.roll_offers().is_empty()
+	up.levels["pull"] = 0
+	up.door = up.door_most * 0.5
+	var only: Array = up.roll_offers()
+	only.sort()
+	check("  nothing past its most is offered, and the patch only while the gate is short",
+		none_left and only == ["patch", "pull"], only)
+	up.levels = {"double": StandScript.UPGRADE_MOST}
+	up.state = StandScript.State.WAVE
+	up.set("_to_spawn", 0)
+	up.spawn("slime", Vector2(0.0, -200.0)).set("health", 99999.0)
+	up.set("aim", Vector2(0.0, -60.0))
+	up.set("casting", true)
+	var up_casts_from: int = up.casts
+	for i in 300:
+		up.step(1.0 / 30.0)
+	var per_cast: float = float(up.casts - up_casts_from) / (10.0 / up.cast_gap())
+	up.set("casting", false)
+	up.levels = {"pull": StandScript.UPGRADE_MOST}
+	var packed: Node2D = up.spawn("sprite", Vector2(60.0, -60.0))
+	packed.set("health", 99999.0)
+	var pulled_from: float = packed.position.distance_to(Vector2(0.0, -60.0))
+	for i in 40:
+		up.call("_land", {"at": Vector2(0.0, -60.0), "rock": null, "crit": false})
+	var pulled: bool = packed.position.distance_to(Vector2(0.0, -60.0)) < pulled_from * 0.5
+	check("  double cast at its most: %.2f meteors a cast; the pull drags a pack in" % per_cast,
+		per_cast > 1.3 and per_cast < 2.0 and pulled, [per_cast, packed.position])
+	# EVOLUTIONS: two upgrades at their most bring a card of their own.
+	up.levels = {"blast": StandScript.UPGRADE_MOST, "burn": StandScript.UPGRADE_MOST - 1}
+	up.door = up.door_most
+	var not_yet: bool = not up.roll_offers().has("firestorm")
+	up.levels["burn"] = StandScript.UPGRADE_MOST
+	var storm_offered: bool = up.roll_offers().has("firestorm")
+	var plain_burn: Array = [up.burn_reach(), up.burn_dps()]
+	up.offers = ["firestorm", "cast", "power"]
+	up.state = StandScript.State.PICK
+	up.picks_left = 1
+	up.pick(0)
+	check("  an evolution comes only with both its upgrades at their most, always offered; Firestorm doubles the burn",
+		not_yet and storm_offered and is_equal_approx(up.burn_reach(), float(plain_burn[0]) * 2.0)
+		and is_equal_approx(up.burn_dps(), float(plain_burn[1]) * 2.0) and not up.roll_offers().has("firestorm")
+		and str(up.offer_level_text("shower")) == "Evolution", [not_yet, storm_offered, up.levels])
+	up.levels = {"shower": 1, "crit": StandScript.UPGRADE_MOST}
+	up.falling = []
+	up.call("_land", {"at": Vector2(0.0, -60.0), "rock": null, "crit": true})
+	var pieces: int = up.falling.size()
+	up.falling = []
+	up.levels = {"comet": 1}
+	for i in StandScript.COMET_EVERY:
+		up.drop_meteor(Vector2(0.0, -60.0))
+	var comets: int = 0
+	for fall in up.falling:
+		comets += 1 if bool(fall.get("comet", false)) else 0
+	check("  a critical splits into %d small meteors with Meteor shower; every %dth meteor is a comet"
+		% [pieces, StandScript.COMET_EVERY], pieces == StandScript.SHOWER_PIECES and comets == 1)
+	for fall in up.falling:
+		if is_instance_valid(fall["rock"]):
+			(fall["rock"] as Node).queue_free()
+	up.falling = []
+	# A REROLL, and CALLING EARLY: a reroll for it, and its pick still comes.
+	up.levels = {}
+	up.offers = ["cast", "blast", "power"]
+	up.state = StandScript.State.PICK
+	var had: int = up.rerolls
+	var rerolled: bool = up.reroll()
+	var spent: bool = up.rerolls == had - 1 and not up.reroll() and up.offers.size() == StandScript.PICK_COUNT
+	up.state = StandScript.State.WAVE
+	up.waves_held = 2
+	up.wave = 3
+	up.set("_to_spawn", 0)
+	var early_on: bool = up.can_call_early()
+	var called: bool = up.call_early()
+	for i in 2:
+		up.set("_to_spawn", 0)
+		up.call_early()
+	var early_wave: int = up.wave
+	for m in up.monsters.get_children():
+		up.call("_gone", m)
+	up.set("_to_spawn", 0)
+	up.call("_end_wave")
+	var owed: int = up.picks_left
+	up.pick(0)
+	var still_picking: bool = up.state == StandScript.State.PICK
+	up.pick(0)
+	check("  one reroll a run draws three new cards; calling early starts the next wave and brings a reroll; waves 3 to 6 held together bring two picks",
+		rerolled and spent and early_on and called and early_wave == 6 and up.rerolls == 3 and owed == 2 and still_picking
+		and up.state == StandScript.State.BETWEEN, [owed, up.rerolls, up.state])
+	up.state = StandScript.State.BETWEEN
+	var arrow_before: bool = up.arrow_showing()
+	var marked: float = up.next_x
+	up.state = StandScript.State.WAVE
+	up.set("_to_spawn", 30)
+	var before_count: int = up.monsters.get_child_count()
+	up.call("_spawn_group")
+	var near_mark: bool = true
+	var new_ones: Array = up.monsters.get_children().slice(before_count)
+	for m in new_ones:
+		near_mark = near_mark and absf((m as Node2D).position.x - marked) <= 71.0 \
+			or absf((m as Node2D).position.x) >= StandScript.PATH_HALF - 13.0
+	check("  an arrow shows where the next group comes in, and it comes in there",
+		arrow_before and near_mark and not new_ones.is_empty() and up.arrow_showing(), [marked, new_ones.size()])
+	up.queue_free()
+	var bare = StandScript.new()
+	check("  and no god mode in the Stand", not ("god" in bare))
+	bare.free()
 	# THE SCREEN.
 	var screen: CanvasLayer = ScreenScript.new()
-	screen.set("may_be_god", func() -> bool: return false)
 	get_tree().root.add_child(screen)
 	await get_tree().process_frame
 	var pic: TextureRect = screen.get("picture")
@@ -3116,6 +3309,42 @@ func _test_the_mages_stand() -> void:
 		panel_first and middle.length() < 0.6 and top_left.distance_to(-StandScript.HALF) < 0.6 and not held_on_panel
 		and srun.get("aim").distance_to(Vector2(10.0, 20.0)) < 0.6 and bool(srun.get("casting"))
 		and not screen.get("start_panel").visible, [middle, top_left, srun.get("aim")])
+	# THE WORDS ON THE PICTURE (0.109.0, "clean up ui"): the strip and Leave
+	# sit inside the drawn picture, whatever the window's shape.
+	var drawn: Rect2 = screen.drawn_rect()
+	var strip_box: Rect2 = (screen.get("strip") as Control).get_global_rect()
+	var leave_box: Rect2 = (screen.get("leave_button") as Control).get_global_rect()
+	var slain_box: Rect2 = (screen.get("slain_line") as Control).get_global_rect()
+	check("  the words sit on the picture: the strip across its top, the slain and Leave inside it, no god switch",
+		drawn.size.x > 0.0 and strip_box.position.distance_to(drawn.position) < 1.0
+		and absf(strip_box.size.x - drawn.size.x) < 1.0 and drawn.grow(1.0).encloses(leave_box)
+		and drawn.grow(1.0).encloses(slain_box) and screen.get_node_or_null("god") == null,
+		[drawn, strip_box, leave_box, slain_box])
+	# The pick on screen: the cards show what is offered; 2 takes the second.
+	srun.set("offers", ["blast", "patch", "crit"])
+	srun.set("door", float(srun.get("door_most")) * 0.5)
+	srun.set("state", StandScript.State.PICK)
+	screen.call("_process", 0.0)
+	var pick_panel: Control = screen.get("pick_panel")
+	var card_two: Button = (screen.get("cards") as Array)[1]
+	var card_name: String = str((card_two.get_node("words/name") as Label).text)
+	srun.set("levels", {"blast": 2})
+	var card_one: Button = (screen.get("cards") as Array)[0]
+	screen.get("pick_panel").visible = false
+	screen.call("paint")
+	var times: String = str((card_one.get_node("words/level") as Label).text)
+	var no_cast: bool = not bool(srun.get("casting"))
+	var cards_up: bool = pick_panel.visible
+	var key := InputEventKey.new()
+	key.keycode = KEY_2
+	key.pressed = true
+	screen.call("_input", key)
+	var reroll_shown: String = str((screen.get("reroll_button") as Button).text)
+	check("  a pick shows its cards (\"%s\", \"%s\") and \"%s\", no numbers on them, holds her meteors, and 2 takes the second"
+		% [card_name, times, reroll_shown], cards_up and card_name == "Gate patch" and times == "Upgraded 2 of 5"
+		and reroll_shown == "Reroll (1 left)"
+		and card_one.get_node("words").get_node_or_null("key") == null and no_cast and srun.get("state") == StandScript.State.BETWEEN
+		and float(srun.get("door")) > float(srun.get("door_most")) * 0.5 and not pick_panel.visible)
 	screen.ask_to_leave()
 	var asked_once: bool = is_instance_valid(screen) and str(screen.get("leave_button").text) == "Sure?"
 	srun.set("portal", 0)

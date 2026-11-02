@@ -3163,6 +3163,69 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The Mage's Stand: upgrades every 3 waves, evolutions, a tidy screen (0.109.0)
+
+The owner, of a mockup of an upgrade to pick between waves: "looks good
+but we need to clean up ui and fix the missing squares by the gate", "we
+also do not need godmode on this mode", "get rid of number 1 2 3 we only
+want to see how many times been upgraded", "every 3 levels passed should
+pull up upgrade menu", "gate should not auto recharge every round", and
+from a list of ideas: evolutions, a reroll, warnings, calling a wave early.
+Still the owner's alone.
+
+- **The pick** (magestand.gd, THE PICK): after every `PICK_EVERY` (3)th
+  wave held (`picks_due()`) the run waits in `State.PICK` (appended, so the
+  other numbers hold) - the clock stopped, no casting - on `offers`: up to
+  `PICK_COUNT` (3) different cards (`roll_offers()`): an evolution that is
+  ready, and the patch while the gate is broken, always among them; the
+  rest at random from the upgrades short of `UPGRADE_MOST` (5) (the patch
+  while the gate is short). `pick(i)` raises `levels[id]`; other waves
+  say "Wave 1 held - an upgrade after wave 3". Every number reads the
+  levels: `cast_gap()`, `blast_reach()`, `blast_damage()`,
+  `burn_seconds()`, `crit_chance()`, `double_chance()` (a second meteor
+  within `DOUBLE_SPREAD`), `pull_chance()` (`_pull()`). They replace the
+  plan's pickups.
+- **Evolutions** (`EVOLUTIONS`, each `UPGRADES[id]["evolves"]` two ids):
+  both at their most and the card is always offered until taken -
+  Firestorm (blast + burn: `burn_reach()` and `burn_dps()` doubled),
+  Meteor shower (crit + double: a critical drops `SHOWER_PIECES` small
+  meteors, `drop_meteor(at, true)`, half as hard and wide), Comet (cast +
+  power: every `COMET_EVERY`th cast `COMET_REACH` wide and `COMET_HIT`
+  hard). Named in `EVOLVE_COLOUR` on the card, "Evolution" under it.
+- **A reroll** (`rerolls`, `REROLLS_FIRST` 1 a run; `reroll()`), a button
+  on the pick. **Calling early** (`can_call_early()`, `call_early()`):
+  once a wave has all come in and some is still about, the next starts on
+  top of it and brings a reroll; the picks due for every wave held in the
+  batch still come, one after another (`picks_left`, "2 picks" on the
+  title). The leaderboards' bonus for it comes with step 4.
+- **The gate is not mended after a wave**: only the Gate patch
+  (`_mend_gate(PATCH_SHARE)`), which rebuilds a broken one. Struck it
+  shakes and flashes (`gate_struck`, `_shake_gate()`); under `GATE_LOW`
+  (a quarter) its bar pulses red. An arrow over the top shows where the
+  next group comes in (`next_x`, rolled ahead; `arrow_showing()`).
+- **The screen** (magestandscreen.gd): the words were placed on the
+  window, so a wide one left the slain, Best, Leave and the god switch out
+  in the black beside the field. Now `frame` follows the drawn picture
+  (`drawn_rect()`, `_fit_frame()`): one strip across the top - wave and
+  land left, the gate's and portal's bars with their words inside, the
+  clock and "Slain N   Best: N waves" right - Leave under it, and "Call
+  wave N early" under the bars when it may be. The pick's cards show the
+  name, what it does and "Upgraded 1 of 5" (or the gate now), no key
+  numbers; a click (1, 2 and 3 still pick, unshown); Reroll beside "Click
+  one".
+- **The caps run to the gate's posts** (`GATE_HALF`, not 18 px further
+  out): the crypt pillars either side are lower than the two cap rows, so
+  from the pillars out left a notch above each.
+- **No god mode** in the Stand: no switch, no `god`; Best counts every run.
+- `_test_the_mages_stand()`: the caps from the posts; no pick at wave 1,
+  one at wave 3; the wait and the clock; each card's numbers; nothing past
+  its most; the gate left alone after a wave, the patch always offered
+  when it is broken and rebuilding it; the shake and the low gate;
+  evolutions, the shower and the comet; the reroll, calling early and two
+  picks owed; the arrow; no god; the words inside the picture; the cards
+  on screen and the 2 key. Watched fail: a pick every wave, the gate
+  mended after a wave, the gate never struck.
+
 ### The download leaves out Claude's pictures (0.108.1)
 
 The owner: "anything we can make even faster in elusion?". 0.108.0's

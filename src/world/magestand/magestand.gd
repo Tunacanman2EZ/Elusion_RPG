@@ -24,22 +24,45 @@
 #
 # THE GATE AND THE PORTAL: monsters queue at the gate and hit it (at most
 # GATE_HITTERS at once); at nought it breaks and they run through to the
-# portal, each draining it (`portal`). Nought there: the run is over. After a
-# wave the gate is mended DOOR_MEND of its most - a broken one put back.
+# portal, each draining it (`portal`). Nought there: the run is over. The gate
+# is NOT mended after a wave (the owner, 0.109.0: "gate should not auto
+# recharge every round"): only the Gate patch card mends it - a broken one
+# rebuilt, and while it is broken the patch is always one of the cards.
+# Struck, it shakes and flashes; under GATE_LOW its bar pulses red.
 #
 # WAVES: more, faster and tougher each time (wave_count(), wave_speed(),
 # wave_health()), the land changing every LAND_WAVES; no last one - the score
 # is the waves held.
 #
-# Step 3 brings elites, keepers, shooters and lives, and upgrades; step 4 the
-# leaderboards and the gate's levels; step 5 the party.
+# THE PICK (0.109.0; the owner, of the mockup: "looks good", then "every 3
+# levels passed should pull up upgrade menu"): after every PICK_EVERY-th
+# wave held the next one waits (State.PICK) while she picks one of
+# PICK_COUNT upgrades, drawn from UPGRADES, for the rest of the run - faster
+# casting, a bigger or stronger blast, a longer burn, more criticals, a
+# double cast, the pull, or a gate patch. Each but the patch stacks to
+# UPGRADE_MOST. The clock stops while she picks. They replace the plan's
+# pickups dropped by kills.
+#
+# EVOLUTIONS (the owner chose them from a list: "these are good ideas"): two
+# upgrades both at UPGRADE_MOST bring a card of their own, always offered
+# until taken - EVOLUTIONS. A REROLL (`rerolls`, REROLLS_FIRST a run) draws
+# three new cards. CALLING EARLY: once a wave has all come in, the next can
+# be called while its last are still about (call_early()); each one called
+# brings a reroll, and a pick still comes for every PICK_EVERY-th wave held
+# among them (`picks_left`).
+# Before each group comes in, an arrow at the top shows where (`next_x`).
+#
+# No god mode here (the owner: "we also do not need godmode on this mode").
+#
+# Step 3 brings elites, keepers, shooters and lives; step 4 the
+# leaderboards and the Upgrades tab; step 5 the party.
 #
 # No class_name: preloaded by magestandscreen.gd and the suite.
 extends Node2D
 
 signal finished
 
-enum State { READY, WAVE, BETWEEN, LOST }
+enum State { READY, WAVE, BETWEEN, LOST, PICK }
 
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
 
@@ -85,7 +108,8 @@ const FIRE := Color(1.0, 0.55, 0.15)
 const DOOR_MOST := 400.0
 const DOOR_HIT := 4.0
 const GATE_HITTERS := 10
-const DOOR_MEND := 0.25
+# Under this share of its most, the gate's bar pulses red.
+const GATE_LOW := 0.25
 # THE WAVES.
 const READY_SECONDS := 1.5
 const BETWEEN_SECONDS := 3.0
@@ -96,6 +120,48 @@ const GROUP_GAP := 1.2
 const LAND_WAVES := 3
 const MONSTERS_MOST := 400
 const BANNER_SECONDS := 2.2
+# THE PICK.
+const PICK_COUNT := 3
+const PICK_EVERY := 3
+const UPGRADE_MOST := 5
+const UPGRADE_ORDER := ["cast", "blast", "power", "burn", "crit", "double", "pull", "patch"]
+const UPGRADES := {
+	"cast": {"name": "Faster casting", "does": "Meteors 15% faster"},
+	"blast": {"name": "Bigger blast", "does": "Blasts 20% wider"},
+	"power": {"name": "Stronger blast", "does": "Blasts hit 25% harder"},
+	"burn": {"name": "Longer burn", "does": "Craters burn 40% longer"},
+	"crit": {"name": "Sharper aim", "does": "8% more criticals"},
+	"double": {"name": "Double cast", "does": "15% chance of a second meteor"},
+	"pull": {"name": "The pull", "does": "10% chance a blast drags a pack in"},
+	"patch": {"name": "Gate patch", "does": "Mends the gate 30%"},
+	"firestorm": {"name": "Firestorm", "does": "Craters burn twice as wide and hot", "evolves": ["blast", "burn"]},
+	"shower": {"name": "Meteor shower", "does": "Criticals split into three", "evolves": ["crit", "double"]},
+	"comet": {"name": "Comet", "does": "Every 5th meteor is a comet", "evolves": ["cast", "power"]},
+}
+const EVOLUTIONS := ["firestorm", "shower", "comet"]
+const FIRESTORM_MULT := 2.0
+const SHOWER_PIECES := 3
+const SHOWER_SPREAD := 46.0
+const SHOWER_SHARE := 0.5
+const COMET_EVERY := 5
+const COMET_REACH := 2.0
+const COMET_HIT := 3.0
+const REROLLS_FIRST := 1
+const CAST_STEP := 1.15
+const BLAST_STEP := 0.2
+const POWER_STEP := 0.25
+const BURN_STEP := 0.4
+const CRIT_STEP := 0.08
+const DOUBLE_STEP := 0.15
+const DOUBLE_SPREAD := 40.0
+const PULL_STEP := 0.1
+# The pull reaches this many blasts wide, and drags what it reaches this
+# share of the way in.
+const PULL_REACH := 2.5
+const PULL_SHARE := 0.7
+const PATCH_SHARE := 0.3
+# After the pick, a moment before the next wave.
+const AFTER_PICK_SECONDS := 1.5
 const KINDS := {"sprite": {"health": 6.0, "speed": 48.0, "radius": 8.0, "drain": 1},
 	"slime": {"health": 14.0, "speed": 32.0, "radius": 9.0, "drain": 2}}
 const MONSTER_Z := 0
@@ -141,6 +207,14 @@ class Marks extends Node2D:
 					var t: float = float(k) / 8.0
 					draw_circle(stone + (SKY.normalized() * 10.0 * k), 7.0 - k * 0.7,
 						Color(1.0, 0.45 + t * 0.3, 0.1, (0.75 - t * 0.7)))
+			if bool(run.call("arrow_showing")):
+				var ax: float = float(run.get("next_x"))
+				var bob: float = sin(float(run.get("run_seconds")) * 6.0) * 3.0
+				var tip := Vector2(ax, -HALF.y + 88.0 + bob)
+				for k in 2:
+					var y: float = tip.y - 12.0 * k
+					draw_colored_polygon(PackedVector2Array([Vector2(ax - 11.0, y - 10.0), Vector2(ax, y),
+						Vector2(ax + 11.0, y - 10.0), Vector2(ax, y - 5.0)]), Color(1.0, 0.45, 0.25, 0.85 - 0.3 * k))
 			if bool(run.get("showing_aim")):
 				var aim: Vector2 = run.get("aim")
 				draw_arc(aim, 22.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.5, 0.9), 1.0)
@@ -151,8 +225,9 @@ class Marks extends Node2D:
 			var at: Vector2 = crater["at"]
 			var fade: float = clampf(float(crater["left"]) / BURN_SECONDS, 0.0, 1.0)
 			draw_set_transform(at, 0.0, Vector2(1.0, 0.55))
-			draw_circle(Vector2.ZERO, BURN_REACH, Color(1.0, 0.35, 0.05, 0.25 * fade))
-			draw_circle(Vector2.ZERO, BURN_REACH * 0.6, Color(1.0, 0.55, 0.15, 0.4 * fade))
+			var burn_reach: float = float(run.call("burn_reach"))
+			draw_circle(Vector2.ZERO, burn_reach, Color(1.0, 0.35, 0.05, 0.25 * fade))
+			draw_circle(Vector2.ZERO, burn_reach * 0.6, Color(1.0, 0.55, 0.15, 0.4 * fade))
 			draw_circle(Vector2.ZERO, 9.0, Color(0.2, 0.12, 0.1, 0.9 * fade))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			var flick: float = float(crater["seed"]) + float(crater["left"]) * 9.0
@@ -166,7 +241,7 @@ class Marks extends Node2D:
 			var at: Vector2 = fall["at"]
 			draw_set_transform(at, 0.0, Vector2(1.0, 0.5))
 			draw_circle(Vector2.ZERO, 8.0 + 14.0 * done, Color(0.0, 0.0, 0.0, 0.2 + 0.25 * done))
-			draw_arc(Vector2.ZERO, BLAST_REACH, 0.0, TAU, 40, Color(FIRE, 0.4 + 0.4 * done), 2.0)
+			draw_arc(Vector2.ZERO, float(run.call("blast_reach")), 0.0, TAU, 40, Color(FIRE, 0.4 + 0.4 * done), 2.0)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -188,8 +263,17 @@ var door_most: float = DOOR_MOST
 var portal: int = PORTAL_MOST
 var banner: String = ""
 var banner_left: float = 0.0
-var god: bool = false
-var god_used: bool = false
+# The run's upgrades (id -> level), and the ones offered while picking.
+var levels: Dictionary = {}
+var offers: Array = []
+var rerolls: int = REROLLS_FIRST
+# Picks still owed for the waves just held (more than one after calling early).
+var picks_left: int = 0
+var called_early: int = 0
+# Where the next group comes in (along the top), for the arrow.
+var next_x: float = 0.0
+# The gate struck this frame: it shakes and flashes.
+var gate_struck: bool = false
 var falling: Array = []
 var craters: Array = []
 var casts: int = 0
@@ -212,6 +296,7 @@ var _to_spawn: int = 0
 var _group_in: float = 0.0
 var _cast_in: float = 0.0
 var _rocks: Dictionary = {}
+var _comet_count: int = 0
 
 
 func _ready() -> void:
@@ -221,6 +306,7 @@ func _ready() -> void:
 		_rng.randomize()
 	_fx_rng.randomize()
 	_build()
+	next_x = _group_x()
 
 
 func _build() -> void:
@@ -306,8 +392,10 @@ func _lay_walls() -> void:
 	caps.region = CAP_REGION
 	for row in 2:
 		for side in [-1.0, 1.0]:
-			# From the gatehouse's pillar out, under the side wall at the end.
-			var from_gate: float = GATE_HALF + 18.0
+			# From the gate's posts out, over the pillars' tops (the owner: "fix
+			# the missing squares by the gate" - from the pillars out, a
+			# notch was left above each), under the side wall at the end.
+			var from_gate: float = GATE_HALF
 			while from_gate < PATH_HALF + 4.5:
 				var cap := Sprite2D.new()
 				cap.texture = caps
@@ -420,9 +508,13 @@ func step(delta: float) -> void:
 	sky_marks.queue_redraw()
 	if state == State.LOST:
 		return
+	if state == State.PICK:
+		# THE NEXT WAVE WAITS, and the clock with it, until she picks.
+		_falls(delta)
+		_burn(delta)
+		_move_monsters(delta)
+		return
 	run_seconds += delta
-	if god:
-		god_used = true
 	banner_left = maxf(0.0, banner_left - delta)
 	if banner_left <= 0.0:
 		banner = ""
@@ -467,12 +559,15 @@ func _walk(delta: float) -> void:
 func _cast(delta: float) -> void:
 	_cast_in = maxf(0.0, _cast_in - delta)
 	if casting and _cast_in <= 0.0 and (state == State.WAVE or state == State.BETWEEN):
-		_cast_in = CAST_GAP
+		_cast_in = cast_gap()
 		drop_meteor(aim)
+		if level("double") > 0 and _rng.randf() < double_chance():
+			drop_meteor(aim + Vector2(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)) * DOUBLE_SPREAD)
 
 
-func drop_meteor(at: Vector2) -> void:
-	"""A meteor called down at `at` (held to the field)."""
+func drop_meteor(at: Vector2, small: bool = false) -> void:
+	"""A meteor called down at `at` (held to the field); `small` is a piece of
+	a Meteor shower - half as hard, never critical, never a comet."""
 	var spot := Vector2(clampf(at.x, -PATH_HALF + 6.0, PATH_HALF - 6.0), clampf(at.y, -HALF.y + 6.0, HALF.y - 6.0))
 	var rock := Sprite2D.new()
 	rock.texture = load(METEOR_TEXTURE) as Texture2D
@@ -480,12 +575,23 @@ func drop_meteor(at: Vector2) -> void:
 	rock.z_index = SKY_Z + 1
 	rock.position = spot + SKY
 	add_child(rock)
+	if small:
+		rock.scale = Vector2(0.6, 0.6)
+		falling.append({"at": spot, "left": FALL_SECONDS * 0.6, "rock": rock, "crit": false, "small": true})
+		return
 	casts += 1
-	var crit: bool = _rng.randf() < CRIT_CHANCE
+	var comet: bool = false
+	if level("comet") > 0:
+		_comet_count += 1
+		comet = _comet_count % COMET_EVERY == 0
+	var crit: bool = _rng.randf() < crit_chance()
 	if crit:
 		crits += 1
 		rock.modulate = Color(1.6, 0.8, 0.6)
-	falling.append({"at": spot, "left": FALL_SECONDS, "rock": rock, "crit": crit})
+	if comet:
+		rock.scale = Vector2(1.8, 1.8)
+		rock.modulate = Color(1.4, 1.1, 1.6)
+	falling.append({"at": spot, "left": FALL_SECONDS, "rock": rock, "crit": crit, "comet": comet})
 
 
 func _falls(delta: float) -> void:
@@ -509,21 +615,44 @@ func _land(fall: Dictionary) -> void:
 	var rock: Sprite2D = fall["rock"]
 	if is_instance_valid(rock):
 		rock.queue_free()
-	var damage: float = BLAST_DAMAGE * (CRIT_MULT if bool(fall["crit"]) else 1.0)
+	var damage: float = blast_damage() * (CRIT_MULT if bool(fall["crit"]) else 1.0)
+	var reach: float = blast_reach()
+	if bool(fall.get("comet", false)):
+		damage *= COMET_HIT
+		reach *= COMET_REACH
+	if bool(fall.get("small", false)):
+		damage *= SHOWER_SHARE
+		reach *= SHOWER_SHARE
+	if level("pull") > 0 and _rng.randf() < pull_chance():
+		_pull(at, reach * PULL_REACH)
 	for node in monsters.get_children():
 		var m := node as Monster
-		if m != null and m.dying < 0.0 and m.position.distance_to(at) <= BLAST_REACH + m.radius:
+		if m != null and m.dying < 0.0 and m.position.distance_to(at) <= reach + m.radius:
 			hurt(m, damage)
-	craters.append({"at": at, "left": BURN_SECONDS, "seed": _fx_rng.randf() * 100.0})
+	craters.append({"at": at, "left": burn_seconds(), "seed": _fx_rng.randf() * 100.0})
+	if bool(fall["crit"]) and level("shower") > 0:
+		for i in SHOWER_PIECES:
+			var turn: float = TAU * float(i) / float(SHOWER_PIECES) + _fx_rng.randf() * 0.6
+			drop_meteor(at + Vector2(cos(turn), sin(turn) * 0.6) * SHOWER_SPREAD, true)
 	var burst = RunScript.Burst.new()
 	burst.position = at
 	burst.colour = Color(1.0, 0.4, 0.2) if bool(fall["crit"]) else FIRE
-	burst.reach = BLAST_REACH * (1.3 if bool(fall["crit"]) else 1.0)
+	burst.reach = reach * (1.3 if bool(fall["crit"]) else 1.0)
 	burst.sparks = 12
 	burst.life = 0.35
 	burst.most = 0.35
 	burst.z_index = SKY_Z - 1
 	add_child(burst)
+
+
+func _pull(at: Vector2, reach: float) -> void:
+	"""THE PULL: what is outside the gate within `reach` is dragged most of
+	the way in, so the blast that follows catches the pack."""
+	for node in monsters.get_children():
+		var m := node as Monster
+		if m != null and m.dying < 0.0 and not m.through and m.position.distance_to(at) <= reach:
+			m.position = m.position.lerp(at, PULL_SHARE)
+			m.at_gate = false
 
 
 func _burn(delta: float) -> void:
@@ -536,8 +665,8 @@ func _burn(delta: float) -> void:
 		var at: Vector2 = crater["at"]
 		for node in monsters.get_children():
 			var m := node as Monster
-			if m != null and m.dying < 0.0 and m.position.distance_to(at) <= BURN_REACH + m.radius:
-				hurt(m, BURN_DPS * delta)
+			if m != null and m.dying < 0.0 and m.position.distance_to(at) <= burn_reach() + m.radius:
+				hurt(m, burn_dps() * delta)
 	craters = still
 
 
@@ -659,10 +788,13 @@ func _move_monsters(delta: float) -> void:
 			m.position += to_goal.limit_length(m.speed * delta)
 		if m.at_gate:
 			hitters += 1
-	if door > 0.0 and hitters > 0 and not god:
+	gate_struck = door > 0.0 and hitters > 0
+	if gate_struck:
 		door = maxf(0.0, door - DOOR_HIT * wave_hit(wave) * mini(hitters, GATE_HITTERS) * delta)
 		if door <= 0.0:
+			gate_struck = false
 			_break_gate()
+	_shake_gate()
 
 
 func _break_gate() -> void:
@@ -674,9 +806,26 @@ func _break_gate() -> void:
 	banner_left = BANNER_SECONDS
 
 
-func _mend_gate() -> void:
-	"""After a wave: mended DOOR_MEND of its most - a broken one put back."""
-	door = minf(door_most, door + door_most * DOOR_MEND)
+func _shake_gate() -> void:
+	"""Struck, the gate shakes and flashes; still, it stands as built."""
+	var gate: Node2D = world.get_node_or_null("gate")
+	if gate == null:
+		return
+	gate.position.x = sin(run_seconds * 47.0) * 1.5 if gate_struck else 0.0
+	var flash: float = maxf(0.0, sin(run_seconds * 14.0)) * 0.7 if gate_struck else 0.0
+	for part in door_parts:
+		if part == door_planks and door <= 0.0:
+			continue
+		(part as Sprite2D).modulate = Color(1.0 + flash, 1.0 - flash * 0.3, 1.0 - flash * 0.4, DOOR_SEE)
+
+
+func gate_low() -> bool:
+	return door > 0.0 and door < door_most * GATE_LOW
+
+
+func _mend_gate(share: float) -> void:
+	"""The Gate patch: mended `share` of its most - a broken one rebuilt."""
+	door = minf(door_most, door + door_most * share)
 	door_planks.rotation = 0.0
 	door_planks.position = Vector2(0.0, -28.0)
 	door_planks.modulate = Color(1.0, 1.0, 1.0, DOOR_SEE)
@@ -687,8 +836,7 @@ func gate_broken() -> bool:
 
 
 func _into_portal(m: Monster) -> void:
-	if not god:
-		portal = maxi(0, portal - m.drain)
+	portal = maxi(0, portal - m.drain)
 	_gone(m)
 	if portal <= 0 and state != State.LOST:
 		state = State.LOST
@@ -720,6 +868,34 @@ func _waves(delta: float) -> void:
 				_end_wave()
 
 
+func _group_x() -> float:
+	return _rng.randf_range(-PATH_HALF + 60.0, PATH_HALF - 60.0)
+
+
+func arrow_showing() -> bool:
+	"""The arrow over where the next group comes in: before a wave, and while
+	more of one are still to come."""
+	return state == State.READY or state == State.BETWEEN or state == State.PICK \
+		or (state == State.WAVE and _to_spawn > 0)
+
+
+func can_call_early() -> bool:
+	"""Once a wave has all come in and some of it is still about."""
+	return state == State.WAVE and _to_spawn == 0 and living() > 0
+
+
+func call_early() -> bool:
+	"""The next wave now, on top of what is left of this one: a reroll for it,
+	and its pick still comes when the field is clear."""
+	if not can_call_early():
+		return false
+	called_early += 1
+	rerolls += 1
+	_start_wave()
+	banner = "Wave %d called early - a reroll for it" % wave
+	return true
+
+
 func _start_wave() -> void:
 	wave += 1
 	_to_spawn = wave_count(wave)
@@ -732,7 +908,8 @@ func _start_wave() -> void:
 func _spawn_group() -> void:
 	"""One group of the wave flooding in from the top: bigger each wave."""
 	var size: int = mini(_to_spawn, GROUP_FIRST + wave)
-	var centre: float = _rng.randf_range(-PATH_HALF + 60.0, PATH_HALF - 60.0)
+	var centre: float = next_x
+	next_x = _group_x()
 	for i in size:
 		var kind: String = "sprite" if _rng.randf() < 0.5 else "slime"
 		var at := Vector2(clampf(centre + _rng.randf_range(-70.0, 70.0), -PATH_HALF + 12.0, PATH_HALF - 12.0),
@@ -742,12 +919,156 @@ func _spawn_group() -> void:
 
 
 func _end_wave() -> void:
+	var before: int = waves_held
 	waves_held = wave
-	state = State.BETWEEN
-	_left = BETWEEN_SECONDS
-	_mend_gate()
-	banner = "Wave %d held" % wave
+	picks_left = picks_due(before, waves_held)
+	offers = roll_offers() if picks_left > 0 else []
+	if offers.is_empty():
+		picks_left = 0
+		state = State.BETWEEN
+		_left = BETWEEN_SECONDS
+		var next_pick: int = (floori(float(waves_held) / PICK_EVERY) + 1) * PICK_EVERY
+		banner = "Wave %d held - an upgrade after wave %d" % [wave, next_pick]
+		banner_left = BANNER_SECONDS
+	else:
+		state = State.PICK
+		banner = ""
+
+
+# =============================================================================
+# THE PICK: one upgrade of three after each wave, for the rest of the run
+# =============================================================================
+
+static func picks_due(held_before: int, held_now: int) -> int:
+	"""A pick for every PICK_EVERY-th wave passed between the two."""
+	return floori(float(held_now) / PICK_EVERY) - floori(float(held_before) / PICK_EVERY)
+
+
+func level(id: String) -> int:
+	return int(levels.get(id, 0))
+
+
+func cast_gap() -> float:
+	return CAST_GAP / pow(CAST_STEP, level("cast"))
+
+
+func blast_reach() -> float:
+	return BLAST_REACH * (1.0 + BLAST_STEP * level("blast"))
+
+
+func blast_damage() -> float:
+	return BLAST_DAMAGE * (1.0 + POWER_STEP * level("power"))
+
+
+func burn_seconds() -> float:
+	return BURN_SECONDS * (1.0 + BURN_STEP * level("burn"))
+
+
+func burn_reach() -> float:
+	return BURN_REACH * (FIRESTORM_MULT if level("firestorm") > 0 else 1.0)
+
+
+func burn_dps() -> float:
+	return BURN_DPS * (FIRESTORM_MULT if level("firestorm") > 0 else 1.0)
+
+
+func most_of(id: String) -> int:
+	return 1 if EVOLUTIONS.has(id) or id == "patch" else UPGRADE_MOST
+
+
+func evolution_ready(id: String) -> bool:
+	"""Its two upgrades both at their most, and not yet taken."""
+	if level(id) > 0:
+		return false
+	for part in UPGRADES[id]["evolves"]:
+		if level(str(part)) < UPGRADE_MOST:
+			return false
+	return true
+
+
+func crit_chance() -> float:
+	return CRIT_CHANCE + CRIT_STEP * level("crit")
+
+
+func double_chance() -> float:
+	return DOUBLE_STEP * level("double")
+
+
+func pull_chance() -> float:
+	return PULL_STEP * level("pull")
+
+
+func roll_offers() -> Array:
+	"""Up to PICK_COUNT different cards: an evolution ready is always among
+	them, and the patch while the gate is broken; the rest drawn at random
+	from the upgrades short of their most (the patch while the gate is
+	short of its own)."""
+	var sure: Array = []
+	for id in EVOLUTIONS:
+		if evolution_ready(id):
+			sure.append(id)
+	if door <= 0.0:
+		sure.append("patch")
+	var pool: Array = []
+	for id in UPGRADE_ORDER:
+		if sure.has(id):
+			continue
+		if id == "patch":
+			if door < door_most:
+				pool.append(id)
+		elif level(id) < UPGRADE_MOST:
+			pool.append(id)
+	for i in range(pool.size() - 1, 0, -1):
+		var j: int = _rng.randi_range(0, i)
+		var keep = pool[i]
+		pool[i] = pool[j]
+		pool[j] = keep
+	return (sure + pool).slice(0, PICK_COUNT)
+
+
+func reroll() -> bool:
+	"""Three new cards, while there is a reroll left."""
+	if state != State.PICK or rerolls <= 0:
+		return false
+	rerolls -= 1
+	offers = roll_offers()
+	return true
+
+
+func offer_level_text(id: String) -> String:
+	"""What a card says under its name: how many times it has been taken this
+	run (the owner: "we only want to see how many times been upgraded"), or
+	for the patch where the gate stands."""
+	if id == "patch":
+		return "Gate broken" if door <= 0.0 else "Gate %d%% now" % roundi(door / maxf(1.0, door_most) * 100.0)
+	if EVOLUTIONS.has(id):
+		return "Evolution"
+	return "Upgraded %d of %d" % [level(id), UPGRADE_MOST]
+
+
+func pick(index: int) -> bool:
+	"""Take offer `index`: its level up (or the gate patched), and the next
+	wave comes AFTER_PICK_SECONDS later."""
+	if state != State.PICK or index < 0 or index >= offers.size():
+		return false
+	var id: String = str(offers[index])
+	if id == "patch":
+		_mend_gate(PATCH_SHARE)
+		banner = "The gate is patched"
+	elif EVOLUTIONS.has(id):
+		levels[id] = 1
+		banner = "%s!" % str(UPGRADES[id]["name"])
+	else:
+		levels[id] = level(id) + 1
+		banner = "%s %d" % [str(UPGRADES[id]["name"]), level(id)]
 	banner_left = BANNER_SECONDS
+	picks_left = maxi(0, picks_left - 1)
+	offers = roll_offers() if picks_left > 0 else []
+	if offers.is_empty():
+		picks_left = 0
+		state = State.BETWEEN
+		_left = AFTER_PICK_SECONDS
+	return true
 
 
 func time_text() -> String:
