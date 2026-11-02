@@ -3163,6 +3163,37 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The minigames on a phone: a stick of their own (0.110.1)
+
+The owner, on a phone: "no joystick on mobil believe we only need left
+joystick", then "mobile minigames". A minigame's screen is a CanvasLayer
+over the HUD with a black back that stops every touch, so the HUD's pad
+never heard a thumb: nothing walked, and the Healer's Run's meteors were
+Space alone.
+
+- **touchpad.gd** `minigame_stick()` makes a `Stick` (the HUD's own, the
+  coin knob), and `lay_minigame_stick(stick, on, zone, window, view)`
+  shows it while touch is on, sized for a thumb as the pad's is
+  (`thumb_scale()`); off, it lets go. It writes `TouchControls.stick`,
+  which TouchControls turns into the move keys each physics tick - the
+  keys both minigames already read. `drawn_rect(picture, view)` is where a
+  minigame's picture is drawn (the Stand's `drawn_rect()` asks it).
+- **The Mage's Stand**: the stick's zone is the dark left of the field,
+  under the strip (`stick_zone()`), so a thumb never covers the field. A
+  finger anywhere else on the field aims and casts while down
+  (`_aim_finger`, `_aim_screen`, in `_input`, not consumed) - not on the
+  stick, a button or a panel (`_on_controls()`). The mouse is not read
+  while touch is on: one finger is a mouse to Godot, and the stick's own
+  thumb would cast.
+- **The Healer's Run**: the stick in the left share of the picture under
+  its top fifth (`_lay_stick()`, the pad's own `STICK_ZONE_*`), and the
+  meteors at the bottom right are tapped (`_on_meteors_touched()`; a click
+  too), "Meteors - tap" while touch is on.
+- `_test_the_mages_stand()`: the Stand's stick, aiming and casting with a
+  finger, a thumb on the stick casting nothing, the stick walking her; the
+  Healer's Run's stick and tappable meteors. Watched fail: every touch
+  aiming, the meteors not tappable.
+
 ### The Mage's Stand: the wall breaks anywhere, and bombers (0.110.0)
 
 The owner, after playing 0.109.0: "its not super fun enemies just run in a

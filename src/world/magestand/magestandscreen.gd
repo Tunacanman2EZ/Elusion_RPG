@@ -36,12 +36,20 @@
 # button calls the next one early (call_early()). Under GATE_LOW the gate's
 # bar pulses red.
 #
+# ON A PHONE (0.110.1; the owner: "no joystick on mobil believe we only need
+# left joystick"): a stick of its own (touchpad.gd minigame_stick()) in the
+# dark left of the field, below the strip, walks her; any other finger on the
+# field aims, and casts while it is down (_aim_finger) - the mouse is not
+# read while touch is on (one finger is a mouse to Godot, so the stick's own
+# thumb would cast).
+#
 # No god mode here (the owner: "we also do not need godmode on this mode").
 #
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
 const StandScript := preload("res://src/world/magestand/magestand.gd")
+const Pad := preload("res://src/ui/touchpad.gd")
 const LAYER := 90
 const COLOUR := Color(1.0, 0.86, 0.45)
 const COLOUR_HINT := Color(0.82, 0.78, 0.7)
@@ -87,6 +95,10 @@ var pick_title: Label = null
 var cards: Array = []
 var reroll_button: Button = null
 var early_button: Button = null
+var stick: Control = null
+# The finger aiming on a touch screen, and where it is.
+var _aim_finger: int = -1
+var _aim_screen: Vector2 = Vector2.ZERO
 var hud: Node = null
 var seed_value: int = 0
 # The suite's doors: the mouse, and whether its button is held.
@@ -142,6 +154,8 @@ func _build_words() -> void:
 	frame.name = "frame"
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame)
+	stick = Pad.minigame_stick()
+	add_child(stick)
 	strip = Panel.new()
 	strip.name = "strip"
 	var strip_style := StyleBoxFlat.new()
@@ -427,10 +441,28 @@ func call_early() -> void:
 func drawn_rect() -> Rect2:
 	"""Where the picture is drawn in the window: it keeps its shape, centred,
 	scaled by the smaller fit."""
-	var box: Rect2 = picture.get_global_rect()
-	var fit: float = minf(box.size.x / StandScript.VIEW.x, box.size.y / StandScript.VIEW.y)
-	var drawn: Vector2 = StandScript.VIEW * maxf(fit, 0.0)
-	return Rect2(box.position + (box.size - drawn) / 2.0, drawn)
+	return Pad.drawn_rect(picture, StandScript.VIEW)
+
+
+func stick_zone() -> Rect2:
+	"""Where a thumb lands for the stick: the dark left of the field, from the
+	window's edge to the field's, under the strip."""
+	var drawn: Rect2 = drawn_rect()
+	var fit: float = drawn.size.x / StandScript.VIEW.x
+	var field_left: float = drawn.position.x + (StandScript.HALF.x - StandScript.PATH_HALF - 9.0) * fit
+	var top: float = drawn.position.y + STRIP_HIGH + 44.0
+	return Rect2(Vector2(0.0, top), Vector2(maxf(0.0, field_left), drawn.end.y - top))
+
+
+func _on_controls(at: Vector2) -> bool:
+	"""Is a touch at `at` on the stick's zone or on a button or panel, not the
+	field?"""
+	if stick.visible and stick_zone().has_point(at):
+		return true
+	for control in [leave_button, early_button, start_panel, pick_panel, results]:
+		if control != null and (control as Control).is_visible_in_tree() and (control as Control).get_global_rect().has_point(at):
+			return true
+	return false
 
 
 func _fit_frame() -> void:
@@ -462,11 +494,18 @@ func _mouse_held() -> bool:
 
 func _process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
+	var touch: bool = TouchControls.active
+	if not touch:
+		_aim_finger = -1
 	if run != null and is_instance_valid(run):
-		run.set("aim", world_from_screen(mouse_at.call()))
-		run.set("casting", bool(mouse_held.call()) and not start_panel.visible and not results.visible
+		var held: bool = _aim_finger >= 0 if touch else bool(mouse_held.call())
+		if not touch or _aim_finger >= 0:
+			run.set("aim", world_from_screen(_aim_screen if touch else mouse_at.call()))
+		run.set("casting", held and not start_panel.visible and not results.visible
 			and not pick_panel.visible and int(run.get("state")) != StandScript.State.PICK)
 	_fit_frame()
+	Pad.lay_minigame_stick(stick, touch and not start_panel.visible and not results.visible, stick_zone(),
+		get_window() if is_inside_tree() else null, get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO)
 	paint()
 
 
@@ -554,6 +593,22 @@ func close() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# A FINGER ON THE FIELD AIMS (on a touch screen): the first one down that
+	# is not on the stick or a button, followed while it moves. Not consumed:
+	# the stick and the buttons take their touches as ever.
+	var touch := event as InputEventScreenTouch
+	if touch != null:
+		if touch.pressed and _aim_finger < 0 and not _on_controls(touch.position):
+			_aim_finger = touch.index
+			_aim_screen = touch.position
+		elif not touch.pressed and touch.index == _aim_finger:
+			_aim_finger = -1
+		return
+	var drag := event as InputEventScreenDrag
+	if drag != null:
+		if drag.index == _aim_finger:
+			_aim_screen = drag.position
+		return
 	# THE GAME BEHIND IT HEARS NO KEYS while this is up. Escape is Leave;
 	# Space starts.
 	if event is InputEventKey:

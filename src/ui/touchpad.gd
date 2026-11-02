@@ -346,6 +346,46 @@ static func caption_box(box: Rect2, words: float) -> Rect2:
 	return Rect2(box.position.x, box.end.y, box.size.x, words)
 
 
+# A MINIGAME'S OWN STICK (0.110.1). The owner, on a phone: "no joystick on
+# mobil believe we only need left joystick". A minigame's screen is drawn over
+# the HUD, and the black behind it stops every touch reaching the HUD's pad -
+# so on a phone nothing walked. Each minigame screen makes a Stick of its own
+# (minigame_stick()) and lays it each frame (lay_minigame_stick()): shown
+# while touch is on, in the zone the screen gives it, sized for a thumb as the
+# HUD's is. It writes TouchControls.stick, which TouchControls turns into the
+# move keys each physics tick - the keys the minigames already read.
+static func minigame_stick() -> Stick:
+	var made := Stick.new()
+	made.name = "stick"
+	made.visible = false
+	return made
+
+
+static func lay_minigame_stick(one: Stick, on: bool, zone: Rect2, window: Window, view: Vector2) -> void:
+	"""Shown while touch is `on`, its thumb landing anywhere in `zone`
+	(canvas units of a `view`-sized canvas); off, any thumb on it let go."""
+	one.visible = on and zone.size.x > 0.0 and zone.size.y > 0.0
+	if not one.visible:
+		one.let_go()
+		return
+	var f: float = 1.0
+	var per_unit: float = 1.0
+	if window != null and view.x > 0.0 and view.y > 0.0:
+		var content: Vector2 = Vector2(window.content_scale_size) if window.content_scale_size != Vector2i.ZERO else view
+		f = thumb_scale(Vector2(window.size), content, DisplayServer.screen_get_scale())
+		per_unit = minf(float(window.size.x) / view.x, float(window.size.y) / view.y)
+	one.place(zone, Vector2(zone.size.x * 0.5, zone.size.y * 0.65), STICK_RADIUS * f, KNOB_RADIUS * f, 0.0, per_unit)
+
+
+static func drawn_rect(picture: Control, view: Vector2) -> Rect2:
+	"""Where a minigame's picture of a `view`-sized world is drawn: kept to its
+	shape, centred, scaled by the smaller fit."""
+	var box: Rect2 = picture.get_global_rect()
+	var fit: float = minf(box.size.x / view.x, box.size.y / view.y) if view.x > 0.0 and view.y > 0.0 else 0.0
+	var drawn: Vector2 = view * maxf(fit, 0.0)
+	return Rect2(box.position + (box.size - drawn) / 2.0, drawn)
+
+
 static func art_pixel(side: float, art: int, screen_per_unit: float) -> float:
 	"""The game units to one art pixel, for a part `side` units across drawn
 	`art` pixels across, held to WHOLE SCREEN PIXELS - a pixel art edge that

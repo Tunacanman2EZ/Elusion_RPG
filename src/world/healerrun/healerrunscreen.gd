@@ -68,6 +68,7 @@
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+const Pad := preload("res://src/ui/touchpad.gd")
 const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
 const LAYER := 90
 const COLOUR := Color(1.0, 0.86, 0.45)
@@ -112,6 +113,9 @@ var board: RichTextLabel = null
 # THE METEORS ON HAND, bottom right (0.106.0): one picture a meteor held, and
 # the next one filling as it recharges (RunScript.METEORS_BASE, METEOR_RECHARGE).
 var meteor_box: VBoxContainer = null
+# On a phone: the move stick (touchpad.gd, a minigame's own), and the meteors
+# are tapped (0.110.1).
+var stick: Control = null
 var meteor_slots: Array = []
 var tune_button: Button = null
 var tune_panel: PanelContainer = null
@@ -195,6 +199,10 @@ func _ready() -> void:
 	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(flash)
+	# THE STICK ON A PHONE (0.110.1): under the words and buttons, so they
+	# take a touch first.
+	stick = Pad.minigame_stick()
+	add_child(stick)
 	_build_words()
 	_hold_the_character()
 	start()
@@ -348,7 +356,9 @@ func _build_meteors() -> void:
 	meteor_box = VBoxContainer.new()
 	meteor_box.name = "meteorbox"
 	meteor_box.alignment = BoxContainer.ALIGNMENT_END
-	meteor_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# A TAP ON THE METEORS CALLS ONE (0.110.1): a phone has no Space.
+	meteor_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	meteor_box.gui_input.connect(_on_meteors_touched)
 	var row := HBoxContainer.new()
 	row.name = "meteorrow"
 	row.alignment = BoxContainer.ALIGNMENT_END
@@ -387,9 +397,24 @@ func _build_meteors() -> void:
 	add_child(meteor_box)
 
 
+func _on_meteors_touched(event: InputEvent) -> void:
+	var touch := event as InputEventScreenTouch
+	var click := event as InputEventMouseButton
+	var pressed: bool = (touch != null and touch.pressed) \
+		or (click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT)
+	if not pressed:
+		return
+	meteor_box.accept_event()
+	if run != null and is_instance_valid(run) and not tutorial.visible:
+		run.call("fire_meteor")
+
+
 func paint_meteors() -> void:
 	"""Each slot: held (full), recharging (filling), to come back (dark) or
 	not there at all (past METEORS_BASE, unless looted)."""
+	var key := meteor_box.get_node_or_null("meteorkey") as Label
+	if key != null:
+		key.text = "Meteors - tap" if TouchControls.active else "Meteors - Space"
 	var held: int = int(run.get("meteors"))
 	var charge: float = float(run.get("meteor_charge"))
 	for i in meteor_slots.size():
@@ -691,7 +716,17 @@ func _go() -> void:
 func _process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
 	flash.color.a = maxf(0.0, flash.color.a - delta / HIT_FLASH * 0.35)
+	_lay_stick()
 	paint()
+
+
+func _lay_stick() -> void:
+	"""The stick: the left share of the picture, under its top fifth."""
+	var drawn: Rect2 = Pad.drawn_rect(picture, RunScript.VIEW)
+	var zone := Rect2(Vector2(0.0, drawn.position.y + drawn.size.y * Pad.STICK_ZONE_TOP),
+		Vector2(drawn.position.x + drawn.size.x * Pad.STICK_ZONE_WIDTH, drawn.size.y * (1.0 - Pad.STICK_ZONE_TOP)))
+	Pad.lay_minigame_stick(stick, TouchControls.active, zone, get_window() if is_inside_tree() else null,
+		get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO)
 
 
 func paint() -> void:

@@ -3421,6 +3421,52 @@ func _test_the_mages_stand() -> void:
 		and absf(strip_box.size.x - drawn.size.x) < 1.0 and drawn.grow(1.0).encloses(leave_box)
 		and drawn.grow(1.0).encloses(slain_box) and screen.get_node_or_null("god") == null,
 		[drawn, strip_box, leave_box, slain_box])
+	# ON A PHONE (0.110.1, "no joystick on mobil believe we only need left
+	# joystick"): a stick of its own in the dark left of the field; a finger
+	# on the field aims and casts, one on the stick does not; the stick walks.
+	TouchControls.set_active(true)
+	screen.call("_process", 0.0)
+	var phone_stick: Control = screen.get("stick")
+	var zone: Rect2 = screen.stick_zone()
+	var stick_up: bool = phone_stick.visible and zone.size.x > 0.0 and zone.size.y > 0.0
+	var field_point: Vector2 = drawn.get_center() + Vector2(0.0, -drawn.size.y * 0.2)
+	var finger := InputEventScreenTouch.new()
+	finger.index = 1
+	finger.position = field_point
+	finger.pressed = true
+	screen.call("_input", finger)
+	screen.call("_process", 0.0)
+	var aims_there: bool = bool(srun.get("casting")) \
+		and (srun.get("aim") as Vector2).distance_to(screen.world_from_screen(field_point)) < 1.0
+	var lifted := InputEventScreenTouch.new()
+	lifted.index = 1
+	lifted.position = field_point
+	lifted.pressed = false
+	screen.call("_input", lifted)
+	var thumb := InputEventScreenTouch.new()
+	thumb.index = 0
+	thumb.position = zone.get_center()
+	thumb.pressed = true
+	screen.call("_input", thumb)
+	screen.call("_process", 0.0)
+	var thumb_no_cast: bool = not bool(srun.get("casting")) and int(screen.get("_aim_finger")) == -1
+	var on_stick := InputEventScreenTouch.new()
+	on_stick.index = 0
+	on_stick.position = Vector2(40.0, 60.0)
+	on_stick.pressed = true
+	phone_stick.call("_gui_input", on_stick)
+	var slide := InputEventScreenDrag.new()
+	slide.index = 0
+	slide.position = Vector2(140.0, 60.0)
+	phone_stick.call("_gui_input", slide)
+	TouchControls.call("_physics_process", 1.0 / 60.0)
+	var walks: bool = Input.is_action_pressed("move_right") and float(srun.call("_read_steer")) > 0.0
+	phone_stick.call("let_go")
+	TouchControls.set_active(false)
+	screen.call("_process", 0.0)
+	check("  on a phone: a stick of its own left of the field walks her; a finger on the field aims and casts, a thumb on the stick does not",
+		stick_up and aims_there and thumb_no_cast and walks and not phone_stick.visible and not Input.is_action_pressed("move_right"),
+		[stick_up, aims_there, thumb_no_cast, walks, zone])
 	# The pick on screen: the cards show what is offered; 2 takes the second.
 	srun.set("offers", ["blast", "patch", "crit"])
 	srun.set("door", float(srun.get("door_most")) * 0.5)
@@ -3479,6 +3525,26 @@ func _test_the_mages_stand() -> void:
 	check("on the Minigames card for the owner alone; Go from town opens it, and asks the server nothing",
 		hidden and shown and went and card.stand_go.disabled and str(card.stand_status.text) == "Play it from town.")
 	card_hud.queue_free()
+	await get_tree().process_frame
+	# THE HEALER'S RUN ON A PHONE too (0.110.1): its stick, and the meteors tapped.
+	var hr_screen: CanvasLayer = (load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).new()
+	hr_screen.set("party_rooms", func() -> bool: return false)
+	hr_screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(hr_screen)
+	await get_tree().process_frame
+	TouchControls.set_active(true)
+	hr_screen.call("_process", 0.0)
+	var hr_stick: Control = hr_screen.get("stick")
+	var hr_box: Control = hr_screen.get("meteor_box")
+	var hr_key: Label = hr_box.get_node("meteorkey")
+	var tapped_words: String = hr_key.text
+	var hr_stick_up: bool = hr_stick != null and hr_stick.visible and hr_stick.get_global_rect().size.x > 0.0
+	TouchControls.set_active(false)
+	hr_screen.call("_process", 0.0)
+	check("  and the Healer's Run: a stick of its own on a phone, and its meteors tapped (\"%s\")" % tapped_words,
+		hr_stick_up and not hr_stick.visible and tapped_words == "Meteors - tap" and hr_key.text == "Meteors - Space"
+		and hr_box.mouse_filter == Control.MOUSE_FILTER_STOP and hr_box.gui_input.is_connected(Callable(hr_screen, "_on_meteors_touched")))
+	hr_screen.call("close")
 	await get_tree().process_frame
 	print("  (the mage's stand: done)")
 
