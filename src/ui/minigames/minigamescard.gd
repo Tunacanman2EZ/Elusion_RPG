@@ -30,6 +30,10 @@
 # slot) and opens the run with its id and what it pays; the listing says how
 # many runs are left today, or when the next one is.
 #
+# THE MAGE'S STAND (0.107.0, magestand.gd) is the third, the owner's alone
+# while it is built (`shows_mage_stand`): Go, in town, opens it - it pays
+# nothing, so nothing is asked of the server.
+#
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
 # asking (`open_lobby`): the run of the day is asked for when everyone is
@@ -55,6 +59,7 @@ const UNREACHABLE := "Could not reach the server - try again."
 const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 20,000 gold a run, three runs a day."
 const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
+const STAND_BLURB := "The mage on the wall, raining meteors on the horde at the gate. Yours only while it is built."
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
 # area this game is in.
@@ -70,6 +75,9 @@ var shows_healer_run: Callable = Callable(self, "_shows_healer_run")
 var open_run: Callable = Callable(self, "_open_run")
 var healer_party: Callable = Callable(self, "_healer_party")
 var open_lobby: Callable = Callable(self, "_open_lobby")
+# The Mage's Stand's doors: who sees it (the owner, while it is built) and Go.
+var shows_mage_stand: Callable = Callable(self, "_shows_mage_stand")
+var open_stand: Callable = Callable(self, "_open_stand")
 
 var hud: Node = null
 var title: Label = null
@@ -81,6 +89,9 @@ var close_button: Button = null
 var healer_box: VBoxContainer = null
 var healer_status: Label = null
 var healer_go: Button = null
+var stand_box: VBoxContainer = null
+var stand_status: Label = null
+var stand_go: Button = null
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -175,6 +186,30 @@ func _init() -> void:
 	healer_go.custom_minimum_size = Vector2(72, 28)
 	healer_go.pressed.connect(_on_healer_go)
 	healer_row.add_child(healer_go)
+	stand_box = VBoxContainer.new()
+	stand_box.name = "magestand"
+	stand_box.add_theme_constant_override("separation", 4)
+	column.add_child(stand_box)
+	stand_box.add_child(HSeparator.new())
+	stand_box.add_child(_label("standgame", "The Mage's Stand", FONT_SIZE, COLOUR))
+	var stand_blurb: Label = _label("standblurb", STAND_BLURB, 12, COLOUR_HINT)
+	stand_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stand_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
+	stand_box.add_child(stand_blurb)
+	var stand_row := HBoxContainer.new()
+	stand_row.add_theme_constant_override("separation", 10)
+	stand_box.add_child(stand_row)
+	stand_status = _label("standstatus", "", FONT_SIZE, COLOUR_HINT)
+	stand_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stand_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
+	stand_row.add_child(stand_status)
+	stand_go = Button.new()
+	stand_go.name = "standgo"
+	stand_go.text = "Go"
+	stand_go.focus_mode = Control.FOCUS_NONE
+	stand_go.custom_minimum_size = Vector2(72, 28)
+	stand_go.pressed.connect(_on_stand_go)
+	stand_row.add_child(stand_go)
 
 
 func _label(id: String, text: String, size: int, colour: Color) -> Label:
@@ -277,6 +312,7 @@ static func wait_text(seconds: int) -> String:
 func paint() -> void:
 	"""The status line and the button, from what is known now."""
 	_paint_healer()
+	_paint_stand()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -437,6 +473,32 @@ func _on_healer_go() -> void:
 
 func _shows_healer_run() -> bool:
 	return true
+
+
+func _paint_stand() -> void:
+	stand_box.visible = bool(shows_mage_stand.call())
+	var in_town: bool = str(area_now.call()) == TOWN
+	stand_status.text = "Ready - no limit on meteors" if in_town else FROM_TOWN
+	stand_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
+	stand_go.disabled = not in_town
+	stand_go.tooltip_text = "Play the Mage's Stand - your character waits in town" if in_town \
+		else "Go back to town first"
+
+
+func _on_stand_go() -> void:
+	if str(area_now.call()) != TOWN or not bool(shows_mage_stand.call()):
+		paint()
+		return
+	close()
+	open_stand.call()
+
+
+func _shows_mage_stand() -> bool:
+	return bool(Api.is_owner)
+
+
+func _open_stand() -> void:
+	(load("res://src/world/magestand/magestandscreen.gd") as GDScript).call("open", get_tree(), hud)
 
 
 func _open_run(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:

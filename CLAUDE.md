@@ -3163,6 +3163,64 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The Mage's Stand (0.108.0, step 2: the owner's alone)
+
+The owner: "mage would use mythic weapon stand on a wall and protect the
+portal from enemies going in", "we can use the door as the gate enemies
+break it then run through to the portal enemies should flood in in waves
+progressivly getting harder", "no gold in this one", "make field of view
+longer", "there will be no limit on meteors the goal will be to spam them",
+"the door need to be slightly transparent". The plan, the steps and the
+mockups are the commit folder's MAGES_STAND_PLAN.txt. Step 2 is the playable
+core, on the Minigames card for the owner only (`shows_mage_stand`,
+`Api.is_owner`); it pays nothing and asks the server nothing.
+
+- **Two scripts, no class_name**: `src/world/magestand/magestand.gd` (the
+  stand: a Node2D the suite steps with `step()`) and `magestandscreen.gd`
+  (the overlay, `open(tree, hud)`, the Healer's Run's shape: a SubViewport
+  drawn over everything, the character held still in town, keys kept from
+  the game behind, Escape is Leave - twice while it is on).
+- **Further out**: `VIEW` 960 x 540, half as far again each way as the
+  Healer's Run's 640 x 360 - crisp at 1080p, soft at 720p.
+- **The place**: the wall across low (`FOOT`), its face the crypt's wall
+  runs laid from the gate out to each side wall (the last piece runs on
+  under it - laid left to right, the right end stopped 13 px short, the
+  owner: "there is a gap on the right side of the wall"), its top two rows
+  of the crypt's caps (the side walls' column, turned), the crypt door as the
+  gate between two pillars, built from cryptdoor.png's three pieces (not the
+  door scene, whose script is the world's) and drawn at `DOOR_SEE`. Monsters,
+  the face, the gate and the portal share one y-sorted layer (`world`), so a
+  monster at the gate is drawn behind it and seen through it. The portal is
+  art/teleport's frames, twice size, with a glow that dims as it drains.
+- **Her**: the mage's sheet on the caps (`WALK_Y`, `HER_Z` over them),
+  walking to `WALK_HALF` with the move keys (`steer`). The screen turns the
+  mouse into the stand's space (`world_from_screen()`, through how the
+  picture is fitted) as `aim`, and the left button as `casting`.
+- **Meteors, no limit**: one every `CAST_GAP` while held. Each falls
+  `FALL_SECONDS` from `SKY` (shadow and ring on the ground, trail in the sky
+  - `Marks`, one node each, drawn from the lists), blasts `BLAST_REACH` for
+  `BLAST_DAMAGE` (`CRIT_CHANCE` x `CRIT_MULT`), and leaves a crater burning
+  `BURN_DPS` for `BURN_SECONDS`. The stone is art/maincharacter/meteor.png;
+  the rest is drawn.
+- **The gate and the portal**: each monster heads for a place at the gate
+  (`stop_x`, queued back `stop_y`) and hits it there - at most
+  `GATE_HITTERS` at once, `DOOR_HIT` a second, more each wave (`wave_hit()`).
+  At nought the planks fall and they run through for the portal; each in
+  drains it by its kind's `drain`; nought there is the end (`finished`). A
+  held wave mends the gate `DOOR_MEND` of its most, a broken one put back.
+- **Waves**: `wave_count()` (24, then 10 more each), `wave_speed()` (to
+  twice), `wave_health()`, the land changing every `LAND_WAVES`, flooding in
+  groups (`GROUP_FIRST` + the wave, every `GROUP_GAP`) from the top; no last
+  wave. The best is kept for the session (`magestandscreen.gd best`) until
+  step 4's leaderboard.
+- **God mode**: the owner's switch on the screen, as the Healer's Run's: the
+  gate and the portal take nothing, and the end says it was on.
+- `_test_the_mages_stand()` (testrunner_9): the place (no gap to either side
+  wall, caps to the side walls, the gate in the sorted layer, see-through,
+  the view), her walk, the rain (no limit), the crit share, the burn, the
+  gate's hits and break and the portal's drain, the end, the waves, the
+  mend, the screen (the mouse, Leave, Again) and the card.
+
 `_test_the_healers_run()` (testrunner_9): the shots, the rank's numbers, every
 land's monsters existing, a run from Ready through a wave, the floor laid and
 taken up, a volley, a kill, a hit, the blink, a potion, a pillar's push, the

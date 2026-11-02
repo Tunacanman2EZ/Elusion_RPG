@@ -2900,6 +2900,259 @@ func _test_the_critical_beam_and_the_shield() -> void:
 	print("  (the critical beam and the shield: done)")
 
 
+func _test_the_mages_stand() -> void:
+	section("THE MAGE'S STAND (0.107.0, step 2)")
+	# The owner: "mage would use mythic weapon stand on a wall and protect the
+	# portal from enemies going in", "we can use the door as the gate enemies
+	# break it then run through to the portal", "no limit on meteors", "make
+	# field of view longer", "the door need to be slightly transparent".
+	const StandScript := preload("res://src/world/magestand/magestand.gd")
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	const ScreenScript := preload("res://src/world/magestand/magestandscreen.gd")
+	var stand = StandScript.new()
+	stand.set("seed_value", 4)
+	stand.set("steer", func() -> float: return 0.0)
+	add_child(stand)
+	stand.set_process(false)
+	# THE PLACE.
+	var gate: Node2D = stand.world.get_node("gate")
+	var faces: int = 0
+	var left_end: float = INF
+	var right_end: float = -INF
+	for child in stand.world.get_children():
+		if child is Node2D and str((child as Node2D).scene_file_path).contains("wallrun"):
+			faces += 1
+			left_end = minf(left_end, (child as Node2D).position.x)
+			right_end = maxf(right_end, (child as Node2D).position.x)
+	var caps: int = 0
+	var cap_reach: Array = [0.0, 0.0]
+	for child in stand.get_children():
+		if child is Sprite2D and is_equal_approx((child as Sprite2D).rotation, PI / 2.0):
+			caps += 1
+			var cap_x: float = (child as Sprite2D).position.x
+			var cap_side: int = 0 if cap_x < 0.0 else 1
+			cap_reach[cap_side] = maxf(float(cap_reach[cap_side]), absf(cap_x) + StandScript.CAP_REGION.size.y / 2.0)
+	# "there is a gap on the right side of the wall": each side's face, end to
+	# end from the gate, reaches the side wall.
+	var widths := {"wallrun4": 101.0, "wallrun2": 51.0, "wallrun1": 26.0}
+	var spans: Array = [[], []]
+	for child in stand.world.get_children():
+		var path: String = str((child as Node).scene_file_path) if child is Node2D else ""
+		for key in widths:
+			if path.contains(str(key)):
+				var x: float = (child as Node2D).position.x
+				var w: float = float(widths[key])
+				(spans[0 if x < 0.0 else 1] as Array).append([absf(x) - w / 2.0, absf(x) + w / 2.0])
+	var whole: bool = true
+	for side_spans in spans:
+		(side_spans as Array).sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		var edge: float = StandScript.GATE_HALF
+		for one in side_spans:
+			whole = whole and absf(float(one[0]) - edge) < 0.01
+			edge = float(one[1])
+		whole = whole and edge >= StandScript.PATH_HALF + 4.0
+	var see_through: bool = true
+	for part in stand.get("door_parts"):
+		see_through = see_through and is_equal_approx((part as Sprite2D).modulate.a, StandScript.DOOR_SEE)
+	check("the place: a wall across with the crypt door as its gate, no gap from the gate to either side wall, caps on top, the portal behind",
+		faces >= 6 and left_end < -200.0 and right_end > 200.0 and caps > 10 and gate.position.y == StandScript.FOOT
+		and whole and float(cap_reach[0]) >= StandScript.PATH_HALF and float(cap_reach[1]) >= StandScript.PATH_HALF
+		and stand.portal_sprite.position == StandScript.PORTAL_AT and stand.portal_sprite.sprite_frames != null,
+		[faces, caps, left_end, right_end])
+	check("  further out than the Healer's Run (half as far again each way); the gate see-through, monsters drawn behind it",
+		StandScript.VIEW == RunScript.VIEW * 1.5 and see_through and StandScript.DOOR_SEE < 0.8
+		and stand.world.y_sort_enabled and stand.monsters.y_sort_enabled and gate.get_parent() == stand.world
+		and stand.monsters.get_parent() == stand.world)
+	# HER.
+	var mage: AnimatedSprite2D = stand.mage
+	var from_x: float = mage.position.x
+	stand.set("steer", func() -> float: return 1.0)
+	stand.state = StandScript.State.BETWEEN
+	stand.set("_left", 999.0)
+	for i in 30:
+		stand.step(1.0 / 30.0)
+	var walked: float = mage.position.x - from_x
+	for i in 300:
+		stand.step(1.0 / 30.0)
+	check("she walks the wall's top, held to its ends, drawn over its caps",
+		absf(walked - StandScript.WALK_SPEED) < 1.0 and is_equal_approx(mage.position.x, StandScript.WALK_HALF)
+		and is_equal_approx(mage.position.y, StandScript.WALK_Y) and mage.z_index > 1, [walked, mage.position])
+	stand.set("steer", func() -> float: return 0.0)
+	# THE METEORS: "no limit on meteors".
+	var target: Node2D = stand.spawn("slime", Vector2(0.0, -60.0))
+	target.set("speed", 0.0)
+	target.set("most", 1000.0)
+	target.set("health", 1000.0)
+	var far: Node2D = stand.spawn("slime", Vector2(200.0, -200.0))
+	far.set("speed", 0.0)
+	far.set("health", 1000.0)
+	stand.aim = Vector2(0.0, -60.0)
+	stand.casting = true
+	var casts_before: int = stand.casts
+	for i in 30:
+		stand.step(1.0 / 30.0)
+	var in_a_second: int = stand.casts - casts_before
+	for i in 270:
+		stand.step(1.0 / 30.0)
+	var in_ten: int = stand.casts - casts_before
+	stand.casting = false
+	for i in 30:
+		stand.step(1.0 / 30.0)
+	var took: float = 1000.0 - float(target.get("health"))
+	check("hold the button and meteors rain where she aims - %d in a second, %d in ten, no limit but the gap"
+		% [in_a_second, in_ten], in_a_second >= 3 and in_ten >= int(10.0 / StandScript.CAST_GAP) - 1
+		and took >= StandScript.BLAST_DAMAGE * in_ten and is_equal_approx(float(far.get("health")), 1000.0),
+		[in_a_second, in_ten, took])
+	var crit_was: int = stand.crits
+	var casts_was: int = stand.casts
+	for i in 1000:
+		stand.drop_meteor(Vector2(-250.0, -250.0))
+	var share: float = float(stand.crits - crit_was) / float(stand.casts - casts_was)
+	for fall in stand.falling:
+		(fall["rock"] as Node).queue_free()
+	stand.falling.clear()
+	check("  one in five critical (%d%% of a thousand)" % roundi(share * 100.0), absf(share - StandScript.CRIT_CHANCE) < 0.04)
+	for m in stand.monsters.get_children():
+		stand.monsters.remove_child(m)
+		m.queue_free()
+	stand.craters.clear()
+	var burnt: Node2D = stand.spawn("sprite", Vector2(100.0, 0.0))
+	burnt.set("speed", 0.0)
+	burnt.set("health", 100.0)
+	stand.craters.append({"at": Vector2(100.0, 0.0), "left": StandScript.BURN_SECONDS, "seed": 1.0})
+	for i in 60:
+		stand.step(1.0 / 60.0)
+	check("  each leaves the ground burning: a crater hurts what stands in it",
+		absf((100.0 - float(burnt.get("health"))) - StandScript.BURN_DPS) < 0.2, burnt.get("health"))
+	for m in stand.monsters.get_children():
+		stand.monsters.remove_child(m)
+		m.queue_free()
+	stand.craters.clear()
+	# THE GATE AND THE PORTAL: "enemies break it then run through to the portal".
+	stand.wave = 1
+	stand.state = StandScript.State.WAVE
+	stand.set("_to_spawn", 0)
+	var crowd: Array = []
+	for i in 14:
+		var m: Node2D = stand.spawn("sprite" if i % 2 == 0 else "slime", Vector2.ZERO)
+		m.position = Vector2(float(m.get("stop_x")), StandScript.FOOT - 26.0 - float(m.get("stop_y")))
+		m.set("health", 1000.0)
+		crowd.append(m)
+	stand.door = 20.0
+	var door_was: float = stand.door
+	stand.step(0.1)
+	var one_tick: float = door_was - stand.door
+	for i in 60:
+		stand.step(1.0 / 30.0)
+	var broke: bool = stand.gate_broken() and absf(stand.door_planks.rotation) > 1.0
+	var portal_was: int = stand.portal
+	for i in 300:
+		stand.step(1.0 / 30.0)
+	check("monsters at the gate hit it (at most %d at once); at nought it breaks and they run through, draining the portal"
+		% StandScript.GATE_HITTERS, absf(one_tick - StandScript.DOOR_HIT * StandScript.GATE_HITTERS * 0.1) < 0.01
+		and broke and stand.portal < portal_was, [one_tick, broke, portal_was, stand.portal])
+	var fell: Array = []
+	stand.finished.connect(func() -> void: fell.append(1))
+	stand.portal = 1
+	var last: Node2D = stand.spawn("slime", StandScript.PORTAL_AT + Vector2(0.0, -30.0))
+	last.set("through", true)
+	for i in 60:
+		stand.step(1.0 / 30.0)
+	check("  the portal at nought: the run is over, and says how far it got",
+		stand.state == StandScript.State.LOST and fell.size() == 1 and str(stand.result_text()).contains("held"),
+		stand.result_text())
+	# THE WAVES: "progressivly getting harder".
+	check("each wave more, faster and tougher: %d, %d, %d monsters; wave 10 %.0f%% the speed and %.0f%% the health of the first"
+		% [stand.wave_count(1), stand.wave_count(2), stand.wave_count(10), StandScript.wave_speed(10) * 100.0,
+		StandScript.wave_health(10) * 100.0], stand.wave_count(2) > stand.wave_count(1)
+		and stand.wave_count(10) > stand.wave_count(2) and StandScript.wave_speed(10) > StandScript.wave_speed(1)
+		and StandScript.wave_health(10) > StandScript.wave_health(1) and StandScript.wave_hit(10) > 1.0)
+	stand.queue_free()
+	var fresh = StandScript.new()
+	fresh.set("seed_value", 6)
+	fresh.set("steer", func() -> float: return 0.0)
+	add_child(fresh)
+	fresh.set_process(false)
+	for i in int(StandScript.READY_SECONDS * 30.0) + 4:
+		fresh.step(1.0 / 30.0)
+	var started: bool = fresh.state == StandScript.State.WAVE and fresh.wave == 1
+	var spawned: int = 0
+	for i in 600:
+		fresh.step(1.0 / 30.0)
+		for m in fresh.monsters.get_children():
+			if float(m.get("dying")) < 0.0:
+				fresh.hurt(m, 9999.0)
+				spawned += 1
+		if fresh.state == StandScript.State.BETWEEN:
+			break
+	fresh.door = 0.0
+	fresh.call("_break_gate")
+	fresh.call("_mend_gate")
+	check("a wave floods in, is held, and the gate is mended - a broken one put back",
+		started and spawned == fresh.wave_count(1) and fresh.waves_held == 1 and fresh.state == StandScript.State.BETWEEN
+		and is_equal_approx(fresh.door, StandScript.DOOR_MOST * StandScript.DOOR_MEND)
+		and is_equal_approx(fresh.door_planks.rotation, 0.0), [started, spawned, fresh.waves_held])
+	fresh.queue_free()
+	# THE SCREEN.
+	var screen: CanvasLayer = ScreenScript.new()
+	screen.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	var pic: TextureRect = screen.get("picture")
+	var box: Rect2 = pic.get_global_rect()
+	var middle: Vector2 = screen.world_from_screen(box.get_center())
+	var fit: float = minf(box.size.x / StandScript.VIEW.x, box.size.y / StandScript.VIEW.y)
+	var corner: Vector2 = box.get_center() - StandScript.HALF * fit
+	var top_left: Vector2 = screen.world_from_screen(corner)
+	screen.set("mouse_at", func() -> Vector2: return box.get_center() + Vector2(10.0, 20.0) * fit)
+	screen.set("mouse_held", func() -> bool: return true)
+	var panel_first: bool = screen.get("start_panel").visible
+	screen.call("_process", 0.0)
+	var held_on_panel: bool = bool(screen.get("run").get("casting"))
+	screen.begin()
+	screen.call("_process", 0.0)
+	var srun: Node = screen.get("run")
+	check("the screen: the start panel first; the mouse is turned into the stand's own space and casts once begun",
+		panel_first and middle.length() < 0.6 and top_left.distance_to(-StandScript.HALF) < 0.6 and not held_on_panel
+		and srun.get("aim").distance_to(Vector2(10.0, 20.0)) < 0.6 and bool(srun.get("casting"))
+		and not screen.get("start_panel").visible, [middle, top_left, srun.get("aim")])
+	screen.ask_to_leave()
+	var asked_once: bool = is_instance_valid(screen) and str(screen.get("leave_button").text) == "Sure?"
+	srun.set("portal", 0)
+	srun.set("state", StandScript.State.LOST)
+	screen.call("paint")
+	var told: bool = screen.get("results").visible and str(screen.get("result_line").text).contains("portal fell")
+	screen.again()
+	var again_fresh: bool = screen.get("start_panel").visible and screen.get("run") != srun
+	screen.ask_to_leave()
+	await get_tree().process_frame
+	check("  Leave asks twice while it is on, once before; the portal fallen says so, and Again starts afresh",
+		asked_once and told and again_fresh and not is_instance_valid(screen))
+	# THE CARD: the owner's alone while it is built.
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	var opened: Array = []
+	card.set("open_stand", func() -> void: opened.append(1))
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("shows_mage_stand", func() -> bool: return false)
+	card.call("paint")
+	var hidden: bool = not card.stand_box.visible
+	card.set("shows_mage_stand", func() -> bool: return true)
+	card.call("open")
+	card.call("paint")
+	var shown: bool = card.stand_box.visible and not card.stand_go.disabled
+	card.call("_on_stand_go")
+	var went: bool = opened.size() == 1 and not card.visible
+	card.set("area_now", func() -> String: return "field")
+	card.call("paint")
+	check("on the Minigames card for the owner alone; Go from town opens it, and asks the server nothing",
+		hidden and shown and went and card.stand_go.disabled and str(card.stand_status.text) == "Play it from town.")
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  (the mage's stand: done)")
+
+
 func _hr_frames(games: Array, seconds: float, step: float = 1.0 / 30.0) -> void:
 	var t: float = 0.0
 	while t < seconds:
