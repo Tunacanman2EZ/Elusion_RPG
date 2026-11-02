@@ -2973,6 +2973,16 @@ func _test_the_browser_build() -> void:
 	var excluded: String = str(presets.get_value(web, "exclude_filter", ""))
 	check("  the suite and the tools do not ship", excluded.contains("src/tools/*")
 		and excluded.contains("scene/tests/*"), excluded)
+	# 0.108.1: the pictures from Claude's sessions were 7.8 of 0.108.0's 19 MB
+	# download, never used - git ignores the folder, but an export takes every
+	# file in the project that is not excluded.
+	var carrying: Array = []
+	for sec in presets.get_sections():
+		if presets.has_section_key(sec, "exclude_filter") \
+				and not str(presets.get_value(sec, "exclude_filter", "")).contains("Claude outputs/*"):
+			carrying.append(sec)
+	check("  nor the pictures from Claude's sessions, from any export (Claude outputs/)",
+		carrying.is_empty(), carrying)
 	var out_path: String = str(presets.get_value(web, "export_path", ""))
 	check("  and it exports under builds/, which git ignores - an export holds the private art pack",
 		out_path.begins_with("builds/") and FileAccess.get_file_as_string("res://.gitignore").contains("\nbuilds/"),

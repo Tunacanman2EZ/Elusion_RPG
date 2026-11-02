@@ -3163,6 +3163,31 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The download leaves out Claude's pictures (0.108.1)
+
+The owner: "anything we can make even faster in elusion?". 0.108.0's
+browser build was 19.2 MB of data (index.pck) beside 39.5 MB of engine
+(index.wasm), and 7.8 MB of the data was `Claude outputs/` - 133 preview
+pictures and three test sounds from Claude's sessions, used by nothing.
+Git ignores that folder; an export does not: `export_filter="all_resources"`
+takes every file in the project that no filter leaves out. Both presets'
+`exclude_filter` now name `Claude outputs/*`, and on the owner's PC the
+folder holds a `.gdignore`, so the editor no longer imports it either.
+
+- **What it saves** (gzip, as Caddy's `encode` sends it): a first visit
+  was 26.2 MB - the wasm 10.3, the pck 15.9, its pictures barely
+  compressing - and is about 18.5. Every ship changes the pck, so every
+  player downloads it again after an update: 15.9 MB, now about 8.2.
+- **Proved** by exporting a pack in the sandbox with a picture in the
+  folder: left out with the filter, stored without it.
+- `_test_the_browser_build()` fails on any preset whose filter does not
+  name the folder (watched fail, naming the Windows preset). **A new
+  working folder in the project goes in the filter too**, or gets a
+  `.gdignore`.
+- **Not done**: the engine is about 10 MB of the download; a custom
+  engine build without 3D could roughly halve it - a big job, the owner's
+  call.
+
 ### The Mage's Stand (0.108.0, step 2: the owner's alone)
 
 The owner: "mage would use mythic weapon stand on a wall and protect the
