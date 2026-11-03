@@ -160,7 +160,7 @@ const TUTORIAL_LINES := [
 const TOUCH_LINES := {
 	0: "Move with the stick - she shoots by herself.",
 	1: "Push it a little to go slowly through tight gaps.",
-	5: "Tap a meteor, bottom right, to drop it on the boss - three to start, each back in 30 s.",
+	5: "Tap the screen to drop a meteor on the boss - three to start, each back in 30 s.",
 }
 # The stick stands in the dark left of the run, under the words there (0.110.2).
 const STICK_TOP := 200.0
@@ -187,6 +187,8 @@ func _ready() -> void:
 	back.color = Color(0.0, 0.0, 0.0)
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
 	back.mouse_filter = Control.MOUSE_FILTER_STOP
+	# A TAP ON THE FIELD drops a meteor, as Space does (_on_field_touched()).
+	back.gui_input.connect(_on_field_touched)
 	add_child(back)
 	viewport = SubViewport.new()
 	viewport.name = "world"
@@ -422,13 +424,34 @@ func _build_meteors() -> void:
 func _on_meteors_touched(event: InputEvent) -> void:
 	var touch := event as InputEventScreenTouch
 	var click := event as InputEventMouseButton
+	# Not the click Godot makes of a first finger's tap (DEVICE_ID_EMULATION):
+	# that tap is here already, and one tap fired two meteors.
 	var pressed: bool = (touch != null and touch.pressed) \
-		or (click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT)
+		or (click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT
+			and click.device != InputEvent.DEVICE_ID_EMULATION)
 	if not pressed:
 		return
 	meteor_box.accept_event()
 	if run != null and is_instance_valid(run) and not tutorial.visible:
 		run.call("fire_meteor")
+
+
+# TAP THE SCREEN TO DROP A METEOR (0.110.3; the owner, on a phone: "tap the
+# screen to drop meteor"). A finger anywhere on the run - not the stick's
+# dark left, a button or a panel, which take their own touches - calls one
+# down on the boss, as Space does. A touch only: a mouse click on the field
+# does nothing, as before. (The black `back` hears it: it lies under all,
+# full size, at the screen's origin, so its touch is in the screen's units.)
+func _on_field_touched(event: InputEvent) -> void:
+	var touch := event as InputEventScreenTouch
+	if touch == null or not touch.pressed:
+		return
+	if stick != null and stick.visible and stick_zone().has_point(touch.position):
+		return
+	if run == null or not is_instance_valid(run) or tutorial.visible or results.visible:
+		return
+	get_viewport().set_input_as_handled()
+	run.call("fire_meteor")
 
 
 func paint_meteors() -> void:

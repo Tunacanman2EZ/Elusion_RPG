@@ -3655,6 +3655,50 @@ func _test_the_mages_stand() -> void:
 	check("  and the Healer's Run: a stick of its own on a phone, and its meteors tapped (\"%s\")" % tapped_words,
 		hr_stick_up and not hr_stick.visible and tapped_words == "Meteors - tap" and hr_key.text == "Meteors - Space"
 		and hr_box.mouse_filter == Control.MOUSE_FILTER_STOP and hr_box.gui_input.is_connected(Callable(hr_screen, "_on_meteors_touched")))
+	# TAP THE SCREEN TO DROP A METEOR (0.110.3, "tap the screen to drop
+	# meteor"): a finger on the field calls one down; one in the stick's dark
+	# left does not; and a tap on the meteors is one meteor, not two (Godot
+	# makes a first finger's tap a click as well).
+	const HRScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
+	var seen_was: bool = HRScreen._tutorial_seen
+	TouchControls.set_active(true)
+	hr_screen.call("_process", 0.0)
+	hr_run.set("lives", 99)
+	hr_screen.call("begin")
+	for i in 600:
+		if hr_run.call("meteor_target") != null:
+			break
+		hr_run.call("step", 1.0 / 60.0)
+	var rocks_at_start: int = int(hr_run.get("meteors"))
+	var field_tap := InputEventScreenTouch.new()
+	field_tap.index = 1
+	field_tap.pressed = true
+	field_tap.position = (hr_screen.get("picture") as Control).get_global_rect().get_center()
+	hr_screen.call("_on_field_touched", field_tap)
+	var rocks_after_tap: int = int(hr_run.get("meteors"))
+	field_tap.position = (hr_screen.call("stick_zone") as Rect2).get_center()
+	hr_screen.call("_on_field_touched", field_tap)
+	field_tap.position = (hr_screen.get("picture") as Control).get_global_rect().get_center()
+	field_tap.pressed = false
+	hr_screen.call("_on_field_touched", field_tap)
+	var rocks_after_misses: int = int(hr_run.get("meteors"))
+	var box_tap := InputEventScreenTouch.new()
+	box_tap.index = 0
+	box_tap.pressed = true
+	hr_screen.call("_on_meteors_touched", box_tap)
+	var echo := InputEventMouseButton.new()
+	echo.button_index = MOUSE_BUTTON_LEFT
+	echo.pressed = true
+	echo.device = InputEvent.DEVICE_ID_EMULATION
+	hr_screen.call("_on_meteors_touched", echo)
+	var rocks_after_box: int = int(hr_run.get("meteors"))
+	var back_hears: bool = (hr_screen.get_node("back") as Control).gui_input.is_connected(Callable(hr_screen, "_on_field_touched"))
+	TouchControls.set_active(false)
+	HRScreen._tutorial_seen = seen_was
+	check("  a tap on the field drops a meteor (%d -> %d); none in the stick's dark left or on a lift (%d); a tap on the meteors is one (%d)"
+		% [rocks_at_start, rocks_after_tap, rocks_after_misses, rocks_after_box],
+		back_hears and rocks_at_start >= 2 and rocks_after_tap == rocks_at_start - 1
+		and rocks_after_misses == rocks_after_tap and rocks_after_box == rocks_after_tap - 1)
 	hr_screen.call("close")
 	await get_tree().process_frame
 	# 2 Nov, on the owner's PC: "Too many pixels for image" building the

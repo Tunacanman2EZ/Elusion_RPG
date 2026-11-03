@@ -3163,6 +3163,27 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### Tap the screen to drop a meteor (0.110.3)
+
+The owner, on a phone: "tap the screen to drop meteor". The Healer's
+Run's meteors were Space, or a tap on their pictures bottom right.
+
+- **A finger anywhere on the run** drops one on `meteor_target()`, as
+  Space does: the screen's black `back` (under everything, full size, at
+  the origin - so its touch is in the screen's units) hears it,
+  `_on_field_touched()`. Not in the stick's dark left (`stick_zone()`,
+  while the stick shows), not while the tutorial or results are up, and
+  only a touch - a mouse click on the field does nothing. Buttons, the
+  stick and the meteors take their own touches first.
+- **One tap on the meteors was two meteors.** Godot makes a first
+  finger's tap a mouse click as well (`DEVICE_ID_EMULATION`), and
+  `_on_meteors_touched()` fired on both. It ignores the made click now.
+- The phone tutorial says "Tap the screen to drop a meteor on the boss".
+
+`_test_the_mages_stand()` (its Healer's Run part) holds it: watched
+failing without it (no meteor from the field; 3 -> 1 from one tap on the
+meteors).
+
 ### The minigames' stick is mounted and read as it lies; the mage keeps her side (0.110.2)
 
 The owner, on a phone: "having rough time moving left and right with
