@@ -2333,6 +2333,12 @@
 				}
 			]
 		},
+		"descent": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 0.0,
+			"scene": "res://scene/descent.tscn",
+			"spawns": []
+		},
 		"easteregg": {
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,

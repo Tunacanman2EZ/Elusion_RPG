@@ -170,6 +170,9 @@ const SPRITE_CENTRE := Vector2(0, 8)
 # missing enemies it visually swept through; lower it if it starts catching
 # things it clearly shouldn't. This is the knob to reach for first.
 @export var hitbox_scale: float = 1.0
+# The picture as much bigger (a Descent run's Long Wave, 0.112.0); the warrior
+# grows hitbox_scale with it. Set before shoot_vector(), which dresses it.
+var size_scale: float = 1.0
 
 
 # =============================================================================
@@ -660,6 +663,9 @@ func _dress() -> void:
 		sprite.scale = _base_scale * FINISHER_SCALE
 		_base_scale = sprite.scale
 		sprite.modulate = FINISHER_TINT
+	if not is_equal_approx(size_scale, 1.0):
+		sprite.scale = _base_scale * size_scale
+		_base_scale = sprite.scale
 	_weave_line = direction
 	# Not over a finisher: the gold wave and its fan are enough (warrior.gd,
 	# THE FINISHER, UNCLUTTERED).

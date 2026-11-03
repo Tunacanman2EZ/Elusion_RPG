@@ -41,6 +41,10 @@ const AREAS := {
 	# 0.93.0: the endless run - a corridor, a door, and a horde that grows
 	# (src/world/endless/). Down a ladder from the town square.
 	"endless":   "res://scene/endless.tscn",
+	# 0.112.0: the Descent - a roguelike run down a crypt, room by room
+	# (src/world/descent/). From the Minigames card, the owner's alone while
+	# it is built.
+	"descent":   "res://scene/descent.tscn",
 }
 
 # WHAT A PLAYER READS for each area. Every screen that named an area ran the
@@ -55,6 +59,7 @@ const AREA_NAMES := {
 	"bossarena": "Boss Arena",
 	"easteregg": "Easter Egg",
 	"endless":   "The Endless",
+	"descent":   "The Descent",
 }
 
 

@@ -41,6 +41,9 @@ const Targets := preload("res://src/shared/targets.gd")
 # frozen, burning, soaked, shoved, pulled, rooted, dazzled, withered. By path,
 # not class_name - see the top of that file.
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
+# THE DESCENT'S UPGRADES (0.112.0): a run's damage, damage taken and speed -
+# all 1 off a run (descentboons.gd).
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 var _carried_light: PointLight2D = null
 
 # The name that floats over this character's head. Built in code for the same
@@ -1935,8 +1938,8 @@ func heal(amount: int) -> void:
 
 func effects_speed_scale() -> float:
 	"""Chilled is slower, frozen and rooted are still: what your walk is
-	multiplied by."""
-	return float(status_effects.call(&"speed_scale")) if status_effects != null else 1.0
+	multiplied by - and a Descent run's Swift (0.112.0)."""
+	return (float(status_effects.call(&"speed_scale")) if status_effects != null else 1.0) * DescentBoons.speed_factor()
 
 
 func effects_let_sprint() -> bool:
@@ -1966,8 +1969,9 @@ func effects_defence_scale() -> float:
 
 
 func effects_damage_scale() -> float:
-	"""Withered, the damage you take is doubled (0.93.3)."""
-	return float(status_effects.call(&"damage_scale")) if status_effects != null else 1.0
+	"""Withered, the damage you take is doubled (0.93.3); a Descent run's Iron
+	Skin and Berserk (0.112.0) weigh in too."""
+	return (float(status_effects.call(&"damage_scale")) if status_effects != null else 1.0) * DescentBoons.taken_factor()
 
 
 func effects_push() -> Vector2:
@@ -2018,8 +2022,15 @@ var _died_before_load: bool = false
 
 
 func _endless_catches_fall() -> bool:
-	var run: Node = get_tree().get_first_node_in_group(&"endless_run") if is_inside_tree() else null
-	return run != null and bool(run.call("knock_out", self))
+	# The Endless's and, since 0.112.0, the Descent's: a fall in either wakes
+	# you where the run says, and is no death.
+	if not is_inside_tree():
+		return false
+	for group in [&"endless_run", &"descent_run"]:
+		var run: Node = get_tree().get_first_node_in_group(group)
+		if run != null and bool(run.call("knock_out", self)):
+			return true
+	return false
 
 
 func _start_death_sequence() -> void:
@@ -2233,9 +2244,13 @@ func get_damage_multiplier() -> float:
 	# reason as the amulet: "+5% damage" is a twentieth of whatever this
 	# character already hits for. The server raises its bound on the hit by the
 	# same percent (combat_bounds()), so a buffed kill is never refused.
+	#
+	# AND A DESCENT RUN'S MIGHT AND BERSERK (0.112.0), 1 off a run. The
+	# Descent is no booked area and its monsters pay nothing, so the server
+	# holds no hit there to a bound.
 	return PlayerStats.damage_multiplier(attack, magic) \
 		* PlayerStats.gear_damage_factor(equipped_bonus("bonus_damage_percent")) \
-		* FoodBuff.damage_factor()
+		* FoodBuff.damage_factor() * DescentBoons.damage_factor()
 
 
 const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL := PlayerStats.AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL

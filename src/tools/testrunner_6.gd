@@ -4003,7 +4003,9 @@ func _test_combat_bounds_match_the_game() -> void:
 		return
 	var stale: Array = []
 	for area_id in known_areas:
-		var root: Node = (load(String(known_areas[area_id])) as PackedScene).instantiate()
+		# Through the registry, which waits for a scene still loading in the
+		# background - a plain load() of one deadlocks (arearegistry.gd).
+		var root: Node = AreaRegistry.scene_for(area_id).instantiate()
 		var here: Array = []
 		var walk: Array = [root]
 		while not walk.is_empty():

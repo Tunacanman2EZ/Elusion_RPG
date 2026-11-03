@@ -3068,11 +3068,18 @@ func _test_the_phone_screen_is_the_games() -> void:
 	var pad_src: String = _code_src("res://src/ui/touchpad.gd")
 	var stick_src: String = pad_src.substr(pad_src.find("class Stick"))
 	var stick_draw: String = stick_src.substr(stick_src.find("	func _draw("))
-	var rest_return: int = stick_draw.find("if not held:")
+	# A MINIGAME'S STICK IS MOUNTED (0.110.2, touchpad.gd minigame_stick()):
+	# drawn always, where it stands. The HUD's is not, and still returns.
+	var rest_return: int = stick_draw.find("if not held and not mounted:")
 	var socket_at: int = stick_draw.find("Art.draw_socket(")
-	check("the stick is drawn only under a thumb: _draw() returns at rest before it draws a thing",
+	var game_stick: Node = PadScript.minigame_stick()
+	var hud_stick: Node = PadScript.Stick.new()
+	check("the HUD's stick is drawn only under a thumb: _draw() returns at rest before it draws a thing - a minigame's (mounted) always",
 		rest_return != -1 and socket_at != -1 and rest_return < socket_at
-		and stick_draw.substr(rest_return, 40).contains("return"))
+		and stick_draw.substr(rest_return, 50).contains("return") and not bool(hud_stick.get("mounted"))
+		and bool(game_stick.get("mounted")))
+	hud_stick.free()
+	game_stick.free()
 
 	# ---- round sockets (0.91.1): the slot bent, no new pixels -------------------------
 	var shader_code: String = PadScript.ROUND_SHADER

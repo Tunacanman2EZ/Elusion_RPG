@@ -210,6 +210,7 @@ func _run_all() -> void:
 	await _test_the_critical_beam_and_the_shield()
 	await _test_the_mages_stand()
 	await _test_the_giant_meteor()
+	await _test_the_descent()
 	await _test_google_sign_in()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()

@@ -2102,6 +2102,15 @@ func _test_google_sign_in() -> void:
 		and shown.call({"ok": true, "data": {"available": true, "staff": false}})
 		and not shown.call({"ok": true, "data": {"available": false, "staff": false}}))
 	options.queue_free()
+	# THE TOWN IT ASKED FOR (loginmenu.gd prefetches it), settled before the
+	# next section loads the areas itself: a plain load() of a scene still
+	# loading in the background is Godot's deadlock (arearegistry.gd) - the
+	# whole suite hung here on 2 Nov, silent, once this section stopped
+	# waiting on the real server (0.110.2) and so ended mid-load.
+	var settle_until: int = Time.get_ticks_msec() + 20000
+	while (not AreaRegistry._prefetching.is_empty() or not AreaRegistry._prefetch_queue.is_empty()) \
+			and Time.get_ticks_msec() < settle_until:
+		await get_tree().process_frame
 	print("  (signing in with Google: done)")
 
 
@@ -3914,3 +3923,249 @@ func _test_the_giant_meteor() -> void:
 	screen.queue_free()
 	await get_tree().process_frame
 	print("  (the giant meteor: done)")
+
+
+func _test_the_descent() -> void:
+	section("THE DESCENT (0.112.0): a roguelike run down a crypt, room by room, as your own character")
+	# The owner, of roguelike_mockup.png: "that looks so cool incredible
+	# simply the best lets try it out". Step 1, his alone.
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const DoorScript := preload("res://src/world/descent/descentdoor.gd")
+	const Build := preload("res://src/tools/builddescent.gd")
+	# THE AREA.
+	var packed: PackedScene = load(str(AreaRegistry.AREAS.get("descent", ""))) as PackedScene
+	var area: Node = packed.instantiate() if packed != null else null
+	check("the Descent is an area, named for players, with a map in gamedata.json, and its room loads",
+		AreaRegistry.has_area("descent") and AreaRegistry.display_name("descent") == "The Descent"
+		and (_load_gamedata().get("areas", {}) as Dictionary).has("descent") and area != null)
+	if area == null:
+		return
+	var run_node: Node = area.get_node_or_null("descentrun")
+	var left: Node = area.get_node_or_null("ysortworld/props/doorleft")
+	var right: Node = area.get_node_or_null("ysortworld/props/doorright")
+	var front: Node = area.get_node_or_null("ysortworld/props/doorfront")
+	var arrivals: Array = []
+	_collect_by_script(area, "res://src/world/fieldportal.gd", arrivals)
+	var arrives: bool = arrivals.any(func(a: Node) -> bool: return str(a.get("portal_id")) == "descent_entrance")
+	var inside: Rect2 = Rect2(Build.SIDE_LEFT, Build.WALL_BACK, Build.SIDE_RIGHT - Build.SIDE_LEFT, Build.WALL_FRONT - Build.WALL_BACK)
+	check("  its run, two doors on in the back wall where its gaps are, the shut one you come in by, and the arrival from the card",
+		run_node != null and run_node.get_script() == RunScript and left != null and left.get_script() == DoorScript
+		and right != null and right.get_script() == DoorScript and front != null and bool(front.get("entrance"))
+		and not bool(left.get("entrance")) and is_equal_approx((left as Node2D).position.x, 217.0)
+		and is_equal_approx((right as Node2D).position.x, 424.0) and is_equal_approx((front as Node2D).position.x, 320.0)
+		and arrives and inside.encloses(run_node.get("room_rect")) and inside.has_point(run_node.get("entry_spot")))
+	check("  it tells no opening story and fights in the bullet zone", area.get("tells_story") == false
+		and area.get("bullet_zone") == true)
+	area.free()
+	# THE UPGRADES: nothing off a run; each its own share on one.
+	Boons.clear()
+	Boons.levels = {"might": 3, "iron": 2, "swift": 1, "fortune": 2}
+	var off_run: bool = Boons.damage_factor() == 1.0 and Boons.taken_factor() == 1.0 and Boons.speed_factor() == 1.0 \
+		and Boons.gold_factor() == 1.0
+	Boons.active = true
+	var on_run: bool = is_equal_approx(Boons.damage_factor(), 1.45) and is_equal_approx(Boons.taken_factor(), 0.84) \
+		and is_equal_approx(Boons.speed_factor(), 1.08) and is_equal_approx(Boons.gold_factor(), 1.5)
+	Boons.take("berserk")
+	var berserk_once: bool = not Boons.take("berserk") and is_equal_approx(Boons.damage_factor(), 1.45 * 1.4) \
+		and is_equal_approx(Boons.taken_factor(), 0.84 * 1.2)
+	Boons.levels["might"] = Boons.MOST
+	var stops: bool = not Boons.take("might") and Boons.level("might") == Boons.MOST
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var drawn: Array = Boons.offers(rng)
+	var fair: bool = drawn.size() == 3 and not drawn.has("might") and not drawn.has("berserk") \
+		and drawn[0] != drawn[1] and drawn[1] != drawn[2] and drawn[0] != drawn[2]
+	Boons.clear()
+	check("an upgrade does nothing off a run; on one Might, Iron Skin, Swift and Fortune each take their share; Berserk once; none past its most, none offered twice",
+		off_run and on_run and berserk_once and stops and fair and not Boons.active and Boons.levels.is_empty(), drawn)
+	# THE WARRIOR'S OWN ("this will be the warriors decent"): Whirlwind,
+	# Bloodletter, Quick Finisher, Long Wave - nothing off a run.
+	const WarriorScript := preload("res://src/characters/warrior.gd")
+	Boons.levels = {"whirlwind": 1, "bloodletter": 2, "quickfinish": 1, "longwave": 2}
+	var warrior_off: bool = not Boons.whirlwind() and Boons.bleed_swings() == 0.0 \
+		and Boons.wave_scale() == 1.0 and not WarriorScript.finisher_on(2) and WarriorScript.finisher_on(3)
+	Boons.active = true
+	var warrior_on: bool = Boons.whirlwind() and is_equal_approx(Boons.bleed_swings(), 1.0) \
+		and is_equal_approx(Boons.wave_scale(), 1.5) and WarriorScript.finisher_on(2) and WarriorScript.finisher_on(4) \
+		and not WarriorScript.finisher_on(3)
+	Boons.clear()
+	var warrior_code: String = _code_src("res://src/characters/warrior.gd")
+	var wave_code: String = _code_src("res://src/projectiles/slashwave.gd")
+	var wired: bool = _func_body(warrior_code, "func _deal_melee_damage(").contains("DescentBoons.whirlwind()") \
+		and _func_body(warrior_code, "func _deal_melee_damage(").contains("CARDINAL_DIRECTIONS") \
+		and _func_body(warrior_code, "func _try_damage(").contains("Bleed.open(target") \
+		and _func_body(warrior_code, "func _spawn_slashwave(").contains("wave.size_scale = grown") \
+		and _func_body(wave_code, "func _dress(").contains("_base_scale * size_scale")
+	check("the warrior's own: Whirlwind cuts every way, Bloodletter bleeds, Quick Finisher every 2nd swing, Long Wave a quarter bigger a level - none of it off a run",
+		warrior_off and warrior_on and wired and Boons.BOONS.size() == Boons.ORDER.size())
+	# ON YOUR OWN CHARACTER: the three numbers every class asks.
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	var dealt: float = float(warrior.call("get_damage_multiplier"))
+	var walks: float = float(warrior.call("effects_speed_scale"))
+	var takes: float = float(warrior.call("effects_damage_scale"))
+	Boons.active = true
+	Boons.levels = {"might": 2, "swift": 1, "iron": 1}
+	var dealt_on: float = float(warrior.call("get_damage_multiplier"))
+	var walks_on: float = float(warrior.call("effects_speed_scale"))
+	var takes_on: float = float(warrior.call("effects_damage_scale"))
+	Boons.clear()
+	var back: bool = is_equal_approx(float(warrior.call("get_damage_multiplier")), dealt)
+	warrior.free()
+	var fall_code: String = _code_src("res://src/characters/player.gd")
+	var catch_at: int = fall_code.find("func _endless_catches_fall(")
+	var catch_body: String = fall_code.substr(catch_at, fall_code.find("\nfunc ", catch_at + 1) - catch_at)
+	check("  on your character: its hits, its walk and the hits it takes carry them (%.2f -> %.2f), and a fall in the Descent is caught as the Endless's is"
+		% [dealt, dealt_on], is_equal_approx(dealt_on, dealt * 1.3) and is_equal_approx(walks_on, walks * 1.08)
+		and is_equal_approx(takes_on, takes * 0.92) and back and catch_body.contains("&\"descent_run\""))
+	# THE RUN, in a room of stand-ins.
+	var room := Node2D.new()
+	add_child(room)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	room.add_child(world)
+	var props := Node2D.new()
+	props.name = "props"
+	world.add_child(props)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	for one in [["doorleft", 217.0], ["doorright", 424.0]]:
+		var door := Node2D.new()
+		door.set_script(DoorScript)
+		door.name = str(one[0])
+		door.position = Vector2(float(one[1]), Build.WALL_BACK)
+		props.add_child(door)
+	var body := Node2D.new()
+	body.set_script(_endless_body_script())
+	room.add_child(body)
+	body.global_position = Vector2(320, 200)
+	body.set("hp", 100)
+	var run: Node = RunScript.new()
+	run.name = "descentrun"
+	run.set("player_override", body)
+	room.add_child(run)
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	var waiting: bool = int(run.get("state")) == RunScript.State.WAITING and doors.size() == 2 \
+		and bool(doors[0].get("open")) and str(doors[0].get("reward")) == "begin" and str(doors[1].get("reward")) == "begin"
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	var travelling: bool = int(run.get("state")) == RunScript.State.TRAVEL and Boons.active and not bool(doors[0].get("open"))
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	var arrived: bool = int(run.get("state")) == RunScript.State.FIGHT and int(run.get("room")) == 1 \
+		and body.global_position == run.get("entry_spot")
+	body.global_position = Vector2(320, 200)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var pack: Array = run.get("monsters")
+	var marked: bool = not pack.is_empty()
+	for m in pack:
+		marked = marked and (m as Node).has_meta(&"stress_copy") and (m as Node).get_parent() == enemies \
+			and (m as Node2D).global_position.distance_to(body.global_position) >= RunScript.SPAWN_CLEAR - 0.01
+	check("a run: through a door the screen fades, you come in at the room's front, the doors shut, and a pack of %d comes - marked as the owner's copies (no kill reported, never shared)"
+		% pack.size(), waiting and travelling and arrived and pack.size() == int(run.call("pack_size")) and pack.size() == 4 and marked)
+	for m in pack:
+		(m as Node).call("take_damage", 999999)
+	run.call("_process", 0.016)
+	var offered: Array = (run.get("offers") as Array).duplicate()
+	var picking: bool = int(run.get("state")) == RunScript.State.PICK and offered.size() == 3 \
+		and bool((run.get("hud").get("pick_panel") as Control).visible) and not bool(doors[0].get("open"))
+	var took: bool = bool(run.call("pick", 0)) and Boons.level(str(offered[0])) == 1
+	var promise_a: String = str(doors[0].get("reward"))
+	var promise_b: String = str(doors[1].get("reward"))
+	check("  the last one down and the room is clear: three upgrades offered (%s), one taken, then the doors open, each promising a room (%s, %s)"
+		% [", ".join(offered), promise_a, promise_b], picking and took and bool(doors[0].get("open"))
+		and RunScript.KINDS.has(promise_a) and RunScript.KINDS.has(promise_b) and promise_a != promise_b
+		and int(run.get("state")) == RunScript.State.CLEAR)
+	# Through the door that does not promise an upgrade (they differ, so one
+	# does not): an upgrade room is what a run would give anyway.
+	var taken: Node = doors[0] if promise_a != "upgrade" else doors[1]
+	var promised: String = str(taken.get("reward"))
+	taken.emit_signal("walked_in", taken)
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	var kept: bool = int(run.get("room")) == 2 and str(run.get("room_kind")) == promised and promised != "upgrade"
+	run.set("room_kind", "elite")
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var elites: Array = (run.get("monsters") as Array).filter(func(m: Node) -> bool: return m.has_meta(&"descent_elite"))
+	check("  the door you take is the room you get (%s); an elite room brings its elite too, bigger and tougher"
+		% promised, kept and elites.size() == 1 and (run.get("monsters") as Array).size() == int(run.call("pack_size")) + 1
+		and is_equal_approx((elites[0] as Node2D).scale.x, RunScript.ELITE_SIZE))
+	Boons.levels["fortune"] = 2
+	var gold_before: int = int(run.get("gold"))
+	run.call("_pay", 100)
+	check("  gold for the run, Fortune's share on it (100 -> %d)" % (int(run.get("gold")) - gold_before),
+		int(run.get("gold")) - gold_before == 150)
+	# THE KEEPER, then down.
+	run.call("_clear_monsters")
+	run.set("room", RunScript.ROOMS)
+	run.call("_go", "keeper")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var keepers: Array = run.get("monsters")
+	var the_keeper: bool = str(run.get("room_kind")) == "keeper" and keepers.size() == 1 \
+		and str((keepers[0] as Node).scene_file_path).ends_with("fireboss.tscn")
+	(keepers[0] as Node).call("take_damage", 99999999)
+	run.call("_process", 0.016)
+	run.call("pick", 0)
+	var down: bool = str(doors[0].get("reward")) == "down" and str(doors[1].get("reward")) == "down"
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	check("  after the sixth room both doors lead to the keeper; the Fire Keeper beaten, a pick, then both doors go down to floor 2, room 1",
+		the_keeper and down and int(run.get("floor_index")) == 1 and int(run.get("room")) == 1)
+	# THE BOTTOM: the third keeper wins.
+	run.call("_clear_monsters")
+	run.set("floor_index", RunScript.FLOORS.size() - 1)
+	run.set("room_kind", "keeper")
+	run.call("_room_cleared")
+	check("  the third keeper beaten is the bottom: the run won, its upgrades gone, the doors open to go again",
+		int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You reached the bottom")
+		and not Boons.active and str(doors[0].get("reward")) == "begin" and bool(doors[0].get("open")))
+	# A FALL.
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	body.global_position = Vector2(5000, 5000)
+	var elsewhere: bool = not bool(run.call("knock_out", body))
+	body.global_position = Vector2(300, 200)
+	var caught: bool = bool(run.call("knock_out", body))
+	check("  a fall off the Descent is an ordinary death; in it, you wake at the front on 1 health and the run is over",
+		elsewhere and caught and int(body.get("hp")) == 1 and body.global_position == run.get("entry_spot")
+		and int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You fell")
+		and (run.get("monsters") as Array).is_empty() and not Boons.active)
+	room.queue_free()
+	await get_tree().process_frame
+	# THE CARD: the owner's alone; Go travels there; inside, Leave.
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	var went: Array = []
+	card.set("travel", func(area_id: String, spawn_id: String) -> void: went.append([area_id, spawn_id]))
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("shows_descent", func() -> bool: return false)
+	card.call("paint")
+	var hidden: bool = not card.descent_box.visible
+	card.set("shows_descent", func() -> bool: return true)
+	# THE WARRIOR'S ("this will be the warriors decent"): a mage may not go.
+	card.set("class_now", func() -> String: return "mage")
+	card.call("open")
+	card.call("paint")
+	var mage_held: bool = card.descent_go.disabled and str(card.descent_status.text) == card.FOR_WARRIORS
+	card.call("_on_descent_go")
+	mage_held = mage_held and went.is_empty()
+	card.set("class_now", func() -> String: return "warrior")
+	card.call("paint")
+	var shown: bool = card.descent_box.visible and card.descent_go.text == "Go" and not card.descent_go.disabled
+	card.call("_on_descent_go")
+	card.set("area_now", func() -> String: return "descent")
+	card.call("paint")
+	var leave_text: String = card.descent_go.text
+	card.call("_on_descent_go")
+	check("on the Minigames card for the owner alone, the warrior's: a mage is told so and stays; a warrior's Go goes down (%s), and inside it is Leave, to town" % str(went),
+		hidden and mage_held and shown and leave_text == "Leave" and went.size() == 2 and went[0] == ["descent", "descent_entrance"]
+		and went[1] == ["elusion", ""])
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  (the descent: done)")

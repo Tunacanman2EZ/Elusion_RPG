@@ -787,6 +787,18 @@ func _on_frame_changed() -> void:
 func _deal_melee_damage() -> void:
 	if _swing_hitbox == null:
 		return
+	# A DESCENT RUN'S WHIRLWIND (0.112.0, descentboons.gd): every way's box at
+	# once - each enemy still cut once a swing (_hit_this_swing).
+	if DescentBoons.whirlwind():
+		for cardinal in CARDINAL_DIRECTIONS:
+			var box: Area2D = _resolve_swing_hitbox(str(cardinal))
+			if box == null:
+				continue
+			for area in box.get_overlapping_areas():
+				_try_damage(area.get_parent())
+			for body in box.get_overlapping_bodies():
+				_try_damage(body)
+		return
 
 	# NO XP HERE. A swing used to add 5 attack XP per enemy it touched, on this
 	# screen only - attack trains at the kill, on the server, and that is the
@@ -821,7 +833,12 @@ func _try_damage(target: Node) -> int:
 		return 0
 
 	_hit_this_swing[target_id] = true
-	target.take_damage(_calculate_melee_damage())
+	var cut: int = _calculate_melee_damage()
+	target.take_damage(cut)
+	# A DESCENT RUN'S BLOODLETTER (0.112.0): the cut bleeds (bleed.gd, the
+	# Double Axe's wound) - its whole share of swings over two seconds.
+	if DescentBoons.bleed_swings() > 0.0:
+		Bleed.open(target, roundi(float(cut) * DescentBoons.bleed_swings()), self)
 	if target is Node2D and is_inside_tree():
 		Strike.sparks(get_parent(), Strike.hit_point(target as Node2D),
 			Strike.GOLD if _finisher else Strike.STEEL)
@@ -864,8 +881,9 @@ static func finisher_fan(from: Vector2, aim: Vector2) -> Array:
 
 
 static func finisher_on(swing: int) -> bool:
-	"""Whether sword swing number `swing` (the first is 1) is THE FINISHER."""
-	return swing > 0 and swing % FINISHER_EVERY == 0
+	"""Whether sword swing number `swing` (the first is 1) is THE FINISHER -
+	every 2nd with a Descent run's Quick Finisher (0.112.0)."""
+	return swing > 0 and swing % DescentBoons.finisher_every(FINISHER_EVERY) == 0
 
 
 func _hit_stop(target: Node) -> void:
@@ -1065,6 +1083,11 @@ func _spawn_slashwave() -> void:
 		wave.finisher = true
 		wave.hitbox_scale = FINISHER_SCALE
 		wave.burst_damage = maxi(1, int(wave.damage * FINISHER_ORB_SHARE))
+	# A DESCENT RUN'S LONG WAVE (0.112.0): the wave and its box bigger.
+	var grown: float = DescentBoons.wave_scale()
+	if grown > 1.0:
+		wave.hitbox_scale *= grown
+		wave.size_scale = grown
 
 	# Identifies the warrior for slashwave.gd's magic-XP-on-hit — see that
 	# file's class comment for why the wave (not the swing) grants magic XP,

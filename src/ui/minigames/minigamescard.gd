@@ -34,6 +34,14 @@
 # while it is built (`shows_mage_stand`): Go, in town, opens it - it pays
 # nothing, so nothing is asked of the server.
 #
+# THE DESCENT (0.112.0, descentrun.gd) is the fourth, the owner's alone while
+# it is built (`shows_descent`): THE WARRIOR'S (the owner: "this will be the
+# warriors decent", as the Healer's Run is the healer's and the Stand the
+# mage's), a roguelike run down a crypt as your own warrior. Go, playing a
+# warrior (`class_now`), travels there (its own area, as the Endless is) and
+# asks the server nothing - step 1 pays nothing; inside it, the row's button
+# is Leave, to town.
+#
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
 # asking (`open_lobby`): the run of the day is asked for when everyone is
@@ -60,6 +68,11 @@ const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 20,000 gold 
 const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
 const STAND_BLURB := "The mage on the wall, raining meteors on the horde at the gate. Yours only while it is built."
+const DESCENT_BLURB := "The warrior's: down a crypt room by room - pick a door, pick an upgrade, beat the keepers. Yours only while it is built."
+const DESCENT_CLASS := "warrior"
+const FOR_WARRIORS := "For warriors - play your warrior"
+const DESCENT := "descent"
+const DESCENT_ENTRANCE := "descent_entrance"
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
 # area this game is in.
@@ -78,6 +91,10 @@ var open_lobby: Callable = Callable(self, "_open_lobby")
 # The Mage's Stand's doors: who sees it (the owner, while it is built) and Go.
 var shows_mage_stand: Callable = Callable(self, "_shows_mage_stand")
 var open_stand: Callable = Callable(self, "_open_stand")
+# The Descent's: who sees it (the owner, while it is built), and the class
+# being played - it is the warrior's.
+var shows_descent: Callable = Callable(self, "_shows_descent")
+var class_now: Callable = Callable(CharacterData, "active_class_id")
 
 var hud: Node = null
 var title: Label = null
@@ -92,6 +109,9 @@ var healer_go: Button = null
 var stand_box: VBoxContainer = null
 var stand_status: Label = null
 var stand_go: Button = null
+var descent_box: VBoxContainer = null
+var descent_status: Label = null
+var descent_go: Button = null
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -210,6 +230,30 @@ func _init() -> void:
 	stand_go.custom_minimum_size = Vector2(72, 28)
 	stand_go.pressed.connect(_on_stand_go)
 	stand_row.add_child(stand_go)
+	descent_box = VBoxContainer.new()
+	descent_box.name = "descent"
+	descent_box.add_theme_constant_override("separation", 4)
+	column.add_child(descent_box)
+	descent_box.add_child(HSeparator.new())
+	descent_box.add_child(_label("descentgame", "The Descent", FONT_SIZE, COLOUR))
+	var descent_blurb: Label = _label("descentblurb", DESCENT_BLURB, 12, COLOUR_HINT)
+	descent_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	descent_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
+	descent_box.add_child(descent_blurb)
+	var descent_row := HBoxContainer.new()
+	descent_row.add_theme_constant_override("separation", 10)
+	descent_box.add_child(descent_row)
+	descent_status = _label("descentstatus", "", FONT_SIZE, COLOUR_HINT)
+	descent_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	descent_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
+	descent_row.add_child(descent_status)
+	descent_go = Button.new()
+	descent_go.name = "descentgo"
+	descent_go.text = "Go"
+	descent_go.focus_mode = Control.FOCUS_NONE
+	descent_go.custom_minimum_size = Vector2(72, 28)
+	descent_go.pressed.connect(_on_descent_go)
+	descent_row.add_child(descent_go)
 
 
 func _label(id: String, text: String, size: int, colour: Color) -> Label:
@@ -313,6 +357,7 @@ func paint() -> void:
 	"""The status line and the button, from what is known now."""
 	_paint_healer()
 	_paint_stand()
+	_paint_descent()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -491,6 +536,39 @@ func _on_stand_go() -> void:
 		return
 	close()
 	open_stand.call()
+
+
+func _paint_descent() -> void:
+	descent_box.visible = bool(shows_descent.call())
+	var inside: bool = str(area_now.call()) == DESCENT
+	var warrior: bool = str(class_now.call()) == DESCENT_CLASS
+	if inside:
+		descent_status.text = "You are in the Descent."
+	else:
+		descent_status.text = "Ready - your warrior goes down" if warrior else FOR_WARRIORS
+	descent_status.add_theme_color_override("font_color", COLOUR_READY if warrior and not inside else COLOUR_HINT)
+	descent_go.text = "Leave" if inside else "Go"
+	descent_go.disabled = not inside and not warrior
+	descent_go.tooltip_text = "Back up to town" if inside else ("Down into the Descent - as you are, gear and all"
+		if warrior else "The Descent is the warrior's")
+
+
+func _on_descent_go() -> void:
+	if not bool(shows_descent.call()):
+		paint()
+		return
+	if str(area_now.call()) == DESCENT:
+		close()
+		travel.call(TOWN, "")
+	elif str(class_now.call()) == DESCENT_CLASS:
+		close()
+		travel.call(DESCENT, DESCENT_ENTRANCE)
+	else:
+		paint()
+
+
+func _shows_descent() -> bool:
+	return bool(Api.is_owner)
 
 
 func _shows_mage_stand() -> bool:

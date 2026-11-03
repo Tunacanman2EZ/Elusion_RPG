@@ -3163,6 +3163,96 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The Descent: the warrior's roguelike run down a crypt (0.112.0)
+
+The owner: "im thinking about that roguelike" (a minigame in Elusion),
+"lets see some pics on what your visioning", and of the mock-up
+(roguelike_mockup.png, zz/rlmock.gd): "that looks so cool incredible
+simply the best lets try it out", then "this will be the warriors
+decent" - the warrior's minigame, as the Healer's Run is the healer's
+and the Stand the mage's. Step 1 of DESCENT_PLAN.txt (commit folder),
+the owner's alone (`Api.is_owner`), played as your own warrior.
+
+- **Its own area, one room** (`scene/descent.tscn`, written by
+  `src/tools/builddescent.gd` - rebuilding it loses hand changes): the
+  underground floor, the crypt's walls laid end to end from their pieces
+  (the mock-up's numbers: sides at 12.5 and 627.5, the back wall's foot at
+  84, the front's at 360 - every run exact, `push_error` otherwise), two
+  doors in the back wall (x 217 and 424), one shut in the front (320),
+  candelabras, the arrival `descent_entrance`. In `AreaRegistry` and
+  `data/gamedata.json` (no monsters placed; the server takes any area name,
+  and one it has no map of is no booked area - copy gamedata.json to the API
+  with the next export, nothing needs it sooner).
+- **Doors** (`src/world/descent/descentdoor.gd`): the crypt door's three
+  pieces (as `magestand.gd`'s gate), built in `_ready()` - posts always
+  solid, planks solid while shut (`set_open()`). The body (`make_body()`:
+  the posts and "shut") is saved in the scene by builddescent.gd, because
+  `_test_every_area_can_be_walked()` walks the scene as saved, and a body
+  made only in `_ready()` read as a gap off the map; `_ready()` uses the
+  saved one, or makes its own for a door built in code. A medallion saying what
+  waits behind (`set_reward()`: upgrade, gold, elite, keeper, begin, down;
+  drawn brighter than white so the crypt's dark leaves it lit), and a trigger
+  in the gap that says `walked_in` for a body in "player". The front door is
+  `entrance`: shut, no reward, no trigger.
+- **The run** (`descentrun.gd`, group "descent_run"): WAITING (doors open,
+  "begin") -> through a door, TRAVEL (the HUD fades, `_arrive()` clears the
+  room, dresses it anew from `DECOR`, puts you at `entry_spot`) -> FIGHT
+  (after `FIGHT_DELAY`, `pack_size()` = 3 + room + 2 a floor of the floor's
+  `FLOORS` monsters, `health_scale()`; an elite room adds one of its elites,
+  `ELITE_HEALTH` and `ELITE_SIZE`, with a ring) -> clear: PICK (three of
+  `DescentBoons.offers()`, `pick()`) if the room promised an upgrade (or was
+  an elite's or a keeper's), gold for gold and elite rooms -> CLEAR (doors
+  open, two different promises from `KINDS`; after room `ROOMS` both
+  "keeper"; after a keeper both "down"). Three floors; the third keeper is
+  the bottom (`_end_run(true)`).
+- **Monsters carry the stress test's mark** (`stress_copy`): no kill report,
+  never shared or numbered, never respawned, pay nothing. Notice and leash
+  `NOTICE` (the room).
+- **A fall is not a death**: `Player._endless_catches_fall()` asks the
+  "endless_run" and the "descent_run" group; `knock_out()` - 1 health,
+  effects cleared, at the front, the run over.
+- **The camera held to the room** (`CAMERA_LIMITS` on the player's
+  "camera2d"): the room is bigger than the view (about 427 x 240 at the
+  game's zoom), so it follows you, never past the walls.
+- **Upgrades** (`descentboons.gd`, static, no class_name): Might, Iron Skin,
+  Swift, Fortune (to 5), Berserk (once). Three hooks in player.gd -
+  `get_damage_multiplier()` x `damage_factor()`, `effects_damage_scale()` x
+  `taken_factor()`, `effects_speed_scale()` x `speed_factor()` - all 1 unless
+  `active`; `clear()` at a run's end, a fall, and the run leaving the tree.
+  No heals (the server takes back a heal it cannot explain).
+- **The warrior's own** (the owner then: "start building"): Whirlwind
+  (once - `_deal_melee_damage()` cuts with all four ways' boxes, each enemy
+  once), Bloodletter (to 3 - `_try_damage()` opens a `Bleed` of
+  `bleed_swings()` swings), Quick Finisher (once - `finisher_on()` every
+  `QUICK_FINISHER`), Long Wave (to 3 - `_spawn_slashwave()` grows
+  `hitbox_scale` and the wave's new `size_scale`, which `slashwave.gd`
+  `_dress()` draws). All asked through `DescentBoons`, nothing off a run.
+- **HUD** (`descenthud.gd`, layer 4 as the Endless's): a plate at the top
+  (floor, its name, the room, gold), a dot a room with the keeper red, the
+  upgrades taken, a banner each room, a toast for gold, the pick (three
+  card buttons - clicks, no number keys: those are the hotbar's), the
+  fade, the result. The keeper's health is its own bar, as every boss's.
+- **The card** (`minigamescard.gd`): a Descent row for the owner
+  (`shows_descent`): Go, playing a warrior (`class_now`,
+  `CharacterData.active_class_id()`, `DESCENT_CLASS`), travels to
+  "descent" / "descent_entrance" - another class reads `FOR_WARRIORS`;
+  inside, Leave to town.
+
+`_test_the_descent()` (testrunner_9). Each hook was watched failing when
+broken: no Might on the character, no fall caught, the door's promise
+ignored.
+
+**And the whole suite hung, silent** (found running it for this): the
+Google sign-in section's login menu prefetches the town
+(`AreaRegistry.prefetch("elusion")`), and since 0.110.2 the section no
+longer waits on the real server, so it ended mid-load - and the next
+section's plain `load()` of every area met the town still loading in the
+background: Godot's deadlock (arearegistry.gd). The section now waits
+for the registry's loads to settle, and `_test_combat_bounds_match_the_game()`
+asks `AreaRegistry.scene_for()`, which waits for a load in flight. Reproduced
+with the two sections alone, fixed with the same. A test that leaves a
+background load running must settle it before it ends.
+
 ### The giant meteor: a star a wave drops, claimed, called down (0.111.0)
 
 The owner: "we need 1 giant meteor to wipe the whole field but i need to
