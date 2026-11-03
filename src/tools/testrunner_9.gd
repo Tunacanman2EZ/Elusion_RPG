@@ -282,6 +282,12 @@ func _test_a_fall_wakes_you_by_the_chest() -> void:
 	chest.queue_free()
 	standing.queue_free()
 	body.queue_free()
+	# The run puts its swarm and its floor wash beside itself, not under it
+	# (2 Nov): left here, the swarm's 256 stand-ins stayed in "enemies" for
+	# the rest of the run, and FAR ENEMIES SLEEP counted 257 where it put 1.
+	for left_beside in [run.get("swarm"), run.get("floor_wash")]:
+		if left_beside != null and is_instance_valid(left_beside):
+			(left_beside as Node).queue_free()
 	run.queue_free()
 	await get_tree().process_frame
 	print("  the fall and the chest: done")
@@ -1994,6 +2000,9 @@ func _test_google_sign_in() -> void:
 	google.queue_free()
 	# ---- on the login screen ----
 	var menu: Control = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate() as Control
+	# No probe and no resume (2 Nov): on the owner's PC the real server was
+	# being asked when the button was pressed, and every check below failed.
+	menu.set("talks_to_server", false)
 	add_child(menu)
 	await get_tree().process_frame
 	var button: Button = menu.get("google_button")
@@ -2973,17 +2982,39 @@ func _test_the_mages_stand() -> void:
 	# HER.
 	var mage: AnimatedSprite2D = stand.mage
 	var from_x: float = mage.position.x
-	stand.set("steer", func() -> float: return 1.0)
+	stand.set("steer", func() -> float: return -1.0)
 	stand.state = StandScript.State.BETWEEN
 	stand.set("_left", 999.0)
 	for i in 30:
 		stand.step(1.0 / 30.0)
-	var walked: float = mage.position.x - from_x
+	var walked: float = from_x - mage.position.x
 	for i in 300:
 		stand.step(1.0 / 30.0)
+	var at_end: float = mage.position.x
 	check("she walks the wall's top, held to its ends, drawn over its caps",
-		absf(walked - StandScript.WALK_SPEED) < 1.0 and is_equal_approx(mage.position.x, StandScript.WALK_HALF)
+		absf(walked - StandScript.WALK_SPEED) < 1.0 and is_equal_approx(at_end, -StandScript.WALK_HALF)
 		and is_equal_approx(mage.position.y, StandScript.WALK_Y) and mage.z_index > 1, [walked, mage.position])
+	# HER SIDE (0.110.2, "make sure mage cannot walk across the bridge 2 people
+	# on left 2 on the right"): walking for the gate, she stops at its pillar.
+	stand.set("steer", func() -> float: return 1.0)
+	for i in 300:
+		stand.step(1.0 / 30.0)
+	var by_gate_left: float = mage.position.x
+	stand.set("her_side", 1.0)
+	mage.position.x = 100.0
+	stand.set("steer", func() -> float: return -1.0)
+	for i in 300:
+		stand.step(1.0 / 30.0)
+	var by_gate_right: float = mage.position.x
+	stand.set("her_side", -1.0)
+	mage.position.x = -150.0
+	var seats: Array = []
+	for seat in 4:
+		seats.append(StandScript.side_for(seat))
+	check("  and never crosses the gate: on the left she stops at %.0f, on the right at %.0f; a party's four seats sit %s"
+		% [by_gate_left, by_gate_right, str(seats)],
+		is_equal_approx(by_gate_left, -StandScript.SIDE_INNER) and is_equal_approx(by_gate_right, StandScript.SIDE_INNER)
+		and StandScript.SIDE_INNER > StandScript.GATE_HALF and seats == [-1.0, 1.0, -1.0, 1.0])
 	stand.set("steer", func() -> float: return 0.0)
 	# THE METEORS: "no limit on meteors".
 	var target: Node2D = stand.spawn("slime", Vector2(0.0, -60.0))
@@ -3461,12 +3492,41 @@ func _test_the_mages_stand() -> void:
 	phone_stick.call("_gui_input", slide)
 	TouchControls.call("_physics_process", 1.0 / 60.0)
 	var walks: bool = Input.is_action_pressed("move_right") and float(srun.call("_read_steer")) > 0.0
+	# MOUNTED, AND READ AS IT LIES (0.110.2): the thumb dragged far past the
+	# rim leaves the stick where it stands, the knob at its rim, and the
+	# Stand walks full; a little push walks slowly.
+	var stand_rest: Vector2 = phone_stick.get("rest")
+	var stand_r: float = float(phone_stick.get("radius"))
+	var stand_box: Rect2 = phone_stick.get_global_rect()
+	var past_rim := InputEventScreenDrag.new()
+	past_rim.index = 0
+	past_rim.position = stand_rest + Vector2(stand_r * 4.0, stand_r * 0.1)
+	phone_stick.call("_gui_input", past_rim)
+	var stays: bool = (phone_stick.get("base") as Vector2) == stand_rest \
+		and (phone_stick.get("knob") as Vector2).length() <= stand_r + 0.01 \
+		and phone_stick.get_global_rect() == stand_box and zone.encloses(stand_box)
+	var full_walk: float = float(srun.call("_read_steer"))
+	var gentle := InputEventScreenDrag.new()
+	gentle.index = 0
+	gentle.position = stand_rest + Vector2(stand_r * 0.5, 0.0)
+	phone_stick.call("_gui_input", gentle)
+	var slow_walk: float = float(srun.call("_read_steer"))
+	check("  the Stand's stick is mounted (a thumb far past its rim moves only the knob) and read as it lies: full %.2f, a little push %.2f"
+		% [full_walk, slow_walk], stays and full_walk > 0.99 and slow_walk > 0.05 and slow_walk < 0.6,
+		[stand_rest, phone_stick.get("base"), phone_stick.get("knob"), stand_box, zone])
 	phone_stick.call("let_go")
+	var words_touch: String = str((screen.get("_how_to_lines")[0] as Label).text)
+	var go_touch: String = str((screen.get("start_button") as Button).text)
+	var hint_touch: String = str((screen.get("pick_hint") as Label).text)
 	TouchControls.set_active(false)
 	screen.call("_process", 0.0)
 	check("  on a phone: a stick of its own left of the field walks her; a finger on the field aims and casts, a thumb on the stick does not",
 		stick_up and aims_there and thumb_no_cast and walks and not phone_stick.visible and not Input.is_action_pressed("move_right"),
 		[stick_up, aims_there, thumb_no_cast, walks, zone])
+	check("  and the Stand's words are a phone's on one (\"%s\", \"%s\", \"%s\"), the keys' off it" % [words_touch, go_touch, hint_touch],
+		words_touch == "Walk the wall with the stick." and go_touch == "Start" and hint_touch == "Tap one"
+		and str((screen.get("_how_to_lines")[0] as Label).text) == ScreenScript.HOW_TO[0]
+		and str((screen.get("start_button") as Button).text) == "Start  (Space)" and str((screen.get("pick_hint") as Label).text) == "Click one")
 	# The pick on screen: the cards show what is offered; 2 takes the second.
 	srun.set("offers", ["blast", "patch", "crit"])
 	srun.set("door", float(srun.get("door_most")) * 0.5)
@@ -3527,6 +3587,8 @@ func _test_the_mages_stand() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	# THE HEALER'S RUN ON A PHONE too (0.110.1): its stick, and the meteors tapped.
+	var rock_art: Texture2D = load("res://art/maincharacter/meteor.png") as Texture2D
+	var rock_was: Vector2i = rock_art.get_image().get_size() if rock_art != null else Vector2i.ZERO
 	var hr_screen: CanvasLayer = (load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).new()
 	hr_screen.set("party_rooms", func() -> bool: return false)
 	hr_screen.set("may_be_god", func() -> bool: return false)
@@ -3539,13 +3601,75 @@ func _test_the_mages_stand() -> void:
 	var hr_key: Label = hr_box.get_node("meteorkey")
 	var tapped_words: String = hr_key.text
 	var hr_stick_up: bool = hr_stick != null and hr_stick.visible and hr_stick.get_global_rect().size.x > 0.0
+	# 0.110.2, the owner: "having rough time moving left and right with healer
+	# on mobil". The stick's edge pressed sprint, and here sprint is focus -
+	# the harder the push, the slower she went. Mounted in the dark left of
+	# the run now, off the field, and read as it lies.
+	var hr_run: Node2D = hr_screen.get("run")
+	var hr_zone: Rect2 = hr_screen.call("stick_zone")
+	var hr_rest: Vector2 = hr_stick.get("rest")
+	var hr_r: float = float(hr_stick.get("radius"))
+	var hr_stick_box: Rect2 = hr_stick.get_global_rect()
+	var drawn_at_rest: bool = (hr_stick.get("ring") as Control).visible and int(hr_stick.get("finger")) == -1
+	var hr_down := InputEventScreenTouch.new()
+	hr_down.index = 0
+	hr_down.position = hr_rest
+	hr_down.pressed = true
+	hr_stick.call("_gui_input", hr_down)
+	var hr_push := InputEventScreenDrag.new()
+	hr_push.index = 0
+	hr_push.position = hr_rest + Vector2(-hr_r * 3.0, 0.0)
+	hr_stick.call("_gui_input", hr_push)
+	TouchControls.call("_physics_process", 1.0 / 60.0)
+	var edge_steer: Vector2 = hr_run.call("_read_steer")
+	var edge_focus: bool = bool(hr_run.call("_read_focus"))
+	var sprint_pressed: bool = Input.is_action_pressed("sprint")
+	var hr_from: float = float((hr_run.get("healer") as Node2D).position.x)
+	hr_run.set("frozen", 0.0)
+	hr_run.set("gust", 0.0)
+	hr_run.call("_move_healer", 0.1)
+	var hr_went: float = hr_from - float((hr_run.get("healer") as Node2D).position.x)
+	var hr_stays: bool = (hr_stick.get("base") as Vector2) == hr_rest and hr_stick.get_global_rect() == hr_stick_box
+	hr_push.position = hr_rest + Vector2(-hr_r * 0.45, 0.0)
+	hr_stick.call("_gui_input", hr_push)
+	var gentle_steer: Vector2 = hr_run.call("_read_steer")
+	hr_stick.call("let_go")
+	TouchControls.call("_physics_process", 1.0 / 60.0)
+	var path_wall: float = hr_zone.end.x
+	check("  the Healer's Run's stick: drawn at rest, mounted left of the path (%s), never moved by a thumb past its rim, read as it lies (all the way %s, a little %s)"
+		% [str(hr_stick_box), str(edge_steer), str(gentle_steer)],
+		drawn_at_rest and hr_stays and hr_zone.encloses(hr_stick_box) and hr_stick_box.end.x <= path_wall + 0.01 and hr_zone.size.x > 0.0
+		and edge_steer.distance_to(Vector2(-1.0, 0.0)) < 0.01 and gentle_steer.x < -0.05 and gentle_steer.x > -0.6,
+		[hr_zone, hr_stick_box, hr_rest, hr_stick.get("base")])
+	check("  and pushed all the way she goes her full speed: the stick's edge never focuses her (sprint %s, focus %s, %.1f px in 0.1 s)"
+		% [str(sprint_pressed), str(edge_focus), hr_went],
+		sprint_pressed and not edge_focus and absf(hr_went - RunScript.MOVE_SPEED * 0.1) < 0.5)
+	var hr_words_touch: String = str((hr_screen.get("_tutorial_lines")[0] as Label).text)
+	var hr_go_touch: String = str((hr_screen.get("start_button") as Button).text)
 	TouchControls.set_active(false)
 	hr_screen.call("_process", 0.0)
+	check("  and its tutorial is a phone's on one (\"%s\", \"%s\"), the keys' off it" % [hr_words_touch, hr_go_touch],
+		hr_words_touch == "Move with the stick - she shoots by herself." and hr_go_touch == "Start"
+		and str((hr_screen.get("_tutorial_lines")[0] as Label).text) == "Move with your move keys - she shoots by herself."
+		and str((hr_screen.get("start_button") as Button).text) == "Start  (Space)")
 	check("  and the Healer's Run: a stick of its own on a phone, and its meteors tapped (\"%s\")" % tapped_words,
 		hr_stick_up and not hr_stick.visible and tapped_words == "Meteors - tap" and hr_key.text == "Meteors - Space"
 		and hr_box.mouse_filter == Control.MOUSE_FILTER_STOP and hr_box.gui_input.is_connected(Callable(hr_screen, "_on_meteors_touched")))
 	hr_screen.call("close")
 	await get_tree().process_frame
+	# 2 Nov, on the owner's PC: "Too many pixels for image" building the
+	# meteors - each screen made doubled the meteor art's own image, and in a
+	# headless run that image is the texture's, so it grew every time.
+	var again: CanvasLayer = (load("res://src/world/healerrun/healerrunscreen.gd") as GDScript).new()
+	again.set("party_rooms", func() -> bool: return false)
+	again.set("may_be_god", func() -> bool: return false)
+	get_tree().root.add_child(again)
+	await get_tree().process_frame
+	again.call("close")
+	await get_tree().process_frame
+	var rock_now: Vector2i = rock_art.get_image().get_size() if rock_art != null else Vector2i.ZERO
+	check("  and making its screen twice leaves the meteor's own picture as it was (%s)" % str(rock_now),
+		rock_now == rock_was, [rock_was, rock_now])
 	print("  (the mage's stand: done)")
 
 

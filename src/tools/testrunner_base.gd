@@ -584,25 +584,35 @@ func _scan_import_cache_refs(dir_path: String, offenders: Array[String], scanned
 # it falls back to the default theme font, which is real.
 
 func _string_characters(line: String, script: bool) -> String:
-	# Every character inside a double-quoted string on this line, comments left
-	# out (a # outside a string ends a script's line). Escapes are skipped
-	# whole, so \" does not end the string.
+	# Every character past ASCII inside a double-quoted string on this line,
+	# comments left out (a # outside a string ends a script's line). Escapes
+	# are skipped whole, so \" does not end the string.
+	#
+	# ONLY PAST ASCII, AND A PLAIN LINE NOT WALKED AT ALL (2 Nov). It kept every
+	# character of every string, one at a time - and the Big Field's scene has
+	# a tile line 687,399 characters long inside quotes, so the font test took
+	# 68 s here and long enough on the owner's PC that the run looked frozen
+	# ("my test froze here"). Only a character past 127 can be missing from
+	# the font, so a line with none is passed over and only those are kept.
 	var out: String = ""
+	if line.to_utf8_buffer().size() == line.length():
+		return out
 	var inside: bool = false
 	var i: int = 0
-	while i < line.length():
-		var ch: String = line[i]
+	var length: int = line.length()
+	while i < length:
+		var code: int = line.unicode_at(i)
 		if inside:
-			if ch == "\\":
+			if code == 92:
 				i += 2
 				continue
-			if ch == '"':
+			if code == 34:
 				inside = false
-			else:
-				out += ch
-		elif ch == '"':
+			elif code > 127:
+				out += line[i]
+		elif code == 34:
 			inside = true
-		elif ch == "#" and script:
+		elif code == 35 and script:
 			break
 		i += 1
 	return out

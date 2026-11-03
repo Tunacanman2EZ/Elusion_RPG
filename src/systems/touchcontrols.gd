@@ -69,6 +69,9 @@ const SKILL_NEAREST := 24.0
 const STICK_DEAD := 0.22
 # The stick this far out of its reach runs (0.91.1).
 const RUN_EDGE := 0.92
+# A minigame reads the stick as it lies (analog_move()): this far out is all
+# the way (0.110.2).
+const FULL_AT := 0.85
 const EIGHTH := 0.3827
 
 const MOVES: Array[StringName] = [&"move_right", &"move_left", &"move_down", &"move_up"]
@@ -463,6 +466,16 @@ func _latch_move() -> void:
 	# THE STICK'S EDGE RUNS (0.91.1): the owner, "if player drags the coin all
 	# the way over run is initiated". Eased back off the edge, it walks.
 	_set_action(&"sprint", (sprint_on or stick.length() >= RUN_EDGE) and way != Vector2.ZERO)
+
+
+func analog_move() -> Vector2:
+	"""The stick as it lies, for a minigame (0.110.2): nothing in its dead
+	middle (STICK_DEAD), then the further out the faster, all the way at
+	FULL_AT of its reach - a little push walks slowly. Never past 1."""
+	var reach: float = stick.length()
+	if reach < STICK_DEAD:
+		return Vector2.ZERO
+	return stick / reach * clampf(inverse_lerp(STICK_DEAD, FULL_AT, reach), 0.0, 1.0)
 
 
 static func move_way(at: Vector2) -> Vector2:

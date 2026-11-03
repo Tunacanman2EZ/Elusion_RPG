@@ -354,16 +354,32 @@ static func caption_box(box: Rect2, words: float) -> Rect2:
 # while touch is on, in the zone the screen gives it, sized for a thumb as the
 # HUD's is. It writes TouchControls.stick, which TouchControls turns into the
 # move keys each physics tick - the keys the minigames already read.
+#
+# MOUNTED, AND READ AS IT LIES (0.110.2). The owner: "having rough time
+# moving left and right with healer on mobil", "need that analog stick more
+# mounted also dragging it out of a fixed are is not a good idea". It came
+# where the thumb landed and followed the thumb past its rim; and its edge
+# pressed sprint, which in the Healer's Run slows her (focus) - so the harder
+# a thumb pushed, the slower she went. Now it stands in one place, drawn
+# always, in the dark beside the field (lay_minigame_stick()): a thumb moves
+# the knob and never the stick, the knob stops at the rim, and the minigames
+# read it as it lies (TouchControls.analog_move()) - a little push walks
+# slowly, all the way runs - with no sprint from it.
+const MOUNT_GRAB := 1.5
+const MOUNT_SHARE := 0.44
+const MOUNT_LIFT := 1.6
+
 static func minigame_stick() -> Stick:
 	var made := Stick.new()
 	made.name = "stick"
 	made.visible = false
+	made.mounted = true
 	return made
 
 
 static func lay_minigame_stick(one: Stick, on: bool, zone: Rect2, window: Window, view: Vector2) -> void:
-	"""Shown while touch is `on`, its thumb landing anywhere in `zone`
-	(canvas units of a `view`-sized canvas); off, any thumb on it let go."""
+	"""Shown while touch is `on`, mounted in `zone` (canvas units of a
+	`view`-sized canvas); off, any thumb on it let go."""
 	one.visible = on and zone.size.x > 0.0 and zone.size.y > 0.0
 	if not one.visible:
 		one.let_go()
@@ -374,7 +390,24 @@ static func lay_minigame_stick(one: Stick, on: bool, zone: Rect2, window: Window
 		var content: Vector2 = Vector2(window.content_scale_size) if window.content_scale_size != Vector2i.ZERO else view
 		f = thumb_scale(Vector2(window.size), content, DisplayServer.screen_get_scale())
 		per_unit = minf(float(window.size.x) / view.x, float(window.size.y) / view.y)
-	one.place(zone, Vector2(zone.size.x * 0.5, zone.size.y * 0.65), STICK_RADIUS * f, KNOB_RADIUS * f, 0.0, per_unit)
+	var mount: Dictionary = mounted_at(zone, f)
+	var r: float = float(mount["radius"])
+	var grab: Rect2 = mount["grab"]
+	one.place(grab, (mount["middle"] as Vector2) - grab.position, r, minf(KNOB_RADIUS * f, r * 0.5), 0.0, per_unit)
+
+
+static func mounted_at(zone: Rect2, f: float) -> Dictionary:
+	"""Where a minigame's stick stands in `zone` at `f` units to a CSS pixel:
+	as big as the HUD's while it fits (MOUNT_SHARE of the zone's width), in
+	the middle across, low (MOUNT_LIFT radii over the zone's foot); and the
+	square a thumb grabs it in, MOUNT_GRAB radii each way but never out of
+	the zone (past it is the field, where a finger may aim)."""
+	var r: float = maxf(1.0, minf(STICK_RADIUS * f, zone.size.x * MOUNT_SHARE))
+	var middle := Vector2(zone.position.x + zone.size.x * 0.5,
+		maxf(zone.position.y + r, zone.end.y - r * MOUNT_LIFT))
+	var grab: float = r * MOUNT_GRAB
+	var square := Rect2(middle - Vector2(grab, grab), Vector2(grab, grab) * 2.0).intersection(zone)
+	return {"radius": r, "middle": middle, "grab": square}
 
 
 static func drawn_rect(picture: Control, view: Vector2) -> Rect2:
@@ -705,6 +738,9 @@ class Stick extends Control:
 	var knob: Vector2 = Vector2.ZERO
 	var finger: int = -1
 	var coin: Texture2D = null
+	# A minigame's (0.110.2): drawn always, where it is put; a thumb moves the
+	# knob, never the stick, and the knob stops at the rim.
+	var mounted: bool = false
 
 	# Where and when the thumb came down, for a tap on a name.
 	var _landed_at: Vector2 = Vector2.ZERO
@@ -729,7 +765,7 @@ class Stick extends Control:
 		pixel = art_pixel_size if art_pixel_size > 0.0 else 2.0
 		per_unit = screen_per_unit
 		rest = resting
-		if finger < 0:
+		if finger < 0 or mounted:
 			base = rest
 		_place_base()
 		queue_redraw()
@@ -742,14 +778,21 @@ class Stick extends Control:
 				# all, and only a slide from it walks.
 				TouchControls.played_now()
 				finger = touch.index
-				base = touch.position
-				knob = Vector2.ZERO
+				if mounted:
+					# MOUNTED: the knob goes toward the thumb from where the
+					# stick stands.
+					base = rest
+					knob = (touch.position - base).limit_length(radius)
+				else:
+					base = touch.position
+					knob = Vector2.ZERO
 				_landed_at = touch.position
 				_landed_msec = Time.get_ticks_msec()
 				_say()
 			elif not touch.pressed and touch.index == finger:
-				# A QUICK TAP THAT WENT NOWHERE may be on a name (0.56.0).
-				if Time.get_ticks_msec() - _landed_msec <= TouchControls.NAME_TAP_MSEC \
+				# A QUICK TAP THAT WENT NOWHERE may be on a name (0.56.0) - not
+				# on a minigame's, which is over the world.
+				if not mounted and Time.get_ticks_msec() - _landed_msec <= TouchControls.NAME_TAP_MSEC \
 						and touch.position.distance_to(_landed_at) <= TouchControls.NAME_TAP_SLIDE:
 					TouchControls.tap_name_at(get_global_transform_with_canvas() * touch.position)
 				let_go()
@@ -757,7 +800,11 @@ class Stick extends Control:
 			return
 		var drag := event as InputEventScreenDrag
 		if drag != null:
-			if drag.index == finger:
+			if drag.index == finger and mounted:
+				# MOUNTED: past the rim the knob waits at it; the stick stays.
+				knob = (drag.position - base).limit_length(radius)
+				_say()
+			elif drag.index == finger:
 				var off: Vector2 = drag.position - base
 				if off.length() > radius:
 					# FOLLOWS THE THUMB: past the rim, the base comes along.
@@ -785,12 +832,12 @@ class Stick extends Control:
 		queue_redraw()
 
 	func running() -> bool:
-		return finger >= 0 and radius > 0.0 and knob.length() >= radius * TouchControls.RUN_EDGE
+		return not mounted and finger >= 0 and radius > 0.0 and knob.length() >= radius * TouchControls.RUN_EDGE
 
 	func _place_base() -> void:
 		"""The round slot under the thumb, as wide as the stick - and no slot
-		at rest (0.91.0)."""
-		ring.visible = finger >= 0
+		at rest (0.91.0) - but a mounted one's always (0.110.2)."""
+		ring.visible = finger >= 0 or mounted
 		if not ring.visible:
 			return
 		var side: float = float(int(radius * 2.0 / pixel)) * pixel
@@ -818,7 +865,8 @@ class Stick extends Control:
 		var held: bool = finger >= 0
 		# ONLY UNDER A THUMB (0.91.0): at rest the stick is not drawn at all,
 		# so the lower left is the game's. It appears where the thumb lands.
-		if not held:
+		# A mounted one is drawn always, its coin in the middle at rest.
+		if not held and not mounted:
 			return
 		var tint: Color = STICK_RUNNING if running() else STICK_COIN
 		var spot: Rect2 = knob_rect()

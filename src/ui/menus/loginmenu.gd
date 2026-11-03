@@ -130,6 +130,13 @@ const SAY_BLOCKED := Color(1.0, 0.78, 0.28)      # amber - the door is shut anyw
 
 # guards against overlapping submissions while a request is in flight.
 var _request_in_flight: bool = false
+# THE SUITE'S DOOR (2 Nov): false, and opening the screen asks the server
+# nothing - no probe, no resume of a remembered session, no reconnect poll.
+# The Google sign-in test opened the real screen in the tree, and on the
+# owner's PC (a server to reach, a session remembered) the probe was still
+# in flight when the test pressed the button, so every check after it failed
+# - and a remembered session could have been resumed from inside the suite.
+var talks_to_server: bool = true
 
 # Guards the background reconnect probe: skip a tick while the previous one
 # is still waiting out its timeout, so a dead server can't stack requests.
@@ -263,7 +270,8 @@ func _ready() -> void:
 
 	# Keep the server's state live for as long as this screen is open, not
 	# just at startup — see _start_reconnect_poll().
-	_start_reconnect_poll()
+	if talks_to_server:
+		_start_reconnect_poll()
 
 	_wire_recovery()
 	_wire_email_prompt()
@@ -282,7 +290,8 @@ func _ready() -> void:
 		_say(Api.signout_notice, SAY_BLOCKED)
 		Api.signout_notice = ""
 
-	await _check_connection_and_resume()
+	if talks_to_server:
+		await _check_connection_and_resume()
 
 
 func _on_login_field_submitted(_new_text: String) -> void:

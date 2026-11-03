@@ -1501,6 +1501,10 @@ static func _pushed_out(point: Vector2, radius: float, rect: Rect2) -> Vector2:
 
 
 func _read_steer() -> Vector2:
+	# A THUMB ON THE STICK (0.110.2): as it lies - a little push is slow, which
+	# is a phone's focus.
+	if TouchControls.stick_held:
+		return TouchControls.analog_move()
 	var dir := Vector2.ZERO
 	if Input.is_action_pressed("move_right"): dir.x += 1.0
 	if Input.is_action_pressed("move_left"): dir.x -= 1.0
@@ -1510,7 +1514,10 @@ func _read_steer() -> Vector2:
 
 
 func _read_focus() -> bool:
-	return Input.is_action_pressed("sprint")
+	# Not from the stick (0.110.2): its edge presses sprint - a run, in town -
+	# and here sprint slows her, so pushing harder went slower ("having rough
+	# time moving left and right with healer on mobil").
+	return Input.is_action_pressed("sprint") and not TouchControls.stick_held
 
 
 # =============================================================================

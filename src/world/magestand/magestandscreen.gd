@@ -71,8 +71,18 @@ const HOW_TO := [
 	"The horde breaks the gate, then runs for the portal.",
 	"Each wave is bigger, faster and tougher. Hold as many as you can.",
 ]
+# The same on a phone (0.110.2).
+const HOW_TO_TOUCH := {
+	0: "Walk the wall with the stick.",
+	1: "Hold a finger on the field to rain meteors there - there is no limit.",
+}
 
 var run: Node2D = null
+# Worded for keys and a mouse, or for a phone (_word_for_touch(), 0.110.2).
+var _how_to_lines: Array = []
+var start_button: Button = null
+var pick_hint: Label = null
+var _worded: int = -1
 var viewport: SubViewport = null
 var picture: TextureRect = null
 var frame: Control = null
@@ -229,8 +239,10 @@ func _build_words() -> void:
 		line.add_theme_font_size_override("font_size", 17)
 		line.add_theme_color_override("font_color", COLOUR_HINT)
 		lines.add_child(line)
+		_how_to_lines.append(line)
 	var go := Button.new()
 	go.name = "go"
+	start_button = go
 	go.text = "Start  (Space)"
 	go.focus_mode = Control.FOCUS_NONE
 	go.custom_minimum_size = Vector2(160, 36)
@@ -283,7 +295,8 @@ func _build_pick() -> void:
 	foot.alignment = BoxContainer.ALIGNMENT_CENTER
 	foot.add_theme_constant_override("separation", 18)
 	column.add_child(foot)
-	foot.add_child(_words("Click one", 13, COLOUR_HINT))
+	pick_hint = _words("Click one", 13, COLOUR_HINT)
+	foot.add_child(pick_hint)
 	reroll_button = Button.new()
 	reroll_button.name = "reroll"
 	reroll_button.focus_mode = Control.FOCUS_NONE
@@ -506,7 +519,22 @@ func _process(delta: float) -> void:
 	_fit_frame()
 	Pad.lay_minigame_stick(stick, touch and not start_panel.visible and not results.visible, stick_zone(),
 		get_window() if is_inside_tree() else null, get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO)
+	_word_for_touch()
 	paint()
+
+
+func _word_for_touch() -> void:
+	"""The words for keys and a mouse, or for a phone's stick and finger."""
+	var touch: int = 1 if TouchControls.active else 0
+	if touch == _worded:
+		return
+	_worded = touch
+	for k in _how_to_lines.size():
+		(_how_to_lines[k] as Label).text = str(HOW_TO_TOUCH[k]) if touch == 1 and HOW_TO_TOUCH.has(k) else str(HOW_TO[k])
+	if start_button != null:
+		start_button.text = "Start" if touch == 1 else "Start  (Space)"
+	if pick_hint != null:
+		pick_hint.text = "Tap one" if touch == 1 else "Click one"
 
 
 func paint() -> void:

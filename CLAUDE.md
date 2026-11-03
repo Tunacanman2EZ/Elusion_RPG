@@ -3163,6 +3163,92 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The minigames' stick is mounted and read as it lies; the mage keeps her side (0.110.2)
+
+The owner, on a phone: "having rough time moving left and right with
+healer on mobil", "need that analog stick more mounted also dragging it
+out of a fixed are is not a good idea", and "i need to make sure mage
+cannot walk across the bridge 2 people on left 2 on the right is the idea
+assuming 4 person party". Pictured (the commit folder's
+phone_0110_2.png).
+
+- **Pushing harder went slower.** The stick's edge presses `sprint`
+  (a run, in town - touchcontrols.gd `_latch_move()`), and in the
+  Healer's Run sprint is focus (`FOCUS_SPEED` 70 against 150). Now
+  `healerrun.gd _read_focus()` takes no sprint while a thumb holds the
+  stick; on a phone a gentle push is the focus.
+- **Read as it lies.** A thumb on a minigame's stick is read through
+  `TouchControls.analog_move()`: nothing inside `STICK_DEAD`, then the
+  further out the faster, all the way at `FULL_AT` (0.85) - not the
+  8-way keys. `_read_steer()` in healerrun.gd and magestand.gd (its x)
+  ask it while `TouchControls.stick_held`; keys as before otherwise.
+- **Mounted** (touchpad.gd `Stick.mounted`, set by `minigame_stick()`):
+  drawn always, where `lay_minigame_stick()` puts it -
+  `mounted_at(zone, f)`: as big as the HUD's while it fits
+  (`MOUNT_SHARE` of the zone's width), in the middle across,
+  `MOUNT_LIFT` radii over the zone's foot; a thumb grabs it within
+  `MOUNT_GRAB` radii, never outside the zone. A thumb moves the knob from
+  where the stick stands and never the stick; past the rim the knob
+  waits at the rim. No run tint, no tap on a name. The HUD's own stick
+  is unchanged (lands under the thumb, follows it).
+- **Off the field.** The Healer's Run's zone is `stick_zone()`: the dark
+  left of the run, from the window's edge to the path's wall, under the
+  words (`STICK_TOP`). It sat on the field's left before. Opposite the
+  meteors, bottom right.
+- **Words for a phone.** The run's tutorial (`TOUCH_LINES`: the stick, a
+  gentle push, tap a meteor) and the Stand's (`HOW_TO_TOUCH`), Start
+  without "(Space)" (`key_hint()`), "Tap one" under the Stand's cards -
+  re-worded when touch turns on or off (`_word_for_touch()`).
+- **Her side of the gate** (magestand.gd): she walked the whole top,
+  over the gate's gap where there are no caps. `her_side` (-1, alone)
+  and `walk_span()`: from the wall's end to `SIDE_INNER` (the pillar by
+  the gate). `side_for(seat)` gives a party's seats their sides in turn
+  - one each for two, two each for four - for when the party is built.
+
+`_test_the_mages_stand()` holds it; each new check was watched failing
+with the old code (focus at the edge 7 px against 15, the knob dragging
+the stick, the mage crossing to 306).
+
+### The suite on the owner's PC, and GitHub's, green again (0.110.2)
+
+The owner: "i need to run tests because my email was blowing up", then,
+of his own run, "my test froze here" and the Google sign-in failures. The
+whole suite was run here as GitHub runs it (no art/pack, a fresh import):
+5,940 passed, 3 failed; on his PC, two more things went wrong. Now 5,943
+passed, 0 failed, 58 skipped (the pack's).
+
+- **"Froze" at FONT**: `_string_characters()` (testrunner_base.gd) kept
+  every character of every string, one at a time, and the Big Field's
+  scene has a tile line 687,399 characters long inside quotes - 68 s here,
+  minutes on his PC. Now a line with nothing past ASCII is passed over and
+  only characters past 127 are kept: 0.2 s, and a planted U+25CF is still
+  caught.
+- **Google sign-in failed on his PC alone**: the test put the real login
+  screen in the tree, whose `_ready()` probes the server and resumes a
+  remembered session - so on his PC the probe was in flight when the test
+  pressed the button (`_request_in_flight`), and everything after failed.
+  loginmenu.gd `talks_to_server` (true; the test sets it false before
+  adding the screen) skips the probe, the resume and the reconnect poll. A
+  suite must never be able to sign in as the owner either.
+- **FAR ENEMIES SLEEP counted 257**: `_test_a_fall_wakes_you_by_the_chest()`
+  freed its Endless run, but the run puts its swarm and floor wash beside
+  itself (its parent), and the swarm's 256 stand-ins stayed in "enemies"
+  for the rest of the suite. The test frees both now.
+- **GM panel "its default size holds its tallest tab"** (629 authored, 646
+  needed): the Swell's row (0.97.1) made the World tab the tallest, and the
+  panel cannot open taller without reaching the menu bar. The effects
+  grid's rows are a pixel apart (`v_separation` 1).
+- **"Too many pixels for image" building the Healer's Run's meteors** (his
+  run, in the 0.110.1 phone check): `_build_meteors()` resized the meteor
+  art's `get_image()` in place, and in a headless run that is the
+  texture's own image - every screen made doubled it (24 px, 48, 96...),
+  until a long run passed Godot's limit. Now a copy, made once
+  (`_big_rock`); the Stand's test makes the screen twice and holds the
+  art's size (watched fail: 24 to 96).
+- **GitHub's own page** shows its last run on 28 Oct (0.93.6); the emails
+  were runs failing since 0.93.0. Whether later pushes ran is not visible
+  without signing in.
+
 ### The minigames on a phone: a stick of their own (0.110.1)
 
 The owner, on a phone: "no joystick on mobil believe we only need left

@@ -90,6 +90,14 @@ const WALK_Y := FOOT - 54.0
 const WALK_SPEED := 130.0
 # As far either way as she walks: the wall's ends, short of the side walls.
 const WALK_HALF := PATH_HALF - 24.0
+# HER SIDE OF THE GATE (0.110.2). The owner: "i need to make sure mage cannot
+# walk across the bridge 2 people on left 2 on the right is the idea assuming
+# 4 person party". She walked the whole top, over the gate's gap where there
+# are no caps. Now she keeps to `her_side` - from the wall's end to the
+# pillar by the gate (SIDE_INNER from the middle) - and never crosses it.
+# Alone she is on the left; a party's seats take sides in turn (side_for()),
+# so two make one each side and four make two.
+const SIDE_INNER := GATE_HALF + 9.0
 const WALL_PIECES := {101: "res://scene/crypt/wallrun4.tscn", 51: "res://scene/crypt/wallrun2.tscn",
 	26: "res://scene/crypt/wallrun1.tscn", 17: "res://scene/crypt/pillar.tscn"}
 const WALLS_ART := "res://art/floordecoration/floorwalls.png"
@@ -346,6 +354,8 @@ var world: Node2D = null
 var floor_layer: TileMapLayer = null
 var monsters: Node2D = null
 var mage: AnimatedSprite2D = null
+# Her side of the gate: -1 left, 1 right (SIDE_INNER).
+var her_side: float = -1.0
 var door_planks: Sprite2D = null
 var door_parts: Array = []
 var portal_sprite: AnimatedSprite2D = null
@@ -608,6 +618,9 @@ func step(delta: float) -> void:
 
 
 func _read_steer() -> float:
+	# A thumb on the stick: as it lies (0.110.2).
+	if TouchControls.stick_held:
+		return TouchControls.analog_move().x
 	var dir: float = 0.0
 	if Input.is_action_pressed("move_right"):
 		dir += 1.0
@@ -616,9 +629,21 @@ func _read_steer() -> float:
 	return dir
 
 
+static func side_for(seat: int) -> float:
+	"""A party's seat to its side of the gate: the first left, the second
+	right, and so on - two each side for four."""
+	return -1.0 if seat % 2 == 0 else 1.0
+
+
+static func walk_span(on_side: float) -> Vector2:
+	"""Where on `on_side` she may stand: x from, x to."""
+	return Vector2(-WALK_HALF, -SIDE_INNER) if on_side < 0.0 else Vector2(SIDE_INNER, WALK_HALF)
+
+
 func _walk(delta: float) -> void:
 	var dir: float = clampf(float(steer.call()), -1.0, 1.0)
-	mage.position.x = clampf(mage.position.x + dir * WALK_SPEED * delta, -WALK_HALF, WALK_HALF)
+	var span: Vector2 = walk_span(her_side)
+	mage.position.x = clampf(mage.position.x + dir * WALK_SPEED * delta, span.x, span.y)
 	mage.position.y = WALK_Y
 	if casting:
 		_play("attackup")

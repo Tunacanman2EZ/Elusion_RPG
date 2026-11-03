@@ -121,6 +121,11 @@ func _build() -> void:
 	grid.name = "effects"
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 8)
+	# A PIXEL BETWEEN ROWS (2 Nov): the Swell's row (0.97.1) made this the
+	# GM panel's tallest tab, 17 px past the rectangle the panel opens at,
+	# which cannot grow without reaching the menu bar - the suite's "its
+	# default size holds its tallest tab".
+	grid.add_theme_constant_override("v_separation", 1)
 	add_child(grid)
 	for effect in EFFECTS:
 		var box := CheckBox.new()

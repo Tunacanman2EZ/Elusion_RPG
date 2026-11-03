@@ -113,9 +113,14 @@ var board: RichTextLabel = null
 # THE METEORS ON HAND, bottom right (0.106.0): one picture a meteor held, and
 # the next one filling as it recharges (RunScript.METEORS_BASE, METEOR_RECHARGE).
 var meteor_box: VBoxContainer = null
+# The meteor art at twice its size, made once for every screen (_build_meteors()).
+static var _big_rock: Texture2D = null
 # On a phone: the move stick (touchpad.gd, a minigame's own), and the meteors
 # are tapped (0.110.1).
 var stick: Control = null
+# The tutorial's lines, worded for keys or for a phone (_word_for_touch()).
+var _tutorial_lines: Array = []
+var _worded: int = -1
 var meteor_slots: Array = []
 var tune_button: Button = null
 var tune_panel: PanelContainer = null
@@ -151,6 +156,14 @@ const TUTORIAL_LINES := [
 	"A fire rises behind you - keep moving.",
 	"Gold counts up as you go. Leave to take it.",
 ]
+# The same on a phone (0.110.2): the stick, a gentle push, the meteors tapped.
+const TOUCH_LINES := {
+	0: "Move with the stick - she shoots by herself.",
+	1: "Push it a little to go slowly through tight gaps.",
+	5: "Tap a meteor, bottom right, to drop it on the boss - three to start, each back in 30 s.",
+}
+# The stick stands in the dark left of the run, under the words there (0.110.2).
+const STICK_TOP := 200.0
 
 
 static func open(tree: SceneTree, run_seed: int = 0, run_on_server: int = 0, what_it_pays: Dictionary = {},
@@ -331,6 +344,7 @@ func _build_words() -> void:
 		line.add_theme_font_size_override("font_size", 17)
 		line.add_theme_color_override("font_color", COLOUR_HINT)
 		lines.add_child(line)
+		_tutorial_lines.append(line)
 	party_line = Label.new()
 	party_line.name = "partyline"
 	party_line.add_theme_font_size_override("font_size", 17)
@@ -368,9 +382,17 @@ func _build_meteors() -> void:
 	var rock: Texture2D = load(RunScript.METEOR_TEXTURE) as Texture2D
 	var big: Texture2D = rock
 	if rock != null:
-		var image: Image = rock.get_image()
-		image.resize(image.get_width() * 2, image.get_height() * 2, Image.INTERPOLATE_NEAREST)
-		big = ImageTexture.create_from_image(image)
+		if _big_rock == null:
+			# A COPY OF THE ART, MADE ONCE (2 Nov; the owner's run: "Too many
+			# pixels for image"). get_image() can hand back the texture's own
+			# image - a headless run does - so resizing it doubled the meteor's
+			# picture every time a screen was made, until it was too big to be.
+			var image: Image = rock.get_image().duplicate() as Image
+			if image.is_compressed():
+				image.decompress()
+			image.resize(image.get_width() * 2, image.get_height() * 2, Image.INTERPOLATE_NEAREST)
+			_big_rock = ImageTexture.create_from_image(image)
+		big = _big_rock
 	for i in RunScript.METEORS_MOST:
 		var slot := TextureProgressBar.new()
 		slot.name = "meteor%d" % i
@@ -721,12 +743,36 @@ func _process(delta: float) -> void:
 
 
 func _lay_stick() -> void:
-	"""The stick: the left share of the picture, under its top fifth."""
-	var drawn: Rect2 = Pad.drawn_rect(picture, RunScript.VIEW)
-	var zone := Rect2(Vector2(0.0, drawn.position.y + drawn.size.y * Pad.STICK_ZONE_TOP),
-		Vector2(drawn.position.x + drawn.size.x * Pad.STICK_ZONE_WIDTH, drawn.size.y * (1.0 - Pad.STICK_ZONE_TOP)))
-	Pad.lay_minigame_stick(stick, TouchControls.active, zone, get_window() if is_inside_tree() else null,
+	"""The stick, mounted in stick_zone()."""
+	Pad.lay_minigame_stick(stick, TouchControls.active, stick_zone(), get_window() if is_inside_tree() else null,
 		get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO)
+
+
+func stick_zone() -> Rect2:
+	"""Where the stick stands (0.110.2): the dark left of the run, from the
+	window's edge to the path's wall, under the words there - off the field,
+	so a thumb hides none of it. It sat on the field's left (0.110.1)."""
+	var drawn: Rect2 = Pad.drawn_rect(picture, RunScript.VIEW)
+	var fit: float = drawn.size.x / RunScript.VIEW.x
+	var wall: float = drawn.position.x + (RunScript.HALF.x - RunScript.PATH_HALF - 8.0) * fit
+	var top: float = maxf(drawn.position.y, 0.0) + STICK_TOP
+	return Rect2(Vector2(0.0, top), Vector2(maxf(0.0, wall), maxf(0.0, drawn.end.y - top)))
+
+
+func _word_for_touch() -> void:
+	"""The tutorial in the words of the keys, or of a phone's stick and taps
+	(0.110.2) - whichever is in hand now."""
+	var touch: int = 1 if TouchControls.active else 0
+	if touch == _worded:
+		return
+	_worded = touch
+	for k in _tutorial_lines.size():
+		(_tutorial_lines[k] as Label).text = str(TOUCH_LINES[k]) if touch == 1 and TOUCH_LINES.has(k) else str(TUTORIAL_LINES[k])
+
+
+static func key_hint(words: String, touch: bool) -> String:
+	"""A button's words, with its key beside them unless on a phone."""
+	return words if touch else words + "  (Space)"
 
 
 func paint() -> void:
@@ -765,6 +811,7 @@ func paint() -> void:
 		gold_line.text += " - not paid: " + _no_run
 	# The meteors are the bottom right's now (paint_meteors()).
 	meteor_line.text = ""
+	_word_for_touch()
 	paint_meteors()
 	banner_line.text = "" if tutorial.visible else str(run.get("banner"))
 	var party: Node = _party()
@@ -773,14 +820,14 @@ func paint() -> void:
 		if here:
 			party_line.text = lobby_text(party)
 			var counting: float = float(party.get("counting"))
-			start_button.text = ("Not ready  (Space)" if bool(party.get("said_ready")) else "Ready  (Space)")
+			start_button.text = key_hint("Not ready" if bool(party.get("said_ready")) else "Ready", TouchControls.active)
 			start_button.disabled = counting >= 0.0 or _entering
 			if int(run.get("players")) > 1:
 				top_line.text += "   party of %d" % int(run.get("players"))
 		else:
 			party_line.text = "Your party joins when they press Go too - wait for them here, or Start alone." \
 				+ ("\n" + _lobby_said if _lobby_said != "" else "")
-			start_button.text = "Start alone  (Space)"
+			start_button.text = key_hint("Start alone", TouchControls.active)
 			start_button.disabled = _entering
 		board.visible = not tutorial.visible and (here or int(run.get("players")) > 1)
 		if board.visible:
@@ -790,6 +837,7 @@ func paint() -> void:
 		party_line.visible = _lobby_said != ""
 		party_line.text = _lobby_said
 		board.visible = false
+		start_button.text = key_hint("Start", TouchControls.active)
 	boss_bar.visible = state == RunScript.State.BOSS
 	boss_bar.value = float(run.call("boss_share"))
 	if _leave_armed > 0.0:
