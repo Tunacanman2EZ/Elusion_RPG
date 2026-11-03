@@ -3748,3 +3748,169 @@ func _bursts_in(run: Node) -> int:
 func google_stand_in(path: String, body: Dictionary, _wait: float, sent: Array, answers: Array) -> Dictionary:
 	sent.append([path, body])
 	return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0}
+
+
+func _test_the_giant_meteor() -> void:
+	section("THE GIANT METEOR (0.111.0): a star a wave drops, claimed by meteors, called down on the field")
+	# The owner: "we need 1 giant meteor to wipe the whole field but i need
+	# to think carefully about how it can be used because with 4 people
+	# might be too op", "i did not see giant meteor pop up", "lets build it".
+	# The plan's section 13.
+	const StandScript := preload("res://src/world/magestand/magestand.gd")
+	const ScreenScript := preload("res://src/world/magestand/magestandscreen.gd")
+	# THE ODDS: none before wave 4; one in four; sure after three without.
+	var odds_hold: bool = not StandScript.star_comes(3, 9, 0.0) and StandScript.star_comes(4, 0, 0.2) \
+		and not StandScript.star_comes(4, 0, 0.3) and StandScript.star_comes(9, 3, 0.99) \
+		and not StandScript.star_comes(9, 2, 0.99)
+	var stand = StandScript.new()
+	stand.set("seed_value", 4)
+	stand.set("steer", func() -> float: return 0.0)
+	add_child(stand)
+	stand.set_process(false)
+	var dropped: int = 0
+	var longest: int = 0
+	var run_without: int = 0
+	for k in 400:
+		stand.wave = StandScript.STAR_FROM + k
+		stand.call("_roll_star")
+		if float(stand.get("star_drop_in")) >= 0.0:
+			dropped += 1
+			run_without = 0
+			stand.set("star_drop_in", -1.0)
+		else:
+			run_without += 1
+			longest = maxi(longest, run_without)
+	var share: float = float(dropped) / 400.0
+	stand.wave = 2
+	stand.call("_roll_star")
+	var none_early: bool = float(stand.get("star_drop_in")) < 0.0
+	stand.wave = 20
+	stand.set("star_state", "held")
+	var without_before: int = int(stand.get("star_waves_without"))
+	stand.set("star_waves_without", 3)
+	stand.call("_roll_star")
+	var one_at_a_time: bool = float(stand.get("star_drop_in")) < 0.0 and int(stand.get("star_waves_without")) == 3
+	stand.set("star_state", "")
+	stand.set("star_waves_without", without_before)
+	check("from wave 4 a wave may drop a star (one in four), surely after three without (%d of 400 waves, at most %d in a row without); never one while one is about"
+		% [dropped, longest], odds_hold and longest <= StandScript.STAR_SURE - 1 and share > 0.28 and share < 0.46
+		and none_early and one_at_a_time)
+	# CLAIMED BY METEORS: 3 alone, 8 for four - landed on it, not beside it.
+	var needs: Array = []
+	for n in [1, 2, 3, 4]:
+		needs.append(StandScript.claim_hits(n))
+	stand.state = StandScript.State.WAVE
+	stand.wave = 5
+	stand.set("_to_spawn", 0)
+	# One far off keeps the wave on (an empty field ends it, and its pick holds all).
+	stand.spawn("slime", Vector2(StandScript.PATH_HALF - 20.0, -StandScript.HALF.y + 10.0))
+	stand.call("_drop_star")
+	for i in 60:
+		stand.step(1.0 / 60.0)
+	var lying: bool = str(stand.get("star_state")) == "lying"
+	var star_at: Vector2 = stand.get("star_at")
+	var rock_shown: bool = stand.get_node_or_null("star") != null
+	stand.call("_land", {"at": star_at + Vector2(120.0, 0.0), "rock": null, "crit": false})
+	var beside_counts: int = int(stand.get("star_hits"))
+	stand.call("_land", {"at": star_at, "rock": null, "crit": false})
+	stand.call("_land", {"at": star_at + Vector2(10.0, 5.0), "rock": null, "crit": false})
+	var after_two: String = str(stand.get("star_state"))
+	stand.call("_land", {"at": star_at, "rock": null, "crit": false})
+	await get_tree().process_frame
+	check("  claimed by meteors landed on it (%s for 1 to 4 players): one beside it is no hit, two leave it lying, the third makes it held"
+		% str(needs), needs == [3, 5, 6, 8] and lying and rock_shown and beside_counts == 0 and after_two == "lying"
+		and str(stand.get("star_state")) == "held" and stand.get_node_or_null("star") == null)
+	# CALLED: refused between waves; in a wave, its shadow STAR_FALL, then
+	# everything on the field at the call is hit - what walked in after lives.
+	stand.state = StandScript.State.BETWEEN
+	var refused_between: bool = not bool(stand.call("call_star"))
+	stand.state = StandScript.State.WAVE
+	for node in stand.monsters.get_children():
+		node.free()
+	var marked: Array = []
+	for i in 5:
+		marked.append(stand.spawn("sprite", Vector2(-200.0 + i * 90.0, -150.0)))
+	(marked[4] as Node2D).position = Vector2(-StandScript.PATH_HALF + 30.0, StandScript.FOOT + 12.0)
+	marked[4].set("through", true)
+	var elite = stand.spawn("slime", Vector2(100.0, -60.0))
+	elite.set("rank", "elite")
+	elite.set("most", 100.0)
+	elite.set("health", 100.0)
+	var keeper = stand.spawn("slime", Vector2(-100.0, -60.0))
+	keeper.set("rank", "keeper")
+	keeper.set("most", 500.0)
+	keeper.set("health", 500.0)
+	var slain_before: int = stand.slain
+	var called: bool = bool(stand.call("call_star"))
+	var falling: bool = str(stand.get("star_state")) == "falling"
+	var late = stand.spawn("sprite", Vector2(0.0, -StandScript.HALF.y - 10.0))
+	for i in int(StandScript.STAR_FALL * 60.0) - 6:
+		stand.step(1.0 / 60.0)
+	var still_falling: bool = str(stand.get("star_state")) == "falling" and float(marked[0].get("dying")) < 0.0
+	for i in 12:
+		stand.step(1.0 / 60.0)
+	var all_hit: bool = true
+	for m in marked:
+		all_hit = all_hit and (not is_instance_valid(m) or float(m.get("dying")) >= 0.0)
+	var late_lives: bool = is_instance_valid(late) and float(late.get("dying")) < 0.0
+	check("  called down in a wave (refused between them): its shadow %.0f s, then the field at the call is slain, the one inside the gate too (%d) - and one that came after lives"
+		% [StandScript.STAR_FALL, stand.slain - slain_before], refused_between and called and falling and still_falling
+		and all_hit and late_lives and stand.slain - slain_before == 5 and str(stand.get("star_state")) == ""
+		and int(stand.get("stars_called")) == 1 and str(stand.get("banner")) == "The field is wiped!")
+	check("  elites lose half their health to it (%.0f of 100), keepers a fifth (%.0f of 500)"
+		% [float(elite.get("health")), float(keeper.get("health"))],
+		is_equal_approx(float(elite.get("health")), 50.0) and is_equal_approx(float(keeper.get("health")), 400.0)
+		and not bool(stand.call("call_star")))
+	# NOT CLAIMED IN TIME: it fades, its hits gone.
+	stand.call("_drop_star")
+	for i in 60:
+		stand.step(1.0 / 60.0)
+	stand.call("_land", {"at": stand.get("star_at"), "rock": null, "crit": false})
+	var one_hit: int = int(stand.get("star_hits"))
+	for i in int(StandScript.STAR_LIFE * 60.0) + 6:
+		stand.step(1.0 / 60.0)
+	await get_tree().process_frame
+	check("  left lying %.0f s unclaimed it fades (one hit on it, then none)" % StandScript.STAR_LIFE,
+		one_hit == 1 and str(stand.get("star_state")) == "" and int(stand.get("star_hits")) == 0
+		and stand.get_node_or_null("star") == null)
+	stand.queue_free()
+	# THE SCREEN: a Giant meteor button while one is held, Q or a press calls
+	# it; on a phone it is tapped.
+	var screen: CanvasLayer = ScreenScript.new()
+	get_tree().root.add_child(screen)
+	await get_tree().process_frame
+	screen.set("mouse_held", func() -> bool: return false)
+	screen.begin()
+	screen.call("_process", 0.0)
+	var srun: Node = screen.get("run")
+	srun.set_process(false)
+	var button: Button = screen.get("star_button")
+	var hidden_without: bool = not button.visible
+	srun.set("state", StandScript.State.WAVE)
+	srun.call("spawn", "sprite", Vector2(0.0, -100.0))
+	srun.set("star_state", "held")
+	screen.call("_process", 0.0)
+	var shown: bool = button.visible and not button.disabled and button.text == "Giant meteor\n(Q)"
+	var q := InputEventKey.new()
+	q.keycode = KEY_Q
+	q.pressed = true
+	screen.call("_input", q)
+	var q_called: bool = str(srun.get("star_state")) == "falling"
+	srun.set("star_state", "held")
+	TouchControls.set_active(true)
+	screen.call("_process", 0.0)
+	var phone_words: String = button.text
+	var on_controls: bool = bool(screen.call("_on_controls", button.get_global_rect().get_center()))
+	var over_field: bool = (screen.call("drawn_rect") as Rect2).encloses(button.get_global_rect())
+	button.pressed.emit()
+	var pressed_called: bool = str(srun.get("star_state")) == "falling"
+	TouchControls.set_active(false)
+	screen.call("_word_for_touch")
+	var how_to: Array = screen.get("_how_to_lines")
+	var told: String = str((how_to[how_to.size() - 1] as Label).text)
+	check("  the screen: a Giant meteor button while one is held (\"%s\" on a phone), on the picture, not an aim; Q or a press calls it; the start panel tells of it"
+		% phone_words, hidden_without and shown and q_called and phone_words == "Giant meteor" and pressed_called
+		and on_controls and over_field and told.contains("star"))
+	screen.queue_free()
+	await get_tree().process_frame
+	print("  (the giant meteor: done)")

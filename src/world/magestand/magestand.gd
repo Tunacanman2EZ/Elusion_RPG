@@ -65,6 +65,18 @@
 # blow BOMB_HIT off it; one slain on the way blows up where it stands,
 # hurting its neighbours. And a monster burns from one crater at a time.
 #
+# THE STAR (0.111.0, section 13 of the plan; the owner: "we need 1 giant
+# meteor to wipe the whole field but i need to think carefully about how it
+# can be used because with 4 people might be too op", then "lets build it"):
+# from wave STAR_FROM a wave may drop one (STAR_CHANCE, and sure once
+# STAR_SURE waves have passed without) STAR_DROP_AFTER into it. It lies
+# glowing on the field STAR_LIFE; meteors landed on it claim it (claim_hits():
+# 3 alone, 8 for four). Held - one at a time, for the party - it is called
+# down with call_star() (Q, or the screen's button): its shadow spreads over
+# the field STAR_FALL, then it lands - every monster there at the call is
+# hit by star_hit() (the ordinary slain; elites lose half, keepers a fifth,
+# when step 3 brings them). What walks in after the call lives.
+#
 # No god mode here (the owner: "we also do not need godmode on this mode").
 #
 # Step 3 brings elites, keepers, shooters and lives; step 4 the
@@ -146,6 +158,25 @@ const BOMB_HIT := 120.0
 const BOMB_REACH := 44.0
 const BOMB_DAMAGE := 30.0
 const RUBBLE_SCENE := "res://scene/crypt/rubble4.tscn"
+# THE STAR (0.111.0): see the header. It lies where a wave drops it; called,
+# it lands on STAR_CENTRE, its shadow STAR_SHADOW across (squashed by half,
+# the field seen from above at a slant).
+const STAR_FROM := 4
+const STAR_CHANCE := 0.25
+const STAR_SURE := 4
+const STAR_DROP_AFTER := 5.0
+const STAR_DROP_SECONDS := 0.8
+const STAR_LIFE := 10.0
+const STAR_RADIUS := 14.0
+const STAR_HITS_ALONE := 3
+const STAR_HITS_FOUR := 8
+const STAR_FALL := 2.0
+const STAR_AFTERGLOW := 1.4
+const STAR_CENTRE := Vector2(0.0, -70.0)
+const STAR_SHADOW := 320.0
+const STAR_ELITE_SHARE := 0.5
+const STAR_KEEPER_SHARE := 0.2
+const STAR_GOLD := Color(1.0, 0.85, 0.4)
 # THE WAVES.
 const READY_SECONDS := 1.5
 const BETWEEN_SECONDS := 3.0
@@ -227,6 +258,9 @@ class Monster extends Node2D:
 	# Where it goes: -1 the gate, else a stretch of the wall.
 	var target: int = -1
 	var fuse: Node2D = null
+	# "" an ordinary monster; "elite" or "keeper" (step 3) - the star hits
+	# those for a share of their health (star_hit()).
+	var rank: String = ""
 
 
 # A bomber's lit fuse, drawn over it.
@@ -283,6 +317,7 @@ class Marks extends Node2D:
 					var y: float = tip.y - 12.0 * k
 					draw_colored_polygon(PackedVector2Array([Vector2(ax - 11.0, y - 10.0), Vector2(ax, y),
 						Vector2(ax + 11.0, y - 10.0), Vector2(ax, y - 5.0)]), Color(1.0, 0.45, 0.25, 0.85 - 0.3 * k))
+			_draw_star_sky()
 			if bool(run.get("showing_aim")):
 				var aim: Vector2 = run.get("aim")
 				draw_arc(aim, 22.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.5, 0.9), 1.0)
@@ -311,6 +346,86 @@ class Marks extends Node2D:
 			draw_circle(Vector2.ZERO, 8.0 + 14.0 * done, Color(0.0, 0.0, 0.0, 0.2 + 0.25 * done))
 			draw_arc(Vector2.ZERO, float(run.call("blast_reach")), 0.0, TAU, 40, Color(FIRE, 0.4 + 0.4 * done), 2.0)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_draw_star_ground()
+
+	func _draw_star_ground() -> void:
+		"""Under the monsters: the lying star's glow, the called star's shadow
+		spreading, and the scorch after it lands."""
+		var star: String = str(run.get("star_state"))
+		var t: float = float(run.get("run_seconds"))
+		if star == "lying":
+			var at: Vector2 = run.get("star_at")
+			draw_set_transform(at, 0.0, Vector2(1.0, 0.5))
+			var pulse: float = 0.5 + 0.5 * sin(t * 6.0)
+			draw_circle(Vector2.ZERO, STAR_RADIUS * 3.0, Color(STAR_GOLD, 0.12 + 0.1 * pulse))
+			draw_circle(Vector2.ZERO, STAR_RADIUS * 1.6, Color(STAR_GOLD, 0.25 + 0.15 * pulse))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		elif star == "falling":
+			var done: float = 1.0 - clampf(float(run.get("star_left")) / STAR_FALL, 0.0, 1.0)
+			draw_set_transform(STAR_CENTRE, 0.0, Vector2(1.0, 0.5))
+			var r: float = STAR_SHADOW * (0.35 + 0.65 * done)
+			draw_circle(Vector2.ZERO, r, Color(0.0, 0.0, 0.0, 0.12 + 0.2 * done))
+			draw_circle(Vector2.ZERO, r * 0.6, Color(0.0, 0.0, 0.0, 0.08 + 0.15 * done))
+			draw_arc(Vector2.ZERO, r, 0.0, TAU, 96, Color(1.0, 0.45, 0.15, 0.5 + 0.4 * done), 4.0)
+			draw_arc(Vector2.ZERO, r * 0.94, 0.0, TAU, 96, Color(1.0, 0.75, 0.3, 0.3 + 0.3 * done), 2.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var after: float = float(run.get("star_afterglow")) / STAR_AFTERGLOW
+		if after > 0.0:
+			draw_set_transform(STAR_CENTRE, 0.0, Vector2(1.0, 0.55))
+			draw_circle(Vector2.ZERO, STAR_SHADOW, Color(1.0, 0.45, 0.1, 0.22 * after))
+			draw_circle(Vector2.ZERO, STAR_SHADOW * 0.66, Color(1.0, 0.6, 0.2, 0.25 * after))
+			draw_circle(Vector2.ZERO, 60.0, Color(0.15, 0.08, 0.06, 0.85 * after))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			# The stone in its crater, glowing as it cools.
+			var stone: Texture2D = load(METEOR_TEXTURE) as Texture2D
+			if stone != null:
+				var side: Vector2 = Vector2(stone.get_size()) * 4.0
+				draw_texture_rect(stone, Rect2(STAR_CENTRE + Vector2(0.0, -10.0) - side / 2.0, side), false,
+					Color(1.5, 0.85, 0.55, minf(1.0, after * 1.5)))
+			var r2 := RandomNumberGenerator.new()
+			r2.seed = 8
+			for k in 70:
+				var a: float = r2.randf() * TAU
+				var d: float = r2.randf_range(40.0, STAR_SHADOW * 0.92)
+				var p: Vector2 = STAR_CENTRE + Vector2(cos(a) * d, sin(a) * d * 0.55)
+				var tall: float = r2.randf_range(8.0, 20.0) * after
+				draw_colored_polygon(PackedVector2Array([p + Vector2(-4, 0), p + Vector2(4, 0), p + Vector2(0, -tall)]),
+					Color(1.0, 0.55 + r2.randf() * 0.35, 0.12, 0.9 * after))
+
+	func _draw_star_sky() -> void:
+		"""Over everything: the claim ring round a lying star (a mark a hit
+		it needs, lit as they land), the called star's fire trail, and the
+		blast's ring and flash."""
+		var star: String = str(run.get("star_state"))
+		if star == "lying":
+			var at: Vector2 = run.get("star_at")
+			var need: int = maxi(1, int(run.call("claim_hits", int(run.get("players")))))
+			var got: int = int(run.get("star_hits"))
+			var each: float = TAU / float(need)
+			for k in need:
+				var from: float = -PI / 2.0 + each * k + 0.14
+				var colour: Color = STAR_GOLD if k < got else Color(STAR_GOLD, 0.3)
+				draw_arc(at, STAR_RADIUS * 2.6, from, from + each - 0.28, 16, Color(0.0, 0.0, 0.0, 0.6), 7.0)
+				draw_arc(at, STAR_RADIUS * 2.6, from, from + each - 0.28, 16, colour, 4.0)
+			# The time left, a thin ring closing.
+			var left: float = clampf(float(run.get("star_left")) / STAR_LIFE, 0.0, 1.0)
+			draw_arc(at, STAR_RADIUS * 2.6 + 7.0, -PI / 2.0, -PI / 2.0 + TAU * left, 40, Color(1.0, 1.0, 1.0, 0.55), 2.0)
+		elif star == "falling":
+			var done: float = 1.0 - clampf(float(run.get("star_left")) / STAR_FALL, 0.0, 1.0)
+			var stone: Vector2 = run.call("star_sky_at", done)
+			var back: Vector2 = (run.call("star_sky_at", 0.0) as Vector2 - stone).normalized()
+			for k in 14:
+				var u: float = float(k) / 14.0
+				draw_circle(stone + back * (14.0 + 26.0 * k), 46.0 - k * 2.6,
+					Color(1.0, 0.35 + u * 0.45, 0.08, 0.85 - u * 0.8))
+		var after: float = float(run.get("star_afterglow")) / STAR_AFTERGLOW
+		if after > 0.0:
+			var grown: float = 1.0 - after
+			draw_set_transform(STAR_CENTRE, 0.0, Vector2(1.0, 0.55))
+			draw_arc(Vector2.ZERO, STAR_SHADOW * (0.9 + 0.35 * grown), 0.0, TAU, 96, Color(1.0, 0.95, 0.8, 0.9 * after), 6.0)
+			draw_arc(Vector2.ZERO, STAR_SHADOW * (1.0 + 0.4 * grown), 0.0, TAU, 96, Color(1.0, 0.7, 0.4, 0.5 * after), 3.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			draw_rect(Rect2(-HALF, VIEW), Color(1.0, 0.75, 0.4, 0.3 * maxf(0.0, after * 2.0 - 1.0)))
 
 
 var steer: Callable = Callable(self, "_read_steer")
@@ -371,12 +486,36 @@ var _cast_in: float = 0.0
 var _rocks: Dictionary = {}
 var _comet_count: int = 0
 
+# THE STAR: "" none; "dropping" onto the field; "lying" there to be claimed;
+# "held"; "falling" (called, its shadow spreading). star_left is the time
+# left in the state; star_hits the meteors landed on it while it lies.
+var star_state: String = ""
+var star_at: Vector2 = Vector2.ZERO
+var star_left: float = 0.0
+var star_hits: int = 0
+# Waves from STAR_FROM in a row that dropped none; seconds until this
+# wave's drops (-1 none coming).
+var star_waves_without: int = 0
+var star_drop_in: float = -1.0
+var stars_dropped: int = 0
+var stars_called: int = 0
+# What was on the field at the call (it alone is hit), and the glow after.
+var star_marked: Array = []
+var star_afterglow: float = 0.0
+# The party (step 5): its size sets the hits a star needs.
+var players: int = 1
+var _star_rng := RandomNumberGenerator.new()
+var _star_rock: Sprite2D = null
+
 
 func _ready() -> void:
 	if seed_value != 0:
 		_rng.seed = seed_value
+		# The star rolls on its own, so the waves come as they did before it.
+		_star_rng.seed = seed_value + 7919
 	else:
 		_rng.randomize()
+		_star_rng.randomize()
 	_fx_rng.randomize()
 	_build()
 	next_x = _group_x()
@@ -609,6 +748,7 @@ func step(delta: float) -> void:
 	_walk(delta)
 	_cast(delta)
 	_falls(delta)
+	_star(delta)
 	_burn(delta)
 	_move_monsters(delta)
 	_waves(delta)
@@ -732,6 +872,8 @@ func _land(fall: Dictionary) -> void:
 		var m := node as Monster
 		if m != null and m.dying < 0.0 and m.position.distance_to(at) <= reach + m.radius:
 			hurt(m, damage)
+	if star_state == "lying" and at.distance_to(star_at) <= reach + STAR_RADIUS:
+		_strike_star()
 	craters.append({"at": at, "left": burn_seconds(), "seed": _fx_rng.randf() * 100.0})
 	if bool(fall["crit"]) and level("shower") > 0:
 		for i in SHOWER_PIECES:
@@ -800,6 +942,177 @@ func _blow_up(at: Vector2) -> void:
 		var other := node as Monster
 		if other != null and other.dying < 0.0 and other.position.distance_to(at) <= BOMB_REACH + other.radius:
 			hurt(other, BOMB_DAMAGE)
+
+
+# =============================================================================
+# THE STAR: a giant meteor, dropped by a wave, claimed, held, called down
+# =============================================================================
+
+static func star_comes(at_wave: int, waves_without: int, roll: float) -> bool:
+	"""Does wave `at_wave` drop a star? From STAR_FROM, one in STAR_CHANCE -
+	and surely once STAR_SURE - 1 waves in a row have dropped none."""
+	return at_wave >= STAR_FROM and (roll < STAR_CHANCE or waves_without >= STAR_SURE - 1)
+
+
+static func claim_hits(party: int) -> int:
+	"""Meteors to land on a star to claim it: STAR_HITS_ALONE alone,
+	STAR_HITS_FOUR for four - a party claims as fast as one alone, the horde
+	already scaled for it."""
+	var n: int = clampi(party, 1, 4)
+	return roundi(lerpf(float(STAR_HITS_ALONE), float(STAR_HITS_FOUR), float(n - 1) / 3.0))
+
+
+static func star_hit(m: Monster) -> float:
+	"""What the star takes from `m`: all of an ordinary monster, half an
+	elite's health, a fifth of a keeper's."""
+	if m.rank == "keeper":
+		return m.most * STAR_KEEPER_SHARE
+	if m.rank == "elite":
+		return m.most * STAR_ELITE_SHARE
+	return m.health
+
+
+func _roll_star() -> void:
+	"""At a wave's start: one star at a time - none rolled while one is about."""
+	if wave < STAR_FROM or star_state != "" or star_drop_in >= 0.0:
+		return
+	if star_comes(wave, star_waves_without, _star_rng.randf()):
+		star_waves_without = 0
+		star_drop_in = STAR_DROP_AFTER
+	else:
+		star_waves_without += 1
+
+
+func _drop_star() -> void:
+	star_drop_in = -1.0
+	stars_dropped += 1
+	star_state = "dropping"
+	star_left = STAR_DROP_SECONDS
+	star_hits = 0
+	star_at = Vector2(_star_rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0),
+		_star_rng.randf_range(-HALF.y + 110.0, FOOT - 150.0))
+	_star_rock = Sprite2D.new()
+	_star_rock.name = "star"
+	_star_rock.texture = load(METEOR_TEXTURE) as Texture2D
+	_star_rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_star_rock.scale = Vector2(2.5, 2.5)
+	_star_rock.modulate = Color(1.5, 1.25, 0.8)
+	_star_rock.z_index = SKY_Z - 2
+	_star_rock.position = star_at + SKY * 2.0
+	add_child(_star_rock)
+	banner = "A star fell! Land %d meteors on it to claim it" % claim_hits(players)
+	banner_left = BANNER_SECONDS * 1.5
+
+
+func _strike_star() -> void:
+	star_hits += 1
+	if is_instance_valid(_star_rock):
+		_star_rock.modulate = Color(2.2, 1.8, 1.2)
+	if star_hits >= claim_hits(players):
+		star_state = "held"
+		_drop_star_rock()
+		banner = "The star is yours - call it down when the horde is thick"
+		banner_left = BANNER_SECONDS * 1.5
+
+
+func _drop_star_rock() -> void:
+	if is_instance_valid(_star_rock):
+		_star_rock.queue_free()
+	_star_rock = null
+
+
+func can_call_star() -> bool:
+	return star_state == "held" and state == State.WAVE
+
+
+func call_star() -> bool:
+	"""THE STAR CALLED: its shadow spreads, and STAR_FALL later it lands on
+	what is on the field now."""
+	if not can_call_star():
+		return false
+	star_state = "falling"
+	star_left = STAR_FALL
+	stars_called += 1
+	star_marked.clear()
+	for node in monsters.get_children():
+		var m := node as Monster
+		if m != null and m.dying < 0.0:
+			star_marked.append(m)
+	_star_rock = Sprite2D.new()
+	_star_rock.name = "star"
+	_star_rock.texture = load(METEOR_TEXTURE) as Texture2D
+	_star_rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_star_rock.scale = Vector2(6.0, 6.0)
+	_star_rock.z_index = SKY_Z + 2
+	_star_rock.position = star_sky_at(0.0)
+	add_child(_star_rock)
+	banner = "A star falls!"
+	banner_left = STAR_FALL
+	return true
+
+
+static func star_sky_at(done: float) -> Vector2:
+	"""Where the called star is, `done` of the way down."""
+	return (STAR_CENTRE + Vector2(230.0, -250.0)).lerp(STAR_CENTRE + Vector2(0.0, -10.0), pow(done, 1.6))
+
+
+func _star(delta: float) -> void:
+	star_afterglow = maxf(0.0, star_afterglow - delta)
+	if star_drop_in >= 0.0:
+		star_drop_in -= delta
+		if star_drop_in < 0.0:
+			_drop_star()
+	match star_state:
+		"dropping":
+			star_left -= delta
+			var done: float = 1.0 - clampf(star_left / STAR_DROP_SECONDS, 0.0, 1.0)
+			if is_instance_valid(_star_rock):
+				_star_rock.position = (star_at + SKY * 2.0).lerp(star_at, done * done)
+				_star_rock.rotation += delta * 4.0
+			if star_left <= 0.0:
+				star_state = "lying"
+				star_left = STAR_LIFE
+				_bang(star_at, STAR_RADIUS * 2.5)
+		"lying":
+			star_left -= delta
+			if is_instance_valid(_star_rock):
+				_star_rock.position = star_at + Vector2(0.0, sin(run_seconds * 3.0) * 2.0)
+				_star_rock.rotation += delta * 0.6
+				var glow: float = 1.25 + 0.25 * sin(run_seconds * 6.0)
+				_star_rock.modulate = _star_rock.modulate.lerp(Color(1.5 * glow, 1.25 * glow, 0.8), minf(1.0, delta * 6.0))
+				# It blinks as it fades.
+				_star_rock.visible = star_left > 3.0 or fmod(star_left, 0.4) > 0.15
+			if star_left <= 0.0:
+				star_state = ""
+				star_hits = 0
+				_drop_star_rock()
+				banner = "The star faded"
+				banner_left = BANNER_SECONDS
+		"falling":
+			star_left -= delta
+			var done: float = 1.0 - clampf(star_left / STAR_FALL, 0.0, 1.0)
+			if is_instance_valid(_star_rock):
+				_star_rock.position = star_sky_at(done)
+				_star_rock.rotation += delta * 2.0
+			if star_left <= 0.0:
+				_star_lands()
+
+
+func _star_lands() -> void:
+	"""Every monster on the field at the call: the ordinary slain, elites and
+	keepers hurt (star_hit())."""
+	star_state = ""
+	_drop_star_rock()
+	for node in star_marked:
+		if not is_instance_valid(node):
+			continue
+		var m := node as Monster
+		if m != null and m.dying < 0.0:
+			hurt(m, star_hit(m))
+	star_marked.clear()
+	star_afterglow = STAR_AFTERGLOW
+	banner = "The field is wiped!"
+	banner_left = BANNER_SECONDS
 
 
 func _bang(at: Vector2, reach: float) -> void:
@@ -1195,6 +1508,7 @@ func _start_wave() -> void:
 	state = State.WAVE
 	banner = "Wave %d - the %s lands" % [wave, land_name()]
 	banner_left = BANNER_SECONDS
+	_roll_star()
 
 
 func _spawn_group() -> void:

@@ -70,12 +70,16 @@ const HOW_TO := [
 	"One in five lands critical; each leaves the ground burning.",
 	"The horde breaks the gate, then runs for the portal.",
 	"Each wave is bigger, faster and tougher. Hold as many as you can.",
+	"From wave 4 a star may fall: land meteors on it to claim it, then Q calls it down on the field.",
 ]
 # The same on a phone (0.110.2).
 const HOW_TO_TOUCH := {
 	0: "Walk the wall with the stick.",
 	1: "Hold a finger on the field to rain meteors there - there is no limit.",
+	5: "From wave 4 a star may fall: land meteors on it to claim it, then tap Giant meteor.",
 }
+# The star's button (0.111.0): the dark right of the field, low, for a thumb.
+const STAR_BUTTON := Rect2(-186.0, -84.0, 170.0, 64.0)
 
 var run: Node2D = null
 # Worded for keys and a mouse, or for a phone (_word_for_touch(), 0.110.2).
@@ -104,6 +108,8 @@ var pick_panel: PanelContainer = null
 var pick_title: Label = null
 var cards: Array = []
 var reroll_button: Button = null
+# Calls the star down (Q), shown while one is held (0.111.0).
+var star_button: Button = null
 var early_button: Button = null
 var stick: Control = null
 # The finger aiming on a touch screen, and where it is.
@@ -200,6 +206,19 @@ func _build_words() -> void:
 	early_button.pressed.connect(call_early)
 	early_button.visible = false
 	frame.add_child(early_button)
+	star_button = Button.new()
+	star_button.name = "star"
+	star_button.focus_mode = Control.FOCUS_NONE
+	star_button.icon = load(StandScript.METEOR_TEXTURE) as Texture2D
+	star_button.expand_icon = true
+	star_button.add_theme_constant_override("icon_max_width", 34)
+	star_button.add_theme_color_override("font_color", COLOUR)
+	star_button.add_theme_font_size_override("font_size", 16)
+	star_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_place(star_button, Control.PRESET_BOTTOM_RIGHT, STAR_BUTTON)
+	star_button.pressed.connect(call_star)
+	star_button.visible = false
+	frame.add_child(star_button)
 	_build_pick()
 	results = _panel("results")
 	var column := VBoxContainer.new()
@@ -451,6 +470,13 @@ func call_early() -> void:
 		paint()
 
 
+func call_star() -> void:
+	"""The star called down (Q, or its button)."""
+	if run != null and is_instance_valid(run):
+		run.call("call_star")
+		paint()
+
+
 func drawn_rect() -> Rect2:
 	"""Where the picture is drawn in the window: it keeps its shape, centred,
 	scaled by the smaller fit."""
@@ -472,7 +498,7 @@ func _on_controls(at: Vector2) -> bool:
 	field?"""
 	if stick.visible and stick_zone().has_point(at):
 		return true
-	for control in [leave_button, early_button, start_panel, pick_panel, results]:
+	for control in [leave_button, early_button, star_button, start_panel, pick_panel, results]:
 		if control != null and (control as Control).is_visible_in_tree() and (control as Control).get_global_rect().has_point(at):
 			return true
 	return false
@@ -555,6 +581,12 @@ func paint() -> void:
 			else Color(DOOR_COLOUR, 0.85)
 	early_button.visible = bool(run.call("can_call_early")) and not start_panel.visible
 	early_button.text = "Call wave %d early" % (wave + 1)
+	# THE STAR HELD: its button, glowing, while it can be called.
+	star_button.visible = str(run.get("star_state")) == "held" and not start_panel.visible
+	star_button.disabled = not bool(run.call("can_call_star"))
+	star_button.text = "Giant meteor" if TouchControls.active else "Giant meteor\n(Q)"
+	var glow: float = 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) / 1000.0 * 5.0)
+	star_button.modulate = Color(1.0 + 0.3 * glow, 1.0 + 0.2 * glow, 1.0) if not star_button.disabled else Color(0.7, 0.7, 0.7)
 	portal_bar.value = float(run.get("portal")) / float(StandScript.PORTAL_MOST)
 	portal_line.text = "Portal %d%%" % roundi(portal_bar.value * 100.0)
 	best = maxi(best, int(run.get("waves_held")))
@@ -645,6 +677,8 @@ func _input(event: InputEvent) -> void:
 			ask_to_leave()
 		elif key.pressed and not key.echo and key.keycode == KEY_SPACE and start_panel.visible:
 			begin()
+		elif key.pressed and not key.echo and key.keycode == KEY_Q and not start_panel.visible:
+			call_star()
 		elif key.pressed and not key.echo and pick_panel.visible \
 				and (PICK_KEYS.has(key.keycode) or PICK_PAD_KEYS.has(key.keycode)):
 			choose(maxi(PICK_KEYS.find(key.keycode), PICK_PAD_KEYS.find(key.keycode)))

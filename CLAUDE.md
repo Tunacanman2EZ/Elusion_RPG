@@ -3163,6 +3163,49 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The giant meteor: a star a wave drops, claimed, called down (0.111.0)
+
+The owner: "we need 1 giant meteor to wipe the whole field but i need to
+think carefully about how it can be used because with 4 people might be
+too op" (the plan's section 13, giant_meteor.png), then "i did not see
+giant meteor pop up as i was playing is it rare?" - it had only been
+planned - and "lets build it". Pictured (the commit folder's
+star_0111.png). All in magestand.gd's THE STAR section.
+
+- **Dropped by the wave, not by kills**: from `STAR_FROM` (4) each wave
+  rolls `star_comes()` - `STAR_CHANCE` (1 in 4), and surely once
+  `STAR_SURE` - 1 waves in a row dropped none. Never while one is about
+  (dropping, lying, held or falling). Its own RNG (`_star_rng`, the seed
+  plus 7919), so a seeded run's waves come as they did before it.
+- **It falls `STAR_DROP_AFTER` (5 s) into the wave** onto a random spot
+  of the field (`_drop_star()`), and lies there `STAR_LIFE` (10 s),
+  glowing, blinking its last 3 s - the meteor art at 2.5 times, a gold
+  glow under it and a ring over it: a mark for each hit it needs, lit as
+  they land, and a thin ring closing on its time.
+- **Claimed by meteors landed on it** (`_land()` -> `_strike_star()`,
+  within the blast's reach plus `STAR_RADIUS`): `claim_hits(players)` -
+  3 alone, 5, 6, 8 for four, so a party claims no faster than one alone.
+  Unclaimed, it fades and its hits go.
+- **Held, one for the party**, and called with `call_star()`: Q, or the
+  screen's **Giant meteor** button (`star_button`, bottom right of the
+  picture in the dark beside the field, glowing; "Giant meteor" on a
+  phone), only in a wave. Its shadow spreads over the field `STAR_FALL`
+  (2 s) round `STAR_CENTRE` while the stone comes down from the top
+  right (`star_sky_at()`), then it lands (`_star_lands()`).
+- **What it hits** is what was on the field at the call (`star_marked`):
+  `star_hit()` - all of an ordinary monster, `STAR_ELITE_SHARE` (half)
+  of an elite's health, `STAR_KEEPER_SHARE` (a fifth) of a keeper's
+  (`Monster.rank`, "" until step 3 brings them). Inside the gate too.
+  What walks in after the call lives. Bombers slain go up as ever.
+- After: a scorched field, flames and the stone in its crater for
+  `STAR_AFTERGLOW`, a white ring and a flash; "The field is wiped!".
+- The plan's "its kills pay half embers" waits for embers (step 4).
+- The start panel's sixth line tells of it (the keys' and a phone's).
+
+`_test_the_giant_meteor()` (testrunner_9). Each rule was watched failing
+when broken: 15 waves in a row without one, a meteor beside it claiming
+it, the late one slain, an elite slain.
+
 ### Tap the screen to drop a meteor (0.110.3)
 
 The owner, on a phone: "tap the screen to drop meteor". The Healer's
