@@ -1272,11 +1272,11 @@ func _paint_the_bar(delta: float) -> void:
 
 
 # =============================================================================
-# A MINIGAME READY AGAIN (0.113.0)
+# A MINIGAME TO PLAY (0.113.0, 0.113.1)
 # =============================================================================
-# The Minigames card knows each game's wait (minigamescard.gd has_news()); it
-# lights the button here when one is ready and the card has not been opened
-# since, and puts it out when it is.
+# The Minigames card knows each game's wait (minigamescard.gd has_a_run()); it
+# lights the button here while a run is yours to play, and puts it out when
+# you go in - not when the card is opened.
 
 const MINIGAMES_READY_COLOUR := Color(0.6, 0.9, 0.55)
 

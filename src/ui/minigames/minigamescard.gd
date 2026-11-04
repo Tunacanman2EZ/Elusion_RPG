@@ -133,16 +133,14 @@ var _failed: bool = false
 # The first press says so; the second leaves. Opening the card again forgets.
 var _leave_armed: bool = false
 
-# A RUN READY AGAIN LIGHTS THE BAR'S BUTTON (0.113.0). PER LOGIN, NOT PER
-# CARD: every area has its own HUD and card, and the bar's dot must not go out
-# at a door, nor light again at every one. Static, and forgotten when another
-# account is playing.
+# A RUN TO PLAY LIGHTS THE BAR'S BUTTON (0.113.0; since 0.113.1 until you go
+# in, not until the card is opened - the owner: "green vanished after i
+# clicked on"). PER LOGIN, NOT PER CARD: every area has its own HUD and card,
+# and the bar's dot must not go out at a door. Static, and forgotten when
+# another account is playing.
 #
 # game id -> the unix second it is (or was) ready; a game not in it is unknown.
 static var _ready_at: Dictionary = {}
-# game id -> true once the card was opened while that game was ready. Learning
-# of a wait puts it back to false, so the end of that wait lights the button.
-static var _seen_ready: Dictionary = {}
 static var _news_by: String = ""
 # The account whose listing has been asked for at this login.
 static var _asked_by: String = ""
@@ -316,13 +314,16 @@ func _ask_for_news() -> void:
 
 
 # =============================================================================
-# A RUN READY AGAIN (0.113.0)
+# A RUN TO PLAY (0.113.0, 0.113.1)
 # =============================================================================
+# Lit while a run is yours to play, out from the moment you go in, and lit
+# again when the server's wait is over. THE SERVER COUNTS EACH ENTRY, per
+# account (the API's minigames/); the owner skips every wait there, so his
+# button is lit whenever he is out of a run.
 
 static func forget_news() -> void:
 	"""Nothing known of any game: the suite's way back to a fresh login."""
 	_ready_at.clear()
-	_seen_ready.clear()
 	_asked_by = ""
 	_news_by = Api.username
 
@@ -330,7 +331,6 @@ static func forget_news() -> void:
 static func _forget_news_if_another() -> void:
 	if _news_by != Api.username:
 		_ready_at.clear()
-		_seen_ready.clear()
 		_asked_by = ""
 		_news_by = Api.username
 
@@ -341,16 +341,14 @@ static func note_wait(game: String, seconds: int) -> void:
 	var now: int = int(Time.get_unix_time_from_system())
 	if seconds > 0:
 		_ready_at[game] = now + seconds
-		_seen_ready[game] = false
 	elif int(_ready_at.get(game, now + 1)) > now:
 		_ready_at[game] = now
 
 
 static func forget_wait(game: String) -> void:
-	"""A run was just begun: its next wait is the server's to say, so the next
-	area's card asks again."""
+	"""A run was just begun: the button goes out, and its next wait is the
+	server's to say, so the next area's card asks again."""
 	_ready_at.erase(game)
-	_seen_ready[game] = false
 	_asked_by = ""
 
 
@@ -363,23 +361,15 @@ static func ready_games() -> Array[String]:
 	return out
 
 
-static func has_news() -> bool:
-	"""A game ready that the card has not been opened on since."""
-	for game in ready_games():
-		if not bool(_seen_ready.get(game, false)):
-			return true
-	return false
-
-
-static func mark_seen() -> void:
-	for game in ready_games():
-		_seen_ready[game] = true
+static func has_a_run() -> bool:
+	"""A game you may go into now. Opening the card does not change it."""
+	return not ready_games().is_empty()
 
 
 func paint_news() -> void:
 	"""The bar's Minigames dot. Out inside the Endless (Leave is the button)."""
 	if hud != null and hud.has_method("mark_minigames_button"):
-		hud.call("mark_minigames_button", has_news() and not inside_endless())
+		hud.call("mark_minigames_button", has_a_run() and not inside_endless())
 
 
 # =============================================================================
@@ -405,8 +395,6 @@ func open() -> void:
 	_healer_said = ""
 	visible = true
 	move_to_front()
-	mark_seen()
-	paint_news()
 	_known = false
 	_failed = false
 	paint()
@@ -437,8 +425,6 @@ func take_listing(res: Dictionary) -> void:
 				_known = true
 				note_wait(GAME, ready_in)
 	_failed = not _known
-	if visible:
-		mark_seen()
 	paint()
 	paint_news()
 

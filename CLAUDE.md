@@ -3246,17 +3246,24 @@ folder's GM_AND_HUD_PLAN.txt. Game only. Pictured before and after
   Kingdom - moved out of Social, which is now your people (Friends, Players,
   Guild, Party, Trade). C still opens the stats window at once. The touch
   grid's ITEMS has `characterbutton` where `statsbutton` was.
-- **Minigames wears a dot when a run is ready again** (minigamescard.gd, A RUN
-  READY AGAIN). Statics, per login like the chat dot: `_ready_at` (game -> the
-  unix second it is ready) and `_seen_ready`. `note_wait()` from every answer
-  the card reads (the listing, a 409; the Healer's Run counts as ready while it
-  has runs left); learning of a wait sets it unseen, so the wait's end lights
-  it; opening the card marks what is ready seen; a Go that starts a day
-  `forget_wait()`s it so the next area's card asks again. The card asks GET
-  /api/minigames once a login when signed in (`_ask_for_news()`, never inside
-  the Endless) and looks at the clock every `NEWS_SECONDS` (5); the HUD's
+- **Minigames is green with a dot while you have a run to play**
+  (minigamescard.gd, A RUN TO PLAY). Statics, per login like the chat dot:
+  `_ready_at` (game -> the unix second it is ready). `note_wait()` from every
+  answer the card reads (the listing, a 409; the Healer's Run counts as ready
+  while it has runs left); `has_a_run()` is any game ready; going in -
+  after the server says yes - `forget_wait()`s it, so the button goes out at
+  once and the next area's card asks again. The card asks GET /api/minigames
+  once a login when signed in (`_ask_for_news()`, never inside the Endless)
+  and looks at the clock every `NEWS_SECONDS` (5); the HUD's
   `mark_minigames_button()` paints it, green, and folded Menu wears it.
-  `forget_news()` is the suite's fresh login.
+  `forget_news()` is the suite's fresh login. **Opening the card does not put
+  it out (0.113.1)** - the owner: "green vanished after i clicked on". In
+  0.113.0 it meant "not looked at yet"; it means "yours to play" now. The
+  server counts every entry per account; the owner skips every wait there,
+  so his is lit whenever he is out of a run.
+- **Stats stays C, not S** (the owner asked for S, like I, G and M): S walks
+  down. The letter is whatever the key is, so a key changed in Controls
+  shows.
 - **Chat's dot was already there** (whisper, guild, friends, party since the
   chat news), and is unchanged.
 

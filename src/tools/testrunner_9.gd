@@ -4644,21 +4644,24 @@ func _test_the_hud_bar_says_keys_and_what_is_open() -> void:
 	other.queue_free()
 	mg.pressed.emit()
 	await get_tree().process_frame
-	check("  opening the card puts it out", mg.text == "Minigames" and (card as Control).visible, mg.text)
+	check("  opening the card leaves it lit - it is a run to play, not news to read (0.113.1)",
+		mg.text == "Minigames •" and (card as Control).visible, mg.text)
 	hud.call("close_nav_menus")
-	card.call("paint_news")
-	check("  and it stays out, the card seen", mg.text == "Minigames")
+	Card.call("forget_news")
 	Card.call("note_wait", "endless", 3600)
+	Card.call("note_wait", "healerrun", 600)
+	card.call("paint_news")
+	check("  with every run used it is out", mg.text == "Minigames", mg.text)
 	Card.call("note_wait", "endless", 0)
 	card.call("paint_news")
 	check("  the end of a wait lights it again", mg.text == "Minigames •", mg.text)
 	Card.call("forget_wait", "endless")
 	card.call("paint_news")
-	check("  a Go forgets the day: the next area's card asks again", mg.text == "Minigames"
+	check("  going in puts it out at once, and the next area's card asks again", mg.text == "Minigames"
 		and not (Card.call("ready_games") as Array).has("endless"))
-	# The card's listing said the Healer's Run was ready, and it was seen; its
-	# three runs used, it waits, and then it is ready again.
-	Card.call("note_wait", "healerrun", 600)
+	var card_code: String = _code_src("res://src/ui/minigames/minigamescard.gd")
+	check("  Go into the Endless goes in only after the server says yes, and forgets the day then",
+		_func_body(card_code, "func _on_go(").find("forget_wait(GAME)") > _func_body(card_code, "func _on_go(").find("if res.get(\"ok\", false):"))
 	Card.call("note_wait", "healerrun", 0)
 	card.set("area_now", func() -> String: return "endless")
 	card.call("paint_news")
