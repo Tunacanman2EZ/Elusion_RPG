@@ -277,7 +277,9 @@ var is_attacking := false
 # 1.5 since 0.25.1; 2.0 doubled a level-99 walk into 2,360 px/s (see
 # PlayerStats.AGILITY_SPEED_PER_LEVEL).
 @export var sprint_speed_multiplier: float = 1.5
-@export var sprint_stamina_drain_per_sec: float = 15.0
+# 8 since 0.117.0 (it was 15): a warrior's 80 stamina is 10 seconds of
+# sprint, not 5.3 - the owner, "speed up the game even more".
+@export var sprint_stamina_drain_per_sec: float = 8.0
 # NEW: agility XP granted per second of actual sprinting. universal here
 # (not warrior-specific) since sprinting itself is shared base-class
 # movement, not tied to any one class's kit.
@@ -692,9 +694,14 @@ func _physics_process(_delta):
 
 	var direction: Vector2 = _read_move_direction()
 
+	# WALKING NO LONGER STOPS REGENERATION (0.117.0). The owner: "we need to
+	# speed up the game even more". Every step used to call _set_active(),
+	# so health, mana and stamina came back only standing still - about a
+	# minute a bar between fights. Attacking, casting and being hit still
+	# stop it (_set_active() in each); sprinting stops stamina's
+	# (_tick_regen()). The server already allows regeneration over the whole
+	# elapsed time (PlayerStats.REGEN_IDLE_THRESHOLD's note).
 	if direction != Vector2.ZERO:
-		_set_active()
-
 		var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0 \
 			and effects_let_sprint()
 		_is_sprinting = wants_sprint
@@ -1259,9 +1266,10 @@ func _fill_all_resources() -> void:
 # =============================================================================
 
 func _set_active() -> void:
-	# Any action — moving, attacking, casting, taking a hit — restarts the
-	# idle wait AND discards part-earned points. Regen is strictly a
-	# between-fights mechanic; potions are what recover you during one.
+	# Any action — attacking, casting, taking a hit — restarts the idle wait
+	# AND discards part-earned points. Regen is a between-fights mechanic;
+	# potions are what recover you during one. Walking is not an action here
+	# since 0.117.0: you regenerate on your way to the next fight.
 	_idle_timer = 0.0
 	_regen_hp_accumulator = 0.0
 	_regen_mana_accumulator = 0.0
@@ -1294,7 +1302,8 @@ func _tick_regen(delta: float) -> void:
 			_regen_mana_accumulator -= points
 			mana = min(max_mana, mana + points)
 
-	if stamina < max_stamina:
+	# Not while sprinting: the sprint is what spends it (0.117.0).
+	if stamina < max_stamina and not _is_sprinting:
 		_regen_stamina_accumulator += _regen_rate_for(max_stamina) * delta
 		var points: int = int(_regen_stamina_accumulator)
 		if points > 0:
@@ -1798,9 +1807,17 @@ func _poll_attack_pressed() -> bool:
 	var left_edge: bool = (left_now and not _left_click_was_held) or _left_click_came
 	_left_click_came = false
 	_left_click_was_held = left_now
+	# HELD, IT KEEPS GOING (0.117.0): with a mouse and keyboard too, as the
+	# touch pad's Attack always has - the warrior swing after swing, the
+	# mage cast after cast, each the moment the last is over
+	# (touch_attack_repeats(), touch_attack_ready()). Not the tank's (attack
+	# switches its aura off again), not the healer's (held already streams),
+	# not the Double Axe's (the next press calls it home).
+	var held_on: bool = (Input.is_action_pressed("attack") or left_now) \
+		and touch_attack_repeats() and touch_attack_ready()
 	# FROZEN, NO ATTACK (0.93.3) - after the edges above are taken, so a
 	# press while frozen is used up, not saved for the thaw.
-	return (Input.is_action_just_pressed("attack") or left_edge) and effects_let_attack()
+	return (Input.is_action_just_pressed("attack") or left_edge or held_on) and effects_let_attack()
 
 
 # =============================================================================

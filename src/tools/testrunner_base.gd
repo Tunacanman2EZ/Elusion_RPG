@@ -1610,6 +1610,20 @@ const BIG_FIELD_GATES := 3
 const DRESSED_LIGHT_BUDGET := 40
 
 
+# The pieces of a crypt group (walls, doors, decor) in the order they are
+# drawn on a tie: since the prop chunks (propchunks.gd) the Big Field's walls
+# and decor sit one level down, in chunks (the group "propchunk"); the Field's
+# and the doors do not.
+func _crypt_pieces(group: Node) -> Array:
+	var out: Array = []
+	for child in group.get_children():
+		if child.is_in_group(&"propchunk"):
+			out.append_array(child.get_children())
+		else:
+			out.append(child)
+	return out
+
+
 # A body moved by hand is seen by an Area2D a physics step or two later, and
 # not always the same number: wait (up to a quarter second) until the door's
 # reach has seen the walker arrive or go.

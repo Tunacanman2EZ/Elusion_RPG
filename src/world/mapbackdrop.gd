@@ -56,6 +56,12 @@ static var _grids: Dictionary = {}
 # that once a session, on its first visit.
 static var _covers: Dictionary = {}
 
+# A COVER WORKED OUT WHEN THE MAP WAS BUILT. The Big Field's took 110 ms on
+# its first visit each session (42,960 cells); buildbigfield.gd works it out
+# with cover() and keeps it on the scene's root as this meta, and add_to()
+# takes it as it is. The suite holds the kept one equal to cover()'s.
+const BUILT_COVER := &"backdrop_cover"
+
 
 static func add_to(area: Node) -> Node2D:
 	"""Puts a backdrop under `area`'s tiles and returns it. An area with no
@@ -67,7 +73,10 @@ static func add_to(area: Node) -> Node2D:
 	if path != "" and _covers.has(path):
 		found = _covers[path]
 	else:
-		found = cover(area)
+		if area.has_meta(BUILT_COVER):
+			found.assign(area.get_meta(BUILT_COVER))
+		else:
+			found = cover(area)
 		if path != "":
 			_covers[path] = found
 	if found.is_empty():

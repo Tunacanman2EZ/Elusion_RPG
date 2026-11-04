@@ -29,6 +29,11 @@ const GATE_NAMES := ["spikedoor", "spikedoor2", "spikedoor3"]
 
 func _init() -> void:
 	root_name = "field"
+	# The Field is built as it was before the Big Field's chunks and baked
+	# backdrop (buildbigfield.gd's header): switch them on here, rebuild and
+	# measure when the Field needs them.
+	chunk_size = 0
+	bake_backdrop = false
 
 
 func build_field(build_path: String = FIELD_PLAN, out_path: String = FIELD_SCENE) -> int:

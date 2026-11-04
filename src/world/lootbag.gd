@@ -92,6 +92,8 @@ var _has_pet: bool = false
 # in range. See _set_listening().
 var _spawn_deadline_msec: int = 0
 var _is_open: bool = false
+# Walked over once already (0.117.0): a coin bag is taken without a press.
+var _auto_tried: bool = false
 
 
 # =============================================================================
@@ -166,6 +168,9 @@ func _process(_delta: float) -> void:
 
 	if _player_nearby == null:
 		return
+	# GOLD IS TAKEN BY WALKING OVER IT (0.117.0): _take_coins_walked_over().
+	if _take_coins_walked_over():
+		return
 	if not Input.is_action_just_pressed("interact"):
 		return
 
@@ -197,6 +202,28 @@ func _process(_delta: float) -> void:
 		return
 
 	_try_open()
+
+
+func _take_coins_walked_over() -> bool:
+	"""GOLD IS TAKEN BY WALKING OVER IT (0.117.0) - the owner, "speed up the
+	game even more": a bag of nothing but coins was walk up, interact,
+	interact. After the spawn grace (_process()), the nearest bag first, one
+	at a time (not while the loot window shows another), once a bag - a
+	refused take is not tried again every frame - and through _try_open()'s
+	gate, so only the killer's. True when it took this frame."""
+	if _auto_tried or _is_open or not only_coins(_contents, _has_pet):
+		return false
+	if not _is_nearest_candidate():
+		return false
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	var panel: Node = hud.get("lootbag_panel") if hud != null and "lootbag_panel" in hud else null
+	if panel != null and is_instance_valid(panel) and bool(panel.get("visible")):
+		return false
+	_auto_tried = true
+	_try_open()
+	if _is_open:
+		_take_all_open()
+	return true
 
 
 func _take_all_open() -> void:
@@ -300,6 +327,21 @@ func is_mythic() -> bool:
 
 func despawn_seconds() -> float:
 	return GameConstants.MYTHIC_BAG_DESPAWN_SECONDS if _mythic else GameConstants.LOOT_BAG_DESPAWN_SECONDS
+
+
+static func only_coins(contents: Array, has_pet: bool) -> bool:
+	"""A bag of currency and nothing else - no gear, no pet."""
+	if has_pet:
+		return false
+	var any: bool = false
+	for entry in contents:
+		if not (entry is Dictionary) or str(entry.get("item_id", "")) == "":
+			continue
+		var data: ItemData = ItemRegistry.get_item(str(entry.get("item_id", "")))
+		if data == null or data.type != ItemData.Type.CURRENCY:
+			return false
+		any = true
+	return any
 
 
 static func rare_tier_of(contents: Array, has_pet: bool) -> int:

@@ -30,7 +30,27 @@
 #     S   the fortress's gatehouse (door) and its grid   tier 4
 #     S   the crypt (door), the optional skeleton wing
 #     W   the courts                                     tier 1
+#
+# THE WALLS AND DECOR GO IN CHUNKS. Each wall piece and prop is put in a
+# chunk of its group - crypt/walls/c3_2, crypt/decor/c3_2 - for the
+# chunk_size px square its foot stands in: a y-sorted Node2D at the origin,
+# so positions are as they were and everything still sorts with the player.
+# Each chunk keeps, as its meta "reach", the rectangle all of it can draw
+# (PropChunks.reach_of(): its pictures and its lights at their brightest),
+# and src/world/propchunks.gd shows only the chunks whose reach is near the
+# view - see its header. The doors stay in crypt/doors as they were: a
+# door's path is its name on the wire. 0 for chunk_size puts nothing in
+# chunks (the Field's builder, for now).
+#
+# AND THE BACKDROP IS WORKED OUT HERE. MapBackdrop.cover() - the grey under
+# every painted cell, a few hundred rectangles - took 110 ms on the first
+# visit each session; it is worked out once, here, and kept on the root as
+# the meta MapBackdrop.BUILT_COVER, which add_to() takes as it is. The suite
+# holds it equal to what cover() works out from the scene.
 extends Node
+
+const PropChunks := preload("res://src/world/propchunks.gd")
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 const OUT := "res://scene/bigfield.tscn"
 const BUILD := "res://tools/maps/bigfield_build.json"
@@ -46,6 +66,10 @@ var _root: Node2D = null
 var _cache: Dictionary = {}
 # The scene's root node's name (buildfield.gd, which extends this, says "field").
 var root_name: String = "bigfield"
+# How big a chunk of walls or decor is, in px; 0, none (see the header).
+var chunk_size: int = PropChunks.CHUNK
+# Whether the backdrop's cover is worked out here and kept on the root.
+var bake_backdrop: bool = true
 
 
 func build(build_path: String = BUILD, out_path: String = OUT) -> int:
@@ -97,9 +121,10 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 	var plugs: Array[Vector2] = []
 	for piece in plan["walls"]:
 		var at := Vector2(float(piece[1]), float(piece[2]))
-		_place(CRYPT % str(piece[0]), walls, at)
+		_place(CRYPT % str(piece[0]), _chunk_of(walls, at), at)
 		if str(piece[0]) == "pillar":
 			plugs.append(at)
+	_seal_chunks(walls)
 	_plug_pillars(props, plugs)
 	var doors := _container("doors", crypt)
 	for door in plan["doors"]:
@@ -107,7 +132,9 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 		d.set("starts_open", false)
 	var decor := _container("decor", crypt)
 	for prop in plan["props"]:
-		_place(CRYPT % str(prop[0]), decor, Vector2(float(prop[1]), float(prop[2])))
+		var spot := Vector2(float(prop[1]), float(prop[2]))
+		_place(CRYPT % str(prop[0]), _chunk_of(decor, spot), spot)
+	_seal_chunks(decor)
 
 	var interactables := _container("interactables", world)
 	_arrival(interactables, arrival)
@@ -135,6 +162,8 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 	_own(labels, _root)
 	labels.add_to_group(&"floatinglabels", true)
 	_place("res://scene/world/enemyrespawner.tscn", _root, Vector2.ZERO, "enemyrespawner")
+	if bake_backdrop:
+		_root.set_meta(MapBackdrop.BUILT_COVER, MapBackdrop.cover(_root))
 
 	var packed := PackedScene.new()
 	var packing: int = packed.pack(_root)
@@ -303,6 +332,35 @@ func _vec(p: Variant) -> Vector2:
 func _own(node: Node, parent: Node) -> void:
 	parent.add_child(node)
 	node.owner = _root
+
+
+func _chunk_of(group: Node2D, at: Vector2) -> Node2D:
+	"""The chunk of `group` for a piece whose foot is at `at`, made the first
+	time it is asked for - or `group` itself with chunk_size 0. Chunks come
+	in the order the plan first reaches them, and each keeps the plan's order
+	within it."""
+	if chunk_size <= 0:
+		return group
+	var cell := Vector2i(floori(at.x / float(chunk_size)), floori(at.y / float(chunk_size)))
+	var chunk_name: String = "c%d_%d" % [cell.x, cell.y]
+	var chunk: Node2D = group.get_node_or_null(chunk_name) as Node2D
+	if chunk == null:
+		chunk = _container(chunk_name, group, String(PropChunks.GROUP))
+	return chunk
+
+
+func _seal_chunks(group: Node2D) -> void:
+	"""Each chunk of `group` keeps the rectangle all its pieces can draw."""
+	for chunk in group.get_children():
+		if not chunk.is_in_group(PropChunks.GROUP):
+			continue
+		var reach := Rect2()
+		var first: bool = true
+		for piece in chunk.get_children():
+			var drawn: Rect2 = PropChunks.reach_of(piece as Node2D)
+			reach = drawn if first else reach.merge(drawn)
+			first = false
+		chunk.set_meta(PropChunks.REACH, reach)
 
 
 func _container(node_name: String, parent: Node, group: String = "") -> Node2D:

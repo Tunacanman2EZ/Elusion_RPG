@@ -2172,7 +2172,9 @@ party and the server's chest are the next two.
   switches.
 - **What it costs** (measured in the container, a slower machine than the
   owner's): a step of 3,000 about 3.7 ms, the buffer 1.3 ms, choosing the
-  stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's.
+  stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's. **Cheaper
+  with nothing changed (0.117.0)** - see "Quicker" below: a step of 3,000
+  8.2 -> 6.8 ms on that container's later bench.
 
 `_test_the_endless_run()`. The map's area is in `data/gamedata.json` (no
 monsters placed); copy it to the API with the next export.
@@ -3474,6 +3476,90 @@ we can add gold to if needed". Pictured: descent_reroll_0116.png.
   40 gold", grey with "Not enough gold" when the run cannot pay).
 
 `_test_the_descent_reroll()` (testrunner_10).
+
+### Quicker: on the move, held attack, gold underfoot, smoother crowds (0.117.0)
+
+The owner: "we need to speed up the game even more look into what we can
+advance" - both smoother running and a faster pace - and "if runescape was
+perfect 25 years ago out engine is not good enough yet". Measured first
+(zz/perfbench.gd and friends): GDScript was cheap; the costs were the Big
+Field's props, the Endless swarm's step, the Big Field's first entry, and
+health bars. The pace: walking reset regeneration, the opening story played
+at every sign-in, a sprint drained 15 a second, every swing was a click, and
+a bag of coins was walk up, interact, interact.
+
+- **Regeneration on the move** (player.gd): walking no longer calls
+  `_set_active()`, so the idle wait runs while you walk to the next fight;
+  attacking, casting and being hit still reset it. Stamina still waits while
+  `_is_sprinting`. The server's heal check allows it: regeneration is what it
+  allows for.
+- **Sprint drains 8 a second** (`sprint_stamina_drain_per_sec`, was 15).
+- **Hold to attack on a desktop** (`_poll_attack_pressed()`): the attack
+  action or the left button held swings again whenever the swing is ready,
+  through the same `touch_attack_repeats()` / `touch_attack_ready()` a held
+  finger uses, and `effects_let_attack()` still decides (frozen holds it).
+- **The bar only while it matters** (baseenemy.gd `_paint_bar_shown()`, from
+  the `engaged` setter, `_wire_healthbar()` and `_refresh_health_display()`):
+  a monster at full health and after nobody draws no bar. The bars were 42 of
+  186 draw calls in the Big Field at 1x, 179 of 433 at 4x.
+- **The opening story once a character** (field.gd `story_key()` - the
+  account and the character's name - `story_seen()`, `mark_story_seen()`, in
+  ControlsPanel's seen file under `[story]`, read then written so the welcome
+  survives). It played at every sign-in. And it says "Press any key to skip"
+  (storyscene.gd `SKIP_HINT`, `_build_skip_hint()`).
+- **Gold is taken by walking over it** (lootbag.gd
+  `_take_coins_walked_over()`, `only_coins()`): a bag holding only coins - no
+  item, no pet - is opened and taken by the nearest player after the spawn
+  grace, once a bag (`_auto_tried`, so a refused take is not tried every
+  frame), never while the loot window shows another, and through
+  `_try_open()`'s gate, so only the killer's. Anything else in it waits for
+  the interact key as before.
+
+`_test_a_quicker_pace()` (testrunner_10); testrunner_2's welcome test holds
+the story's once-a-character guard and the skip line.
+
+**And smoother (the same 0.117.0).** Done by two helpers on copies, merged and
+run together; neither changes what anybody sees or how anything behaves.
+
+- **The Big Field draws only what is near the view.** buildbigfield.gd puts
+  each wall and prop in a chunk of its group (crypt/walls/c3_2,
+  crypt/decor/c3_2): a y-sorted Node2D at the origin, in the group
+  "propchunk", for the 1,024 px square its foot stands in, with meta
+  "reach" = all it can draw (`PropChunks.reach_of()`: pictures, lights at
+  their brightest). Doors stay in crypt/doors - a door's path is its name on
+  the wire. `src/world/propchunks.gd`, added by AreaRegistry like the
+  sleeper, shows a chunk while its reach is within `SHOW_MARGIN` (128) of
+  the view and hides it past `HIDE_MARGIN` (512), at most `HIDES_PER_LOOK`
+  (4) a look; checked every frame and on `frame_pre_draw`, so a jump,
+  arrival or zoom is seen before the frame is drawn. Hidden is only not
+  drawn - walls still block. Measured: render CPU 1.1-2.5 ms a frame less;
+  8 spots at 1x and 3x drawn before and after, 0 pixels differ. The
+  regenerated scene has every other node, and every piece, as before.
+- **The backdrop's cover is baked** on the Big Field's root
+  (`MapBackdrop.BUILT_COVER`): its first visit 120-145 ms -> about 4 ms.
+  Repaint the ground: rebuild. The Field is not chunked or baked
+  (buildfield.gd `chunk_size` 0, `bake_backdrop` false) - switch both on,
+  rebuild and measure when it needs them. Tests reach a group's pieces
+  through `_crypt_pieces()` (the base).
+- **The Endless's swarm step, the same to the bit for less.** A step of
+  3,000 8.2 -> 6.8 ms (`_step` 5.0 -> 4.6, `_write_buffer` 2.5 -> 1.5,
+  stand-ins 0.72 -> 0.66), of 1,500 4.1 -> 3.0. Most of the write was the
+  insertion sort - slow on a crowd that passes itself and on every
+  newcomer - so `_sort_order()` keys each slime by its feet and its place in
+  the order (a Vector2) and the engine sorts: level ones keep their order.
+  Nothing is made in a step (marks in arrays made once, not new arrays or
+  dictionaries), a slime's cell is counted once, the clock read once
+  (`_sway_msec()`), the buffer's still parts written once
+  (`_write_still_parts()`). **Not done, the owner's call**: far slimes
+  every other step (`_step` 4.6 -> about 2.8 ms) changes how they move.
+- **Not done, and why**: dropping the Big Field's ground under the walls
+  (at most 4.7% of cells, and the world map paints from them); baking the
+  black past the map (460 KB of scene for 3-6 ms once).
+
+`_test_the_big_field_draws_only_near_the_view()` and
+`_test_the_swarm_steps_the_same_for_less()` (testrunner_10) - the second
+steps the old code (`_SWARM_WAS`, kept as text) beside the new and compares
+to the bit: **change the step on purpose and change `_SWARM_WAS` with it.**
 
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 

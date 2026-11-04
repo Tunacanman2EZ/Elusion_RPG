@@ -467,6 +467,7 @@ var engaged: bool = false:
 		if value == engaged:
 			return
 		engaged = value
+		_paint_bar_shown()
 		# Turning on somebody - being hit, mostly - rouses a dozer that moment.
 		if value and dozing:
 			dozing = false
@@ -2070,6 +2071,21 @@ func _wire_healthbar() -> void:
 	bar.step      = 1
 	bar.value     = _bar_displayable(bar, hp)
 	_wire_health_readout(bar)
+	_paint_bar_shown()
+
+
+# THE BAR ONLY WHILE IT MATTERS (0.117.0) - the owner, "speed up the game
+# even more", approving it: a monster at full health and after nobody shows
+# no bar and no number. Measured on the Big Field, the bars were 42 of 186
+# draw calls at 1x and 179 of 433 at 4x. Hurt, or fighting (engaged), it
+# shows, as before.
+func _paint_bar_shown() -> void:
+	var bar: CanvasItem = get_node_or_null("healthbar") as CanvasItem
+	if bar == null:
+		return
+	var shown: bool = hp < max_hp or engaged
+	if bar.visible != shown:
+		bar.visible = shown
 
 
 func _bar_displayable(bar: Range, amount: float) -> float:
@@ -3770,6 +3786,7 @@ func _refresh_health_display() -> void:
 			bar.max_value = max_hp
 		bar.value = _bar_displayable(bar, hp)
 		_write_health_readout()
+	_paint_bar_shown()
 
 
 # =============================================================================

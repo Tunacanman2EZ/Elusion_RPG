@@ -55,10 +55,14 @@ func _ready() -> void:
 	_position_player_at_spawn()
 	if not tells_story:
 		return
-	# ONCE PER LOGIN - see GameState.opening_story_told.
-	if GameState.opening_story_told:
+	# ONCE PER LOGIN - see GameState.opening_story_told - and since 0.117.0
+	# ONCE A CHARACTER: about 25 seconds at every login was the slowest wait
+	# in the game (the owner, "speed up the game even more"). Kept in the
+	# same file as the Controls card's welcome (ControlsPanel.seen_path).
+	if GameState.opening_story_told or story_seen(story_key()):
 		return
 	GameState.opening_story_told = true
+	mark_story_seen(story_key())
 	_freeze_enemies()
 
 	var screen := StoryScreen.new()
@@ -250,3 +254,32 @@ func _position_player_at_spawn() -> void:
 			return
 
 	push_warning("field.gd: no FieldPortal matching id '%s' — player left at default position" % target_id)
+
+
+# =============================================================================
+# THE OPENING STORY, ONCE A CHARACTER (0.117.0)
+# =============================================================================
+
+static func story_key() -> String:
+	"""This account's character: its name where the slot has one."""
+	var slot: Variant = null
+	var index: int = int(CharacterData.active_character_index)
+	if index >= 0 and index < CharacterData.character_slots.size():
+		slot = CharacterData.character_slots[index]
+	var who: String = str(slot.get("name", "")) if slot is Dictionary else ""
+	return "%s/%s" % [Api.username, who if who != "" else str(index)]
+
+
+static func story_seen(key: String) -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(ControlsPanel.seen_path) != OK:
+		return false
+	return bool(cfg.get_value("story", key.replace("/", "|"), false))
+
+
+static func mark_story_seen(key: String) -> void:
+	var cfg := ConfigFile.new()
+	# READ THEN WRITE, so the welcome and every other character survive.
+	cfg.load(ControlsPanel.seen_path)
+	cfg.set_value("story", key.replace("/", "|"), true)
+	cfg.save(ControlsPanel.seen_path)

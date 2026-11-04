@@ -312,9 +312,10 @@ const REGEN_PERCENT_PER_SECOND: float = 0.0167
 # than it did before percentages replaced it - only faster.
 const REGEN_MINIMUM_PER_SECOND: float = 1.0
 
-# Seconds of doing NOTHING before regeneration starts; any action resets it.
-# Regen is strictly a between-fights mechanic - potions are what recover you
-# during one. See player.gd::_set_active().
+# Seconds of not fighting before regeneration starts; attacking, casting or
+# being hit resets it (walking does not, since 0.117.0). Regen is a
+# between-fights mechanic - potions are what recover you during one. See
+# player.gd::_set_active().
 #
 # THE SERVER CANNOT USE THIS YET, and that is worth stating. It has no idea
 # whether you stood still, so it allows regeneration for the whole elapsed

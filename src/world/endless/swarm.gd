@@ -175,6 +175,12 @@ const DRAW_SCALE := 1.0
 const DRAW_Z := -1
 # Where a new one may appear: never this near the player.
 const SPAWN_CLEAR := 260.0
+# The stand-ins near the player are chosen nearest first, in this many bands
+# of PROXY_REACH (_place_proxies()).
+const BANDS := 6
+# A mark in _seen, _taken or _share_seen is a sort's, a step's or a search's
+# number; past this they start again from 1, the arrays cleared once.
+const MARK_WRAP := 1 << 30
 
 # Floor it may stand on, and rectangles it must stay out of (the corridor).
 var arena: Rect2 = Rect2(0, 0, 1024, 768)
@@ -244,9 +250,35 @@ var _room_next := PackedInt32Array()
 var _gw: int = 1
 var _gh: int = 1
 # The free slimes by CELL square, for the stand-ins round attacks
-# (_focus_shares()): the first in each square, and the next after each.
+# (_focus_find()): the first in each square, and the next after each.
 var _focus_head := PackedInt32Array()
 var _focus_next := PackedInt32Array()
+# NOTHING A STEP NEEDS IS MADE IN THE STEP (0.117.0). A step of 3,000 was
+# 8.3 ms in the container, twenty times a second, and part of it was making
+# arrays and dictionaries to throw away. These are made once (_init()) and
+# written over: each slime's CELL this step (the count's, read again by the
+# move), how many of _near are this step's, the corridor's rects grown by
+# HELD_OUT_SIDES, the sort's marks and keys, the stand-ins' marks, the bands'
+# lists, the attacks out on the floor (x, y, reach) and what _focus_find()
+# found. The suite holds the step to the one before, to the bit, and to
+# making nothing (_test_the_swarm_steps_the_same_for_less()).
+var _cell := PackedInt32Array()
+var _near_n: int = 0
+var _kept_rects: Array[Rect2] = []
+var _seen := PackedInt32Array()
+var _seen_mark: int = 0
+var _sort_keys := PackedVector2Array()
+var _sort_seq := PackedInt32Array()
+var _taken := PackedInt32Array()
+var _taken_mark: int = 0
+var _band_head := PackedInt32Array()
+var _band_tail := PackedInt32Array()
+var _band_next := PackedInt32Array()
+var _foci := PackedFloat32Array()
+var _share := PackedFloat64Array()
+var _share_seen := PackedInt32Array()
+var _share_mark: int = 0
+var _share_list := PackedInt32Array()
 var _mesh: MultiMeshInstance2D = null
 var _material: ShaderMaterial = null
 var _buffer := PackedFloat32Array()
@@ -287,7 +319,19 @@ func _init() -> void:
 	elem.resize(MOST)
 	facing.resize(MOST)
 	state.resize(MOST)
+	_cell.resize(MOST)
+	_near.resize(MOST)
+	_seen.resize(MOST)
+	_taken.resize(MOST)
+	_band_head.resize(BANDS)
+	_band_tail.resize(BANDS)
+	_band_next.resize(MOST)
+	_focus_next.resize(MOST)
+	_share.resize(MOST)
+	_share_seen.resize(MOST)
+	_share_list.resize(MOST)
 	_buffer.resize(MOST * 16)
+	_write_still_parts(_buffer)
 
 
 func _ready() -> void:
@@ -325,6 +369,7 @@ func _build_front() -> void:
 	# under all of it, as ever.
 	y_sort_enabled = true
 	_front_buffer.resize(MOST * 16)
+	_write_still_parts(_front_buffer)
 	_front = _make_mesh("drawnfront")
 	_front.position = Vector2(0.0, _front_y)
 	add_child(_front)
@@ -631,7 +676,7 @@ func _process(delta: float) -> void:
 	var at: Vector2 = player.global_position if player != null else arena.get_center()
 	var chasing: bool = player != null and player.get("is_dying") != true and on_floor(at)
 	var target: Vector2 = floor_point(at)
-	_others_now = PackedVector2Array()
+	_others_now.clear()
 	for point in others:
 		if on_floor(point):
 			_others_now.append(floor_point(point))
@@ -684,6 +729,15 @@ func _physics_process(_delta: float) -> void:
 	_move_proxies()
 
 
+func _sway_msec() -> int:
+	"""The clock the crowd's sway follows (WANDER_RATE), read once a step
+	(0.117.0). It was read once a slime, so the last of a step swayed by a
+	clock a few ms on from the first's - well under 0.01 px. A seam too: the
+	suite stops it to hold the step to the one it replaced
+	(_test_the_swarm_steps_the_same_for_less())."""
+	return Time.get_ticks_msec()
+
+
 func _step(target: Vector2, chasing: bool) -> void:
 	"""One step of the whole crowd: count the grid, then move each one toward
 	the player and off where it is thick."""
@@ -694,34 +748,42 @@ func _step(target: Vector2, chasing: bool) -> void:
 	var oy: float = arena.position.y
 	var gw: int = _gw
 	var gh: int = _gh
+	var gw1: int = gw - 1
+	var gh1: int = gh - 1
+	var tx: float = target.x
+	var ty: float = target.y
 	# The near ones' hash: ROOM-sized cells over the square round the player.
-	for i in _near:
-		_rx[i] = 0.0
-		_ry[i] = 0.0
-	var near := PackedInt32Array()
+	for k in _near_n:
+		var was: int = _near[k]
+		_rx[was] = 0.0
+		_ry[was] = 0.0
+	var near_n: int = 0
 	var side: int = int(ceil(2.0 * ROOM_REACH / ROOM)) + 1
+	var side1: int = side - 1
 	_room_head.resize(side * side)
 	_room_head.fill(-1)
-	var hx: float = target.x - ROOM_REACH
-	var hy: float = target.y - ROOM_REACH
+	var hx: float = tx - ROOM_REACH
+	var hy: float = ty - ROOM_REACH
 	var reach2: float = ROOM_REACH * ROOM_REACH
 	for i in _high:
 		if state[i] == 1:
-			var gx: int = clampi(int((px[i] - ox) / CELL), 0, gw - 1)
-			var gy: int = clampi(int((py[i] - oy) / CELL), 0, gh - 1)
-			var cell_at: int = gy * gw + gx
-			_grid[cell_at] += 1
-			_sum_x[cell_at] += px[i]
-			_sum_y[cell_at] += py[i]
-			var nx0: float = px[i] - target.x
-			var ny0: float = py[i] - target.y
+			var x: float = px[i]
+			var y: float = py[i]
+			# Its cell, kept for the move below (where it still stands there).
+			var c: int = clampi(int((y - oy) / CELL), 0, gh1) * gw + clampi(int((x - ox) / CELL), 0, gw1)
+			_cell[i] = c
+			_grid[c] += 1
+			_sum_x[c] += x
+			_sum_y[c] += y
+			var nx0: float = x - tx
+			var ny0: float = y - ty
 			if nx0 * nx0 + ny0 * ny0 <= reach2:
-				var room_at: int = clampi(int((py[i] - hy) / ROOM), 0, side - 1) * side \
-					+ clampi(int((px[i] - hx) / ROOM), 0, side - 1)
+				var room_at: int = clampi(int((y - hy) / ROOM), 0, side1) * side + clampi(int((x - hx) / ROOM), 0, side1)
 				_room_next[i] = _room_head[room_at]
 				_room_head[room_at] = i
-				near.append(i)
-	_near = near
+				_near[near_n] = i
+				near_n += 1
+	_near_n = near_n
 	_make_room(hx, hy, side)
 	var left: float = arena.position.x + SIDE_EDGE
 	var right: float = arena.end.x - SIDE_EDGE
@@ -731,16 +793,34 @@ func _step(target: Vector2, chasing: bool) -> void:
 	var push: float = PUSH * STEP
 	var spread: float = SPREAD * STEP
 	var touching: int = 0
-	var tx: float = target.x
-	var ty: float = target.y
 	var others_now: PackedVector2Array = _others_now
 	var n_others: int = others_now.size()
+	var sway: float = float(_sway_msec()) * WANDER_RATE
+	var last_row: int = gh1 * gw
+	# The corridor's rects, grown by HELD_OUT_SIDES once a step and not once a
+	# slime, and a box round them all a pixel wider (has_point() rounds the
+	# point to 32 bits): one outside the box is in none of them.
+	var kept_n: int = keep_out.size()
+	if _kept_rects.size() != kept_n:
+		_kept_rects.resize(kept_n)
+	var kx0: float = INF
+	var kx1: float = -INF
+	var ky0: float = INF
+	var ky1: float = -INF
+	for k in kept_n:
+		var grown: Rect2 = keep_out[k].grow_individual(HELD_OUT_SIDES, 0.0, HELD_OUT_SIDES, 0.0)
+		_kept_rects[k] = grown
+		kx0 = minf(kx0, grown.position.x - 1.0)
+		kx1 = maxf(kx1, grown.end.x + 1.0)
+		ky0 = minf(ky0, grown.position.y - 1.0)
+		ky1 = maxf(ky1, grown.end.y + 1.0)
 	for i in _high:
 		var s: int = state[i]
 		if s == 0:
 			continue
-		if flash[i] > 0.0:
-			flash[i] = maxf(0.0, flash[i] - STEP)
+		var glow: float = flash[i]
+		if glow > 0.0:
+			flash[i] = maxf(0.0, glow - STEP)
 		if s == 2:
 			timer[i] += STEP
 			bx[i] = px[i]
@@ -760,8 +840,9 @@ func _step(target: Vector2, chasing: bool) -> void:
 		var mine: bool = chasing
 		if n_others > 0:
 			for o in n_others:
-				var odx: float = others_now[o].x - x
-				var ody: float = others_now[o].y - y
+				var other: Vector2 = others_now[o]
+				var odx: float = other.x - x
+				var ody: float = other.y - y
 				var od2: float = odx * odx + ody * ody
 				if od2 < best:
 					best = od2
@@ -771,9 +852,8 @@ func _step(target: Vector2, chasing: bool) -> void:
 		var d: float = sqrt(best) if best < INF else 0.0
 		var mx: float = 0.0
 		var my: float = 0.0
-		var gx2: int = clampi(int((x - ox) / CELL), 0, gw - 1)
-		var gy2: int = clampi(int((y - oy) / CELL), 0, gh - 1)
-		var here: int = _grid[gy2 * gw + gx2]
+		var c: int = _cell[i]
+		var here: int = _grid[c]
 		var against: bool = false
 		if best < INF:
 			# Only this game's player is hurt here (each by their own copy):
@@ -785,7 +865,7 @@ func _step(target: Vector2, chasing: bool) -> void:
 			elif d > 0.001:
 				# A little sideways wander, its own and slow, so a crowd does
 				# not march in ruled lines.
-				var wobble: float = sin(phase[i] * 40.0 + float(Time.get_ticks_msec()) * WANDER_RATE) * WANDER
+				var wobble: float = sin(phase[i] * 40.0 + sway) * WANDER
 				var nx: float = dx / d
 				var ny: float = dy / d
 				# IN A CROWD IT WAITS: past CROWD_ROOM in its cell it presses
@@ -796,10 +876,11 @@ func _step(target: Vector2, chasing: bool) -> void:
 				mx = (nx - ny * wobble) * stride * press
 				my = (ny + nx * wobble) * stride * press
 		if here > 1:
-			var l: int = _grid[gy2 * gw + gx2 - 1] if gx2 > 0 else here
-			var r: int = _grid[gy2 * gw + gx2 + 1] if gx2 < gw - 1 else here
-			var u: int = _grid[(gy2 - 1) * gw + gx2] if gy2 > 0 else here
-			var dn: int = _grid[(gy2 + 1) * gw + gx2] if gy2 < gh - 1 else here
+			var gx2: int = c % gw
+			var l: int = _grid[c - 1] if gx2 > 0 else here
+			var r: int = _grid[c + 1] if gx2 < gw1 else here
+			var u: int = _grid[c - gw] if c >= gw else here
+			var dn: int = _grid[c + gw] if c < last_row else here
 			# Against the player it is shoved half as hard: the ring round
 			# them settles instead of churning.
 			var shove: float = push * (0.5 if against else 1.0)
@@ -807,16 +888,17 @@ func _step(target: Vector2, chasing: bool) -> void:
 			my += float(u - dn) * shove
 			# Away from the middle of the others in its cell; one standing on
 			# that very spot goes its own way, the same way every step.
-			var cell_here: int = gy2 * gw + gx2
-			var ax: float = x - _sum_x[cell_here] / float(here)
-			var ay: float = y - _sum_y[cell_here] / float(here)
+			var many: float = float(here)
+			var ax: float = x - _sum_x[c] / many
+			var ay: float = y - _sum_y[c] / many
 			var apart: float = sqrt(ax * ax + ay * ay)
 			if apart < 0.05:
 				ax = cos(phase[i] * TAU)
 				ay = sin(phase[i] * TAU)
 				apart = 1.0
-			mx += ax / apart * spread * float(here - 1)
-			my += ay / apart * spread * float(here - 1)
+			var others_in: float = float(here - 1)
+			mx += ax / apart * spread * others_in
+			my += ay / apart * spread * others_in
 		# Its own room, if it is near (_make_room()).
 		mx += _rx[i] * ROOM_PUSH * STEP
 		my += _ry[i] * ROOM_PUSH * STEP
@@ -830,31 +912,33 @@ func _step(target: Vector2, chasing: bool) -> void:
 		vy[i] = my
 		x = clampf(x + mx, left, right)
 		y = clampf(y + my, top, bottom)
-		for kept in keep_out:
-			# Its walls' width further out at the sides (HELD_OUT_SIDES).
-			var rect: Rect2 = kept.grow_individual(HELD_OUT_SIDES, 0.0, HELD_OUT_SIDES, 0.0)
-			if rect.has_point(Vector2(x, y)):
-				# Out the nearest side.
-				# Never out a side that leaves the floor: a corridor walled
-				# into the arena's foot has only three.
-				var to_left: float = x - rect.position.x if rect.position.x - 0.5 >= left else INF
-				var to_right: float = rect.end.x - x if rect.end.x + 0.5 <= right else INF
-				var to_top: float = y - rect.position.y if rect.position.y - 0.5 >= top else INF
-				var to_bottom: float = rect.end.y - y if rect.end.y + 0.5 <= bottom else INF
-				var least: float = minf(minf(to_left, to_right), minf(to_top, to_bottom))
-				if least == to_top:
-					y = rect.position.y - 0.5
-				elif least == to_left:
-					x = rect.position.x - 0.5
-				elif least == to_right:
-					x = rect.end.x + 0.5
-				else:
-					y = rect.end.y + 0.5
-		if absf(mx) > 0.2 or absf(my) > 0.2:
+		if y >= ky0 and y <= ky1 and x >= kx0 and x <= kx1:
+			for rect in _kept_rects:
+				# Its walls' width further out at the sides (HELD_OUT_SIDES).
+				if rect.has_point(Vector2(x, y)):
+					# Out the nearest side.
+					# Never out a side that leaves the floor: a corridor walled
+					# into the arena's foot has only three.
+					var to_left: float = x - rect.position.x if rect.position.x - 0.5 >= left else INF
+					var to_right: float = rect.end.x - x if rect.end.x + 0.5 <= right else INF
+					var to_top: float = y - rect.position.y if rect.position.y - 0.5 >= top else INF
+					var to_bottom: float = rect.end.y - y if rect.end.y + 0.5 <= bottom else INF
+					var least: float = minf(minf(to_left, to_right), minf(to_top, to_bottom))
+					if least == to_top:
+						y = rect.position.y - 0.5
+					elif least == to_left:
+						x = rect.position.x - 0.5
+					elif least == to_right:
+						x = rect.end.x + 0.5
+					else:
+						y = rect.end.y + 0.5
+		var amx: float = absf(mx)
+		var amy: float = absf(my)
+		if amx > 0.2 or amy > 0.2:
 			var sideways: bool = facing[i] <= 1
-			if sideways and absf(my) > absf(mx) * FACE_LEAD:
+			if sideways and amy > amx * FACE_LEAD:
 				sideways = false
-			elif not sideways and absf(mx) > absf(my) * FACE_LEAD:
+			elif not sideways and amx > amy * FACE_LEAD:
 				sideways = true
 			if sideways:
 				facing[i] = 0 if mx > 0.0 else 1
@@ -871,16 +955,21 @@ func _make_room(hx: float, hy: float, side: int) -> void:
 	spot) - two on one spot part along their own phases, the same way each
 	step, so nothing shakes."""
 	var room2: float = ROOM * ROOM
-	for i in _near:
+	var side1: int = side - 1
+	for k in _near_n:
+		var i: int = _near[k]
 		var x: float = px[i]
 		var y: float = py[i]
-		var cx: int = clampi(int((x - hx) / ROOM), 0, side - 1)
-		var cy: int = clampi(int((y - hy) / ROOM), 0, side - 1)
+		var cx: int = clampi(int((x - hx) / ROOM), 0, side1)
+		var cy: int = clampi(int((y - hy) / ROOM), 0, side1)
 		var sx: float = 0.0
 		var sy: float = 0.0
+		var col0: int = maxi(0, cx - 1)
+		var col1: int = mini(side, cx + 2)
 		for row in range(maxi(0, cy - 1), mini(side, cy + 2)):
-			for col in range(maxi(0, cx - 1), mini(side, cx + 2)):
-				var j: int = _room_head[row * side + col]
+			var row_at: int = row * side
+			for col in range(col0, col1):
+				var j: int = _room_head[row_at + col]
 				while j >= 0:
 					if j != i:
 						var dx: float = x - px[j]
@@ -905,77 +994,105 @@ func _write_buffer() -> void:
 	"""Every swarmling not gone, back to front (_sort_order()), into the
 	MultiMesh in one go: the transform (where it stands now), the colour
 	(flash, dying, shown) and the custom data (the step back, facing and
-	phase, hue)."""
+	phase, hue). The rest of each instance never changes and was written once
+	(_write_still_parts())."""
 	_sort_order()
+	var order: PackedInt32Array = _order
+	var n: int = order.size()
 	# Back to front, so the ones in front of the back wall (above front_line)
 	# are the first of the order: those go to _front, a pixel past the wall's
-	# foot, and the rest to _mesh.
-	var back: PackedFloat32Array = _buffer
-	var front: PackedFloat32Array = _front_buffer
-	var in_front: int = 0
-	var k: int = 0
-	for i in _order:
-		var s: int = state[i]
-		var to_front: bool = _front != null and py[i] < front_line
-		var buf: PackedFloat32Array = front if to_front else back
-		var at: int = (in_front if to_front else k) * 16
-		buf[at] = 1.0
-		buf[at + 1] = 0.0
-		buf[at + 2] = 0.0
-		buf[at + 3] = px[i]
-		buf[at + 4] = 0.0
-		buf[at + 5] = 1.0
-		buf[at + 6] = 0.0
-		buf[at + 7] = py[i] - _front_y if to_front else py[i]
-		buf[at + 8] = flash[i] / FLASH_SECONDS if s == 1 else 0.0
-		buf[at + 9] = clampf(timer[i] / DYING_SECONDS, 0.01, 1.0) if s == 2 else 0.0
-		buf[at + 10] = 0.0
-		buf[at + 11] = 1.0
-		buf[at + 12] = bx[i] - px[i]
-		buf[at + 13] = by[i] - py[i]
+	# foot, and from the first that is not, the rest go to _mesh.
+	var to_front: bool = _front != null
+	var line: float = front_line
+	var buf: PackedFloat32Array = _front_buffer if to_front else _buffer
+	var lift: float = _front_y if to_front else 0.0
+	var in_front: int = n if to_front else 0
+	var at: int = 0
+	for k in n:
+		var i: int = order[k]
+		var y: float = py[i]
+		if to_front and not (y < line):
+			to_front = false
+			in_front = k
+			buf = _buffer
+			lift = 0.0
+			at = 0
+		var x: float = px[i]
+		buf[at + 3] = x
+		buf[at + 7] = y - lift
+		if state[i] == 1:
+			buf[at + 8] = flash[i] / FLASH_SECONDS
+			buf[at + 9] = 0.0
+		else:
+			buf[at + 8] = 0.0
+			buf[at + 9] = clampf(timer[i] / DYING_SECONDS, 0.01, 1.0)
+		buf[at + 12] = bx[i] - x
+		buf[at + 13] = by[i] - y
 		buf[at + 14] = float(facing[i]) + phase[i] * 0.99
 		buf[at + 15] = hue[i]
-		if to_front:
-			in_front += 1
-		else:
-			k += 1
+		at += 16
 	var multi: MultiMesh = _mesh.multimesh
 	# The whole buffer, always: MultiMesh takes one of exactly its size. Past
 	# the order's end it holds old cells, and visible_instance_count draws
 	# none of them.
-	multi.buffer = back
-	multi.visible_instance_count = k
-	if _front != null:
-		_front.multimesh.buffer = front
+	multi.buffer = _buffer
+	multi.visible_instance_count = n - in_front
+	# The front layer only while it has, or had, slimes to draw: empty, it
+	# draws nothing whatever its buffer holds.
+	if _front != null and (in_front > 0 or _front.multimesh.visible_instance_count > 0):
+		_front.multimesh.buffer = _front_buffer
 		_front.multimesh.visible_instance_count = in_front
 
 
+func _write_still_parts(buf: PackedFloat32Array) -> void:
+	"""What never changes in an instance, whichever slime it draws: the
+	transform's turn and scale (1, 0 / 0, 1) and the colour's alpha (1). The
+	rest of those twelve numbers are 0, as resize() left them."""
+	for at in range(0, buf.size(), 16):
+		buf[at] = 1.0
+		buf[at + 5] = 1.0
+		buf[at + 11] = 1.0
+
+
 func _sort_order() -> void:
-	"""_order without the gone, back to front by where each stands: an
-	insertion sort, in place, so a crowd that has moved a few px since the
-	last step costs about one pass."""
+	"""_order without the gone, back to front by where each stands - and,
+	where two stand level, in the order they were in. Each one's feet and its
+	place in the order make a Vector2 key, and the engine sorts the keys
+	(0.117.0). It was an insertion sort in GDScript: quick on an order a step
+	old while nobody passes anybody, but a moving crowd passes, and each
+	newcomer was walked back from the end - 2.1 of the write's 3 ms for 2,500.
+	Level ones keep their order, as that sort kept them, so it is the same
+	order, slime for slime."""
 	var order: PackedInt32Array = _order
-	_order = PackedInt32Array()
+	var n: int = order.size()
 	# Once each: a slot freed and born again between two writes is in the
-	# order twice.
-	var seen := PackedByteArray()
-	seen.resize(_high)
+	# order twice. Marked in _seen by this sort's number, not a new array.
+	_seen_mark += 1
+	if _seen_mark >= MARK_WRAP:
+		_seen.fill(0)
+		_seen_mark = 1
+	var mark: int = _seen_mark
+	if _sort_keys.size() < n:
+		_sort_keys.resize(n)
+	if _sort_seq.size() < n:
+		_sort_seq.resize(n)
 	var kept: int = 0
-	for i in order:
-		if state[i] != 0 and seen[i] == 0:
-			seen[i] = 1
-			order[kept] = i
-			kept += 1
-	order.resize(kept)
-	for k in range(1, kept):
+	for k in n:
 		var i: int = order[k]
-		var at: float = py[i]
-		var j: int = k - 1
-		while j >= 0 and py[order[j]] > at:
-			order[j + 1] = order[j]
-			j -= 1
-		order[j + 1] = i
-	_order = order
+		if state[i] == 0 or _seen[i] == mark:
+			continue
+		_seen[i] = mark
+		_sort_seq[kept] = i
+		# A float32 holds the feet exactly (py is float32) and the place too.
+		_sort_keys[kept] = Vector2(py[i], kept)
+		kept += 1
+	if _sort_keys.size() != kept:
+		_sort_keys.resize(kept)
+	_sort_keys.sort()
+	for k in kept:
+		order[k] = _sort_seq[int(_sort_keys[k].y)]
+	if kept != n:
+		order.resize(kept)
 
 
 # =============================================================================
@@ -998,24 +1115,30 @@ func _place_proxies() -> void:
 		return
 	var at: Vector2 = player.global_position
 	var reach2: float = PROXY_REACH * PROXY_REACH
-	if _held.size() != _proxies.size():
-		_held.resize(_proxies.size())
+	var held_n: int = _proxies.size()
+	if _held.size() != held_n:
+		_held.resize(held_n)
 		_held.fill(-1)
-	var foci: Array = focus_points()
-	var taken := {}
+	var foci_n: int = _gather_foci()
+	# Who is held this step: marked in _taken by this step's number.
+	_taken_mark += 1
+	if _taken_mark >= MARK_WRAP:
+		_taken.fill(0)
+		_taken_mark = 1
+	var mark: int = _taken_mark
 	var empty: int = 0
 	var empty_focus: int = 0
-	for p in _held.size():
+	for p in held_n:
 		var i: int = _held[p]
-		if i >= 0 and state[i] == 1 and not taken.has(i):
+		if i >= 0 and state[i] == 1 and _taken[i] != mark:
 			if p < PROXIES:
 				var hx: float = px[i] - at.x
 				var hy: float = py[i] - at.y
 				if hx * hx + hy * hy <= reach2:
-					taken[i] = true
+					_taken[i] = mark
 					continue
-			elif _near_focus(i, foci) <= 1.0:
-				taken[i] = true
+			elif _near_focus(i, foci_n) <= 1.0:
+				_taken[i] = mark
 				continue
 		_held[p] = -1
 		if p < PROXIES:
@@ -1023,70 +1146,102 @@ func _place_proxies() -> void:
 		else:
 			empty_focus += 1
 	if empty > 0:
-		var bands: Array = [[], [], [], [], [], []]
-		var band_size: float = PROXY_REACH / float(bands.size())
+		# Nearest first, by BANDS of PROXY_REACH, each band in slot order: a
+		# list a band through _band_next, made in one pass.
+		_band_head.fill(-1)
+		_band_tail.fill(-1)
+		var band_size: float = PROXY_REACH / float(BANDS)
 		for i in _high:
-			if state[i] != 1 or taken.has(i):
+			if state[i] != 1 or _taken[i] == mark:
 				continue
 			var dx: float = px[i] - at.x
 			var dy: float = py[i] - at.y
 			var d2: float = dx * dx + dy * dy
 			if d2 > reach2:
 				continue
-			(bands[mini(bands.size() - 1, int(sqrt(d2) / band_size))] as Array).append(i)
+			# Onto the end of its band's list, so each band keeps slot order.
+			var band: int = mini(BANDS - 1, int(sqrt(d2) / band_size))
+			_band_next[i] = -1
+			var last: int = _band_tail[band]
+			if last < 0:
+				_band_head[band] = i
+			else:
+				_band_next[last] = i
+			_band_tail[band] = i
 		var p: int = 0
-		for band in bands:
-			for i in band:
+		for band in BANDS:
+			var i: int = _band_head[band]
+			while i >= 0:
 				while p < PROXIES and _held[p] >= 0:
 					p += 1
 				if p >= PROXIES:
 					break
 				_held[p] = i
-				taken[i] = true
-	if empty_focus > 0 and not foci.is_empty():
+				_taken[i] = mark
+				i = _band_next[i]
+			if p >= PROXIES:
+				break
+	if empty_focus > 0 and foci_n > 0:
 		# Nearest the middle of an attack first, by thirds of its reach - found
-		# through the cells round each attack (_focus_shares()), not by asking
+		# through the cells round each attack (_focus_find()), not by asking
 		# every slime about every attack: a warrior's waves and orbs are
-		# dozens of attacks at once (0.96.0).
-		var shares: Dictionary = _focus_shares(foci, taken)
-		var near: Array = [[], [], []]
-		for i in shares:
-			(near[mini(2, int(float(shares[i]) * 3.0))] as Array).append(i)
+		# dozens of attacks at once (0.96.0). Each third in the order found.
+		var found: int = _focus_find(foci_n, mark)
+		_band_head.fill(-1)
+		_band_tail.fill(-1)
+		for k in found:
+			var i: int = _share_list[k]
+			var third: int = mini(2, int(_share[i] * 3.0))
+			_band_next[i] = -1
+			var last: int = _band_tail[third]
+			if last < 0:
+				_band_head[third] = i
+			else:
+				_band_next[last] = i
+			_band_tail[third] = i
 		var q: int = PROXIES
-		for band in near:
-			for i in band:
-				while q < _held.size() and _held[q] >= 0:
+		for band in 3:
+			var i: int = _band_head[band]
+			while i >= 0:
+				while q < held_n and _held[q] >= 0:
 					q += 1
-				if q >= _held.size():
+				if q >= held_n:
 					break
 				_held[q] = i
+				i = _band_next[i]
+			if q >= held_n:
+				break
 	_move_proxies()
 
 
-func _focus_shares(foci: Array, taken: Dictionary) -> Dictionary:
-	"""Every free swarmling within an attack's reach -> how far it stands from
-	the nearest one's middle, as a share of that reach (_near_focus()'s
-	answer): the slimes are put in CELL squares once, and each attack looks
-	only in the squares it covers."""
+func _focus_find(foci_n: int, mark: int) -> int:
+	"""Every free swarmling (not marked `mark` in _taken) within an attack's
+	reach, into _share_list in the order first found, with how far it stands
+	from the nearest one's middle as a share of that reach in _share
+	(_near_focus()'s answer): the slimes are put in CELL squares once, and
+	each attack looks only in the squares it covers. Returns how many."""
 	var cells: int = _gw * _gh
 	if _focus_head.size() != cells:
 		_focus_head.resize(cells)
 	_focus_head.fill(-1)
-	if _focus_next.size() != MOST:
-		_focus_next.resize(MOST)
 	var ox: float = arena.position.x
 	var oy: float = arena.position.y
 	for i in _high:
-		if state[i] != 1 or taken.has(i):
+		if state[i] != 1 or _taken[i] == mark:
 			continue
 		var c: int = clampi(int((py[i] - oy) / CELL), 0, _gh - 1) * _gw + clampi(int((px[i] - ox) / CELL), 0, _gw - 1)
 		_focus_next[i] = _focus_head[c]
 		_focus_head[c] = i
-	var best: Dictionary = {}
-	for focus in foci:
-		var fx: float = focus[0]
-		var fy: float = focus[1]
-		var reach: float = maxf(1.0, focus[2])
+	_share_mark += 1
+	if _share_mark >= MARK_WRAP:
+		_share_seen.fill(0)
+		_share_mark = 1
+	var seen: int = _share_mark
+	var found: int = 0
+	for f in foci_n:
+		var fx: float = _foci[f * 3]
+		var fy: float = _foci[f * 3 + 1]
+		var reach: float = maxf(1.0, _foci[f * 3 + 2])
 		var x0: int = clampi(int(floorf((fx - reach - ox) / CELL)), 0, _gw - 1)
 		var x1: int = clampi(int(floorf((fx + reach - ox) / CELL)), 0, _gw - 1)
 		var y0: int = clampi(int(floorf((fy - reach - oy) / CELL)), 0, _gh - 1)
@@ -1100,19 +1255,38 @@ func _focus_shares(foci: Array, taken: Dictionary) -> Dictionary:
 					var d2: float = dx * dx + dy * dy
 					if d2 <= reach * reach:
 						var share: float = sqrt(d2) / reach
-						if share < float(best.get(i, INF)):
-							best[i] = share
+						if _share_seen[i] != seen:
+							_share_seen[i] = seen
+							_share[i] = share
+							_share_list[found] = i
+							found += 1
+						elif share < _share[i]:
+							_share[i] = share
 					i = _focus_next[i]
-	return best
+	return found
 
 
 func focus_points() -> Array:
 	"""Where the player's attacks are out on the floor (FOCUS_GROUP): each
 	[x, y, reach] with FOCUS_MARGIN in the reach."""
 	var out: Array = []
+	var n: int = _gather_foci()
+	for f in n:
+		out.append(PackedFloat32Array([_foci[f * 3], _foci[f * 3 + 1], _foci[f * 3 + 2]]))
+	return out
+
+
+func _gather_foci() -> int:
+	"""focus_points() into _foci, three numbers to an attack (x, y, reach),
+	with no array made for each - and none at all with no attack out.
+	Returns how many."""
 	if not is_inside_tree():
-		return out
-	for node in get_tree().get_nodes_in_group(FOCUS_GROUP):
+		return 0
+	var tree: SceneTree = get_tree()
+	if tree.get_node_count_in_group(FOCUS_GROUP) == 0:
+		return 0
+	var n: int = 0
+	for node in tree.get_nodes_in_group(FOCUS_GROUP):
 		if not (node is Node2D) or not (node as Node2D).is_inside_tree() or (node as Node).is_queued_for_deletion():
 			continue
 		# Another player's attack drawn here hits nothing here (remoteattacks.gd).
@@ -1120,18 +1294,25 @@ func focus_points() -> Array:
 			continue
 		var reach: float = float(node.call("swarm_reach")) if node.has_method("swarm_reach") else FOCUS_REACH
 		var spot: Vector2 = (node as Node2D).global_position
-		out.append(PackedFloat32Array([spot.x, spot.y, reach + FOCUS_MARGIN]))
-	return out
+		if _foci.size() < n * 3 + 3:
+			_foci.resize(n * 3 + 3)
+		_foci[n * 3] = spot.x
+		_foci[n * 3 + 1] = spot.y
+		_foci[n * 3 + 2] = reach + FOCUS_MARGIN
+		n += 1
+	return n
 
 
-func _near_focus(i: int, foci: Array) -> float:
-	"""How far swarmling `i` stands from the nearest attack, as a share of its
-	reach: 1 or under is within it. INF with none."""
+func _near_focus(i: int, foci_n: int) -> float:
+	"""How far swarmling `i` stands from the nearest attack (_foci), as a share
+	of its reach: 1 or under is within it. INF with none."""
 	var best: float = INF
-	for focus in foci:
-		var dx: float = px[i] - focus[0]
-		var dy: float = py[i] - focus[1]
-		var reach: float = maxf(1.0, focus[2])
+	var x: float = px[i]
+	var y: float = py[i]
+	for f in foci_n:
+		var dx: float = x - _foci[f * 3]
+		var dy: float = y - _foci[f * 3 + 1]
+		var reach: float = maxf(1.0, _foci[f * 3 + 2])
 		var d2: float = dx * dx + dy * dy
 		if d2 <= reach * reach:
 			best = minf(best, sqrt(d2) / reach)

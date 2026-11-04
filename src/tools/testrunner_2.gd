@@ -2989,7 +2989,7 @@ func _test_the_welcome_plays_once_a_login() -> void:
 	var field: String = FileAccess.get_file_as_string("res://src/world/field.gd")
 	var ready_at: int = _first_code_index(field, "func _ready(", 0)
 	var ready_end: int = _first_code_index(field, "\nfunc ", ready_at + 1)
-	var guard: int = _within(_first_code_index(field, "if GameState.opening_story_told:", ready_at), ready_end)
+	var guard: int = _within(_first_code_index(field, "if GameState.opening_story_told or story_seen(story_key()):", ready_at), ready_end)
 	var told: int = _within(_first_code_index(field, "GameState.opening_story_told = true", ready_at), ready_end)
 	var freeze: int = _within(_first_code_index(field, "_freeze_enemies()", ready_at), ready_end)
 	var story: int = _within(_first_code_index(field, "StoryScreen.new()", ready_at), ready_end)
@@ -3012,6 +3012,24 @@ func _test_the_welcome_plays_once_a_login() -> void:
 	var load_end: int = _first_code_index(data, "\nfunc ", load_at + 1)
 	check("  and a login runs that reset",
 		_within(_first_code_index(data, "clear_current_user()", load_at), load_end) != -1)
+	# ONCE A CHARACTER (0.117.0): about 25 seconds at every login was the
+	# slowest wait in the game. Kept in the welcome's file.
+	var FieldScript: GDScript = load("res://src/world/field.gd") as GDScript
+	var was_path: String = ControlsPanel.seen_path
+	ControlsPanel.seen_path = "user://_story_seen_test_%d.cfg" % Time.get_ticks_usec()
+	var fresh: bool = not bool(FieldScript.call("story_seen", "someone/Bram"))
+	FieldScript.call("mark_story_seen", "someone/Bram")
+	var kept: bool = bool(FieldScript.call("story_seen", "someone/Bram")) \
+		and not bool(FieldScript.call("story_seen", "someone/Wren"))
+	ControlsPanel.mark_welcome_seen()
+	var both: bool = ControlsPanel.has_seen_welcome() and bool(FieldScript.call("story_seen", "someone/Bram"))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(ControlsPanel.seen_path))
+	ControlsPanel.seen_path = was_path
+	check("  and once a character: a character that has heard it never hears it again, another still does, and the welcome's mark survives (0.117.0)",
+		fresh and kept and both and _within(_first_code_index(field, "mark_story_seen(story_key())", ready_at), ready_end) > told)
+	var story_src: String = _code_src("res://src/ui/storyscene.gd")
+	check("  and the story says any key skips it", _func_body(story_src, "func play(").contains("_build_skip_hint()")
+		and story_src.contains("const SKIP_HINT := \"Press any key to skip\""))
 	print("  the welcome plays on the first field arrival of a login, and not again until the next")
 
 

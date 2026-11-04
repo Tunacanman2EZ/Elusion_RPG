@@ -5144,7 +5144,12 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 	for group in crypt.get_children():
 		if not (group as Node2D).y_sort_enabled:
 			unsorted.append(group.name)
-		for prop in group.get_children():
+		# Walls and decor may sit in chunks (propchunks.gd): y-sorted too, or
+		# their pieces would be drawn as one block.
+		for chunk in group.get_children():
+			if chunk.is_in_group(&"propchunk") and not (chunk as Node2D).y_sort_enabled:
+				unsorted.append("%s/%s" % [group.name, chunk.name])
+		for prop in _crypt_pieces(group):
 			props.append(prop)
 			if not str(prop.scene_file_path).begins_with("res://scene/crypt/"):
 				foreign.append("%s/%s" % [group.name, prop.name])
@@ -5181,7 +5186,7 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 
 	# ---- every wall's picture, and none over another -----------------------------
 	var pictures: Array = []
-	for prop in crypt.get_node("walls").get_children():
+	for prop in _crypt_pieces(crypt.get_node("walls")):
 		var spr: Sprite2D = prop.get_node_or_null("sprite") as Sprite2D
 		if spr == null:
 			continue

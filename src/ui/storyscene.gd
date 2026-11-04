@@ -79,6 +79,7 @@ func play(blocks: Array, start_already_black: bool = false) -> void:
 
 	_build_background(start_already_black)
 	_build_label()
+	_build_skip_hint()
 
 	if start_already_black:
 		_show_current_block()
@@ -135,6 +136,27 @@ func _build_label() -> void:
 
 	_panel.add_child(_label)
 	add_child(_panel)
+
+
+# THE SKIP, SAID (0.117.0): any key always skipped it, and nothing on the
+# screen told anyone. Dim, at the foot of the screen.
+const SKIP_HINT := "Press any key to skip"
+
+
+func _build_skip_hint() -> void:
+	var hint := Label.new()
+	hint.name = "skiphint"
+	hint.text = SKIP_HINT
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", Color(0.75, 0.7, 0.6, 0.8))
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	hint.offset_top = -48.0
+	hint.offset_bottom = -24.0
+	hint.offset_left = -200.0
+	hint.offset_right = 200.0
+	add_child(hint)
 
 
 # =============================================================================
