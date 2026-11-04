@@ -22,9 +22,10 @@ extends PanelContainer
 const PadScript := preload("res://src/ui/touchpad.gd")
 
 # The bar's buttons, in the order the grid shows them: the bar's own, then
-# Social's, then Menu's.
+# Social's, then Menu's. Stats is its window, not its dropdown (0.113.0): the
+# grid already holds Kills and Kingdom.
 const ITEMS := [
-	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton", "chatbutton",
+	"inventorybutton", "equipmentbutton", "characterbutton", "shopbutton", "mapbutton", "chatbutton",
 	"minigamesbutton", "friendsbutton", "playersbutton", "partybutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
@@ -173,6 +174,8 @@ func open() -> void:
 		mine.visible = real != null and _shown_on_its_bar(real)
 		if real != null:
 			mine.text = real.text
+			# Shop is grey away from a counter here too (0.113.0).
+			mine.disabled = real.disabled
 			if real.has_theme_color_override("font_color"):
 				mine.add_theme_color_override("font_color", real.get_theme_color("font_color"))
 			else:

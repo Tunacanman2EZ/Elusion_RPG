@@ -682,6 +682,9 @@ func _process(_delta: float) -> void:
 		# And the meal's minutes and seconds (0.74.0).
 		_paint_food_chip()
 
+	# THE BAR: what is open lit, Shop grey away from a counter (0.113.0).
+	_paint_the_bar(_delta)
+
 	if active_character == null:
 		return
 
@@ -815,10 +818,13 @@ func _wire_nav_buttons() -> void:
 	# Players, Guild, Trade and Kingdom open from Social, and Controls, Options,
 	# Switch character and Log out from Menu. The buttons share the bar's width
 	# (FILL|EXPAND), so eight of them get bigger text than fourteen could.
+	#
+	# STATS IS A DROPDOWN TOO (0.113.0): Stats, Kills and Kingdom - the owner's
+	# "update my hudscreen buttons". C still opens the stats window at once.
 	var bindings := {
 		"inventorybutton":         "_on_inventory_pressed",
 		"equipmentbutton":         "_on_equipment_pressed",
-		"statsbutton":             "_on_stats_pressed",
+		"characterbutton":         "_on_stats_pressed",
 		"shopbutton":              "_on_shop_pressed",
 		"kingdombutton":           "_on_kingdom_pressed",
 		"killsbutton":             "_on_kills_pressed",
@@ -864,6 +870,7 @@ func _wire_nav_buttons() -> void:
 	if keys != null and not keys.changed.is_connected(_paint_nav_key_hints):
 		keys.changed.connect(_paint_nav_key_hints)
 	_paint_group_dots()
+	paint_shop_button()
 
 
 func _paint_nav_key_hints() -> void:
@@ -877,34 +884,109 @@ func _paint_nav_key_hints() -> void:
 			button.set_meta(&"_tip_without_key", button.tooltip_text)
 		button.tooltip_text = "%s (%s)" % [button.get_meta(&"_tip_without_key"),
 			ControlsPanel.action_key(NAV_KEY_HINTS[btn_name])]
+	# AND ON THE BUTTON ITSELF (0.113.0), small and dim in its top right corner.
+	for btn_name in NAV_KEY_HINTS.keys() + NAV_KEY_LETTER_ONLY.keys():
+		var action: String = NAV_KEY_HINTS.get(btn_name, NAV_KEY_LETTER_ONLY.get(btn_name, ""))
+		_paint_key_letter(_nav_button(btn_name), key_letter_for(action))
+
+
+static func key_letter_for(action: String) -> String:
+	"""The key a button wears: its action's first key, if it is short enough to
+	sit in the corner without reaching the button's word ("I", "F1", "Tab").
+	A longer name ("Space", "Shift+I") is left to the tooltip."""
+	var keys: Array[String] = ControlsPanel.action_keys(action)
+	if keys.is_empty() or keys[0].length() > KEY_LETTER_MOST:
+		return ""
+	return keys[0]
+
+
+func _paint_key_letter(button: Button, letter: String) -> void:
+	if button == null:
+		return
+	var label: Label = button.get_node_or_null("keyletter") as Label
+	if label == null:
+		if letter == "":
+			return
+		label = Label.new()
+		label.name = "keyletter"
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		label.offset_right = -KEY_LETTER_INSET.x
+		label.offset_top = KEY_LETTER_INSET.y
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		label.add_theme_font_size_override("font_size", KEY_LETTER_SIZE)
+		label.add_theme_color_override("font_color", KEY_LETTER_COLOUR)
+		button.add_child(label)
+	label.text = letter
+	label.visible = letter != ""
 
 
 # =============================================================================
-# THE BAR'S TWO DROPDOWNS - SOCIAL AND MENU
+# THE BAR'S THREE DROPDOWNS - STATS, SOCIAL AND MENU
 # =============================================================================
 
 # Every button the bar owns, on the bar or in a dropdown.
 const NAV_BUTTON_NAMES := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
 	"chatbutton", "socialbutton", "minigamesbutton", "menubutton",
-	"friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton", "kingdombutton", "killsbutton",
+	"characterbutton", "killsbutton", "kingdombutton",
+	"friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
 
 # toggle button -> [the dropdown it opens, the words it says]
 const NAV_GROUPS := {
+	"statsbutton":  ["statsmenu", "Stats"],
 	"socialbutton": ["socialmenu", "Social"],
 	"menubutton":   ["systemmenu", "Menu"],
 }
 
+# A button with a key says it: in its tooltip, "(I)", and in its corner.
 const NAV_KEY_HINTS := {
 	"inventorybutton": "inventory_toggle",
 	"equipmentbutton": "equipment_toggle",
-	"statsbutton":     "character_toggle",
+	"characterbutton": "character_toggle",
 	"mapbutton":       "minimap_toggle",
 	"controlsbutton":  "help_toggle",
 	"killsbutton":     "kills_toggle",
 }
+# In its corner only: Stats on the bar opens its dropdown, and C opens the
+# first thing in it at once, so the bar's Stats wears C without promising it.
+const NAV_KEY_LETTER_ONLY := {
+	"statsbutton": "character_toggle",
+}
+const KEY_LETTER_SIZE := 10
+const KEY_LETTER_COLOUR := Color(0.78, 0.7, 0.52, 0.7)
+const KEY_LETTER_INSET := Vector2(4, 1)
+# The most letters a key's name may have to sit in a button's corner.
+const KEY_LETTER_MOST := 3
+
+# THE BUTTON LIGHTS WHILE WHAT IT OPENS IS UP (0.113.0): a button -> the HUD's
+# variable holding the window it opens. A dropdown's own button lights while
+# the dropdown or anything in it is open.
+const NAV_LIT_BY := {
+	"inventorybutton": "inventory_screen",
+	"equipmentbutton": "equipment_panel",
+	"characterbutton": "stats_screen",
+	"killsbutton":     "kills_panel",
+	"kingdombutton":   "kingdom_panel",
+	"shopbutton":      "shop_panel",
+	"mapbutton":       "map_screen",
+	"chatbutton":      "chat_panel",
+	"friendsbutton":   "friends_panel",
+	"playersbutton":   "players_panel",
+	"guildbutton":     "guild_panel",
+	"partybutton":     "party_panel",
+	"tradebutton":     "trade_panel",
+	"minigamesbutton": "minigames_card",
+	"controlsbutton":  "controls_panel",
+	"optionsbutton":   "options_screen",
+}
+# How often the bar asks whether you stand at a shop.
+const SHOP_LOOK_SECONDS := 0.2
+const SHOP_HERE_TIP := "Buy and sell at the shop you are standing at"
+const SHOP_AWAY_TIP := "Walk up to a shop's counter to use it"
 
 # Room left between a dropdown and the button it opened from.
 const NAV_MENU_GAP := 6.0
@@ -1075,12 +1157,145 @@ func paint_touch_menu_dot() -> void:
 		return
 	if menu.text.ends_with(" •"):
 		return
-	for other in ["chatbutton", "socialbutton"]:
+	for other in ["chatbutton", "statsbutton", "socialbutton", "minigamesbutton"]:
 		var button: Button = _nav_button(other)
 		if button != null and button.text.ends_with(" •"):
 			menu.text = "Menu •"
 			menu.add_theme_color_override("font_color", button.get_theme_color("font_color"))
 			return
+
+
+# =============================================================================
+# WHAT IS OPEN, AND WHERE THE SHOP IS (0.113.0)
+# =============================================================================
+# The owner: "can you update my hudscreen buttons also". A button on the bar
+# lights while what it opens is up - the theme's pressed look, held - and Shop
+# is grey away from a counter, where pressing it could only say "There is no
+# shop here."
+
+# What is lit now: button name -> true.
+var _lit: Dictionary = {}
+# A dropdown's button -> the names of the buttons inside it, read once.
+var _group_items: Dictionary = {}
+var _shop_look_clock: float = 0.0
+
+
+func window_up(var_name: String) -> bool:
+	"""Is the window this HUD keeps in `var_name` built and showing?"""
+	var held: Variant = get(var_name)
+	return is_instance_valid(held) and bool((held as Object).get("visible"))
+
+
+func lit_buttons() -> Dictionary:
+	"""Every button that should be lit now -> true."""
+	var lit: Dictionary = {}
+	for btn_name in NAV_LIT_BY:
+		if window_up(String(NAV_LIT_BY[btn_name])):
+			lit[btn_name] = true
+	for toggle_name in NAV_GROUPS:
+		var menu: Control = _nav_menu(toggle_name)
+		if menu == null:
+			continue
+		if not _group_items.has(toggle_name):
+			var names: Array[String] = []
+			for child in menu.find_children("*", "Button", true, false):
+				names.append(String(child.name))
+			_group_items[toggle_name] = names
+		var on: bool = menu.visible
+		for item in _group_items[toggle_name]:
+			on = on or lit.has(item)
+		if on:
+			lit[toggle_name] = true
+	# On a touch screen Menu opens the grid of everything instead.
+	if touch_menu != null and touch_menu.visible:
+		lit["menubutton"] = true
+	return lit
+
+
+func paint_lit_buttons() -> void:
+	"""Lights the buttons lit_buttons() names and puts the rest back - only
+	those that changed, so a frame with nothing new costs a comparison."""
+	var lit: Dictionary = lit_buttons()
+	if lit == _lit:
+		return
+	for btn_name in NAV_BUTTON_NAMES:
+		var on: bool = lit.has(btn_name)
+		if on == _lit.has(btn_name):
+			continue
+		var button: Button = _nav_button(btn_name)
+		if button != null:
+			light_button(button, on)
+	_lit = lit
+
+
+static func light_button(button: Button, on: bool) -> void:
+	"""Lit is the theme's pressed look, held while the window is up."""
+	if on:
+		var held: StyleBox = button.get_theme_stylebox("pressed")
+		button.add_theme_stylebox_override("normal", held)
+		button.add_theme_stylebox_override("hover", held)
+	else:
+		button.remove_theme_stylebox_override("normal")
+		button.remove_theme_stylebox_override("hover")
+
+
+func is_lit(btn_name: String) -> bool:
+	return _lit.has(btn_name)
+
+
+func shop_counter() -> Node:
+	"""The shop whose counter the player stands at, or null."""
+	if not is_inside_tree():
+		return null
+	for vendor in get_tree().get_nodes_in_group("vendors"):
+		if vendor.has_method("player_at_counter") and bool(vendor.call("player_at_counter")):
+			return vendor
+	return null
+
+
+func paint_shop_button() -> void:
+	"""Shop is pressable at a counter, or while the shop is open (to shut it)."""
+	var button: Button = _nav_button("shopbutton")
+	if button == null:
+		return
+	var here: bool = window_up("shop_panel") or shop_counter() != null
+	button.disabled = not here
+	button.tooltip_text = SHOP_HERE_TIP if here else SHOP_AWAY_TIP
+
+
+func _paint_the_bar(delta: float) -> void:
+	paint_lit_buttons()
+	_shop_look_clock -= delta
+	if _shop_look_clock <= 0.0:
+		_shop_look_clock = SHOP_LOOK_SECONDS
+		paint_shop_button()
+
+
+# =============================================================================
+# A MINIGAME READY AGAIN (0.113.0)
+# =============================================================================
+# The Minigames card knows each game's wait (minigamescard.gd has_news()); it
+# lights the button here when one is ready and the card has not been opened
+# since, and puts it out when it is.
+
+const MINIGAMES_READY_COLOUR := Color(0.6, 0.9, 0.55)
+
+
+func mark_minigames_button(lit: bool) -> void:
+	var button: Button = _nav_button("minigamesbutton")
+	if button == null:
+		return
+	if not button.has_meta("dot_base"):
+		button.set_meta("dot_base", button.tooltip_text)
+	if button.text.ends_with(" •") == lit:
+		return
+	button.text = "Minigames •" if lit else "Minigames"
+	button.tooltip_text = "A run is ready for you" if lit else String(button.get_meta("dot_base"))
+	if lit:
+		button.add_theme_color_override("font_color", MINIGAMES_READY_COLOUR)
+	else:
+		button.remove_theme_color_override("font_color")
+	_paint_group_dots()
 
 
 func _add_owner_button() -> void:
@@ -3165,6 +3380,13 @@ func _on_shop_pressed() -> void:
 	# I am standing in front of — and says so plainly when there isn't one.
 	# Silence was the original bug; replacing a print with a different silence
 	# would not be a fix.
+	#
+	# SINCE 0.113.0 the button is grey away from a counter (paint_shop_button()),
+	# and lit while the shop is open - so pressing it then shuts it, as every
+	# lit button on the bar does.
+	if window_up("shop_panel"):
+		close_shop()
+		return
 	var nearby: Node = null
 	for vendor in get_tree().get_nodes_in_group("vendors"):
 		if vendor.has_method("can_open_for_player") and vendor.can_open_for_player():

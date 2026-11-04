@@ -133,6 +133,22 @@ var _failed: bool = false
 # The first press says so; the second leaves. Opening the card again forgets.
 var _leave_armed: bool = false
 
+# A RUN READY AGAIN LIGHTS THE BAR'S BUTTON (0.113.0). PER LOGIN, NOT PER
+# CARD: every area has its own HUD and card, and the bar's dot must not go out
+# at a door, nor light again at every one. Static, and forgotten when another
+# account is playing.
+#
+# game id -> the unix second it is (or was) ready; a game not in it is unknown.
+static var _ready_at: Dictionary = {}
+# game id -> true once the card was opened while that game was ready. Learning
+# of a wait puts it back to false, so the end of that wait lights the button.
+static var _seen_ready: Dictionary = {}
+static var _news_by: String = ""
+# The account whose listing has been asked for at this login.
+static var _asked_by: String = ""
+# How often the card looks at the clock for a wait just ended.
+const NEWS_SECONDS := 5.0
+
 
 static func attach(on_hud: Node) -> Control:
 	var card: Control = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).new()
@@ -273,6 +289,97 @@ func _ready() -> void:
 		var style: StyleBox = nav.get_theme_stylebox("panel")
 		if style != null:
 			add_theme_stylebox_override("panel", style)
+	var clock := Timer.new()
+	clock.name = "newsclock"
+	clock.wait_time = NEWS_SECONDS
+	clock.autostart = true
+	clock.timeout.connect(paint_news)
+	add_child(clock)
+	_forget_news_if_another()
+	paint_news()
+	# ONCE A LOGIN, the listing, so the button knows a wait without the card
+	# being opened. Opening the card asks again anyway.
+	if Api.is_logged_in() and _asked_by != Api.username and not inside_endless():
+		_ask_for_news.call_deferred()
+
+
+func _ask_for_news() -> void:
+	_asked_by = Api.username
+	var res: Dictionary = await list_request.call("/api/minigames", 6.0)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_asked_by = ""
+		return
+	if not visible:
+		take_listing(res)
+
+
+# =============================================================================
+# A RUN READY AGAIN (0.113.0)
+# =============================================================================
+
+static func forget_news() -> void:
+	"""Nothing known of any game: the suite's way back to a fresh login."""
+	_ready_at.clear()
+	_seen_ready.clear()
+	_asked_by = ""
+	_news_by = Api.username
+
+
+static func _forget_news_if_another() -> void:
+	if _news_by != Api.username:
+		_ready_at.clear()
+		_seen_ready.clear()
+		_asked_by = ""
+		_news_by = Api.username
+
+
+static func note_wait(game: String, seconds: int) -> void:
+	"""What the server said of a game: ready now (0), or in `seconds`."""
+	_forget_news_if_another()
+	var now: int = int(Time.get_unix_time_from_system())
+	if seconds > 0:
+		_ready_at[game] = now + seconds
+		_seen_ready[game] = false
+	elif int(_ready_at.get(game, now + 1)) > now:
+		_ready_at[game] = now
+
+
+static func forget_wait(game: String) -> void:
+	"""A run was just begun: its next wait is the server's to say, so the next
+	area's card asks again."""
+	_ready_at.erase(game)
+	_seen_ready[game] = false
+	_asked_by = ""
+
+
+static func ready_games() -> Array[String]:
+	var out: Array[String] = []
+	var now: int = int(Time.get_unix_time_from_system())
+	for game in _ready_at:
+		if int(_ready_at[game]) <= now:
+			out.append(String(game))
+	return out
+
+
+static func has_news() -> bool:
+	"""A game ready that the card has not been opened on since."""
+	for game in ready_games():
+		if not bool(_seen_ready.get(game, false)):
+			return true
+	return false
+
+
+static func mark_seen() -> void:
+	for game in ready_games():
+		_seen_ready[game] = true
+
+
+func paint_news() -> void:
+	"""The bar's Minigames dot. Out inside the Endless (Leave is the button)."""
+	if hud != null and hud.has_method("mark_minigames_button"):
+		hud.call("mark_minigames_button", has_news() and not inside_endless())
 
 
 # =============================================================================
@@ -298,6 +405,8 @@ func open() -> void:
 	_healer_said = ""
 	visible = true
 	move_to_front()
+	mark_seen()
+	paint_news()
 	_known = false
 	_failed = false
 	paint()
@@ -321,12 +430,17 @@ func take_listing(res: Dictionary) -> void:
 				healer_wait = maxi(0, int(game.get("ready_in", 0)))
 				_healer_said_msec = Time.get_ticks_msec()
 				_healer_known = true
+				note_wait(HEALER_GAME, 0 if healer_left > 0 else healer_wait)
 			if game is Dictionary and str(game.get("id", "")) == GAME:
 				ready_in = maxi(0, int(game.get("ready_in", 0)))
 				_said_at_msec = Time.get_ticks_msec()
 				_known = true
+				note_wait(GAME, ready_in)
 	_failed = not _known
+	if visible:
+		mark_seen()
 	paint()
+	paint_news()
 
 
 func inside_endless() -> bool:
@@ -444,6 +558,7 @@ func _on_go() -> void:
 		return
 	_busy = false
 	if res.get("ok", false):
+		forget_wait(GAME)
 		close()
 		travel.call(GAME, ENTRANCE)
 		return
@@ -453,6 +568,7 @@ func _on_go() -> void:
 		ready_in = maxi(0, int(data.get("ready_in", 0)))
 		_said_at_msec = Time.get_ticks_msec()
 		_known = true
+		note_wait(GAME, ready_in)
 		paint()
 		return
 	_failed = true
@@ -503,6 +619,8 @@ func _on_healer_go() -> void:
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
 	if res.get("ok", false) and data.has("run"):
 		healer_left = maxi(0, int(data.get("plays_left", 0)))
+		if healer_left <= 0:
+			forget_wait(HEALER_GAME)
 		close()
 		open_run.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {})
 		return
@@ -511,6 +629,7 @@ func _on_healer_go() -> void:
 		healer_wait = maxi(0, int(data.get("ready_in", 0)))
 		_healer_said_msec = Time.get_ticks_msec()
 		_healer_known = true
+		note_wait(HEALER_GAME, healer_wait)
 	else:
 		_healer_said = UNREACHABLE
 	paint()

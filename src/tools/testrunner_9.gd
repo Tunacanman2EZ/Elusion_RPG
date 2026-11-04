@@ -4472,3 +4472,219 @@ func _test_the_gm_panel_tidied_and_live() -> void:
 	Api.is_owner = was_owner
 	await get_tree().process_frame
 	print("  (the GM panel, tidied and live: done)")
+
+
+# =============================================================================
+# THE HUD BAR: ITS KEYS, WHAT IS OPEN, THE SHOP, A RUN READY (0.113.0)
+# =============================================================================
+# The owner: "can you update my hudscreen buttons also". Each button with a key
+# wears it, small, in its corner; a button is lit while what it opens is up;
+# Shop is grey away from a counter; Minigames wears a dot when a run is ready
+# again; and Kills and Kingdom moved from Social into a Stats dropdown - C
+# still opens Stats at once.
+func _test_the_hud_bar_says_keys_and_what_is_open() -> void:
+	section("THE HUD BAR - keys on the buttons, lit while open, Shop at a counter, a run ready (0.113.0)")
+	const Hud := preload("res://src/ui/characterhud.gd")
+	var Card: GDScript = load("res://src/ui/minigames/minigamescard.gd") as GDScript
+	Card.call("forget_news")
+	var was_touch: bool = TouchControls.active
+	TouchControls.set_active(false)
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	# ---- the keys ----
+	var letter := func(btn: String) -> String:
+		var l: Label = hud.get_node("%" + btn).get_node_or_null("keyletter") as Label
+		return l.text if l != null and l.visible else ""
+	var wanted := {"inventorybutton": "inventory_toggle", "equipmentbutton": "equipment_toggle",
+		"statsbutton": "character_toggle", "mapbutton": "minimap_toggle",
+		"characterbutton": "character_toggle", "killsbutton": "kills_toggle", "controlsbutton": "help_toggle"}
+	var shown: Dictionary = {}
+	var right: bool = true
+	for b in wanted:
+		shown[b] = letter.call(b)
+		right = right and shown[b] != "" and shown[b] == ControlsPanel.action_key(wanted[b])
+	check("every button with a key wears it - Inventory, Gear, Stats, Map on the bar; Stats, Kills, Controls in theirs",
+		right, shown)
+	var bare: Array = []
+	for b in ["shopbutton", "chatbutton", "socialbutton", "minigamesbutton", "menubutton", "kingdombutton"]:
+		if letter.call(b) != "":
+			bare.append(b)
+	check("  and a button with no key wears none", bare.is_empty(), bare)
+	var inv: Button = hud.get_node("%inventorybutton")
+	var tag: Label = inv.get_node("keyletter")
+	check("  small and dim, and a click goes through it to the button",
+		tag.get_theme_font_size("font_size") < inv.get_theme_font_size("font_size")
+		and tag.get_theme_color("font_color").a < 1.0 and tag.mouse_filter == Control.MOUSE_FILTER_IGNORE)
+	var crowded: Array = []
+	for b in ["inventorybutton", "equipmentbutton", "statsbutton", "mapbutton"]:
+		var button: Button = hud.get_node("%" + b)
+		var font: Font = button.get_theme_font("font")
+		var word: float = font.get_string_size(button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, button.get_theme_font_size("font_size")).x
+		var mark: float = font.get_string_size(letter.call(b), HORIZONTAL_ALIGNMENT_LEFT, -1, Hud.KEY_LETTER_SIZE).x
+		if (button.size.x - word) / 2.0 < mark + Hud.KEY_LETTER_INSET.x + 1.0:
+			crowded.append([b, button.size.x, word, mark])
+	check("  the letter sits clear of the button's word", crowded.is_empty(), crowded)
+	InputMap.add_action(&"zz_long_key")
+	var space := InputEventKey.new()
+	space.physical_keycode = KEY_SPACE
+	InputMap.action_add_event(&"zz_long_key", space)
+	check("  a key whose name is too long for the corner is left to the tooltip",
+		Hud.key_letter_for("zz_long_key") == "" and Hud.key_letter_for("no_such_action") == "",
+		Hud.key_letter_for("zz_long_key"))
+	InputMap.erase_action(&"zz_long_key")
+	check("  the tooltip still says the key, and Stats' tooltip promises nothing C does not do",
+		inv.tooltip_text.ends_with("(%s)" % ControlsPanel.action_key("inventory_toggle"))
+		and not (hud.get_node("%statsbutton") as Button).tooltip_text.contains("("),
+		[inv.tooltip_text, (hud.get_node("%statsbutton") as Button).tooltip_text])
+
+	# ---- Stats is a dropdown ----
+	var stats_bar: Button = hud.get_node("%statsbutton")
+	var stats_menu: Control = hud.get_node("%statsmenu")
+	stats_bar.pressed.emit()
+	await get_tree().process_frame
+	check("Stats on the bar opens its dropdown, above the button",
+		stats_menu.visible and stats_menu.get_global_rect().end.y <= stats_bar.get_global_rect().position.y,
+		[stats_menu.get_global_rect(), stats_bar.get_global_rect()])
+	hud.call("paint_lit_buttons")
+	check("  lit while it is open", bool(hud.call("is_lit", "statsbutton")))
+	(hud.get_node("%characterbutton") as Button).pressed.emit()
+	await get_tree().process_frame
+	var stats_window: Control = hud.get("stats_screen")
+	check("  Stats in it opens the stats window and shuts the dropdown",
+		stats_window != null and stats_window.visible and not stats_menu.visible)
+	hud.call("paint_lit_buttons")
+	check("  Stats stays lit while the window is up, and Stats inside too",
+		bool(hud.call("is_lit", "statsbutton")) and bool(hud.call("is_lit", "characterbutton")))
+	check("  lit is the theme's pressed look, held",
+		stats_bar.get_theme_stylebox("normal") == stats_bar.get_theme_stylebox("pressed")
+		and stats_bar.get_theme_stylebox("hover") == stats_bar.get_theme_stylebox("pressed"))
+	var c_key := InputEventKey.new()
+	c_key.physical_keycode = KEY_C
+	c_key.keycode = KEY_C
+	c_key.pressed = true
+	var c_says: bool = c_key.is_action_pressed("character_toggle")
+	hud.call("_unhandled_input", c_key)
+	check("C still shuts and opens the stats window at once, no dropdown",
+		c_says and not stats_window.visible and not stats_menu.visible)
+	hud.call("paint_lit_buttons")
+	check("  and the bar's Stats goes dark with it, its own look back",
+		not bool(hud.call("is_lit", "statsbutton")) and not stats_bar.has_theme_stylebox_override("normal"))
+	var missing: Array = []
+	for b in Hud.NAV_LIT_BY:
+		if not (String(Hud.NAV_LIT_BY[b]) in hud) or hud.get_node_or_null("%" + b) == null:
+			missing.append(b)
+	check("  every lit button names a real button and a window the HUD keeps", missing.is_empty(), missing)
+	(hud.get_node("%socialbutton") as Button).pressed.emit()
+	hud.call("paint_lit_buttons")
+	check("  an open dropdown lights its button", bool(hud.call("is_lit", "socialbutton"))
+		and not bool(hud.call("is_lit", "menubutton")))
+	hud.call("close_nav_menus")
+	hud.call("paint_lit_buttons")
+	check("  and shut, it goes dark", not bool(hud.call("is_lit", "socialbutton")))
+
+	# ---- the shop ----
+	var shop: Button = hud.get_node("%shopbutton")
+	hud.call("paint_shop_button")
+	check("Shop is grey away from a counter, and says why", shop.disabled and shop.tooltip_text == Hud.SHOP_AWAY_TIP,
+		[shop.disabled, shop.tooltip_text])
+	var counter_script := GDScript.new()
+	counter_script.source_code = "extends Node\nvar here: bool = true\nfunc player_at_counter() -> bool:\n\treturn here\n"
+	counter_script.reload()
+	var counter := Node.new()
+	counter.set_script(counter_script)
+	counter.add_to_group("vendors")
+	add_child(counter)
+	hud.call("paint_shop_button")
+	check("  at a counter it lights up to be pressed", not shop.disabled and shop.tooltip_text == Hud.SHOP_HERE_TIP)
+	var panel_script := GDScript.new()
+	panel_script.source_code = "extends PanelContainer\nfunc close_shop() -> void:\n\tvisible = false\n"
+	panel_script.reload()
+	var open_shop := PanelContainer.new()
+	open_shop.set_script(panel_script)
+	hud.add_child(open_shop)
+	hud.set("shop_panel", open_shop)
+	counter.set("here", false)
+	hud.call("paint_shop_button")
+	hud.call("paint_lit_buttons")
+	check("  with the shop open it is lit and pressable even as the counter goes",
+		not shop.disabled and bool(hud.call("is_lit", "shopbutton")))
+	shop.pressed.emit()
+	check("  and pressing it then shuts the shop", not open_shop.visible)
+	hud.call("paint_shop_button")
+	check("  grey again once it is shut and you have walked off", shop.disabled)
+	hud.set("shop_panel", null)
+	open_shop.queue_free()
+	counter.queue_free()
+	var vendor_src: String = _code_src("res://src/world/vendor.gd")
+	check("  a vendor says whether you stand at it, open or not",
+		_func_body(vendor_src, "func player_at_counter(").contains("_player_nearby != null")
+		and not _func_body(vendor_src, "func player_at_counter(").contains("_is_open")
+		and _func_body(vendor_src, "func can_open_for_player(").contains("player_at_counter() and not _is_open"))
+
+	# ---- a run ready again ----
+	var mg: Button = hud.get_node("%minigamesbutton")
+	var card: Node = hud.get("minigames_card")
+	card.set("area_now", func() -> String: return "elusion")
+	var listing: Dictionary = {"ok": true, "status": 200, "data": {"games": [{"id": "endless", "ready_in": 0},
+		{"id": "healerrun", "plays_left": 3, "ready_in": 0}]}}
+	card.set("list_request", func(_p: String, _t: float) -> Dictionary: return listing)
+	card.call("paint_news")
+	check("Minigames wears no dot while nothing is known", mg.text == "Minigames", mg.text)
+	Card.call("note_wait", "endless", 0)
+	card.call("paint_news")
+	check("  a run ready lights it, green, with a dot", mg.text == "Minigames •"
+		and mg.get_theme_color("font_color") == Hud.MINIGAMES_READY_COLOUR, mg.text)
+	var other: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(other)
+	await get_tree().process_frame
+	check("  a new area's bar keeps it", (other.get_node("%minigamesbutton") as Button).text == "Minigames •")
+	other.queue_free()
+	mg.pressed.emit()
+	await get_tree().process_frame
+	check("  opening the card puts it out", mg.text == "Minigames" and (card as Control).visible, mg.text)
+	hud.call("close_nav_menus")
+	card.call("paint_news")
+	check("  and it stays out, the card seen", mg.text == "Minigames")
+	Card.call("note_wait", "endless", 3600)
+	Card.call("note_wait", "endless", 0)
+	card.call("paint_news")
+	check("  the end of a wait lights it again", mg.text == "Minigames •", mg.text)
+	Card.call("forget_wait", "endless")
+	card.call("paint_news")
+	check("  a Go forgets the day: the next area's card asks again", mg.text == "Minigames"
+		and not (Card.call("ready_games") as Array).has("endless"))
+	# The card's listing said the Healer's Run was ready, and it was seen; its
+	# three runs used, it waits, and then it is ready again.
+	Card.call("note_wait", "healerrun", 600)
+	Card.call("note_wait", "healerrun", 0)
+	card.set("area_now", func() -> String: return "endless")
+	card.call("paint_news")
+	check("  inside the Endless there is no dot - Leave is the button there", mg.text == "Minigames")
+	card.set("area_now", func() -> String: return "elusion")
+	card.call("paint_news")
+	check("  the Healer's Run counts too", mg.text == "Minigames •")
+	var card_src: String = _code_src("res://src/ui/minigames/minigamescard.gd")
+	check("  the card asks the server once a login, signed in, never inside the Endless",
+		_func_body(card_src, "func _ready(").contains("Api.is_logged_in() and _asked_by != Api.username and not inside_endless()"))
+
+	# ---- the touch grid ----
+	TouchControls.set_active(true)
+	await get_tree().process_frame
+	hud.call("paint_shop_button")
+	var grid_menu: Control = hud.get("touch_menu")
+	grid_menu.call("open")
+	var grid: Control = grid_menu.get("grid")
+	check("the touch grid's Stats is the stats window, and its Shop is grey away from a counter",
+		grid.get_node_or_null("characterbutton") != null and grid.get_node_or_null("statsbutton") == null
+		and (grid.get_node("shopbutton") as Button).disabled)
+	check("  folded, Menu wears the Minigames dot", (hud.get_node("%menubutton") as Button).text == "Menu •",
+		(hud.get_node("%menubutton") as Button).text)
+	hud.call("close_nav_menus")
+	TouchControls.set_active(was_touch)
+	Card.call("forget_news")
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  (the HUD bar: done)")

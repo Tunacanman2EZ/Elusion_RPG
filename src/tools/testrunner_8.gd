@@ -3132,9 +3132,9 @@ func _test_the_phone_screen_is_the_games() -> void:
 	check("  above the bar and on the screen", drawn.end.y <= folded_rect.position.y + 0.5 and drawn.position.x >= 0.0
 		and drawn.end.x <= 1280.0 and drawn.position.y >= 0.0, [drawn, folded_rect])
 	var opened: Array = []
-	var stats: Button = hud.get_node("%statsbutton")
+	var stats: Button = hud.get_node("%characterbutton")
 	stats.pressed.connect(func(): opened.append("stats"))
-	(menu.get("grid").get_node("statsbutton") as Button).pressed.emit()
+	(menu.get("grid").get_node("characterbutton") as Button).pressed.emit()
 	check("  a button there presses the bar's own, and the grid shuts", opened == ["stats"] and not menu.visible, opened)
 	# THE OWNER'S ROW (0.91.3): Staff, Owner and Powers are wider than Menu, and
 	# the folded bar grew both ways, off the left of his phone.
@@ -4368,6 +4368,8 @@ func _test_minigames() -> void:
 	# ---- the bar ----
 	var was_touch: bool = TouchControls.active
 	TouchControls.set_active(false)
+	# Nothing ready known yet, so the button wears no dot (0.113.0).
+	Card.call("forget_news")
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	add_child(hud)
 	await get_tree().process_frame
@@ -4528,6 +4530,7 @@ func _test_minigames() -> void:
 	check("the run makes its door one way when it starts",
 		run_src.contains("_one_way_door.call_deferred()") and run_src.contains("door.call(\"one_way\", true)"))
 	await get_tree().process_frame
+	Card.call("forget_news")
 	print("  minigames: a button, a day, a door one way")
 
 

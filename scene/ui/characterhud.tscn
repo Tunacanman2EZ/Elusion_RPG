@@ -199,7 +199,7 @@ text = "Gear"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Your level, skills and health"
+tooltip_text = "Your stats, the kill record and the kingdom"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Stats"
@@ -233,7 +233,7 @@ text = "Chat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Friends, Players, Guild, Trade, Kingdom and Kills"
+tooltip_text = "Friends, Players, Guild, Party and Trade"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Social"
@@ -242,7 +242,7 @@ text = "Social"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "The Endless - once a day"
+tooltip_text = "The Endless, the Healer's Run and more"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Minigames"
@@ -311,16 +311,28 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Trade"
 
-[node name="kingdombutton" type="Button" parent="socialmenu/socialitems" unique_id=1699508882]
+[node name="statsmenu" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+offset_right = 150.0
+offset_bottom = 40.0
+theme = ExtResource("18_hudtheme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_navbar")
+
+[node name="statsitems" type="VBoxContainer" parent="statsmenu"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="characterbutton" type="Button" parent="statsmenu/statsitems"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 30)
 layout_mode = 2
-tooltip_text = "What the realm has taken in tax, and your share of it"
+tooltip_text = "Your level, skills and health"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
-text = "Kingdom"
+text = "Stats"
 
-[node name="killsbutton" type="Button" parent="socialmenu/socialitems" unique_id=1699508890]
+[node name="killsbutton" type="Button" parent="statsmenu/statsitems" unique_id=1699508890]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 30)
 layout_mode = 2
@@ -328,6 +340,15 @@ tooltip_text = "Every monster you have killed, and everybody's"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Kills"
+
+[node name="kingdombutton" type="Button" parent="statsmenu/statsitems" unique_id=1699508882]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "What the realm has taken in tax, and your share of it"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Kingdom"
 
 [node name="systemmenu" type="PanelContainer" parent="." unique_id=1733059305]
 unique_name_in_owner = true

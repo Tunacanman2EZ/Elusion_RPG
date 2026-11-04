@@ -4434,8 +4434,8 @@ func _test_the_kill_record() -> void:
 	# --- reaching it ------------------------------------------------------------------------
 	var hud_scene: String = FileAccess.get_file_as_string("res://scene/ui/characterhud.tscn")
 	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
-	check("Kills is on the Social dropdown, beside Kingdom",
-		hud_scene.contains("[node name=\"killsbutton\" type=\"Button\" parent=\"socialmenu/socialitems\"")
+	check("Kills is on the Stats dropdown, beside Kingdom (0.113.0)",
+		hud_scene.contains("[node name=\"killsbutton\" type=\"Button\" parent=\"statsmenu/statsitems\"")
 		and hud_code.contains("\"killsbutton\":             \"_on_kills_pressed\""))
 	var k := InputEventKey.new()
 	k.physical_keycode = KEY_K

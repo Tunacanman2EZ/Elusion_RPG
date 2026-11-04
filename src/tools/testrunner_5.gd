@@ -1996,9 +1996,12 @@ func _test_the_first_five_minutes() -> void:
 		for b in hud.get_node("%" + menu_name).find_children("*", "Button", true, false):
 			out.append(str(b.name))
 		return out
-	check("  Social holds Friends, Players, Guild, Party, Trade, Kingdom and Kills",
-		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton", "kingdombutton", "killsbutton"],
+	check("  Social holds Friends, Players, Guild, Party and Trade",
+		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton"],
 		held.call("socialmenu"))
+	check("  Stats holds Stats, Kills and Kingdom (0.113.0)",
+		held.call("statsmenu") == ["characterbutton", "killsbutton", "kingdombutton"],
+		held.call("statsmenu"))
 	check("  Menu holds Controls, Options, Switch character and Log out",
 		held.call("systemmenu") == ["controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton"],
 		held.call("systemmenu"))

@@ -3213,6 +3213,55 @@ holds it; the live parts were watched failing when broken.
 - **Not added: an Economy "Supply" page.** GET /api/economy/supply ("is
   every coin accounted for") is what the Canary page's checks already answer.
 
+### The HUD bar: its keys, what is open, the shop, a run ready (0.113.0)
+
+The owner: "can you update my hudscreen buttons also" - step 4 of the commit
+folder's GM_AND_HUD_PLAN.txt. Game only. Pictured before and after
+(hudbar_0113.png). All in characterhud.gd unless named.
+
+- **A key in the corner.** Every button with a key wears it, small and dim
+  (`_paint_key_letter()`, a "keyletter" Label, `KEY_LETTER_SIZE` 10,
+  `MOUSE_FILTER_IGNORE`): Inventory, Gear, Map and the bar's Stats; Stats,
+  Kills and Controls in their dropdowns. `NAV_KEY_HINTS` gives the tooltip
+  "(I)" and the letter; `NAV_KEY_LETTER_ONLY` the letter alone - the bar's
+  Stats opens its dropdown, so its tooltip promises nothing C does not do.
+  Read from the input map with the hints, so a rebound key shows; a name over
+  `KEY_LETTER_MOST` (3) letters ("Space") is left to the tooltip
+  (`key_letter_for()`). Folded on a touch screen the bar's buttons are hidden,
+  letters with them.
+- **Lit while open.** `NAV_LIT_BY`: a button -> the HUD variable holding the
+  window it opens. `paint_lit_buttons()`, every frame from `_process()` (before
+  the character guard), lights a button - the theme's pressed stylebox held as
+  its normal and hover - and puts back only what changed. A dropdown's button
+  is lit while the dropdown or anything in it is open; Menu while the touch
+  grid is. A new window on the bar goes in `NAV_LIT_BY`; the test checks every
+  entry names a real button and a HUD variable.
+- **Shop grey away from a counter.** `paint_shop_button()`, every
+  `SHOP_LOOK_SECONDS` (0.2): pressable when a vendor says
+  `player_at_counter()` (vendor.gd, new; `can_open_for_player()` is it and not
+  open) or the shop is open, with a tooltip saying which. Pressed with the shop
+  open it shuts it. The touch grid copies `disabled` when it opens.
+- **Stats is a dropdown** (`statsmenu`/`statsitems` in characterhud.tscn, in
+  `NAV_GROUPS` first): Stats (`characterbutton`, the stats window), Kills,
+  Kingdom - moved out of Social, which is now your people (Friends, Players,
+  Guild, Party, Trade). C still opens the stats window at once. The touch
+  grid's ITEMS has `characterbutton` where `statsbutton` was.
+- **Minigames wears a dot when a run is ready again** (minigamescard.gd, A RUN
+  READY AGAIN). Statics, per login like the chat dot: `_ready_at` (game -> the
+  unix second it is ready) and `_seen_ready`. `note_wait()` from every answer
+  the card reads (the listing, a 409; the Healer's Run counts as ready while it
+  has runs left); learning of a wait sets it unseen, so the wait's end lights
+  it; opening the card marks what is ready seen; a Go that starts a day
+  `forget_wait()`s it so the next area's card asks again. The card asks GET
+  /api/minigames once a login when signed in (`_ask_for_news()`, never inside
+  the Endless) and looks at the clock every `NEWS_SECONDS` (5); the HUD's
+  `mark_minigames_button()` paints it, green, and folded Menu wears it.
+  `forget_news()` is the suite's fresh login.
+- **Chat's dot was already there** (whisper, guild, friends, party since the
+  chat news), and is unchanged.
+
+`_test_the_hud_bar_says_keys_and_what_is_open()` (testrunner_9).
+
 ### After the first Descent: aim, the pick, the map, the arrow, houses, one stir (0.112.1)
 
 The owner, playing 0.112.0, six things. `_test_after_the_first_descent()`
@@ -6451,7 +6500,9 @@ outside would meet them. What was rough, and what changed:
   `%navbuttons`: nine of them are not on that row any more. The dots still
   light the button inside a dropdown, and `_paint_group_dots()` puts the same
   dot on Social, with "Waiting for you: Trade" as its hint. Each window's key is
-  added to its button's hint from the input map.
+  added to its button's hint from the input map. (Since 0.113.0 Stats is a
+  third dropdown, `%statsmenu`, holding Stats, Kills and Kingdom - see "The HUD
+  bar: its keys, what is open, the shop, a run ready".)
 - **Nothing said what any key did.** H, or Menu > Controls, opens the Controls
   card (`src/ui/controls/controlspanel.gd`), and **every key on it is read from
   the input map**: `help_toggle` is a new action for H. The suite fails if a key

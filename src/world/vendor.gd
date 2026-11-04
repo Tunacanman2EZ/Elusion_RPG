@@ -112,8 +112,13 @@ func _on_body_exited(body: Node) -> void:
 # the player why nothing happened. A button that silently does nothing is the
 # bug this whole handler was filed under.
 func can_open_for_player() -> bool:
+	return player_at_counter() and not _is_open
+
+
+# THE BAR'S SHOP BUTTON IS GREY AWAY FROM A COUNTER (0.113.0), so it asks this
+# - open or not - and lights while the shop is open.
+func player_at_counter() -> bool:
 	return (_player_nearby != null
-		and not _is_open
 		and shop_data != null
 		and shop_data.shop_id != "")
 
