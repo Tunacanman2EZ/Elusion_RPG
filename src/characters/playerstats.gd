@@ -305,12 +305,15 @@ static func xp_needed_for_skill(skill_level: int, base: int = SKILL_XP_BASE,
 # So: constants here, player.gd's exports default to them, exportgamedata.gd
 # carries them to the server. One number, three readers, no copies.
 #
-# 0.0167 is about 1/60, so an empty bar fills in roughly a minute at any level.
-const REGEN_PERCENT_PER_SECOND: float = 0.0167
+# 0.0333 is about 1/30, so an empty bar fills in roughly half a minute at any
+# level. It was 0.0167, a minute, until 0.118.0 (the owner, "we need to speed
+# up the game even more"). The server's heal check reads it from gamedata.json,
+# so the server takes the new export BEFORE a game with this number plays.
+const REGEN_PERCENT_PER_SECOND: float = 0.0333
 
-# Floor for small pools, set to the old flat rate so nothing regenerates slower
-# than it did before percentages replaced it - only faster.
-const REGEN_MINIMUM_PER_SECOND: float = 1.0
+# Floor for small pools: twice the old flat rate since 0.118.0, with the
+# percentage, so a small pool speeds up as much as a big one.
+const REGEN_MINIMUM_PER_SECOND: float = 2.0
 
 # Seconds of not fighting before regeneration starts; attacking, casting or
 # being hit resets it (walking does not, since 0.117.0). Regen is a

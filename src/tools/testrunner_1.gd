@@ -3947,6 +3947,13 @@ func _test_every_exported_constant(constants: Dictionary) -> void:
 		["dupe_pet_lusions", "game", "DUPE_PET_LUSIONS"],
 		["kingdom_tax_rate", "game", "KINGDOM_TAX_RATE"],
 		["kingdom_tax_minimum", "game", "KINGDOM_TAX_MINIMUM"],
+		# THE REGEN THE SERVER'S HEAL CHECK ALLOWS (0.118.0). "stats" was a source
+		# with no rows: nothing held these to the game's, and the day regen
+		# doubled, a server on the old numbers would take back half of every
+		# honest heal.
+		["regen_percent_per_second", "stats", "REGEN_PERCENT_PER_SECOND"],
+		["regen_minimum_per_second", "stats", "REGEN_MINIMUM_PER_SECOND"],
+		["regen_idle_threshold", "stats", "REGEN_IDLE_THRESHOLD"],
 	]
 
 	for row in rows:
@@ -4204,8 +4211,8 @@ func _test_player_stats() -> void:
 	# them was set by a pacing plan. What still must not happen is either one
 	# moving by accident, so both are pinned; _test_the_game_has_a_pace holds
 	# what the character curve is FOR.
-	check("the character curve is the one the pacing plan set (1,250 x 1.27)",
-		is_equal_approx(GameConstants.XP_BASE, 1250.0) and is_equal_approx(GameConstants.XP_GROWTH, 1.27),
+	check("the character curve is the one the pacing plan set (1,250 x 1.22 since 0.118.0)",
+		is_equal_approx(GameConstants.XP_BASE, 1250.0) and is_equal_approx(GameConstants.XP_GROWTH, 1.22),
 		"%s x %s" % [GameConstants.XP_BASE, GameConstants.XP_GROWTH])
 	check("the skill curve is unchanged by it (100 x 1.18)",
 		PlayerStats.SKILL_XP_BASE == 100 and is_equal_approx(PlayerStats.SKILL_XP_FACTOR, 1.18),

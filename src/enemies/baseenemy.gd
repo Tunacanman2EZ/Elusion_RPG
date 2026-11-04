@@ -171,9 +171,12 @@ const GOLD_DENOMINATION_IDS := [
 # randint(1, 25) and the early game plays exactly as it did.
 const GOLD_TIER_RATIO := 2.6
 
-# The tier-1 unit. The mean roll is this x (1 + GOLD_SPREAD) / 2, so 1 here
-# means 13 gold from a tier-1 kill.
-const GOLD_BASE_UNIT := 1.0
+# The tier-1 unit. The mean roll is this x (1 + GOLD_SPREAD) / 2: 2 here means
+# 26 gold from a tier-1 bag. It was 1 (13 gold) until 0.118.0 - the owner, "we
+# need to speed up the game even more", approving twice the gold: every tier
+# doubles with it, so the curve's shape (and kills per purchase across tiers)
+# holds; prices are unchanged, so everything costs half the kills it did.
+const GOLD_BASE_UNIT := 2.0
 
 # Width of the roll, as a multiple of the unit. Was the bare 25 in the old
 # expression; named so the spread and the curve can be tuned separately.

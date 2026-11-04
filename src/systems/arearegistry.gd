@@ -110,6 +110,7 @@ const StressCrowd := preload("res://src/world/stresscrowd.gd")
 const Swell := preload("res://src/world/swell.gd")
 const MonsterSync := preload("res://src/world/monstersync.gd")
 const PropChunks := preload("res://src/world/propchunks.gd")
+const Waystones := preload("res://src/world/waystones.gd")
 
 
 func _ready() -> void:
@@ -165,6 +166,10 @@ func _on_scene_changed() -> void:
 	# with no chunks of props gets nothing. See propchunks.gd.
 	if scene.get_node_or_null(PropChunks.NODE_NAME) == null:
 		PropChunks.add_to(scene)
+	# The Big Field's waystones (0.118.0); every other area gets none. See
+	# waystones.gd.
+	if scene.get_node_or_null(Waystones.NODE_NAME) == null:
+		Waystones.add_to(scene)
 	# AND THE SERVER HEARS WHERE YOU ARE NOW, not at your next step - see
 	# CharacterData.note_area().
 	CharacterData.note_area(scene.scene_file_path.get_file().get_basename())

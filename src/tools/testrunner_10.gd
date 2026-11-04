@@ -1299,3 +1299,180 @@ func _was_park_proxies() -> void:
 	for proxy in _proxies:
 		(proxy as Node2D).call("stand_on", -1, Vector2.ZERO)
 """
+
+
+# =============================================================================
+# THE WAYSTONES (0.118.0)
+# =============================================================================
+# The owner approved waystones with the speed plan, then their picture: "yes
+# looks good". Seven in the Big Field, lit once explored, a pin and a row on
+# the map, three seconds standing still, from town too. See waystones.gd.
+func _test_the_waystones() -> void:
+	section("THE WAYSTONES - seven in the Big Field, lit once found, three seconds still to travel, from town too (0.118.0)")
+	const Ways := preload("res://src/world/waystones.gd")
+	# ---- where they stand ---------------------------------------------------------------------
+	var plan: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tools/maps/bigfield_build.json"))
+	var spawns: Array = ((JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json")) as Dictionary)
+		["areas"]["bigfield"]["spawns"]) as Array
+	var bad: Array = []
+	var ids: Array = []
+	for stone in Ways.STONES:
+		ids.append(stone["id"])
+		var at: Vector2 = stone["at"]
+		var cell := Vector2i(floori(at.x / 16.0), floori(at.y / 16.0))
+		var floor_ok: bool = true
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				var row: String = str((plan["floor"] as Array)[cell.y + dy])
+				floor_ok = floor_ok and row[cell.x + dx] == "1"
+		var nearest: float = INF
+		for spawn in spawns:
+			nearest = minf(nearest, at.distance_to(Vector2(float(spawn["x"]), float(spawn["y"]))))
+		if not floor_ok or nearest < 250.0:
+			bad.append([stone["id"], floor_ok, roundi(nearest)])
+	check("seven waystones, each on open floor and 250 px or more from every monster the Big Field places",
+		Ways.STONES.size() == 7 and bad.is_empty() and ids.has("crossroads"), bad)
+	var arrival := Vector2(1832, 2384)
+	check("  the Crossroads' is lit as you arrive: within the map's reveal of the arrival",
+		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival) < 16.0 * WorldMap.SEEN_RADIUS - 8.0,
+		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival))
+	check("  reached from town, the Field and the Big Field - never a minigame or a boss room",
+		Ways.reachable_from("elusion") and Ways.reachable_from("field") and Ways.reachable_from("bigfield")
+		and not Ways.reachable_from("endless") and not Ways.reachable_from("descent")
+		and not Ways.reachable_from("bossarena"))
+
+	# ---- placed only in the Big Field, and lit by the map --------------------------------------
+	var kept_terrain: Variant = WorldMap._terrain.get("bigfield")
+	var kept_seen: Variant = WorldMap._seen.get("bigfield")
+	var kept_dirty: bool = WorldMap._save_dirty
+	var kept_pending: bool = WorldMap._revision_pending
+	var kept_cache: Dictionary = WorldMap._save_cache
+	var kept_reveal: Rect2i = WorldMap.last_reveal
+	WorldMap._terrain["bigfield"] = {"image": null, "origin": Vector2i.ZERO, "size": Vector2i(385, 322), "tile": Vector2i(16, 16)}
+	WorldMap._seen.erase("bigfield")
+	WorldMap._ensure_seen("bigfield", Vector2i(385, 322))
+	var field := Node2D.new()
+	field.scene_file_path = "res://scene/bigfield.tscn"
+	add_child(field)
+	var town := Node2D.new()
+	town.scene_file_path = "res://scene/elusion.tscn"
+	add_child(town)
+	Ways.add_to(field)
+	Ways.add_to(town)
+	var stone_group: StringName = Ways.GROUP
+	var stones: Array = field.get_children().filter(func(n: Node) -> bool: return n.is_in_group(stone_group))
+	var chasm: Node = field.get_node_or_null("waystone_chasm")
+	check("the Big Field gets its seven stones, landmarks on the map; town gets none",
+		stones.size() == 7 and chasm != null and chasm.is_in_group("map_landmarks")
+		and town.get_children().all(func(n: Node) -> bool: return not n.is_in_group(stone_group)),
+		[stones.size(), town.get_child_count()])
+	var dark: Dictionary = chasm.call("map_landmark")
+	var stone_chasm: Dictionary = Ways.stone_for("chasm")
+	check("  unlit until found: dark art, standing still, a grey pin that says not found",
+		not chasm.call("lit") and dark.get("kind") == "waystone" and not bool(dark.get("lit"))
+		and dark.get("waystone") == "chasm" and not (chasm.get_node("art") as AnimatedSprite2D).is_playing()
+		and (chasm.get_node("art") as CanvasItem).modulate == Ways.UNLIT_TINT, dark)
+	WorldMap.reveal_around(stone_chasm["at"] + Vector2(60, 60), "bigfield")
+	var bright: Dictionary = chasm.call("map_landmark")
+	check("  walking past it lights it, at once: the portal plays, its name shows, a cyan pin",
+		chasm.call("lit") and bool(bright.get("lit")) and bright.get("colour") == Ways.LIT_COLOUR
+		and (chasm.get_node("art") as AnimatedSprite2D).is_playing()
+		and (chasm.get_node("label") as Label).text == "Waystone - The Chasm", bright)
+	check("  and the others are still dark", not Ways.is_lit(Ways.stone_for("crypt")))
+
+	# ---- the stand-still ------------------------------------------------------------------------
+	var player := Node2D.new()
+	player.add_user_signal("took_damage", [{"name": "amount", "type": TYPE_INT}, {"name": "type", "type": TYPE_STRING}])
+	player.add_to_group("player")
+	player.position = Vector2(300, 300)
+	add_child(player)
+	var landed: Array = []
+	Ways.jump_with = landed.append
+	var refused: Array = [Ways.travel_to(get_tree(), "nowhere", "elusion"),
+		Ways.travel_to(get_tree(), "crypt", "elusion"), Ways.travel_to(get_tree(), "chasm", "endless")]
+	check("travel is refused, in words, to no stone, to one not found, and from a minigame",
+		refused[0] != "" and refused[1].contains("not found") and refused[2].contains("cannot be reached")
+		and get_tree().get_nodes_in_group(Ways.TRAVEL_GROUP).is_empty(), refused)
+	var said: String = Ways.travel_to(get_tree(), "chasm", "elusion")
+	var trip: Node = get_tree().get_first_node_in_group(Ways.TRAVEL_GROUP)
+	trip._process(1.0)
+	check("from town a found stone starts the stand-still over your head",
+		said == "" and trip != null and trip.get_parent() == player and landed.is_empty(), said)
+	player.position += Vector2(10, 0)
+	trip._process(0.1)
+	check("  moving stops it, and says so", String(trip.get("_stopped")).contains("moved") and landed.is_empty(),
+		trip.get("_stopped"))
+	trip.free()
+	Ways.travel_to(get_tree(), "chasm", "elusion")
+	trip = get_tree().get_first_node_in_group(Ways.TRAVEL_GROUP)
+	player.emit_signal("took_damage", 5, "physical")
+	trip._process(0.1)
+	check("  a hit stops it, and says so", String(trip.get("_stopped")).contains("hit") and landed.is_empty(),
+		trip.get("_stopped"))
+	trip.free()
+	Ways.travel_to(get_tree(), "chasm", "bigfield")
+	trip = get_tree().get_first_node_in_group(Ways.TRAVEL_GROUP)
+	trip._process(Ways.CHANNEL_SECONDS - 0.5)
+	var early: bool = landed.is_empty()
+	trip._process(0.6)
+	check("  three seconds still and you go: to that stone",
+		early and landed.size() == 1 and (landed[0] as Dictionary).get("id") == "chasm", landed)
+	var code: String = _code_src("res://src/world/waystones.gd")
+	var jump_body: String = _func_body(code, "static func jump(")
+	check("  the jump lands in front of the stone, in the Big Field, with the portal's sound",
+		jump_body.contains("AreaRegistry.go_to(AREA") and jump_body.contains("+ ARRIVE")
+		and jump_body.contains("Audio.play(\"teleport\")"))
+
+	# ---- the map ----------------------------------------------------------------------------------
+	var map: Control = (load("res://scene/ui/menus/mapscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(map)
+	await get_tree().process_frame
+	var row: HFlowContainer = map.get("waystone_row")
+	map.call("refresh", "elusion")
+	var chasm_button: Button = row.get_node_or_null("chasm") as Button if row != null else null
+	var crypt_button: Button = row.get_node_or_null("crypt") as Button if row != null else null
+	check("the map has a row of the seven, shown in town; found ones pressable, the rest greyed",
+		row != null and row.visible and row.get_child_count() == 8 and chasm_button != null
+		and not chasm_button.disabled and crypt_button.disabled and chasm_button.text == "Chasm",
+		[row != null and row.visible, row.get_child_count() if row != null else 0])
+	map.call("refresh", "endless")
+	check("  and hidden in a minigame", row != null and not row.visible)
+	map.call("refresh", "elusion")
+	map.visible = true
+	chasm_button.pressed.emit()
+	trip = get_tree().get_first_node_in_group(Ways.TRAVEL_GROUP)
+	check("  pressing one starts the stand-still and shuts the map", trip != null and not map.visible)
+	if trip != null:
+		trip.free()
+	var why: String = map.call("travel_to_waystone", "crypt")
+	check("  one not found says why on the map's footer",
+		why.contains("not found") and (map.get("explored_label") as Label).text == why, why)
+	var map_code: String = _code_src("res://src/ui/menus/mapscreen.gd")
+	var input_body: String = _func_body(map_code, "func _on_view_input(")
+	check("  and a click on a pin - a press that did not drag - travels to a waystone under it",
+		input_body.contains("_press_travel <= CLICK_SLACK") and input_body.contains("_click_pin()")
+		and _func_body(map_code, "func _click_pin(").contains("travel_to_waystone("))
+
+	# ---- and the registry adds them -----------------------------------------------------------
+	check("every area is given its waystones as it loads (only the Big Field has any)",
+		_func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(").contains("Waystones.add_to(scene)"))
+
+	Ways.jump_with = Callable()
+	map.queue_free()
+	player.queue_free()
+	field.queue_free()
+	town.queue_free()
+	if kept_terrain == null:
+		WorldMap._terrain.erase("bigfield")
+	else:
+		WorldMap._terrain["bigfield"] = kept_terrain
+	if kept_seen == null:
+		WorldMap._seen.erase("bigfield")
+	else:
+		WorldMap._seen["bigfield"] = kept_seen
+	WorldMap._save_dirty = kept_dirty
+	WorldMap._revision_pending = kept_pending
+	WorldMap._save_cache = kept_cache
+	WorldMap.last_reveal = kept_reveal
+	await get_tree().process_frame
+	print("  (the waystones: done)")

@@ -51,7 +51,17 @@
 # WorldMap.paint_fog() on WorldMap.last_reveal) - a few hundred pixels and a
 # 460 KB texture, where it was 4 million and a 22 MB one. The "explored" line
 # is counted again at most every EXPLORED_LINE_SECONDS.
+#
+# THE WAYSTONES (0.118.0). The Big Field's waystones (src/world/waystones.gd)
+# are pins of their own, "waystone" - cyan when found, grey when not - and a
+# click on a found one (a press and release that did not drag,
+# CLICK_SLACK) starts the stand-still to it and shuts the map. A row under the
+# map, "waystonerow" (_build_waystone_row()), lists all seven wherever they
+# can be reached from (Waystones.FROM: town, the Field, the Big Field), so
+# they are a click away from town too, where their pins are not on the map.
 extends Control
+
+const Waystones := preload("res://src/world/waystones.gd")
 
 
 # =============================================================================
@@ -147,6 +157,7 @@ const LANDMARK_STYLE := {
 	"bank":     ["", Color(0.95, 0.78, 0.38)],
 	"smith":    ["res://art/pack/smith/anvil.png",                     Color(0.78, 0.80, 0.86)],
 	"teleport": ["", Color(0.42, 0.95, 1.0)],
+	"waystone": ["", Color(0.42, 0.95, 1.0)],
 	"exit":     ["", Color(0.92, 0.90, 0.84)],
 	"ladder":   ["", Color(0.82, 0.64, 0.42)],
 	"boss":     ["", Color(1.0, 0.32, 0.32)],   # each gate overrides with its element
@@ -210,6 +221,12 @@ var _explored_left: float = 0.0
 var _landmarks: Array = []
 var _hover: int = -1
 var _icon_cache: Dictionary = {}
+# THE WAYSTONES: how far a press has dragged (a click is under CLICK_SLACK),
+# and the row of them under the map.
+const CLICK_SLACK := 5.0
+var _press_travel: float = 0.0
+var waystone_row: HFlowContainer = null
+var _waystone_buttons: Dictionary = {}
 
 
 # =============================================================================
@@ -262,6 +279,7 @@ func _ready() -> void:
 		zoom_in_button.pressed.connect(zoom_by.bind(BUTTON_STEP))
 	if whole_button != null:
 		whole_button.pressed.connect(show_whole)
+	_build_waystone_row()
 
 	visible = false
 
@@ -302,6 +320,7 @@ func close() -> void:
 func refresh(area: String = "") -> void:
 	"""The area you stand in (or `area`, for the suite), drawn afresh."""
 	_area = area if area != "" else WorldMap.area_id()
+	_paint_waystone_row()
 
 	if not WorldMap.ensure_built(_area):
 		# AN AREA WITH NO TILEMAP IS A REAL STATE, not a failure — the boss
@@ -473,6 +492,12 @@ func _on_view_input(event: InputEvent) -> void:
 			zoom_by(step if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / step, button.position)
 			view.accept_event()
 		elif button.button_index == MOUSE_BUTTON_LEFT:
+			if button.pressed:
+				_press_travel = 0.0
+			elif _dragging and _press_travel <= CLICK_SLACK:
+				# A CLICK, NOT A DRAG: a found waystone under it is a trip.
+				_dragging = false
+				_click_pin()
 			_dragging = button.pressed
 			view.accept_event()
 		return
@@ -481,6 +506,7 @@ func _on_view_input(event: InputEvent) -> void:
 		if not (motion.button_mask & MOUSE_BUTTON_MASK_LEFT):
 			_dragging = false
 			return
+		_press_travel += motion.relative.length()
 		pan_by(motion.relative)
 		view.accept_event()
 		return
@@ -488,6 +514,68 @@ func _on_view_input(event: InputEvent) -> void:
 	if pinch != null:
 		zoom_by(pinch.factor, pinch.position)
 		view.accept_event()
+
+
+func _click_pin() -> void:
+	"""The pin under a click: a waystone is a trip there (or why not)."""
+	_update_hover()
+	if _hover < 0 or _hover >= _landmarks.size():
+		return
+	var stone_id: String = str(_landmarks[_hover].get("waystone", ""))
+	if stone_id != "":
+		travel_to_waystone(stone_id)
+
+
+func travel_to_waystone(stone_id: String) -> String:
+	"""Starts the stand-still and shuts the map, or says on the footer why
+	not. Answers what Waystones.travel_to() did."""
+	var why: String = Waystones.travel_to(get_tree(), stone_id, _area)
+	if why == "":
+		close()
+	elif explored_label != null:
+		explored_label.text = why
+	return why
+
+
+func _build_waystone_row() -> void:
+	"""Every waystone, a button each, above the footer - so they can be
+	reached from town, where their pins are not on the map."""
+	var footer: Node = explored_label.get_parent() if explored_label != null else null
+	if footer == null or footer.get_parent() == null:
+		return
+	waystone_row = HFlowContainer.new()
+	waystone_row.name = "waystonerow"
+	waystone_row.add_theme_constant_override("h_separation", 4)
+	var title := Label.new()
+	title.text = "Waystones:"
+	title.add_theme_color_override("font_color", Waystones.LIT_COLOUR)
+	waystone_row.add_child(title)
+	for stone in Waystones.STONES:
+		var button := Button.new()
+		button.name = str(stone["id"])
+		button.text = str(stone["place"]).trim_prefix("The ")
+		button.focus_mode = Control.FOCUS_NONE
+		button.pressed.connect(travel_to_waystone.bind(str(stone["id"])))
+		waystone_row.add_child(button)
+		_waystone_buttons[str(stone["id"])] = button
+	var column: Node = footer.get_parent()
+	column.add_child(waystone_row)
+	column.move_child(waystone_row, footer.get_index())
+
+
+func _paint_waystone_row() -> void:
+	"""Shown where they can be reached from; a stone not found is greyed."""
+	if waystone_row == null:
+		return
+	waystone_row.visible = Waystones.reachable_from(_area)
+	for stone in Waystones.STONES:
+		var button: Button = _waystone_buttons.get(str(stone["id"]))
+		if button == null:
+			continue
+		var found: bool = Waystones.is_lit(stone)
+		button.disabled = not found
+		button.tooltip_text = ("Travel to %s - stand still for %d seconds" % [stone["place"], int(Waystones.CHANNEL_SECONDS)]) \
+			if found else "Not found yet - walk past it once in the Big Field"
 
 
 func _on_view_resized() -> void:
@@ -687,6 +775,9 @@ func _collect_landmarks() -> void:
 			"label": str(info.get("label", kind.capitalize())),
 			"colour": info.get("colour", style[1]),
 			"pixel": pixel,
+			# A waystone's id, and whether it is found (a click travels).
+			"waystone": str(info.get("waystone", "")),
+			"lit": bool(info.get("lit", false)),
 		})
 
 
@@ -761,7 +852,7 @@ func _draw_glyph(kind: String, c: Vector2, colour: Color) -> void:
 			markers.draw_rect(Rect2(c + Vector2(-5, -5), Vector2(10, 4)), colour)
 			markers.draw_rect(Rect2(c + Vector2(-5, -5), Vector2(10, 10)), dark, false, 1.0)
 			markers.draw_rect(Rect2(c + Vector2(-1, -2), Vector2(2, 3)), dark)
-		"teleport":
+		"teleport", "waystone":
 			# Two rings: a way through, not a way out.
 			markers.draw_arc(c, 5.0, 0.0, TAU, 20, colour, 1.5, true)
 			markers.draw_arc(c, 2.5, 0.0, TAU, 12, colour.lightened(0.3), 1.5, true)

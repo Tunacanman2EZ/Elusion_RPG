@@ -3586,6 +3586,80 @@ out**, and the pool has six (`ConnectionPool.MAX_LINES`):
   container with five requests on a server that takes them and never
   answers: the old check failed exactly so, the new one passes.
 
+### A quicker game: regen, the curve, gold (0.118.0)
+
+The owner: "we need to speed up the game even more look into what we can
+advance", and of the plan, "they all sound good to me lets do it". The game
+half of 0.117.0's plan was 0.117.0; these three are the numbers the server
+reads, so they ship together, **the server first**.
+
+- **Regeneration twice as fast** (`PlayerStats.REGEN_PERCENT_PER_SECOND`
+  0.0167 -> 0.0333, an empty bar in about half a minute;
+  `REGEN_MINIMUM_PER_SECOND` 1 -> 2). The server's heal check allows what
+  gamedata.json says, so a game on these numbers against a server on the old
+  ones has every honest heal past the old rate clamped.
+  `_test_every_exported_constant()` now holds all three regen numbers in
+  gamedata.json to the game's - "stats" was a source with no rows.
+- **A gentler curve** (`GameConstants.XP_GROWTH` 1.27 -> 1.22): level 10 in
+  about three quarters of an hour, 16 in about two, 22 in about four and a
+  half (it was eight). The server derives each level's need from the level,
+  so nothing stored changes. `_test_the_game_has_a_pace()` and the API's
+  test_pacing.py hold the new hours.
+- **Twice the gold** (`BaseEnemy.GOLD_BASE_UNIT` 1 -> 2): 26 a tier-1 bag on
+  average, every tier doubling with it. Prices are unchanged, so each band
+  is about half as long and its next set about half as many hours of it -
+  the same gear at the same level as after the 5 Oct price pass
+  (test_pacing.py: 2.5 to 4.5 hours a set).
+- **gamedata.json was edited by hand** for the four numbers: the exporter is
+  an EditorScript and does not run headless. The suite's agreement checks
+  are what prove the file matches; the next export from the editor writes
+  the same values.
+
+**And waystones (the same 0.118.0).** The owner approved "waystones" with the
+plan, then their design and picture: "yes looks good". Pictured:
+waystones_0118.png. `src/world/waystones.gd` (preloaded, no class_name):
+
+- **Seven in the Big Field** (`STONES`): the Crossroads (within the map's
+  reveal, `WorldMap.SEEN_RADIUS`, of the arrival - lit as you arrive) and
+  one where each wing begins: the furthest point along the walk from the
+  Crossroads into the wing clear of walls and 250 px or more from every
+  monster placed (worked out from tools/maps/bigfield_build.json). The
+  teleport portal's art (art/teleport, his) at the arrival portal's 1.5x,
+  standing on its foot so it y-sorts; added under ysortworld/props by
+  `add_to()`, which AreaRegistry calls for every area (only the Big Field
+  gets any) - not in the scene, so the built scene is unchanged.
+- **Lit is the map's**: `is_lit()` / `Stone.found()` - the stone's map tile
+  has been explored (`WorldMap.is_seen`). The explored map is already saved
+  with the character on the server, so nothing new is stored. Unlit: dark
+  (`UNLIT_TINT`), still, "Waystone"; lit: the portal plays, "Waystone - The
+  Chasm" in cyan. A stone repaints on `WorldMap.explored`.
+- **Travel** (`travel_to(tree, id, area)`): refused in words for a stone
+  not found, or from an area not in `FROM` (town, the Field, the Big Field -
+  never a minigame or boss room). Starts `Travel`, a child of the player:
+  "Travelling to The Chasm" and a bar for `CHANNEL_SECONDS` (3); moving more
+  than `MOVE_SLACK` (6 px), being hit (`took_damage`) or falling stops it
+  and says why. Then `Travel.jump()`: the teleport sound and
+  `AreaRegistry.go_to(AREA, at + ARRIVE)` - placed in the Big Field (camera
+  snapped), or travelled there from elsewhere and landed on the spot.
+  Position is the game's, so the server is not asked.
+- **Inner classes see the script's constants, not its static functions**:
+  the rules live in `Stone.found()` and `Travel.jump()`, and `is_lit()` /
+  `land()` call them. `jump_with` is the suite's seam (a finished trip calls
+  it instead of changing scenes).
+- **The map** (mapscreen.gd): pins of kind "waystone" (the teleport's two
+  rings), cyan when found and grey when not; a click on one (a press that
+  dragged under `CLICK_SLACK`) is `_click_pin()` -> `travel_to_waystone()`,
+  which shuts the map or says why on its footer. And `waystonerow`, above the
+  footer: "Waystones:" and a button each, shown where they can be reached
+  from, a stone not found greyed - so town, whose map has no Big Field
+  pins, can still travel.
+
+`_test_the_waystones()` (testrunner_10): the spots against the plan's floor
+and the placed monsters, the Crossroads' reach of the arrival, unlit and lit,
+the refusals, the stand-still stopped by a step and by a hit, the trip, the
+map's row and buttons. Watched fail with every stone lit and with moving
+ignored.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

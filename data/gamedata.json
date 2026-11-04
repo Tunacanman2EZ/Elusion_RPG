@@ -2863,7 +2863,7 @@
 		"donation_minimum": 100,
 		"dupe_pet_lusions": 20,
 		"fishing_tier_per_level": 20,
-		"gold_base_unit": 1.0,
+		"gold_base_unit": 2.0,
 		"gold_denomination_ids": [
 			"platinumcoin",
 			"goldpile",
@@ -2950,8 +2950,8 @@
 		"quality_perfect": 120,
 		"quality_perfect_odds": 100,
 		"regen_idle_threshold": 1.0,
-		"regen_minimum_per_second": 1.0,
-		"regen_percent_per_second": 0.0167,
+		"regen_minimum_per_second": 2.0,
+		"regen_percent_per_second": 0.0333,
 		"resist_cap": 50,
 		"resist_elements": [
 			1,
@@ -3079,7 +3079,7 @@
 		"temper_gold_rate": 0.1,
 		"temper_step": 3,
 		"xp_base": 1250.0,
-		"xp_growth": 1.27
+		"xp_growth": 1.22
 	},
 	"endless": {
 		"alive_most": 70,

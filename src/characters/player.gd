@@ -330,7 +330,7 @@ var _is_sprinting: bool = false
 # As a percentage, time-to-full is CONSTANT at every level: a level 1 mage and
 # a level 50 mage both fill in the same wall-clock time.
 #
-# 0.0167 ≈ 1/60, so empty to full is about a minute.
+# 0.0333 ≈ 1/30, so empty to full is about half a minute (a minute until 0.118.0).
 #
 # THE DEFAULTS COME FROM PlayerStats NOW, and are no longer literals here. The
 # server reconciles healing against these rates (see _report_unexplained_heals
@@ -344,8 +344,8 @@ var _is_sprinting: bool = false
 # against — which is worth knowing before you do it.
 @export var regen_percent_per_second: float = PlayerStats.REGEN_PERCENT_PER_SECOND
 
-# Floor for small pools. Set to the old flat rate, so nothing in the game
-# regenerates any slower than it did before this change — only faster.
+# Floor for small pools (PlayerStats.REGEN_MINIMUM_PER_SECOND, 2 a second since
+# 0.118.0).
 @export var regen_minimum_per_second: float = PlayerStats.REGEN_MINIMUM_PER_SECOND
 
 @export var idle_threshold: float = PlayerStats.REGEN_IDLE_THRESHOLD

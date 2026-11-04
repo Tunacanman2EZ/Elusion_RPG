@@ -114,11 +114,17 @@ const REVIVE_GOLD_MINIMUM: int = 100
 # the plan in the Economy and Progression doc. _test_the_game_has_a_pace
 # recomputes those hours from the enemy data and fails if they drift.
 #
+# 1,250 x 1.22 SINCE 0.118.0 - the owner, "we need to speed up the game even
+# more", approving a gentler curve: level 10 in about three quarters of an
+# hour, 16 in about two and 22 in about four and a half (it was eight). The
+# server derives each level's need from the level, so nothing stored changes:
+# a character simply needs less for its next level.
+#
 # NO LEVEL CAP. Past 22 the dark band keeps paying and the curve keeps rising;
 # CharacterData.MAX_LEVEL (99) is a sanity clamp on a loaded save, not a
 # design limit, and at this growth level 99 is still inside int64.
 const XP_BASE: float = 1250.0
-const XP_GROWTH: float = 1.27
+const XP_GROWTH: float = 1.22
 
 
 # NOT static, deliberately. Both callers reach this through the GameConstants

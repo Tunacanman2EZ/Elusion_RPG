@@ -958,8 +958,9 @@ func _test_the_game_has_a_pace() -> void:
 
 	# ---- the eight hours ----------------------------------------------------
 	# Five kills a minute in the band that matches your level. The plan's
-	# checkpoints are level 5 in a quarter hour, 10 in about one, 16 in about
-	# three and 22 in about eight.
+	# checkpoints are level 5 in a quarter hour, 10 in about three quarters,
+	# 16 in about two and 22 in about four and a half - since 0.118.0's gentler
+	# curve (1.22; it was 1.27: about one, three and eight).
 	var avg_xp: Dictionary = {}
 	for band in band_xp:
 		avg_xp[band] = (band_xp[band] as Array).reduce(func(a, b): return a + b, 0) / float((band_xp[band] as Array).size())
@@ -970,9 +971,9 @@ func _test_the_game_has_a_pace() -> void:
 		minutes += GameConstants.xp_needed_for_level(level) / avg_xp[band] / 5.0
 		at[level + 1] = minutes / 60.0
 	check("level 5 in about a quarter of an hour", at[5] > 0.18 and at[5] < 0.35, snappedf(at[5], 0.01))
-	check("level 10 in about an hour", at[10] > 0.7 and at[10] < 1.3, snappedf(at[10], 0.01))
-	check("level 16 in about three hours", at[16] > 2.3 and at[16] < 3.5, snappedf(at[16], 0.01))
-	check("level 22 in about eight hours", at[22] > 7.0 and at[22] < 9.0, snappedf(at[22], 0.01))
+	check("level 10 in about three quarters of an hour", at[10] > 0.55 and at[10] < 0.95, snappedf(at[10], 0.01))
+	check("level 16 in about two hours", at[16] > 1.5 and at[16] < 2.4, snappedf(at[16], 0.01))
+	check("level 22 in about four and a half hours", at[22] > 3.6 and at[22] < 5.4, snappedf(at[22], 0.01))
 
 	# ---- the slimes, as data ------------------------------------------------
 	# Both fields: the Big Field holds every land's slimes and the Field the
