@@ -895,6 +895,8 @@ func _refresh_google() -> void:
 	account_google_row.visible = true
 	account_google_button.tooltip_text = GOOGLE_STAFF_NOTE if staff else ""
 	_google_linked = bool(data.get("linked", false))
+	# The login screen's green or red for this name (0.119.1).
+	GoogleScript.remember_link(Api.username, _google_linked)
 	if _google_linked:
 		var email: String = str(data.get("email", ""))
 		account_google_value.text = ("linked - %s" % email) if email != "" else "linked"

@@ -119,6 +119,8 @@ func _play_in_a_world_of_its_own() -> void:
 	Api.INSTALL_PATH = "user://_suite_install.cfg"
 	Api._install_id = ""
 	_login_menu_script().set("remembered_path", "user://_suite_remembered.cfg")
+	# Who is linked to Google, as this computer heard it (0.119.1).
+	(load("res://src/systems/googlesignin.gd") as GDScript).set("links_path", "user://_suite_google_links.cfg")
 	# AND WHAT THE GAME READ FROM THEM AT BOOT, before the suite began. A
 	# remembered login is the owner's real token, and the login screen's
 	# checks open the screen, which resumes it; a server.cfg sends every
@@ -183,7 +185,8 @@ func _check_the_players_files_untouched() -> void:
 	check("every file in user:// that is not the suite's own is as it was before the run",
 		changed.is_empty(), changed)
 	var own_paths: Array = [Settings.path, Voice.path, Keybinds.path, PanelWindow.layout_path, ControlsPanel.seen_path,
-		Api.SESSION_PATH, Api.DEVICES_PATH, Api.INSTALL_PATH, str(_login_menu_script().get("remembered_path"))]
+		Api.SESSION_PATH, Api.DEVICES_PATH, Api.INSTALL_PATH, str(_login_menu_script().get("remembered_path")),
+		str((load("res://src/systems/googlesignin.gd") as GDScript).get("links_path"))]
 	check("  and the suite kept to its own: the options, voice, keys, layout, welcome and login files are its",
 		own_paths.all(func(p: String) -> bool: return p.get_file().begins_with("_suite")), own_paths)
 

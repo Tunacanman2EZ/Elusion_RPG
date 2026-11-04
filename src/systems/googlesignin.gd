@@ -125,6 +125,51 @@ static func found_in(res: Dictionary) -> Array:
 	return out
 
 
+# =============================================================================
+# WHO IS LINKED, AS THIS COMPUTER HEARD IT (0.119.1)
+# =============================================================================
+# The owner, of the login screen's Google button: "should be green when synced
+# red when not". The login screen cannot ask the server about a name before it
+# is signed in (nobody may learn another's account from it), so this computer
+# remembers what it heard - a Google sign-in (linked), Options' Google row
+# (linked or not), a login's own ask (learn_link()). A name never heard is -1:
+# the button stays plain.
+
+static var links_path: String = "user://google_links.cfg"
+
+
+static func _link_key(username: String) -> String:
+	return username.strip_edges().to_lower().uri_encode()
+
+
+static func remember_link(username: String, linked: bool) -> void:
+	if username.strip_edges() == "":
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(links_path)
+	cfg.set_value("linked", _link_key(username), linked)
+	cfg.save(links_path)
+
+
+static func remembered_link(username: String) -> int:
+	"""1 linked, 0 not, -1 never heard."""
+	var cfg := ConfigFile.new()
+	if username.strip_edges() == "" or cfg.load(links_path) != OK \
+			or not cfg.has_section_key("linked", _link_key(username)):
+		return -1
+	return 1 if bool(cfg.get_value("linked", _link_key(username), false)) else 0
+
+
+static func learn_link(username: String) -> void:
+	"""Once signed in: ask the server (GET /api/account/google) and remember.
+	Not awaited by anyone - a static coroutine, so the login screen going
+	away does not drop it."""
+	var res: Dictionary = await Api.get_json("/api/account/google", Api.PROBE_TIMEOUT)
+	var data: Variant = res.get("data", {})
+	if res.get("ok", false) and data is Dictionary and (data as Dictionary).has("linked"):
+		remember_link(username, bool(data["linked"]))
+
+
 func cancel() -> void:
 	_generation += 1
 	code = ""

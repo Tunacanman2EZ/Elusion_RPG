@@ -1877,8 +1877,10 @@ func _tick_connection_status() -> void:
 		# crash.
 		set_world_status("connection", "")
 		CharacterData.clear_current_user()
-		Api.forget_session("Lost connection to the server. Anything since your"
-			+ " last save is not saved.")
+		# IN THE PAST (0.119.1): it is read on the login screen, under a
+		# status that may already say "Connected".
+		Api.forget_session("You were signed out - the connection to the server"
+			+ " was lost. Anything after your last save wasn't kept.")
 		if is_instance_valid(self) and is_inside_tree():
 			get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 		return

@@ -1633,7 +1633,7 @@ func _test_world_status_is_shown() -> void:
 		hud.contains("const OFFLINE_SIGNOUT_SECONDS :="),
 		"playing on into a lost session loses everything since the last save")
 	check("the reason travels to the login screen",
-		hud.contains("Lost connection to the server."),
+		hud.contains("the connection to the server\"") and hud.contains("was lost. Anything after your last save wasn't kept."),
 		"a silent return to the menu gets reported as a crash")
 
 	# RECOVERY IS AS AUTOMATIC AS THE WARNING.
@@ -3147,8 +3147,8 @@ func _test_login_states_are_distinct() -> void:
 	check("403, 429 and 503 are not dressed as typos",
 		src.contains("if status == 403 or status == 429 or status == 503:"),
 		"none of the three get better by retyping anything")
-	check("and a server-side signout lands in the blocked colour",
-		src.contains("_say(Api.signout_notice, SAY_BLOCKED)"),
+	check("and a server-side signout lands in the blocked colour, in its own box (0.119.1)",
+		src.contains("_show_notice(Api.signout_notice)") and _func_body(src, "func _show_notice(").contains("SAY_BLOCKED"),
 		"a kick read as a failed login is the one player who must not misread it")
 
 	print("  four server answers, four colours; a 409 is the sign-up form's")

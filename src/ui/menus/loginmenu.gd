@@ -259,6 +259,8 @@ func _ready() -> void:
 	_build_code_box()
 	_build_create_account()
 	_build_google()
+	_build_notice()
+	_dress_in_sockets()
 	_add_version_label()
 
 	# NEW: the banner follows reachability for as long as this screen is open,
@@ -286,8 +288,12 @@ func _ready() -> void:
 	# AMBER, not red. A kick or a ban is the door being shut on somebody, not a
 	# password they got wrong, and in red this line reads as "your login failed"
 	# to the one player who most needs to understand it did not.
+	#
+	# ITS OWN BOX, IN THE PAST (0.119.1): under the server's status, so "Lost
+	# connection" no longer sat under "Connected" reading like a second,
+	# contrary status. See _show_notice().
 	if Api.signout_notice != "":
-		_say(Api.signout_notice, SAY_BLOCKED)
+		_show_notice(Api.signout_notice)
 		Api.signout_notice = ""
 
 	if talks_to_server:
@@ -418,9 +424,24 @@ func _build_create_account() -> void:
 	create_link.add_theme_font_size_override("font_size", 12)
 	create_link.text = CREATE_LINK_TEXT
 	var anchor: Node = get_node_or_null("%recoverlinkbutton")
-	form.add_child(create_link)
 	if anchor != null:
-		form.move_child(create_link, anchor.get_index() + 1)
+		# ONE ROW (0.119.1): "Forgot password?" and "Create an account" side
+		# by side, the link right after it as it always was.
+		var links := HBoxContainer.new()
+		links.name = "linksrow"
+		links.alignment = BoxContainer.ALIGNMENT_CENTER
+		links.add_theme_constant_override("separation", 18)
+		form.add_child(links)
+		form.move_child(links, anchor.get_index())
+		# Its owner let go while it moves and given back after, so the scene's
+		# owners stay whole and %recoverlinkbutton still finds it.
+		var kept_owner: Node = anchor.owner
+		anchor.owner = null
+		anchor.reparent(links)
+		anchor.owner = kept_owner
+		links.add_child(create_link)
+	else:
+		form.add_child(create_link)
 	create_link.pressed.connect(func() -> void: _set_creating(not _creating))
 
 	var button: Button = get_node_or_null("%loginbutton")
@@ -504,6 +525,9 @@ const GOOGLE_NEW_PLAYER := "No account has this Google email yet. New player? Pi
 
 var google: Node = null
 var google_button: Button = null
+var google_link_line: Label = null
+var notice_box: PanelContainer = null
+var notice_label: Label = null
 var google_form: VBoxContainer = null
 var google_intro: Label = null
 var google_check: Label = null
@@ -530,6 +554,35 @@ func _build_google() -> void:
 	google_button.pressed.connect(_on_google_pressed)
 	form.add_child(google_button)
 	form.move_child(google_button, login.get_index() + 1)
+	# "or" between the two ways in (0.119.1).
+	var divider := HBoxContainer.new()
+	divider.name = "ordivider"
+	divider.add_theme_constant_override("separation", 8)
+	for i in 3:
+		if i == 1:
+			var word := Label.new()
+			word.text = "or"
+			word.add_theme_font_size_override("font_size", 12)
+			word.add_theme_color_override("font_color", STATUS_WORKING)
+			divider.add_child(word)
+		else:
+			var rule := HSeparator.new()
+			rule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			divider.add_child(rule)
+	form.add_child(divider)
+	form.move_child(divider, google_button.get_index())
+	# Whether the name in the box is linked to Google, as this computer last
+	# heard it (0.119.1): green linked, red not, nothing when it never heard.
+	google_link_line = Label.new()
+	google_link_line.name = "googlelinkline"
+	google_link_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	google_link_line.add_theme_font_size_override("font_size", 11)
+	google_link_line.visible = false
+	form.add_child(google_link_line)
+	form.move_child(google_link_line, google_button.get_index() + 1)
+	var name_box: LineEdit = get_node_or_null("%usernamelineedit")
+	if name_box != null and not name_box.text_changed.is_connected(_on_name_changed):
+		name_box.text_changed.connect(_on_name_changed)
 
 	# ITS OWN FORM, in the login form's place while it waits - so nothing on
 	# the password form can be pressed halfway through a Google sign-in.
@@ -712,6 +765,7 @@ func _on_google_claim(username: String) -> void:
 
 func _google_signed_in(data: Dictionary) -> void:
 	Api.adopt_login(data)
+	GoogleScript.remember_link(Api.username, true)
 	google.cancel()
 	_show_google(false)
 	save_remembered_user(Api.username if Api.keep_signed_in else "")
@@ -1319,6 +1373,10 @@ func _on_login_button_pressed() -> void:
 # exists. Navigating to character select without awaiting would show four empty
 # slots to a player who has four characters.
 func _complete_login(typed_username: String) -> void:
+	# Whether this account is linked to Google, for the login screen's
+	# green or red next time (0.119.1) - asked, never awaited.
+	if talks_to_server:
+		GoogleScript.learn_link(Api.username)
 	# NEW: load THIS user's own character data FIRST — character select
 	# depends on it already being loaded.
 	# see CharacterData.load_for_user()'s comment for why this matters.
@@ -1442,6 +1500,8 @@ func _say(message: String, color: Color) -> void:
 		return
 	label.text = message
 	label.add_theme_color_override("font_color", color)
+	# Nothing to say takes no room (0.119.1).
+	label.visible = message != ""
 
 
 func _welcome(typed_username: String) -> void:
@@ -1484,6 +1544,167 @@ func _set_status(message: String, color: Color) -> void:
 	label.text = message
 	label.add_theme_color_override("font_color", color)
 	label.visible = message != ""
+	# A PILL (0.119.1): rimmed in its own colour; a short one hugs its words,
+	# a long one wraps across the panel.
+	var short: bool = message.length() <= PILL_MOST
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF if short else TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if short else Control.SIZE_FILL
+	label.add_theme_stylebox_override("normal", _pill(color))
+
+
+# =============================================================================
+# THE LOOK (0.119.1)
+# =============================================================================
+# The owner: "we need to update this", of the mock-up "lets add those gold
+# rims on it", "i meant my sytle boxs from hitbar" and "looks great". The
+# boxes and buttons wear the hotbar's own key frame (art/images/hotbarslot.png,
+# as hotbar.tscn's StyleBoxTexture_socket), the server's status is a pill,
+# a sign-out notice has its own box, "or" stands between the two ways in, and
+# the Google button says whether the name in the box is linked.
+
+const SOCKET_ART := "res://art/images/hotbarslot.png"
+const SOCKET_MARGIN := 7.0
+const SOCKET_DIM := 0.85
+const GOOGLE_LINKED := Color(0.6, 1.0, 0.6)
+const GOOGLE_UNLINKED := Color(1.0, 0.55, 0.5)
+# Enter Elusion, the way in: a green bar (the owner: "lets make enter elusion
+# a green bar also").
+const ENTER_TINT := Color(0.6, 1.0, 0.6)
+# A status this long or shorter is a pill that hugs its words.
+const PILL_MOST := 44
+const COLUMN_GAP := 10
+const FORM_GAP := 8
+
+
+static func socket(tint: Color = Color.WHITE) -> StyleBoxTexture:
+	"""The hotbar's key frame, tinted."""
+	var style := StyleBoxTexture.new()
+	style.texture = load(SOCKET_ART) as Texture2D
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		style.set_texture_margin(side, SOCKET_MARGIN)
+		style.set_content_margin(side, SOCKET_MARGIN)
+	style.modulate_color = tint
+	return style
+
+
+static func _dress(control: Control, tint: Color = Color.WHITE) -> void:
+	var dim := Color(tint.r * SOCKET_DIM, tint.g * SOCKET_DIM, tint.b * SOCKET_DIM, 1.0)
+	if control is LineEdit:
+		control.add_theme_stylebox_override(&"normal", socket(dim))
+		control.add_theme_stylebox_override(&"focus", socket(tint))
+		control.add_theme_stylebox_override(&"read_only", socket(dim))
+	elif control is Button:
+		control.add_theme_stylebox_override(&"normal", socket(dim))
+		control.add_theme_stylebox_override(&"hover", socket(tint))
+		control.add_theme_stylebox_override(&"pressed", socket(tint))
+		control.add_theme_stylebox_override(&"disabled", socket(Color(dim, 0.6)))
+
+
+func _dress_in_sockets() -> void:
+	"""Every box and solid button on the panel in the hotbar's frame - not the
+	tick box, not the flat links."""
+	var panel: Node = get_node_or_null("centercontainer/mainpanel")
+	if panel == null:
+		return
+	# ROOM FOR IT: the panel is centred on the whole height (it sat in a band
+	# high on the screen, and the notice and the "or" pushed its title off the
+	# top), and the gaps are tighter.
+	var centre := get_node_or_null("centercontainer") as Control
+	if centre != null:
+		centre.anchor_top = 0.0
+		centre.anchor_bottom = 1.0
+		centre.offset_top = 0.0
+		centre.offset_bottom = 0.0
+	var column := get_node_or_null("centercontainer/mainpanel/margincontainer/vboxcontainer") as Control
+	if column != null:
+		column.add_theme_constant_override(&"separation", COLUMN_GAP)
+	var form := get_node_or_null("%loginform") as Control
+	if form != null:
+		form.add_theme_constant_override(&"separation", FORM_GAP)
+	var said := get_node_or_null("%errorlabel") as Label
+	if said != null and said.text == "":
+		said.visible = false
+	for node in panel.find_children("*", "LineEdit", true, false):
+		_dress(node as LineEdit)
+	for node in panel.find_children("*", "Button", true, false):
+		var button := node as Button
+		if button is CheckBox or button.flat or button == google_button:
+			continue
+		_dress(button, ENTER_TINT if button.name == "loginbutton" else Color.WHITE)
+	_paint_google_link()
+
+
+func _on_name_changed(_text: String) -> void:
+	_paint_google_link()
+
+
+func _paint_google_link() -> void:
+	"""Green, linked; red, not; plain gold when this computer never heard."""
+	if google_button == null:
+		return
+	var name_box: LineEdit = get_node_or_null("%usernamelineedit")
+	var who: String = name_box.text.strip_edges() if name_box != null else ""
+	var linked: int = GoogleScript.remembered_link(who) if who != "" else -1
+	_dress(google_button, GOOGLE_LINKED if linked == 1 else (GOOGLE_UNLINKED if linked == 0 else Color.WHITE))
+	if google_link_line == null:
+		return
+	google_link_line.visible = linked != -1
+	google_link_line.text = ("•  %s is linked to Google" % who) if linked == 1 \
+		else ("•  %s isn't linked to Google - link it in Options" % who)
+	google_link_line.add_theme_color_override("font_color", STATUS_GOOD if linked == 1 else SAY_REFUSED)
+
+
+static func _pill(colour: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(colour.darkened(0.75), 0.7)
+	style.border_color = Color(colour, 0.6)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
+	return style
+
+
+func _build_notice() -> void:
+	"""The sign-out notice's own box, under the server's status."""
+	var status_label: Node = get_node_or_null("%statuslabel")
+	if status_label == null or notice_box != null:
+		return
+	notice_box = PanelContainer.new()
+	notice_box.name = "noticebox"
+	notice_box.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.25, 0.15, 0.05, 0.75)
+	style.border_color = Color(SAY_BLOCKED, 0.6)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.set_content_margin_all(6)
+	notice_box.add_theme_stylebox_override("panel", style)
+	notice_label = Label.new()
+	notice_label.name = "noticelabel"
+	notice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	notice_label.custom_minimum_size = Vector2(1, 0)
+	notice_label.add_theme_font_size_override("font_size", 12)
+	notice_label.add_theme_color_override("font_color", SAY_BLOCKED)
+	notice_box.add_child(notice_label)
+	status_label.get_parent().add_child(notice_box)
+	status_label.get_parent().move_child(notice_box, status_label.get_index() + 1)
+
+
+func _show_notice(message: String) -> void:
+	"""Why the server signed you out (a kick, a ban, the connection gone) - in
+	amber, SAY_BLOCKED: the door shut, not a typo."""
+	if notice_box == null:
+		_build_notice()
+	if notice_box == null:
+		_say(message, SAY_BLOCKED)
+		return
+	notice_label.text = message
+	notice_label.add_theme_color_override("font_color", SAY_BLOCKED)
+	notice_box.visible = message != ""
 
 
 func _on_exit_button_pressed() -> void:

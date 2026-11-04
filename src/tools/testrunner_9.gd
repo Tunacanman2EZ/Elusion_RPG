@@ -2011,9 +2011,10 @@ func _test_google_sign_in() -> void:
 	await get_tree().process_frame
 	var button: Button = menu.get("google_button")
 	var login: Button = menu.get_node("%loginbutton")
-	check("the login screen has \"Sign in with Google\" just under the sign-in button",
+	check("the login screen has \"Sign in with Google\" just under the sign-in button, \"or\" between (0.119.1)",
 		button != null and button.text == "Sign in with Google" and button.get_parent() == login.get_parent()
-		and button.get_index() == login.get_index() + 1)
+		and button.get_index() == login.get_index() + 2
+		and login.get_parent().get_child(login.get_index() + 1).name == "ordivider")
 	var g = menu.get("google")
 	sent.clear()
 	opened.clear()

@@ -3740,6 +3740,71 @@ solo, pays nothing, no server change. Pictured (forge_0119.png).
 `_test_the_forge()` (testrunner_10). Watched fail with every cell bubbling,
 the tank burning in the lava, the fall hook gone and the walkways off.
 
+### No right-click menu on a text box (0.119.1)
+
+The owner, of the login screen's right-click menu (Godot's own: Cut, Copy,
+Paste, Undo, Text Writing Direction, Insert Control Character...): "this
+douse nothing". In a browser its Paste cannot reach the computer's
+clipboard, and the rest means nothing to a player. `Settings._on_node_added()`
+now turns `context_menu_enabled` off on every LineEdit and TextEdit as it
+enters the tree (`_no_text_menu()`) - one place, every box, the login
+screen's eight and chat's and the panels'. Ctrl+C, Ctrl+V, Ctrl+A still work
+(the box's shortcut keys, not its menu). A RichTextLabel's menu (Copy, on the
+owner panel's results) is kept.
+
+`_test_text_boxes_have_no_right_click_menu()` (testrunner_10). Watched fail
+with the hook off.
+
+### The login screen and the Minigames card, updated (the same 0.119.1)
+
+The owner: "need image 1 upgraded" (the Minigames card, grown to five games
+and 640 px tall), "we need to update this" (the login screen, which said
+"Connected to the Elusion server." above "Lost connection to the server...",
+the old sign-out reason), "need image 2 to confirm signed in with google
+should be green when synced red when not", and of the mock-ups "lets add
+those gold rims on it", "i meant my sytle boxs from hitbar", "looks great".
+Pictured (login_0119_1.png, minigames_0119_1.png).
+
+- **The Minigames card is a tile a game** (minigamescard.gd `_tile()`): a
+  portrait (`PORTRAITS` - a scene whose sprite is the picture, its first
+  frame facing down cropped to the figure by `portrait_of()`, read off the
+  scene's state, never instanced, cached), the name with tags (`TAG_DAILY`,
+  `TAG_THREE`, `TAG_TESTING`, the class) where sentences said it, one line
+  (the BLURBs, shortened), the status and Go. 386 px tall. Every member the
+  card paints (`healer_box`, `forge_go` ...) is the same node inside its tile;
+  the boxes are PanelContainers now, and `endless_box` is new.
+- **The login screen's boxes and solid buttons wear the hotbar's key frame**
+  (`socket()`, art/images/hotbarslot.png as hotbar.tscn's
+  StyleBoxTexture_socket; `_dress_in_sockets()`), not the tick box and not
+  the flat links; Enter Elusion's tinted green (`ENTER_TINT` - "lets make
+  enter elusion a green bar also"). The panel is centred on the whole height now, the gaps
+  tighter (`COLUMN_GAP`, `FORM_GAP`), and an empty error line takes no room.
+- **The server's status is a pill** in its colour (`_set_status()` /
+  `_pill()`); one longer than `PILL_MOST` wraps across the panel.
+- **A sign-out notice has its own amber box** under it (`_build_notice()`,
+  `_show_notice()` - still SAY_BLOCKED), and the HUD's lost-connection
+  reason is in the past: "You were signed out - the connection to the server
+  was lost. Anything after your last save wasn't kept."
+- **"or" between the two ways in** (`ordivider`), and "Forgot password?"
+  and "Create an account" side by side (`linksrow`; the link's owner let go
+  while it moves, so %recoverlinkbutton still finds it).
+- **Google green or red** (`_paint_google_link()`, on every change of the
+  name): green, and "Tunacan is linked to Google", when this computer heard
+  the name is linked; red, and "... isn't linked to Google - link it in
+  Options", when it heard it is not; plain when it never heard. The screen
+  cannot ask the server about a name before sign-in - nobody may learn
+  another's account from it - so googlesignin.gd remembers
+  (`remember_link()`, `remembered_link()`, `links_path`
+  user://google_links.cfg; the suite's own file in the run): a Google
+  sign-in (linked), every sign-in's ask of GET /api/account/google
+  (`learn_link()`, a static coroutine nobody awaits, from `_complete_login()`
+  when the screen talks to a server), and Options' Google row.
+
+`_test_the_login_and_minigames_look()` (testrunner_10). Watched fail with
+Google never turning green. Two old checks moved with it: the Google button
+is two under Enter Elusion ("or" between), and the sign-out reason's colour
+is read in `_show_notice()`.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

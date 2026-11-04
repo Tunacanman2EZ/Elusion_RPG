@@ -54,6 +54,15 @@
 # asking (`open_lobby`): the run of the day is asked for when everyone is
 # ready and the count starts, so leaving while somebody is away costs nothing.
 #
+# A TILE A GAME (0.119.1). The owner, of the card grown to five games: "need
+# image 1 upgraded", and of the mock-up, "looks great". Each game is a tile
+# (`_tile()`): a portrait from the game's own art (PORTRAITS - a frame of the
+# class or monster it is about, cropped to the figure, `portrait_of()`), the
+# name with small tags (DAILY, 3 A DAY, TESTING, the class) where sentences
+# said it, one line, the status and Go. About 400 px tall where the rows were
+# 640. Every member the rest of this file paints (`healer_box`, `forge_go`
+# ...) is the same node it was, inside its tile.
+#
 # Built by the HUD (attach()), no class_name, so a fresh checkout needs no
 # editor rescan.
 extends PanelContainer
@@ -63,26 +72,41 @@ const COLOUR_HINT := Color(0.82, 0.78, 0.7)
 const COLOUR_READY := Color(0.6, 0.9, 0.55)
 const COLOUR_WAIT := Color(1.0, 0.72, 0.4)
 const FONT_SIZE := 14
-const WIDTH := 300.0
+const WIDTH := 430.0
 const GAP := 6.0
-const STATUS_WIDTH := 190.0
+const STATUS_WIDTH := 230.0
 const GAME := "endless"
 const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
-const BLURB := "A horde that never stops. Once a day."
+const BLURB := "A horde that never stops."
 const UNREACHABLE := "Could not reach the server - try again."
-const HEALER_BLURB := "The healer, up a crypt path, shooting. Up to 20,000 gold a run, three runs a day."
+const HEALER_BLURB := "Up a crypt path, shooting - up to 20,000 gold a run."
 const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
-const STAND_BLURB := "The mage on the wall, raining meteors on the horde at the gate. Yours only while it is built."
-const DESCENT_BLURB := "The warrior's: down a crypt room by room - pick a door, pick an upgrade, beat the keepers. Yours only while it is built."
+const STAND_BLURB := "Rain meteors on the horde at the gate."
+const DESCENT_BLURB := "Down a crypt room by room - doors, upgrades, keepers."
 const DESCENT_CLASS := "warrior"
 const FOR_WARRIORS := "For warriors - play your warrior"
 const DESCENT := "descent"
 const DESCENT_ENTRANCE := "descent_entrance"
-const FORGE_BLURB := "The tank's world: hold the anvil while the lava floods the island slice by slice. Any class - the tank lasts longest. Yours only while it is built."
+const FORGE_BLURB := "Hold the anvil while the lava floods the island."
 const FORGE := "forge"
 const FORGE_ENTRANCE := "forge_entrance"
+# THE TILES (0.119.1): each game's portrait (a scene whose sprite is the
+# picture), its rim, and its tags - [words, colour, what it means].
+const PORTRAITS := {
+	"endless": ["res://scene/enemy/poisonslime.tscn", Color(0.55, 0.85, 0.35)],
+	"healerrun": ["res://scene/characters/healer.tscn", Color(0.45, 0.9, 0.6)],
+	"magestand": ["res://scene/characters/mage.tscn", Color(0.45, 0.65, 1.0)],
+	"descent": ["res://scene/characters/warrior.tscn", Color(0.95, 0.4, 0.35)],
+	"forge": ["res://scene/characters/tank.tscn", Color(1.0, 0.6, 0.25)],
+}
+const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
+const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
+const TAG_TESTING := ["TESTING", Color(0.55, 0.35, 0.1), "Yours only while it is built"]
+const TAG_TEXT := Color(1.0, 0.95, 0.85)
+const TILE_BG := Color(0.09, 0.07, 0.05, 0.92)
+const PORTRAIT_SIZE := 48.0
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
 # area this game is in.
@@ -112,19 +136,20 @@ var hud: Node = null
 var title: Label = null
 var game_name: Label = null
 var blurb: Label = null
+var endless_box: PanelContainer = null
 var status: Label = null
 var go_button: Button = null
 var close_button: Button = null
-var healer_box: VBoxContainer = null
+var healer_box: PanelContainer = null
 var healer_status: Label = null
 var healer_go: Button = null
-var stand_box: VBoxContainer = null
+var stand_box: PanelContainer = null
 var stand_status: Label = null
 var stand_go: Button = null
-var descent_box: VBoxContainer = null
+var descent_box: PanelContainer = null
 var descent_status: Label = null
 var descent_go: Button = null
-var forge_box: VBoxContainer = null
+var forge_box: PanelContainer = null
 var forge_status: Label = null
 var forge_go: Button = null
 # The Healer's Run's runs left today, and the wait when none are, as the
@@ -190,124 +215,155 @@ func _init() -> void:
 	close_button.focus_mode = Control.FOCUS_NONE
 	close_button.pressed.connect(close)
 	head.add_child(close_button)
-	game_name = _label("game", "The Endless", FONT_SIZE, COLOUR)
-	column.add_child(game_name)
-	blurb = _label("blurb", BLURB, 12, COLOUR_HINT)
-	column.add_child(blurb)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	column.add_child(row)
-	status = _label("status", "", FONT_SIZE, COLOUR_HINT)
-	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var endless: Array = _tile(column, "endless", "The Endless", BLURB, [TAG_DAILY])
+	endless_box = endless[0]
+	game_name = endless[1]
+	blurb = endless[2]
+	status = endless[3]
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# A wrapping Label measures its height at its narrowest: without a width
-	# of its own, the card's first opening stood 500 px tall.
-	status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
-	row.add_child(status)
-	go_button = Button.new()
-	go_button.name = "go"
-	go_button.text = "Go"
-	go_button.focus_mode = Control.FOCUS_NONE
-	go_button.custom_minimum_size = Vector2(72, 28)
-	go_button.pressed.connect(_on_go)
-	row.add_child(go_button)
-	healer_box = VBoxContainer.new()
-	healer_box.name = "healerrun"
-	healer_box.add_theme_constant_override("separation", 4)
-	column.add_child(healer_box)
-	healer_box.add_child(HSeparator.new())
-	healer_box.add_child(_label("healergame", "The Healer's Run", FONT_SIZE, COLOUR))
-	var healer_blurb: Label = _label("healerblurb", HEALER_BLURB, 12, COLOUR_HINT)
-	healer_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	healer_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
-	healer_box.add_child(healer_blurb)
-	var healer_row := HBoxContainer.new()
-	healer_row.add_theme_constant_override("separation", 10)
-	healer_box.add_child(healer_row)
-	healer_status = _label("healerstatus", "", FONT_SIZE, COLOUR_HINT)
-	healer_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	healer_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
-	healer_row.add_child(healer_status)
-	healer_go = Button.new()
-	healer_go.name = "healergo"
-	healer_go.text = "Go"
-	healer_go.focus_mode = Control.FOCUS_NONE
-	healer_go.custom_minimum_size = Vector2(72, 28)
-	healer_go.pressed.connect(_on_healer_go)
-	healer_row.add_child(healer_go)
-	stand_box = VBoxContainer.new()
-	stand_box.name = "magestand"
-	stand_box.add_theme_constant_override("separation", 4)
-	column.add_child(stand_box)
-	stand_box.add_child(HSeparator.new())
-	stand_box.add_child(_label("standgame", "The Mage's Stand", FONT_SIZE, COLOUR))
-	var stand_blurb: Label = _label("standblurb", STAND_BLURB, 12, COLOUR_HINT)
-	stand_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	stand_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
-	stand_box.add_child(stand_blurb)
-	var stand_row := HBoxContainer.new()
-	stand_row.add_theme_constant_override("separation", 10)
-	stand_box.add_child(stand_row)
-	stand_status = _label("standstatus", "", FONT_SIZE, COLOUR_HINT)
-	stand_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stand_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
-	stand_row.add_child(stand_status)
-	stand_go = Button.new()
-	stand_go.name = "standgo"
-	stand_go.text = "Go"
-	stand_go.focus_mode = Control.FOCUS_NONE
-	stand_go.custom_minimum_size = Vector2(72, 28)
-	stand_go.pressed.connect(_on_stand_go)
-	stand_row.add_child(stand_go)
-	descent_box = VBoxContainer.new()
-	descent_box.name = "descent"
-	descent_box.add_theme_constant_override("separation", 4)
-	column.add_child(descent_box)
-	descent_box.add_child(HSeparator.new())
-	descent_box.add_child(_label("descentgame", "The Descent", FONT_SIZE, COLOUR))
-	var descent_blurb: Label = _label("descentblurb", DESCENT_BLURB, 12, COLOUR_HINT)
-	descent_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	descent_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
-	descent_box.add_child(descent_blurb)
-	var descent_row := HBoxContainer.new()
-	descent_row.add_theme_constant_override("separation", 10)
-	descent_box.add_child(descent_row)
-	descent_status = _label("descentstatus", "", FONT_SIZE, COLOUR_HINT)
-	descent_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	descent_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
-	descent_row.add_child(descent_status)
-	descent_go = Button.new()
-	descent_go.name = "descentgo"
-	descent_go.text = "Go"
-	descent_go.focus_mode = Control.FOCUS_NONE
-	descent_go.custom_minimum_size = Vector2(72, 28)
-	descent_go.pressed.connect(_on_descent_go)
-	descent_row.add_child(descent_go)
-	forge_box = VBoxContainer.new()
-	forge_box.name = "forge"
-	forge_box.add_theme_constant_override("separation", 4)
-	column.add_child(forge_box)
-	forge_box.add_child(HSeparator.new())
-	forge_box.add_child(_label("forgegame", "The Forge", FONT_SIZE, COLOUR))
-	var forge_blurb: Label = _label("forgeblurb", FORGE_BLURB, 12, COLOUR_HINT)
-	forge_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	forge_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
-	forge_box.add_child(forge_blurb)
-	var forge_row := HBoxContainer.new()
-	forge_row.add_theme_constant_override("separation", 10)
-	forge_box.add_child(forge_row)
-	forge_status = _label("forgestatus", "", FONT_SIZE, COLOUR_HINT)
-	forge_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	forge_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
-	forge_row.add_child(forge_status)
-	forge_go = Button.new()
-	forge_go.name = "forgego"
-	forge_go.text = "Go"
-	forge_go.focus_mode = Control.FOCUS_NONE
-	forge_go.custom_minimum_size = Vector2(72, 28)
-	forge_go.pressed.connect(_on_forge_go)
-	forge_row.add_child(forge_go)
+	go_button = _go_button("go", _on_go)
+	(endless[4] as HBoxContainer).add_child(go_button)
+	var healer: Array = _tile(column, "healerrun", "The Healer's Run", HEALER_BLURB,
+		[TAG_THREE, ["HEALER", Color(0.2, 0.45, 0.3), "The healer's"]])
+	healer_box = healer[0]
+	healer_status = healer[3]
+	healer_go = _go_button("healergo", _on_healer_go)
+	(healer[4] as HBoxContainer).add_child(healer_go)
+	var stand: Array = _tile(column, "magestand", "The Mage's Stand", STAND_BLURB,
+		[TAG_TESTING, ["MAGE", Color(0.2, 0.3, 0.55), "The mage's"]])
+	stand_box = stand[0]
+	stand_status = stand[3]
+	stand_go = _go_button("standgo", _on_stand_go)
+	(stand[4] as HBoxContainer).add_child(stand_go)
+	var descent: Array = _tile(column, "descent", "The Descent", DESCENT_BLURB,
+		[TAG_TESTING, ["WARRIOR", Color(0.5, 0.2, 0.18), "The warrior's"]])
+	descent_box = descent[0]
+	descent_status = descent[3]
+	descent_go = _go_button("descentgo", _on_descent_go)
+	(descent[4] as HBoxContainer).add_child(descent_go)
+	var forge: Array = _tile(column, "forge", "The Forge", FORGE_BLURB,
+		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
+		["TANK BEST", Color(0.55, 0.3, 0.12), "The tank's world - he lasts longest"]])
+	forge_box = forge[0]
+	forge_status = forge[3]
+	forge_go = _go_button("forgego", _on_forge_go)
+	(forge[4] as HBoxContainer).add_child(forge_go)
 
+
+func _tile(column: Control, id: String, game_title: String, line: String, tags: Array) -> Array:
+	"""A game's tile in `column`: [tile, its name, its line, its status, the
+	row its Go goes in]."""
+	var tile := PanelContainer.new()
+	tile.name = id
+	tile.add_theme_stylebox_override("panel", _flat(TILE_BG, Color(COLOUR, 0.28), 4, 6, 1))
+	column.add_child(tile)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	tile.add_child(row)
+	var art: Array = PORTRAITS.get(id, ["", COLOUR_HINT])
+	var frame := PanelContainer.new()
+	frame.name = id + "portrait"
+	frame.custom_minimum_size = Vector2(PORTRAIT_SIZE, PORTRAIT_SIZE)
+	frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	frame.add_theme_stylebox_override("panel", _flat(Color(0.05, 0.04, 0.04, 0.95), art[1], 4, 2, 2))
+	var pic := TextureRect.new()
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	pic.custom_minimum_size = Vector2(PORTRAIT_SIZE - 4.0, PORTRAIT_SIZE - 4.0)
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pic.texture = portrait_of(str(art[0]))
+	frame.add_child(pic)
+	row.add_child(frame)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 1)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(words)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 4)
+	words.add_child(head)
+	var name_label: Label = _label(id + "game", game_title, FONT_SIZE, COLOUR)
+	head.add_child(name_label)
+	for tag in tags:
+		head.add_child(_tag(tag))
+	var line_label: Label = _label(id + "blurb", line, 11, COLOUR_HINT)
+	words.add_child(line_label)
+	var state: Label = _label(id + "status", "", 12, COLOUR_HINT)
+	state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	state.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
+	words.add_child(state)
+	return [tile, name_label, line_label, state, row]
+
+
+func _go_button(id: String, on_press: Callable) -> Button:
+	var go := Button.new()
+	go.name = id
+	go.text = "Go"
+	go.focus_mode = Control.FOCUS_NONE
+	go.custom_minimum_size = Vector2(64, 30)
+	go.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	go.pressed.connect(on_press)
+	return go
+
+
+func _tag(tag: Array) -> Control:
+	"""A small coloured pill: DAILY, TESTING, the class."""
+	var pill := PanelContainer.new()
+	var style: StyleBoxFlat = _flat(tag[1], (tag[1] as Color).lightened(0.35), 3, 0, 1)
+	style.content_margin_left = 5
+	style.content_margin_right = 5
+	style.content_margin_bottom = 1
+	pill.add_theme_stylebox_override("panel", style)
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pill.tooltip_text = str(tag[2])
+	pill.add_child(_label("tag", str(tag[0]), 9, TAG_TEXT))
+	return pill
+
+
+static func _flat(bg: Color, border: Color, radius: int, margin: int, width: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = border
+	style.set_border_width_all(width)
+	style.set_corner_radius_all(radius)
+	style.set_content_margin_all(margin)
+	return style
+
+
+# A portrait a scene, cropped once a run (the card is built again in every area).
+static var _portraits: Dictionary = {}
+
+
+static func portrait_of(scene_path: String) -> Texture2D:
+	"""The first frame of the scene's sprite facing down, cropped to the figure -
+	read off the scene's state, never instanced."""
+	if _portraits.has(scene_path):
+		return _portraits[scene_path]
+	var picture: Texture2D = null
+	var packed: PackedScene = load(scene_path) as PackedScene if scene_path != "" and ResourceLoader.exists(scene_path) else null
+	if packed != null:
+		var state: SceneState = packed.get_state()
+		for n in state.get_node_count():
+			for p in state.get_node_property_count(n):
+				if state.get_node_property_name(n, p) != &"sprite_frames":
+					continue
+				var frames: SpriteFrames = state.get_node_property_value(n, p) as SpriteFrames
+				if frames == null:
+					continue
+				for anim in ["idledown", "walkdown", "attackdown"]:
+					if frames.has_animation(anim) and frames.get_frame_count(anim) > 0:
+						var image: Image = frames.get_frame_texture(anim, 0).get_image()
+						if image != null and not image.is_empty():
+							if image.is_compressed():
+								image.decompress()
+							picture = ImageTexture.create_from_image(image.get_region(image.get_used_rect()))
+						break
+				if picture != null:
+					break
+			if picture != null:
+				break
+	_portraits[scene_path] = picture
+	return picture
 
 func _label(id: String, text: String, size: int, colour: Color) -> Label:
 	var label := Label.new()

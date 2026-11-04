@@ -1670,6 +1670,8 @@ func _on_node_added(node: Node) -> void:
 		# TEXT THAT ARRIVES AFTER THE SETTING DID: every window, every line of
 		# chat, every tooltip built after the player chose a size.
 		_scale_text_of(node, text_factor())
+		if node is LineEdit or node is TextEdit:
+			_no_text_menu(node)
 	elif node is Light2D or node is CanvasModulate:
 		_apply_lighting_to(node, str(get_value("lighting")))
 	elif node is Node2D and (_projectiles_touched or float(get_value("projectile_brightness")) < 1.0) \
@@ -1684,6 +1686,20 @@ func _on_node_added(node: Node) -> void:
 		# saved with, so without this the zoom would reset itself at every
 		# doorway.
 		_apply_camera_zoom_to(node as Camera2D, float(get_value("camera_zoom")))
+
+
+static func _no_text_menu(node: Node) -> void:
+	"""NO RIGHT-CLICK MENU ON A TEXT BOX (0.119.1). The owner, of the login
+	screen's: "this douse nothing" - Godot's own menu (Cut, Copy, Paste, Undo,
+	Text Writing Direction, Insert Control Character...). In a browser its
+	Paste cannot reach the computer's clipboard, and the rest means nothing
+	to a player. Ctrl+C, Ctrl+V, Ctrl+A and the rest still work - they are
+	the box's shortcut keys, not its menu. A RichTextLabel's menu (Copy, on
+	the owner panel's results) is a different thing and is kept."""
+	if node is LineEdit:
+		(node as LineEdit).context_menu_enabled = false
+	elif node is TextEdit:
+		(node as TextEdit).context_menu_enabled = false
 
 
 func _apply_lighting_to(node: Node, mode: String) -> void:

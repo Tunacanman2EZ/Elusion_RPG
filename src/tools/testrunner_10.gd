@@ -1747,3 +1747,122 @@ func _test_the_forge() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  (the forge: done)")
+
+
+# =============================================================================
+# TEXT BOXES HAVE NO RIGHT-CLICK MENU (0.119.1)
+# =============================================================================
+# The owner, of the login screen's right-click menu: "this douse nothing".
+
+func _test_text_boxes_have_no_right_click_menu() -> void:
+	section("TEXT BOXES (0.119.1): no right-click menu on any - their shortcut keys still work")
+	var login: Node = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate()
+	var login_boxes: int = login.find_children("*", "LineEdit", true, false).size()
+	login.free()
+	var holder := Control.new()
+	var box := LineEdit.new()
+	var area := TextEdit.new()
+	var rich := RichTextLabel.new()
+	rich.context_menu_enabled = true
+	holder.add_child(box)
+	holder.add_child(area)
+	holder.add_child(rich)
+	add_child(holder)
+	await get_tree().process_frame
+	check("a text box entering the game has no right-click menu (the login screen's %d among them), its Ctrl keys still on; a RichTextLabel keeps its Copy" % login_boxes,
+		login_boxes >= 2 and not box.context_menu_enabled and not area.context_menu_enabled
+		and box.shortcut_keys_enabled and area.shortcut_keys_enabled and rich.context_menu_enabled)
+	holder.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE LOGIN SCREEN AND THE MINIGAMES CARD, UPDATED (0.119.1)
+# =============================================================================
+# The owner: "need image 1 upgraded" (the Minigames card), "we need to update
+# this" (the login screen), "i meant my sytle boxs from hitbar", and of the
+# mock-ups, "looks great".
+
+func _test_the_login_and_minigames_look() -> void:
+	section("THE LOOK (0.119.1): the login screen in the hotbar's frames, Google green or red, the Minigames card in tiles")
+	const Google := preload("res://src/systems/googlesignin.gd")
+	var login: Node = _login_screen_for_test()
+	login._build_create_account()
+	login._build_google()
+	login._build_notice()
+	login._dress_in_sockets()
+	var form: Node = login.get_node("%loginform")
+	var button: Button = login.get_node("%loginbutton")
+	var name_box: LineEdit = login.get_node("%usernamelineedit")
+	var remember: CheckBox = login.get_node("%rememberme")
+	var framed := func(c: Control) -> bool:
+		var style := c.get_theme_stylebox(&"normal") as StyleBoxTexture
+		return style != null and style.texture != null and style.texture.resource_path == "res://art/images/hotbarslot.png"
+	check("the boxes and solid buttons wear the hotbar's key frame - Enter Elusion's green; the tick box and the flat links do not",
+		framed.call(button) and (button.get_theme_stylebox(&"hover") as StyleBoxTexture).modulate_color == login.ENTER_TINT
+		and framed.call(name_box) and framed.call(login.get_node("%passwordlineedit"))
+		and not remember.has_theme_stylebox_override(&"normal") and not login.create_link.has_theme_stylebox_override(&"normal"))
+	var divider: Node = form.get_node_or_null("ordivider")
+	check("  \"or\" between Enter Elusion and Sign in with Google, the link line under Google",
+		divider != null and button.get_index() < divider.get_index() and divider.get_index() < login.google_button.get_index()
+		and login.google_link_line.get_index() == login.google_button.get_index() + 1)
+	var forgot: Node = login.get_node("%recoverlinkbutton")
+	check("  \"Forgot password?\" and \"Create an account\" side by side",
+		forgot.get_parent().name == "linksrow" and login.create_link.get_parent() == forgot.get_parent()
+		and login.create_link.get_index() == forgot.get_index() + 1)
+	# Green, red, plain.
+	Google.remember_link("suitesmith", true)
+	Google.remember_link("suitenolink", false)
+	var tint := func() -> Color:
+		return (login.google_button.get_theme_stylebox(&"hover") as StyleBoxTexture).modulate_color
+	name_box.text = "SuiteSmith"
+	login._paint_google_link()
+	var green: bool = login.google_link_line.visible and login.google_link_line.text.contains("is linked") \
+		and tint.call() == login.GOOGLE_LINKED
+	name_box.text = "suitenolink"
+	login._paint_google_link()
+	var red: bool = login.google_link_line.visible and login.google_link_line.text.contains("isn't linked") \
+		and tint.call() == login.GOOGLE_UNLINKED
+	name_box.text = "suitenever"
+	login._paint_google_link()
+	var plain: bool = not login.google_link_line.visible and tint.call() == Color.WHITE
+	check("Google's button is green for a name this computer heard is linked, red for one it heard is not, plain for one it never heard",
+		green and red and plain and Google.remembered_link("SUITESMITH") == 1 and Google.remembered_link("") == -1)
+	var learned: bool = _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _complete_login(").contains("GoogleScript.learn_link(") \
+		and _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _google_signed_in(").contains("GoogleScript.remember_link(Api.username, true)") \
+		and _func_body(_code_src("res://src/ui/menus/optionsscreen.gd"), "func _refresh_google(").contains("GoogleScript.remember_link(")
+	check("  heard at a Google sign-in, at every sign-in (asked, never awaited) and in Options' Google row", learned)
+	# The status, and the notice under it.
+	var status: Label = login.get_node("%statuslabel")
+	login._set_status("Connected to the Elusion server.", login.STATUS_ONLINE)
+	var pill: bool = status.size_flags_horizontal == Control.SIZE_SHRINK_CENTER and status.get_theme_stylebox(&"normal") is StyleBoxFlat \
+		and (status.get_theme_stylebox(&"normal") as StyleBoxFlat).border_color.g > 0.5
+	login._set_status("Password updated - sign in with your new password, then pick your character.", login.STATUS_GOOD)
+	var wraps: bool = status.size_flags_horizontal == Control.SIZE_FILL and status.autowrap_mode != TextServer.AUTOWRAP_OFF
+	login._show_notice("You were signed out - the connection to the server was lost.")
+	check("the server's status is a pill in its colour (a long one wraps); a sign-out notice has its own amber box under it",
+		pill and wraps and login.notice_box.visible and login.notice_box.get_index() == status.get_index() + 1
+		and login.notice_label.get_theme_color(&"font_color") == login.SAY_BLOCKED)
+	login.free()
+	# The Minigames card in tiles.
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	for seam in ["shows_healer_run", "shows_mage_stand", "shows_descent", "shows_forge"]:
+		card.set(seam, func() -> bool: return true)
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("class_now", func() -> String: return "tank")
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": false})
+	card.call("open")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var tiles: Array = [card.endless_box, card.healer_box, card.stand_box, card.descent_box, card.forge_box]
+	var pictured: bool = tiles.all(func(t: Control) -> bool:
+		var pics: Array = t.find_children("*", "TextureRect", true, false)
+		return t is PanelContainer and t.visible and pics.size() == 1 and (pics[0] as TextureRect).texture != null)
+	var tagged: bool = card.forge_box.find_children("tag", "Label", true, false).size() == 3 \
+		and card.endless_box.find_children("tag", "Label", true, false).size() == 1
+	check("the Minigames card is a tile a game - each its portrait from the game's own art and its tags - and %d px tall (it was 640)" % roundi(card.size.y),
+		pictured and tagged and card.size.y < 480.0 and card.forge_go.get_parent().get_parent() == card.forge_box)
+	card_hud.queue_free()
+	await get_tree().process_frame
