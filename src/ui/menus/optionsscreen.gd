@@ -69,6 +69,7 @@ const HELP := {
 	"textsize": "Makes all the writing in the game bigger - for a big screen, or one across the room. Most players: Normal.",
 	"fontstyle": "The style of letters every window, button and name is written in. Chat keeps its own, for its emoji. Most players: Standard.",
 	"camerazoom": "How close the camera sits. Lower pulls it back so you see more of the world around you - the mouse wheel and the zoom keys (- and =) do it too. 3.00x is how the game is drawn to be seen.",
+	"sharppixels": "Every pixel of the world drawn the same size, so edges stay crisp and steady as you walk. The camera goes to the nearest view that does it. Most players: On.",
 	"namehue": "The colour of your name over your head, to tell it apart from everyone else's in a crowd.",
 	"damagenumbers": "The numbers that fly up when something is hit - they show what your weapon is doing. Turn them off for a calmer screen. Most players: On.",
 	"chatfilter": "Hides rude words in chat. It changes only what you see, not what anyone types. Most players: On.",
@@ -199,6 +200,8 @@ signal credits_requested
 @onready var chat_filter_toggle: CheckButton = get_node_or_null("%chatfilter")
 @onready var aim_rings_toggle:  CheckButton = get_node_or_null("%aimrings")
 @onready var range_circles_toggle: CheckButton = get_node_or_null("%rangecircles")
+# SHARP PIXELS (0.114.0), under Camera view: Settings.sharp_zoom().
+@onready var sharp_pixels_toggle: CheckButton = get_node_or_null("%sharppixels")
 @onready var others_attacks_toggle: CheckButton = get_node_or_null("%othersattacks")
 @onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
 @onready var camera_zoom_value: Label        = get_node_or_null("%camerazoomvalue")
@@ -459,6 +462,8 @@ func _connect_controls() -> void:
 		aim_rings_toggle.toggled.connect(_on_aim_rings_toggled)
 	if range_circles_toggle != null:
 		range_circles_toggle.toggled.connect(_on_range_circles_toggled)
+	if sharp_pixels_toggle != null:
+		sharp_pixels_toggle.toggled.connect(_on_sharp_pixels_toggled)
 	if others_attacks_toggle != null:
 		others_attacks_toggle.toggled.connect(_on_others_attacks_toggled)
 
@@ -578,6 +583,8 @@ func refresh() -> void:
 		aim_rings_toggle.button_pressed = bool(Settings.get_value("aim_rings"))
 	if range_circles_toggle != null:
 		range_circles_toggle.button_pressed = bool(Settings.get_value("range_circles"))
+	if sharp_pixels_toggle != null:
+		sharp_pixels_toggle.button_pressed = bool(Settings.get_value("sharp_pixels"))
 	if others_attacks_toggle != null:
 		others_attacks_toggle.button_pressed = bool(Settings.get_value("others_attacks"))
 
@@ -1525,6 +1532,12 @@ func _on_range_circles_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("range_circles", pressed)
+
+
+func _on_sharp_pixels_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("sharp_pixels", pressed)
 
 
 func _on_others_attacks_toggled(pressed: bool) -> void:

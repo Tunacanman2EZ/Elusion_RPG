@@ -2624,6 +2624,9 @@ func _test_staff_panel() -> void:
 	# 2.5 is inside the range AND different from the 3.0 the probe starts at, so
 	# a write that never happens still fails this the way it always should have.
 	const LEGAL_ZOOM := 2.5
+	# The zoom as asked: Sharp pixels (0.114.0) has its own section.
+	var was_sharp: bool = bool(Settings.get_value("sharp_pixels"))
+	Settings.set_value("sharp_pixels", false)
 	Settings._apply_camera_zoom_to(probe, LEGAL_ZOOM)
 	check("the setting reaches a camera",
 		is_equal_approx(probe.zoom.x, LEGAL_ZOOM), probe.zoom)
@@ -2632,6 +2635,7 @@ func _test_staff_panel() -> void:
 	check("and cannot push one past the ceiling",
 		is_equal_approx(probe.zoom.x, Settings.CAMERA_ZOOM_MAX), probe.zoom)
 	probe.free()
+	Settings.set_value("sharp_pixels", was_sharp)
 
 	# ---- the options screen carries the control ----
 	var opts: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()

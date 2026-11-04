@@ -228,6 +228,14 @@ const DEFAULTS := {
 	# WAKE_DISTANCE) - the suite holds the far corner inside it.
 	"camera_zoom": 3.0,
 
+	# SHARP PIXELS (0.114.0). The owner: "is there a way we can increase
+	# sharpness for a better picture?" On a 1080p screen the 1280 x 720 canvas
+	# is drawn 1.5x, so at zoom 3 an art pixel is 4.5 screen pixels: drawn 4
+	# wide and 5 wide by turns - rough edges that shimmer as you walk. On, the
+	# camera goes to the nearest zoom that makes it a whole number (5 there,
+	# ties go closer), and every art pixel is the same size. See SHARP PIXELS.
+	"sharp_pixels": true,
+
 	# THE COLOUR OF YOUR OWN NAME, as a hue in degrees. A hue and nothing else:
 	# saturation and value are fixed at NAME_SATURATION and NAME_VALUE below,
 	# because those are the two that decide whether a name is READABLE over
@@ -414,6 +422,8 @@ func _ready() -> void:
 	# spot is on the right screen. Then the watch, which notices drags.
 	_place_window_at_launch()
 	_start_window_watch()
+	# A NEW WINDOW SIZE IS A NEW CANVAS SCALE, and the sharp zoom with it.
+	get_tree().root.size_changed.connect(_on_root_resized)
 	_start_rest_watch()
 	# THE KEYBOARD GOES ELSEWHERE (0.19.1, below).
 	if OS.has_feature("web"):
@@ -1715,9 +1725,70 @@ func _apply_camera_zoom_to(camera: Camera2D, zoom: float) -> void:
 	# ABSOLUTE, NOT A MULTIPLIER OF WHAT THE SCENE SAID. All four class scenes
 	# are authored at 3.0, so an absolute value is the same thing here and is
 	# the one a player can reason about: the number on the slider IS the zoom.
+	# With Sharp pixels on, the nearest zoom that draws every art pixel the
+	# same size (sharp_zoom()) - the slider's number is what was asked for.
 	var want: float = clampf(zoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	if bool(get_value("sharp_pixels")):
+		want = sharp_zoom(want, canvas_scale())
 	if not is_equal_approx(camera.zoom.x, want):
 		camera.zoom = Vector2(want, want)
+
+
+# =============================================================================
+# SHARP PIXELS (0.114.0)
+# =============================================================================
+# The world is pixel art drawn with no smoothing, so it is never blurred - but
+# an art pixel is (camera zoom) x (how big the canvas is drawn) screen pixels,
+# and a screen cannot draw half a pixel. At 4.5 the art's pixels come out 4
+# and 5 wide by turns; measured on the town at 1080p, every colour edge fell
+# on one of two places in each 9 screen pixels, and at 5 on one in each 5.
+# Pictured in the commit folder's sharp_closeup.png.
+
+# The suite's stand-in for how big the canvas is drawn; 0 asks the window.
+var canvas_scale_for_test: float = 0.0
+
+
+static func sharp_zoom(zoom: float, scale: float) -> float:
+	"""The zoom nearest `zoom` at which an art pixel is a whole number of
+	screen pixels, the canvas being drawn `scale` times; a tie goes closer.
+	Never further out than CAMERA_ZOOM_MIN - past 1x the sleeper's hidden
+	monsters would be on screen - so there the next whole number in."""
+	if scale <= 0.0:
+		return zoom
+	var fewest: float = maxf(1.0, ceilf(CAMERA_ZOOM_MIN * scale - 0.0001))
+	return maxf(fewest, floorf(zoom * scale + 0.5)) / scale
+
+
+func canvas_scale() -> float:
+	"""How many screen pixels the 1280 x 720 canvas draws each of its own at.
+	Low render resolution draws the world at 1280 x 720 and scales the finished
+	frame: the camera's pixels are the canvas's there, so 1."""
+	if canvas_scale_for_test > 0.0:
+		return canvas_scale_for_test
+	var tree := get_tree()
+	if tree == null or tree.root == null:
+		return 1.0
+	if tree.root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT:
+		return 1.0
+	# NO SCREEN, NO PIXELS: a headless run's window is a token size, and its
+	# scale would put every camera at 20x.
+	if DisplayServer.get_name() == "headless":
+		return 1.0
+	return maxf(absf(tree.root.get_final_transform().get_scale().x), 0.01)
+
+
+func reapply_camera_zoom() -> void:
+	"""The window changed size, or Sharp pixels or the render resolution
+	changed: the cameras again, and anyone placing things by the zoom (the
+	player's name plate) told."""
+	_apply_camera_zoom_everywhere(float(get_value("camera_zoom")))
+	if not _loading:
+		changed.emit("camera_zoom", get_value("camera_zoom"))
+
+
+func _on_root_resized() -> void:
+	if bool(get_value("sharp_pixels")):
+		reapply_camera_zoom.call_deferred()
 
 
 func _apply_camera_zoom_everywhere(zoom: float) -> void:
@@ -1736,6 +1807,14 @@ func step_camera_zoom(steps: int) -> float:
 	var now: float = float(get_value("camera_zoom"))
 	var want: float = clampf(snappedf(now + float(steps) * CAMERA_ZOOM_STEP, CAMERA_ZOOM_STEP),
 		CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	# WITH SHARP PIXELS a notch that would draw the same picture takes the
+	# next one too, so every notch moves the camera while it can move.
+	if bool(get_value("sharp_pixels")) and steps != 0:
+		var scale: float = canvas_scale()
+		var on: float = float(signi(steps)) * CAMERA_ZOOM_STEP
+		while is_equal_approx(sharp_zoom(want, scale), sharp_zoom(now, scale)) \
+				and not is_equal_approx(want, clampf(want + on, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)):
+			want = clampf(want + on, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
 	set_value("camera_zoom", want)
 	return float(get_value("camera_zoom"))
 
@@ -2127,10 +2206,14 @@ func _apply(key: String, value: Variant) -> void:
 			var want_scale: Window.ContentScaleMode = content_scale_mode_for(str(value))
 			if get_tree().root.content_scale_mode != want_scale:
 				get_tree().root.content_scale_mode = want_scale
+				# A different canvas: the sharp zoom with it.
+				reapply_camera_zoom.call_deferred()
 		"lighting":
 			_apply_lighting_everywhere(str(value))
 		"camera_zoom":
 			_apply_camera_zoom_everywhere(float(value))
+		"sharp_pixels":
+			reapply_camera_zoom()
 		"name_hue":
 			# Nothing pushed anywhere. player.gd listens on `changed` and
 			# repaints its own plate - the colour belongs to the character,

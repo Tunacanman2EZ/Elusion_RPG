@@ -333,6 +333,26 @@ theme_override_font_sizes/font_size = 10
 text = "Lower pulls the camera back and shows more of the world."
 autowrap_mode = 3
 
+[node name="sharppixelsrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
+layout_mode = 2
+tooltip_text = "Every pixel of the world drawn the same size, so edges stay crisp and steady as you walk. The camera goes to the nearest view that does it."
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/sharppixelsrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+tooltip_text = "Every pixel of the world drawn the same size, so edges stay crisp and steady as you walk. The camera goes to the nearest view that does it."
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
+theme_override_font_sizes/font_size = 12
+text = "Sharp pixels"
+vertical_alignment = 1
+
+[node name="sharppixels" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/sharppixelsrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Every pixel of the world drawn the same size, so edges stay crisp and steady as you walk. The camera goes to the nearest view that does it."
+
 [node name="namecolourrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
 layout_mode = 2
 theme_override_constants/separation = 8

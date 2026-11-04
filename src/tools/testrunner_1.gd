@@ -4663,6 +4663,7 @@ func _test_settings() -> void:
 		# still the right one, because a setting with no control is a real bug
 		# and this is the only place that relationship is written down.
 		"camera_zoom": "camerazoom",       "name_hue": "namehue",
+		"sharp_pixels": "sharppixels",
 		# 0.8.0: the writing.
 		"text_size": "textsize",           "font": "fontstyle",
 	}

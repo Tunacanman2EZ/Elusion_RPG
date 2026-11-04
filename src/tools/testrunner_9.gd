@@ -466,6 +466,9 @@ func _wheel(up: bool, factor: float = 1.0, down: bool = true) -> InputEventMouse
 func _test_the_camera_zooms_out() -> void:
 	section("THE CAMERA ZOOMS OUT TO 1x - the wheel over the world, the zoom keys, the Options slider (0.95.0)")
 	var was: float = float(Settings.get_value("camera_zoom"))
+	# Quarter steps as asked: Sharp pixels (0.114.0) has its own section.
+	var was_sharp: bool = bool(Settings.get_value("sharp_pixels"))
+	Settings.set_value("sharp_pixels", false)
 	check("the camera goes out to 1x and in to 3x, in quarters",
 		is_equal_approx(Settings.CAMERA_ZOOM_MIN, 1.0) and is_equal_approx(Settings.CAMERA_ZOOM_MAX, 3.0)
 		and is_equal_approx(Settings.CAMERA_ZOOM_STEP, 0.25))
@@ -536,6 +539,7 @@ func _test_the_camera_zooms_out() -> void:
 	opts.free()
 
 	Settings.set_value("camera_zoom", was)
+	Settings.set_value("sharp_pixels", was_sharp)
 	print("  the camera: 1x to 3x, the wheel and the keys a quarter a step")
 
 
@@ -4691,3 +4695,93 @@ func _test_the_hud_bar_says_keys_and_what_is_open() -> void:
 	hud.queue_free()
 	await get_tree().process_frame
 	print("  (the HUD bar: done)")
+
+
+
+# =============================================================================
+# SHARP PIXELS (0.114.0)
+# =============================================================================
+# The owner: "is there a way we can increase sharpness for a better picture?"
+# At 1080p the canvas is drawn 1.5x, so zoom 3 made an art pixel 4.5 screen
+# pixels - 4 and 5 wide by turns. On, the camera goes to the nearest zoom that
+# makes it whole.
+func _test_sharp_pixels() -> void:
+	section("SHARP PIXELS - every art pixel a whole number of screen pixels (0.114.0)")
+	var was_sharp: bool = bool(Settings.get_value("sharp_pixels"))
+	var was_zoom: float = float(Settings.get_value("camera_zoom"))
+	check("on by default", Settings.DEFAULTS["sharp_pixels"] == true)
+	check("at 1080p zoom 3 goes to 5 screen pixels an art pixel (4.5 rounds closer)",
+		is_equal_approx(Settings.sharp_zoom(3.0, 1.5) * 1.5, 5.0), Settings.sharp_zoom(3.0, 1.5))
+	var uneven: Array = []
+	for scale in [1.0, 1.25, 1.5, 2.0, 3.0]:
+		var z: float = Settings.CAMERA_ZOOM_MIN
+		while z <= Settings.CAMERA_ZOOM_MAX + 0.001:
+			var drawn: float = Settings.sharp_zoom(z, scale) * scale
+			var fewest: float = ceilf(Settings.CAMERA_ZOOM_MIN * scale - 0.0001)
+			if absf(drawn - roundf(drawn)) > 0.0001 or Settings.sharp_zoom(z, scale) < Settings.CAMERA_ZOOM_MIN - 0.0001 \
+					or (absf(drawn - z * scale) > 0.5001 and not is_equal_approx(drawn, fewest)):
+				uneven.append([scale, z, drawn])
+			z += Settings.CAMERA_ZOOM_STEP
+	check("  every zoom the slider offers, at every window size offered, is whole, within half a pixel, never past 1x",
+		uneven.is_empty(), uneven)
+	check("  never further out than 1x: at a 1.25x window, 1x goes in to 2 pixels",
+		is_equal_approx(Settings.sharp_zoom(1.0, 1.25) * 1.25, 2.0) and is_equal_approx(Settings.sharp_zoom(0.2, 1.0), 1.0),
+		Settings.sharp_zoom(1.0, 1.25))
+	check("  a whole zoom on a whole canvas is left alone", is_equal_approx(Settings.sharp_zoom(2.5, 2.0), 2.5)
+		and is_equal_approx(Settings.sharp_zoom(3.0, 1.0), 3.0))
+
+	var camera := Camera2D.new()
+	add_child(camera)
+	Settings.canvas_scale_for_test = 1.5
+	Settings.set_value("sharp_pixels", true)
+	Settings.set_value("camera_zoom", 3.0)
+	Settings.reapply_camera_zoom()
+	check("a camera in the tree goes there", is_equal_approx(camera.zoom.x * 1.5, 5.0)
+		and is_equal_approx(camera.zoom.y, camera.zoom.x), camera.zoom)
+	check("  and the setting keeps what was asked", is_equal_approx(float(Settings.get_value("camera_zoom")), 3.0))
+	var told: Array = []
+	var listen := func(key: String, _value: Variant) -> void: told.append(key)
+	Settings.changed.connect(listen)
+	Settings.set_value("sharp_pixels", false)
+	check("off, the zoom is as asked again, and the name plate is told",
+		is_equal_approx(camera.zoom.x, 3.0) and told.has("camera_zoom"), [camera.zoom, told])
+	Settings.set_value("sharp_pixels", true)
+	var seen: Array = []
+	Settings.set_value("camera_zoom", 3.0)
+	for i in 6:
+		seen.append(roundi(camera.zoom.x * 1.5))
+		Settings.step_camera_zoom(-1)
+	check("  each notch of the wheel changes the picture while it can: 5, 4, 3, 2 pixels, then 1x",
+		seen.slice(0, 4) == [5, 4, 3, 2] and is_equal_approx(float(Settings.get_value("camera_zoom")), 1.0), seen)
+	Settings.set_value("camera_zoom", 3.0)
+	told.clear()
+	Settings.canvas_scale_for_test = 2.0
+	Settings.reapply_camera_zoom()
+	check("a new window size is a new canvas: at 1440p zoom 3 is 6 pixels, and the plate is told",
+		is_equal_approx(camera.zoom.x, 3.0) and told.has("camera_zoom"), camera.zoom)
+	Settings.changed.disconnect(listen)
+	Settings.canvas_scale_for_test = 0.0
+	var settings_src_early: String = _code_src("res://src/systems/settings.gd")
+	var root: Window = get_tree().root
+	var was_mode: Window.ContentScaleMode = root.content_scale_mode
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
+	check("  Low render resolution draws the world at 1280 x 720: the camera's pixels are the canvas's",
+		is_equal_approx(Settings.canvas_scale(), 1.0)
+		and _func_body(settings_src_early, "func canvas_scale(").contains("CONTENT_SCALE_MODE_VIEWPORT:\n\t\treturn 1.0"))
+	check("  and a run with no screen (the suite's) counts as 1x, not its token window",
+		_func_body(settings_src_early, "func canvas_scale(").contains("DisplayServer.get_name() == \"headless\""))
+	root.content_scale_mode = was_mode
+	var settings_src: String = _code_src("res://src/systems/settings.gd")
+	check("  and a resize asks again",
+		_func_body(settings_src, "func _ready(").contains("root.size_changed.connect(_on_root_resized)")
+		and _func_body(settings_src, "func _on_root_resized(").contains("reapply_camera_zoom"))
+	camera.queue_free()
+	var opts: Node = _OptionsScene.instantiate()
+	var toggle: CheckButton = opts.get_node_or_null("%sharppixels") as CheckButton
+	check("Options has the switch, under Camera view, saying what it does",
+		toggle != null and toggle.get_parent().get_parent() == opts.get_node("%camerazoom").get_parent().get_parent()
+		and toggle.tooltip_text.contains("same size"))
+	opts.free()
+	Settings.set_value("sharp_pixels", was_sharp)
+	Settings.set_value("camera_zoom", was_zoom)
+	print("  (sharp pixels: done)")

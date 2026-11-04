@@ -3269,6 +3269,42 @@ folder's GM_AND_HUD_PLAN.txt. Game only. Pictured before and after
 
 `_test_the_hud_bar_says_keys_and_what_is_open()` (testrunner_9).
 
+### Sharp pixels: every art pixel the same size (0.114.0)
+
+The owner: "is there a way we can increase sharpness for a better picture?",
+then, shown the pictures, "lets try it out i will let you know". The world is
+pixel art drawn with no smoothing (default_texture_filter 0), so it is never
+blurred - but an art pixel is (camera zoom) x (how big the 1280 x 720 canvas is
+drawn) screen pixels. At 1080p the canvas is drawn 1.5x, so zoom 3 made it
+4.5: the art's pixels came out 4 and 5 wide by turns (measured on the town:
+every colour edge on one of two places in each 9 screen pixels), rough
+outlines and seams that shimmer as you walk. Pictures: the commit folder's
+sharp_closeup.png and sharp_views.png.
+
+- **The setting** `sharp_pixels` (settings.gd, on by default; Options > Sharp
+  pixels, under Camera view). On, `_apply_camera_zoom_to()` gives each camera
+  `sharp_zoom(zoom, canvas_scale())`: the nearest zoom at which an art pixel
+  is a whole number of screen pixels, a tie closer (1080p zoom 3 -> 5 pixels,
+  zoom 3.333). Never further out than `CAMERA_ZOOM_MIN` (past 1x the
+  sleeper's hidden monsters show), so there the next whole number in. The
+  setting keeps the number asked for; only the cameras move.
+- **`canvas_scale()`** is the root window's final transform; 1 with Low
+  render resolution (the world is drawn at 1280 x 720 and the frame scaled),
+  and 1 in a headless run (its token window would put every camera at 20x).
+  `canvas_scale_for_test` is the suite's stand-in.
+- **It follows the window**: `root.size_changed` -> `_on_root_resized()` ->
+  `reapply_camera_zoom()` (deferred), which also emits `changed` for
+  "camera_zoom" so the player's name plate is placed again; so do switching
+  Sharp pixels and the render resolution. Measured in a real window: 1080p
+  zoom 3 -> 5 pixels, 1600x900 -> 4, 720p -> 3, 1440p -> 6.
+- **The wheel and the zoom keys** (`step_camera_zoom()`): with it on, a notch
+  that would draw the same picture takes the next one too, so at 1080p from
+  zoom 3 the notches go 5, 4, 3, 2 pixels.
+- The two older zoom tests (testrunner_5's camera setting,
+  `_test_the_camera_zooms_out()`) switch it off while they test quarter steps.
+
+`_test_sharp_pixels()` (testrunner_9).
+
 ### After the first Descent: aim, the pick, the map, the arrow, houses, one stir (0.112.1)
 
 The owner, playing 0.112.0, six things. `_test_after_the_first_descent()`
