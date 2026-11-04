@@ -1674,6 +1674,13 @@ func _test_a_big_fight_is_cheap() -> void:
 		Sleeper.round_share(5888, 1.0 / 60.0) == 393, Sleeper.round_share(5888, 1.0 / 60.0))
 	check("  never none while any are left, never more than there are, none of none",
 		Sleeper.round_share(3, 0.0001) == 1 and Sleeper.round_share(10, 2.0) == 10 and Sleeper.round_share(0, 0.1) == 0)
+	# ONLY ITS OWN MONSTERS IN THE ROUND (0.117.1). The sleeper's round is every
+	# node in "enemies" in the tree, and on the owner's PC an earlier section
+	# still had ten there - a quarter of the round reached 8 of these 40, not
+	# 10. They are set aside for these two checks and put back after.
+	var set_aside: Array = get_tree().get_nodes_in_group("enemies")
+	for other in set_aside:
+		other.remove_from_group("enemies")
 	var round_holder := Node2D.new()
 	add_child(round_holder)
 	var round_player := Node2D.new()
@@ -1696,6 +1703,11 @@ func _test_a_big_fight_is_cheap() -> void:
 	check("  a quarter of the round in a quarter of its time, and all of it in all of it",
 		after_one == 10 and after_four == 40, [after_one, after_four])
 	round_holder.free()
+	for other in set_aside:
+		if is_instance_valid(other):
+			other.add_to_group("enemies")
+	if not set_aside.is_empty():
+		print("  (%d monster(s) an earlier section left in the tree were set aside for the round)" % set_aside.size())
 
 	# ---- awake but idle, with nobody in reach: it dozes ------------------------------------------
 	var nap_world := Node2D.new()

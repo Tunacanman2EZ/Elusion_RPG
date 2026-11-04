@@ -2950,8 +2950,13 @@ func _test_connections_are_kept_open() -> void:
 	var all_ok := together.size() == 3
 	for r in together:
 		all_ok = all_ok and r.get("ok", false)
+	# WHAT EACH ANSWER WAS (0.117.1): the owner's PC read [3, 1] - three
+	# answered, one connection - and could not say whether two of them failed
+	# or all three went one after another on one connection.
 	check("three at once are all answered, each on its own connection",
-		all_ok and fake.accepted == 3, [together.size(), fake.accepted])
+		all_ok and fake.accepted == 3, {"answered": together.size(), "accepted": fake.accepted,
+			"opened": pool.connections_opened - opened,
+			"results": together.map(func(r: Dictionary) -> String: return "%s %s" % [r.get("ok", false), r.get("status", 0)])})
 
 	var gz: Dictionary = await Api.get_json("/gz")
 	check("a compressed answer is unpacked", gz.get("ok", false) and gz.data is Dictionary

@@ -4418,6 +4418,11 @@ func _test_the_gm_panel_tidied_and_live() -> void:
 	check("a tab picked is read again when its last read is stale - and not again within %d s" % int(gm.get("STALE_SECONDS")),
 		read_on_pick and asked.size() == 1, asked)
 	var timer: Timer = gm.get("_live_timer")
+	# THE CLOCK STARTS WHEN THE OPEN'S READS ARE DONE (0.117.1), and those go to
+	# the suite's address, where no server runs. On Linux a refused connection
+	# fails at once; on Windows each takes about two seconds, so a dozen reads
+	# are most of half a minute, not the three frames this waited.
+	await _larder_wait(func() -> bool: return timer != null and not timer.is_stopped(), 60.0)
 	check("  and a clock reads the tab shown every %d s while the panel is open" % int(gm.get("LIVE_SECONDS")),
 		timer != null and is_equal_approx(timer.wait_time, 30.0) and not timer.is_stopped())
 	(world.get("hours_box") as SpinBox).value = 7.0
