@@ -48,6 +48,8 @@ var toast_label: Label = null
 var pick_panel: PanelContainer = null
 var cards: Array = []
 var take_button: Button = null
+# A REROLL beside it: free, or its gold (descentrun.gd reroll()).
+var reroll_button: Button = null
 # The card chosen, -1 for none yet (CONFIRMED).
 var chosen: int = -1
 var _offered: Array = []
@@ -202,14 +204,25 @@ func _build_pick() -> void:
 			words.add_child(l)
 		row.add_child(card)
 		cards.append(card)
+	var foot := HBoxContainer.new()
+	foot.name = "foot"
+	foot.alignment = BoxContainer.ALIGNMENT_CENTER
+	foot.add_theme_constant_override("separation", 14)
+	column.add_child(foot)
+	reroll_button = Button.new()
+	reroll_button.name = "reroll"
+	reroll_button.focus_mode = Control.FOCUS_NONE
+	reroll_button.custom_minimum_size = Vector2(190, 40)
+	reroll_button.add_theme_font_size_override("font_size", 16)
+	reroll_button.pressed.connect(_on_reroll)
+	foot.add_child(reroll_button)
 	take_button = Button.new()
 	take_button.name = "take"
 	take_button.focus_mode = Control.FOCUS_NONE
 	take_button.custom_minimum_size = Vector2(220, 40)
-	take_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	take_button.add_theme_font_size_override("font_size", 18)
 	take_button.pressed.connect(_on_take)
-	column.add_child(take_button)
+	foot.add_child(take_button)
 	pick_panel.visible = false
 	add_child(pick_panel)
 
@@ -352,8 +365,25 @@ func show_pick(offers: Array) -> void:
 		(words.get_node("level") as Label).text = "%s  -  %s" % [Boons.rarity(id).capitalize(), Boons.level_text(id)]
 	_offered = offers.duplicate()
 	_choose(-1)
+	_paint_reroll()
 	pick_panel.visible = true
 	paint()
+
+
+func _paint_reroll() -> void:
+	"""The reroll's price, greyed when the run cannot pay it."""
+	if reroll_button == null or run == null or not run.has_method("reroll_cost"):
+		return
+	var cost: int = int(run.call("reroll_cost"))
+	reroll_button.text = "Reroll (free)" if cost == 0 else "Reroll - %d gold" % cost
+	reroll_button.disabled = not bool(run.call("can_reroll"))
+	reroll_button.tooltip_text = "Three new cards. One free a floor, then gold, more each time" \
+		if not reroll_button.disabled else "Not enough gold for a reroll"
+
+
+func _on_reroll() -> void:
+	if run != null and run.has_method("reroll"):
+		run.call("reroll")
 
 
 func hide_pick() -> void:

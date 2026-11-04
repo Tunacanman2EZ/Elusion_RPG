@@ -50,6 +50,11 @@
 # round the room for FURY_SECONDS, cutting what it meets for FURY_SWINGS
 # swings, each monster at most every FURY_HIT_GAP.
 #
+# A REROLL (0.116.0; the owner: "we still need the reroll option also we can add gold
+# to if needed"): three new cards for the same pick, REROLL_FREE free a floor,
+# then paid from the run's gold - REROLL_GOLD, then twice it, three times...
+# (reroll_cost()), counted again each floor.
+#
 # A FALL IS NOT A DEATH (as in the Endless): Player.take_damage() asks
 # knock_out() first - you wake at the room's front on 1 health, every effect
 # cleared, and the run is over. Your gear and bag are as they were.
@@ -98,6 +103,10 @@ const FURY_SWINGS := 3
 const FURY_HIT_GAP := 0.5
 const FURY_RADII := Vector2(0.4, 0.32)
 const AXE_SCENE := "res://scene/projectiles/spinningaxe.tscn"
+# A REROLL: this many free a floor, then the first paid one this much gold,
+# each after it this much more.
+const REROLL_FREE := 1
+const REROLL_GOLD := 20
 
 
 # THE GIANT AXE: the Double Axe's own spin, FURY_SCALE times, spiralling in
@@ -221,6 +230,11 @@ var _ward_ring: Node2D = null
 # was beaten.
 var challenge_left: float = 0.0
 var challenge_won: bool = false
+# Rerolls: the free ones left this floor, the paid ones made this floor, and
+# the rule the pick on the table was drawn by (so a reroll keeps it).
+var rerolls_free: int = 0
+var rerolls_paid: int = 0
+var _offer_at_least: String = ""
 
 
 func _ready() -> void:
@@ -268,6 +282,8 @@ func start_run() -> void:
 	gold = 0
 	slain = 0
 	picks = 0
+	rerolls_free = REROLL_FREE
+	rerolls_paid = 0
 	fill_ward()
 	_go("upgrade")
 
@@ -331,6 +347,8 @@ func _arrive(kind: String) -> void:
 		room = 0
 		kind = "upgrade"
 		Boons.new_floor()
+		rerolls_free = REROLL_FREE
+		rerolls_paid = 0
 	room += 1
 	room_kind = "keeper" if room > ROOMS else kind
 	Boons.floor_taken = float(floor_info().get("taken", 1.0))
@@ -490,6 +508,7 @@ func _pay(amount: int) -> void:
 
 
 func _offer(at_least: String = "") -> void:
+	_offer_at_least = at_least
 	offers = Boons.offers(_rng, 3, at_least, wears_axe(), room_kind == "keeper")
 	if offers.is_empty():
 		_open_doors()
@@ -497,6 +516,34 @@ func _offer(at_least: String = "") -> void:
 	state = State.PICK
 	if hud != null:
 		hud.call("show_pick", offers)
+
+
+func reroll_cost() -> int:
+	"""What the next reroll costs: nothing while a free one is left."""
+	return 0 if rerolls_free > 0 else REROLL_GOLD * (rerolls_paid + 1)
+
+
+func can_reroll() -> bool:
+	return state == State.PICK and (rerolls_free > 0 or gold >= reroll_cost())
+
+
+func reroll() -> bool:
+	"""Three new cards for this pick, by the same rule (a keeper's mythic, a
+	Shrine's rare), the ones on the table left out while there are others."""
+	if not can_reroll():
+		return false
+	if rerolls_free > 0:
+		rerolls_free -= 1
+	else:
+		var cost: int = reroll_cost()
+		gold -= cost
+		rerolls_paid += 1
+		if hud != null:
+			hud.call("toast", "-%d gold" % cost)
+	offers = Boons.offers(_rng, 3, _offer_at_least, wears_axe(), room_kind == "keeper", offers)
+	if hud != null:
+		hud.call("show_pick", offers)
+	return true
 
 
 func pick(index: int) -> bool:

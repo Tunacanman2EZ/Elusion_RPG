@@ -3460,6 +3460,21 @@ descent_more_0115.png.
 9 passed 250 KB. testrunner.gd extends testrunner_10.gd, which extends
 testrunner_9.gd.
 
+**And a reroll (0.116.0).** The owner: "we still need the reroll option also
+we can add gold to if needed". Pictured: descent_reroll_0116.png.
+
+- descentrun.gd `reroll()`: three new cards for the pick on the table, drawn
+  by the rule it was drawn by (`_offer_at_least`, the keeper's mythic) with
+  the ones it replaces left out while there are enough others
+  (descentboons.gd `offers()`' `not_these`; a keeper's reroll falls back to
+  the whole list for its mythic). `REROLL_FREE` (1) a floor (`rerolls_free`,
+  set at the start and on going down), then the run's gold:
+  `reroll_cost()` = `REROLL_GOLD` (20) x (paid rerolls this floor + 1).
+- descenthud.gd: `reroll_button` beside Take ("Reroll (free)" / "Reroll -
+  40 gold", grey with "Not enough gold" when the run cannot pay).
+
+`_test_the_descent_reroll()` (testrunner_10).
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

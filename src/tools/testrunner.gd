@@ -215,6 +215,7 @@ func _run_all() -> void:
 	await _test_the_descent_is_kinder()
 	await _test_the_descent_has_more_to_choose()
 	await _test_the_double_axe_in_the_descent()
+	await _test_the_descent_reroll()
 	await _test_the_gm_panel_tidied_and_live()
 	await _test_the_hud_bar_says_keys_and_what_is_open()
 	_test_sharp_pixels()

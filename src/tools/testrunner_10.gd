@@ -1,5 +1,6 @@
 # testrunner_10.gd - part 10 of the suite (testrunner.gd says how it is
-# split; part 9 passed 250 KB): _test_the_double_axe_in_the_descent.
+# split; part 9 passed 250 KB): _test_the_double_axe_in_the_descent and
+# _test_the_descent_reroll.
 extends "res://src/tools/testrunner_9.gd"
 
 
@@ -206,3 +207,75 @@ func _hit_counter_script() -> GDScript:
 	script.source_code = "extends Node2D\nvar took: int = 0\nfunc take_damage(amount: int, _e: int = 0) -> void:\n\ttook += amount\n"
 	script.reload()
 	return script
+
+
+# =============================================================================
+# THE DESCENT'S REROLL (0.116.0)
+# =============================================================================
+# The owner: "we still need the reroll option also we can add gold to if
+# needed". One free a floor, then the run's gold - 20, 40, 60...
+func _test_the_descent_reroll() -> void:
+	section("THE DESCENT'S REROLL - one free a floor, then gold (0.116.0)")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	Boons.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar weapon_attack: int = %d\nfunc equipped_weapon_attack() -> int:\n\treturn weapon_attack\n" % ItemData.WeaponAttack.SPINNING_AXE
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	var hud: Node = run.get("hud")
+	var button: Button = hud.get("reroll_button")
+	var first: Array = (run.get("offers") as Array).duplicate()
+	var free_said: bool = button != null and button.visible and button.text == "Reroll (free)" and not button.disabled
+	button.pressed.emit()
+	var second: Array = run.get("offers")
+	var fresh: bool = second.size() == 3
+	for id in second:
+		fresh = fresh and not first.has(id)
+	check("a pick has a Reroll beside Take: one free a floor - three new cards, none of the ones it replaced",
+		free_said and fresh and int(run.get("gold")) == 0 and int(run.get("rerolls_free")) == 0, [first, second])
+	hud.call("show_pick", second)
+	check("  then it costs gold, and with none the button is grey", button.text == "Reroll - %d gold" % RunScript.REROLL_GOLD
+		and button.disabled and not bool(run.call("reroll")))
+	run.set("gold", 100)
+	hud.call("show_pick", run.get("offers"))
+	var paid_once: bool = bool(run.call("reroll")) and int(run.get("gold")) == 80
+	var paid_twice: bool = bool(run.call("reroll")) and int(run.get("gold")) == 40
+	check("  paid from the run's gold, more each time: %d, then %d" % [RunScript.REROLL_GOLD, RunScript.REROLL_GOLD * 2],
+		paid_once and paid_twice, run.get("gold"))
+	run.call("pick", 0)
+	check("  only while a pick is on the table", not bool(run.call("can_reroll")))
+	# A keeper's reroll keeps its mythic; down a floor, a free one again.
+	run.set("gold", 1000)
+	_descent_enter(run, "keeper", RunScript.ROOMS + 1)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	var kept_mythic: bool = true
+	for i in 4:
+		run.call("reroll")
+		var has: bool = false
+		for id in (run.get("offers") as Array):
+			has = has or Boons.rarity(str(id)) == "mythic"
+		kept_mythic = kept_mythic and has
+	check("a keeper's reroll still offers a mythic (Double Axe on)", kept_mythic, run.get("offers"))
+	run.call("pick", 0)
+	_descent_enter(run, "down")
+	check("  and each floor brings a free one again, the price back to %d" % RunScript.REROLL_GOLD,
+		int(run.get("rerolls_free")) == RunScript.REROLL_FREE and int(run.call("reroll_cost")) == 0
+		and int(run.get("rerolls_paid")) == 0)
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  (the Descent's reroll: done)")

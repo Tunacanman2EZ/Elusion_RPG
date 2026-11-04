@@ -249,19 +249,28 @@ static func wave_scale() -> float:
 
 
 static func offers(rng: RandomNumberGenerator, count: int = 3, at_least: String = "", axe: bool = false,
-		one_mythic: bool = false) -> Array:
+		one_mythic: bool = false, not_these: Array = []) -> Array:
 	"""Up to `count` different upgrades not yet at their most, drawn by their
 	rarity's weight - only `at_least` ("rare") or better if asked. Mythic
 	ones only for a warrior wearing the Double Axe (`axe`); `one_mythic` (a
-	keeper's pick) makes sure one is among them."""
+	keeper's pick) makes sure one is among them. A REROLL passes the cards it
+	replaces as `not_these`, left out while there are enough others."""
 	var floor_rank: int = maxi(0, RARITIES.find(at_least))
 	var open: Array = []
 	for id in ORDER:
 		if level(id) < int(BOONS[id]["most"]) and RARITIES.find(rarity(id)) >= floor_rank \
 				and (axe or rarity(id) != "mythic"):
 			open.append(id)
+	var every: Array = open.duplicate()
+	var fresh: Array = open.filter(func(id: String) -> bool: return not not_these.has(id))
+	if fresh.size() >= count:
+		open = fresh
 	if axe and one_mythic:
 		var mythics: Array = open.filter(func(id: String) -> bool: return rarity(id) == "mythic")
+		# A keeper's reroll keeps its mythic even if the one on the table was
+		# the last.
+		if mythics.is_empty():
+			mythics = every.filter(func(id: String) -> bool: return rarity(id) == "mythic")
 		if not mythics.is_empty():
 			var first: String = str(mythics[rng.randi_range(0, mythics.size() - 1)])
 			open.erase(first)
