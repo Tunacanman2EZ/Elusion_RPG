@@ -2926,6 +2926,12 @@ func _test_connections_are_kept_open() -> void:
 	var kept_online: bool = Api.server_online
 	var kept_known: bool = Api.reachability_known
 	var kept_token: String = Api.token
+	# ROOM FIRST (0.117.2). Earlier sections ask the suite's address, where no
+	# server runs; on the owner's Windows each such request held a connection
+	# until its 10 s ran out, so all six could still be held here, and "three
+	# at once" read [3, 1] - three answered, in turn, on the one connection
+	# left. The pool is let empty before anything here is counted.
+	await _larder_wait(func() -> bool: return not pool.busy(), 15.0)
 	Api.token = ""
 	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % fake.port
 	var opened: int = pool.connections_opened

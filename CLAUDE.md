@@ -3561,24 +3561,30 @@ run together; neither changes what anybody sees or how anything behaves.
 steps the old code (`_SWARM_WAS`, kept as text) beside the new and compares
 to the bit: **change the step on purpose and change `_SWARM_WAS` with it.**
 
-**And the suite on Windows (0.117.1).** The owner's first full run of 0.117.0:
-6,233 passed, 3 failed, none of them in code 0.117.0 touched, and all three
-passing in the container in the same order. **A request to the suite's
-address (127.0.0.1:5000, where no server runs) fails at once on Linux and
-takes about two seconds on Windows**, which is what two of them came down to:
+**And the suite on Windows (0.117.1, 0.117.2).** The owner's first full run
+of 0.117.0: 6,233 passed, 3 failed, none of them in code 0.117.0 touched,
+and all three passing in the container in the same order. **A request to
+the suite's address (127.0.0.1:5000, where no server runs) fails at once on
+Linux; on Windows it holds its connection until its 10 s (`Api.TIMEOUT`) run
+out**, and the pool has six (`ConnectionPool.MAX_LINES`):
 
 - `_test_the_gm_panel_tidied_and_live()`: the panel's clock starts only once
-  the open's dozen reads are done; it waited three frames, now up to 60 s
-  (`_larder_wait()`).
+  the open's dozen reads are done. 0.117.1 waited up to 60 s for them and
+  still failed on Windows; since 0.117.2 the open's reads go to an address
+  the game cannot use (`"suite-no-server"`, no http://), which the pool
+  answers on the next frame everywhere, and the old address is put back
+  once the clock is checked. 195 ms with every connection held.
 - `_test_a_big_fight_is_cheap()`: the sleeper's round is every node in
   "enemies" in the tree, and ten from an earlier section were still there
   (8 of 40 slept in the first quarter). They are set aside for the round
   check and put back, and the run prints how many - **which section leaves
-  them is still to find**, from that line.
-- `_test_connections_are_kept_open()`: "three at once" read [3, 1] - three
-  answered, one connection - which cannot say whether two failed or all
-  three went in turn on one. It now prints each answer, the connections
-  accepted and opened, for the next run on Windows to tell.
+  them is still to find**, from that line (the 0.117.1 run left none).
+- `_test_connections_are_kept_open()`: "three at once" read 3 answered,
+  1 connection, all "true 200" - five connections still held by earlier
+  sections' requests, so the three went in turn on the one left. Since
+  0.117.2 it lets the pool empty first (up to 15 s). Reproduced in the
+  container with five requests on a server that takes them and never
+  answers: the old check failed exactly so, the new one passes.
 
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
