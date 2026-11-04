@@ -8,7 +8,6 @@
 #   - each effect, a switch and an amount: monsters hit harder (%), have more
 #     health (%) and move faster (%), loot drops more often (x), resistance
 #     counts more (x), more XP (%)
-#   - stir a land now, for a whole stir
 #   - what is stirring now, the last few stirs, and how hunted each land has
 #     been today (the least hunted is the next to stir)
 #
@@ -16,31 +15,40 @@
 # what each button did is said on the tab AND in the panel's Results box
 # (`report`, OwnerPanel._say) - the owner: "i want refresh to say it in the
 # results". Opening the panel reads quietly; only a failure is reported then.
-# Save sends every setting at once to POST /api/server/world, and Stir it now
-# POST /api/server/world/stir. Both are owner-only and ask for the password
-# again on a hardened login (STEP-UP, the HUD's prompt). The server checks
-# every value; the controls only offer the ranges it allows.
+# Save sends every setting at once to POST /api/server/world: owner-only, and
+# it asks for the password again on a hardened login (STEP-UP, the HUD's
+# prompt). The server checks every value; the controls only offer the ranges
+# it allows.
+#
+# STIRRING BY HAND IS THE EVENTS TAB'S (0.112.1). The owner: "in events we can
+# stir the world and in world we have stir also" - and, asked which to keep,
+# Events: "A land stirs" there is now or later, for 1 to 72 hours, named, with
+# a dry run and a report. This tab's "Stir it now" (POST /api/server/world/stir,
+# still on the server) is gone, and a line says where it went (TO_EVENTS).
+#
+# KEPT WHILE EDITED (0.112.1, LIVE). The GM panel reads this tab again while
+# it is open; a setting changed and not saved (`edited`) is never put back
+# from the server by a read on its own - only Save, or Refresh by hand, which
+# asks for the server's settings.
 #
 # THE NEXT STIR AND WHY (0.50.0). The server says which land it would stir
 # when the stir on now ends, and why ("next", the API's insights/ package) -
-# it passes over a land where a new player is learning. The tab says it, and
-# offers that land for "Stir it now": taking it now is accepting, picking
-# another is overriding. "Lands" opens the Lands window (landreport.gd):
-# every land's numbers and when players are on.
+# it passes over a land where a new player is learning. The tab says it.
+# "Lands" opens the Lands window (landreport.gd): every land's numbers and
+# when players are on.
 extends VBoxContainer
 class_name WorldTab
 
 
 const PATH := "/api/server/world"
-const STIR_PATH := "/api/server/world/stir"
+# Where stirring a land by hand went (STIRRING BY HAND IS THE EVENTS TAB'S).
+const TO_EVENTS := "Stir a land by hand: Events tab."
 const SAY_GOOD := Color(0.55, 0.86, 0.6)
 const SAY_BAD := Color(0.95, 0.55, 0.5)
 const SAY_NOTE := Color(0.78, 0.82, 0.87)
 const HEAD := Color(0.93, 0.73, 0.3)
 # The GM panel's inside width, near enough: it is 370 wide.
 const WIDTH := 250.0
-const LANDS := [Element.Type.DARK, Element.Type.LIGHT, Element.Type.ICE, Element.Type.WIND,
-	Element.Type.EARTH, Element.Type.FIRE, Element.Type.WATER]
 # The effects, in the order they are drawn: [switch key, amount key, words,
 # unit, low, high, step, hint].
 const EFFECTS := [
@@ -81,12 +89,13 @@ var effect_amounts: Dictionary = {}
 var save_button: Button
 var refresh_button: Button
 var lands_button: Button
-var land_pick: OptionButton
-var stir_button: Button
+var to_events_label: Label
 var lands_label: Label
 var recent_label: Label
 var say_label: Label
 var _busy: bool = false
+# A setting changed here and not yet saved (KEPT WHILE EDITED).
+var edited: bool = false
 
 
 func _init() -> void:
@@ -98,6 +107,7 @@ func _init() -> void:
 func _build() -> void:
 	# NARROW AND SHORT: the GM panel is 370 wide and holds its tallest tab at
 	# its drawn size (the suite measures it), so this tab is laid out to fit.
+	add_child(EventsTab.heading("THE STIRRING LANDS"))
 	status_label = _label("The stirring lands: not read yet.", HEAD)
 	status_label.name = "status"
 	add_child(status_label)
@@ -111,11 +121,13 @@ func _build() -> void:
 	on_switch.focus_mode = Control.FOCUS_NONE
 	on_switch.tooltip_text = "Off: nothing stirs, and the game is as it was."
 	top.add_child(on_switch)
+	on_switch.toggled.connect(_on_edited.unbind(1))
 	top.add_child(_label("Each lasts", SAY_NOTE, false))
 	hours_box = _spin(1.0, 24.0, 1.0, " h")
 	hours_box.name = "hours"
 	hours_box.tooltip_text = "Hours a land stirs. A change applies from the next stir."
 	top.add_child(hours_box)
+	hours_box.value_changed.connect(_on_edited.unbind(1))
 
 	var grid := GridContainer.new()
 	grid.name = "effects"
@@ -134,11 +146,13 @@ func _build() -> void:
 		box.tooltip_text = str(effect[7])
 		box.focus_mode = Control.FOCUS_NONE
 		grid.add_child(box)
+		box.toggled.connect(_on_edited.unbind(1))
 		effect_switches[effect[0]] = box
 		var amount: SpinBox = _spin(float(effect[4]), float(effect[5]), float(effect[6]), " " + str(effect[3]))
 		amount.name = str(effect[1])
 		amount.tooltip_text = str(effect[7])
 		grid.add_child(amount)
+		amount.value_changed.connect(_on_edited.unbind(1))
 		effect_amounts[effect[1]] = amount
 
 	var buttons := HBoxContainer.new()
@@ -160,21 +174,11 @@ func _build() -> void:
 	lands_button.pressed.connect(_on_lands_pressed)
 	buttons.add_child(lands_button)
 
-	var stir_row := HBoxContainer.new()
-	stir_row.add_theme_constant_override("separation", 8)
-	add_child(stir_row)
-	stir_row.add_child(_label("Stir now:", SAY_NOTE, false))
-	land_pick = OptionButton.new()
-	land_pick.name = "land"
-	land_pick.focus_mode = Control.FOCUS_NONE
-	for element in LANDS:
-		land_pick.add_item(Element.name_for(element).capitalize(), element)
-	stir_row.add_child(land_pick)
-	stir_button = _button("Stir it now", "Ends the stir going on and starts this land's - a whole stir long, announced to everyone.")
-	stir_button.name = "stir"
-	stir_button.pressed.connect(stir)
-	stir_button.disabled = true
-	stir_row.add_child(stir_button)
+	to_events_label = _label(TO_EVENTS, SAY_NOTE, false)
+	to_events_label.name = "toevents"
+	to_events_label.tooltip_text = "Events tab, \"A land stirs\": now or later, for 1 to 72 hours, with a dry run and a report."
+	to_events_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(to_events_label)
 
 	lands_label = _label("", SAY_NOTE)
 	lands_label.name = "lands"
@@ -185,6 +189,10 @@ func _build() -> void:
 	say_label = _label("", SAY_NOTE)
 	say_label.name = "say"
 	add_child(say_label)
+
+
+func _on_edited() -> void:
+	edited = true
 
 
 func _label(text: String, colour: Color, wraps: bool = true) -> Label:
@@ -285,6 +293,8 @@ func refresh(by_hand: bool = false) -> void:
 	goes in the Results box; opening the panel reads quietly."""
 	if _busy:
 		return
+	if by_hand:
+		edited = false
 	_busy = true
 	var res: Dictionary = await fetch.call(PATH)
 	_busy = false
@@ -295,7 +305,6 @@ func refresh(by_hand: bool = false) -> void:
 		# from them until a read works.
 		answer = {}
 		save_button.disabled = true
-		stir_button.disabled = true
 		status_label.text = "The stirring lands: not read."
 		_say(refusal(res), SAY_BAD)
 		return
@@ -335,28 +344,11 @@ func save() -> void:
 		_say(refusal(res), SAY_BAD)
 		return
 	var saved: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	edited = false
 	show_answer(saved)
 	var now_set: Dictionary = saved.get("settings", {}) if saved.get("settings") is Dictionary else {}
 	_say("Saved. The game hears it within one poll.", SAY_GOOD,
 		"Saved - the game hears it within one poll. " + settings_text(now_set))
-
-
-func stir() -> void:
-	if _busy or answer.is_empty() or land_pick.selected < 0:
-		return
-	var element: int = land_pick.get_item_id(land_pick.selected)
-	_busy = true
-	_say_here("Stirring the %s lands..." % Element.name_for(element))
-	var res: Dictionary = await send.call(STIR_PATH, {"element": element})
-	_busy = false
-	if not is_instance_valid(self):
-		return
-	if not res.get("ok", false):
-		_say(refusal(res) if int(res.get("status", 0)) != 409
-			else "Switch the stirring lands on first (and save).", SAY_BAD)
-		return
-	show_answer(res.get("data", {}) if res.get("data") is Dictionary else {})
-	_say("The %s lands stir - announced to everyone online." % Element.name_for(element).capitalize(), SAY_GOOD)
 
 
 # =============================================================================
@@ -366,26 +358,21 @@ func stir() -> void:
 func show_answer(data: Dictionary) -> void:
 	answer = data
 	var settings: Dictionary = data.get("settings", {}) if data.get("settings") is Dictionary else {}
-	on_switch.set_pressed_no_signal(bool(settings.get("on", false)))
-	hours_box.set_value_no_signal(float(settings.get("hours", 3)))
-	for effect in EFFECTS:
-		(effect_switches[effect[0]] as CheckBox).set_pressed_no_signal(bool(settings.get(effect[0], false)))
-		(effect_amounts[effect[1]] as SpinBox).set_value_no_signal(float(settings.get(effect[1], effect[4])))
+	# KEPT WHILE EDITED: the owner's unsaved settings stay as typed.
+	if not edited:
+		on_switch.set_pressed_no_signal(bool(settings.get("on", false)))
+		hours_box.set_value_no_signal(float(settings.get("hours", 3)))
+		for effect in EFFECTS:
+			(effect_switches[effect[0]] as CheckBox).set_pressed_no_signal(bool(settings.get(effect[0], false)))
+			(effect_amounts[effect[1]] as SpinBox).set_value_no_signal(float(settings.get(effect[1], effect[4])))
 	status_label.text = status_text(data)
 	var state: Dictionary = data.get("state", {}) if data.get("state") is Dictionary else {}
 	var land: int = int(state.get("element", 0))
 	status_label.add_theme_color_override("font_color",
 		Element.colour_for(land).lightened(0.35) if land != 0 else HEAD)
 	lands_label.text = next_text(data) if data.get("next") is Dictionary else lands_text(data.get("lands", []))
-	# THE WORLD'S CHOICE, OFFERED: "Stir it now" takes it now; picking
-	# another land overrides it.
-	if data.get("next") is Dictionary:
-		var index: int = land_pick.get_item_index(int((data.get("next") as Dictionary).get("element", 0)))
-		if index >= 0:
-			land_pick.select(index)
 	recent_label.text = recent_text(data.get("recent", []))
 	save_button.disabled = false
-	stir_button.disabled = not bool(settings.get("on", false))
 
 
 static func status_text(data: Dictionary) -> String:

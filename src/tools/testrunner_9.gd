@@ -672,7 +672,7 @@ func _test_the_whole_map() -> void:
 	check("every landmark has its pin, walked or not; monsters only on ground seen",
 		not _func_body(map_src, "func _collect_landmarks(").contains("is_seen")
 		and _func_body(map_src, "func _draw_monsters(").contains("WorldMap.is_seen(")
-		and _func_body(map_src, "func refresh(").contains("WorldMap.display_image(_area, true)"))
+		and _func_body(map_src, "func refresh(").contains("WorldMap.fog_image(_area, true)"))
 
 	WorldMap._terrain.erase(_MAP_AREA)
 	WorldMap._seen.erase(_MAP_AREA)
@@ -4070,7 +4070,22 @@ func _test_the_descent() -> void:
 	var offered: Array = (run.get("offers") as Array).duplicate()
 	var picking: bool = int(run.get("state")) == RunScript.State.PICK and offered.size() == 3 \
 		and bool((run.get("hud").get("pick_panel") as Control).visible) and not bool(doors[0].get("open"))
-	var took: bool = bool(run.call("pick", 0)) and Boons.level(str(offered[0])) == 1
+	# CONFIRMED (0.112.1): a click on a card chooses it; Take it takes it.
+	var pick_hud: Node = run.get("hud")
+	var pick_cards: Array = pick_hud.get("cards")
+	var take: Button = pick_hud.get("take_button")
+	var dimmed: bool = take != null and take.disabled
+	(pick_cards[1] as Button).pressed.emit()
+	var chose_one: bool = int(pick_hud.get("chosen")) == 1 and int(run.get("state")) == RunScript.State.PICK \
+		and Boons.level(str(offered[1])) == 0 and not take.disabled \
+		and take.text == "Take %s" % str(Boons.BOONS[str(offered[1])]["name"])
+	(pick_cards[0] as Button).pressed.emit()
+	var chose_other: bool = int(pick_hud.get("chosen")) == 0 and Boons.level(str(offered[0])) == 0
+	check("  a card clicked is only chosen - Take it (dimmed until then) takes it - so a stray swing's click takes nothing (0.112.1)",
+		dimmed and chose_one and chose_other, [dimmed, chose_one, chose_other])
+	take.pressed.emit()
+	var took: bool = int(run.get("state")) != RunScript.State.PICK and Boons.level(str(offered[0])) == 1 \
+		and Boons.level(str(offered[1])) == 0 and int(pick_hud.get("chosen")) == -1
 	var promise_a: String = str(doors[0].get("reward"))
 	var promise_b: String = str(doors[1].get("reward"))
 	check("  the last one down and the room is clear: three upgrades offered (%s), one taken, then the doors open, each promising a room (%s, %s)"
@@ -4169,3 +4184,291 @@ func _test_the_descent() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  (the descent: done)")
+
+
+# =============================================================================
+# AFTER THE FIRST DESCENT (0.112.1)
+# =============================================================================
+# The owner, playing 0.112.0: "having directional errors in the minigame",
+# "map is lagging when walking and open", "the arrow pointing to the first
+# enemy jitters", "we need a confirm button for upgrades" (held in
+# _test_the_descent()), and "when a player goes into a house i can see them
+# still they are standing on the house on my screen".
+func _test_after_the_first_descent() -> void:
+	section("AFTER THE FIRST DESCENT - the aim in a room smaller than the view, a steady arrow, a map that walks, players in houses (0.112.1)")
+	const PlayerCode := preload("res://src/characters/player.gd")
+	# THE AIM. A camera held to a room no wider than the view is put in the
+	# middle of it, as Godot puts it; a wider room still holds it at the edge.
+	var held := Camera2D.new()
+	held.zoom = Vector2(2, 2)
+	held.limit_left = 0
+	held.limit_top = 0
+	held.limit_right = 640
+	held.limit_bottom = 408
+	var mid: Vector2 = PlayerCode.camera_centre(held, Vector2(60, 120), Vector2(1280, 720))
+	held.zoom = Vector2(3, 3)
+	var edge: Vector2 = PlayerCode.camera_centre(held, Vector2(60, 120), Vector2(1280, 720))
+	held.free()
+	check("a room no wider than the view is centred, as Godot centres it; a wider one holds the camera at its edge",
+		mid.is_equal_approx(Vector2(320, 180)) and edge.is_equal_approx(Vector2(213.33333, 120)), [mid, edge])
+	var o := Vector2(-64000, -64000)
+	var room := Node2D.new()
+	add_child(room)
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate() as Node2D
+	room.add_child(warrior)
+	var cam: Camera2D = warrior.get_node("camera2d") as Camera2D
+	cam.make_current()
+	cam.limit_left = int(o.x)
+	cam.limit_top = int(o.y)
+	cam.limit_right = int(o.x) + 640
+	cam.limit_bottom = int(o.y) + 408
+	var worst := 0.0
+	for zoom in [3.0, 2.0, 1.0]:
+		cam.zoom = Vector2(zoom, zoom)
+		for spot in [Vector2(60, 120), Vector2(590, 300)]:
+			warrior.global_position = o + spot
+			warrior.reset_physics_interpolation()
+			for i in 3:
+				await get_tree().physics_frame
+			await get_tree().process_frame
+			var screen := Vector2(900, 200)
+			var truth: Vector2 = warrior.get_canvas_transform().affine_inverse() * screen
+			worst = maxf(worst, ((warrior.call("world_point_at", screen) as Vector2) - truth).length())
+			worst = maxf(worst, ((warrior.call("screen_point_of", truth) as Vector2) - screen).length())
+	check("  in the Descent's room at 3x, 2x and 1x the cursor's world point is where the cursor is (it was up to 287 px off zoomed out), and back again",
+		worst < 0.5, worst)
+	room.queue_free()
+	await get_tree().process_frame
+
+	# THE ARROW: placed from where things are drawn, and holding on.
+	var GuideCode := preload("res://src/ui/guide.gd")
+	var guide_code: String = _code_src("res://src/ui/guide.gd")
+	check("the » is placed from where the character and the target are drawn - their last two ticks blended - not the drawn camera times the tick",
+		_func_body(guide_code, "func _process(").contains("_on_screen(")
+		and not _func_body(guide_code, "func _process(").contains("get_global_transform_with_canvas")
+		and _func_body(guide_code, "func _drawn(").contains("get_physics_interpolation_fraction()"))
+	var near_edge: Vector2 = Vector2(100, 100) + Vector2(GuideCode.NEAR * 1.1, 0)
+	check("  over a near target it stays over it a little further out, so it does not flick at the edge",
+		not bool(GuideCode.place(Vector2(100, 100), near_edge)["over"])
+		and bool(GuideCode.place(Vector2(100, 100), near_edge, 1.0, true)["over"]))
+	check("  and it keeps pointing at its monster unless another is a good deal nearer",
+		_func_body(guide_code, "func _find_target(").contains("STICKY") and GuideCode.STICKY > 1.0)
+
+	# THE MAP: the fog over the terrain is the old picture, and a step
+	# repaints the fog where it uncovered, never the picture.
+	var area_id := "zz_suite_fog"
+	var ground := Color(0.33, 0.45, 0.26)
+	var terrain := Image.create_empty(4, 2, false, Image.FORMAT_RGBA8)
+	terrain.fill(Color(0, 0, 0, 0))
+	for x in 4:
+		terrain.set_pixel(x, 0, ground)
+	for x in 3:
+		terrain.set_pixel(x, 1, ground)
+	WorldMap._terrain[area_id] = {"image": terrain, "origin": Vector2i.ZERO, "size": Vector2i(4, 2), "tile": Vector2i(16, 16)}
+	WorldMap._seen[area_id] = PackedByteArray([0b11])
+	var same := true
+	for whole in [true, false]:
+		var baked: Image = WorldMap.display_image(area_id, whole)
+		var fog: Image = WorldMap.fog_image(area_id, whole)
+		for y in 2:
+			for x in 4:
+				var under: Color = terrain.get_pixel(x, y)
+				var over: Color = fog.get_pixel(x, y)
+				var laid: Color = under.blend(over) if under.a > 0.0 else over
+				var want: Color = baked.get_pixel(x, y)
+				if absf(laid.r - want.r) > 0.01 or absf(laid.g - want.g) > 0.01 or absf(laid.b - want.b) > 0.01 or absf(laid.a - want.a) > 0.01:
+					same = false
+	check("the map's fog laid over its terrain is the picture it was, seen and unseen, either way", same)
+	var map: Control = _MapScene.instantiate() as Control
+	add_child(map)
+	map.set("_area", area_id)
+	map.visible = true
+	map.call("refresh", area_id)
+	var picture: Variant = map.get("_picture")
+	var before: Color = (map.get("_fog") as Image).get_pixel(2, 0)
+	WorldMap._seen[area_id] = PackedByteArray([0b111])
+	WorldMap.last_reveal = Rect2i(2, 0, 1, 1)
+	map.call("_on_explored", area_id)
+	var after: Color = (map.get("_fog") as Image).get_pixel(2, 0)
+	check("  a step that uncovers ground clears that much of the fog and builds no new picture (it was 56 ms a step in the Big Field, now under 1)",
+		map.get("_picture") == picture and before.a > 0.5 and after.a < 0.01
+		and not _func_body(_code_src("res://src/ui/menus/mapscreen.gd"), "func _on_explored(").contains("refresh()\n\tWorldMap"),
+		[before, after])
+	map.queue_free()
+	WorldMap._terrain.erase(area_id)
+	WorldMap._seen.erase(area_id)
+
+	# PLAYERS IN HOUSES.
+	var house: Node2D = (load("res://scene/walls/shophouse.tscn") as PackedScene).instantiate() as Node2D
+	house.global_position = o + Vector2(2000, 2000)
+	add_child(house)
+	var trigger: Area2D = house.get_node("trigger") as Area2D
+	var box: CollisionShape2D = trigger.get_node("collisionshape2d") as CollisionShape2D
+	var stand := GDScript.new()
+	stand.source_code = "extends Node2D\nfunc set_hidden_indoors(hidden: bool) -> void:\n\tvisible = not hidden\n"
+	stand.reload()
+	var them := Node2D.new()
+	them.set_script(stand)
+	them.add_to_group(&"remoteplayers")
+	add_child(them)
+	them.global_position = box.global_position
+	trigger.call("hide_those_inside")
+	var hidden_out: bool = not them.visible
+	trigger.set("me_inside", true)
+	trigger.call("hide_those_inside")
+	var shown_in: bool = them.visible
+	trigger.set("me_inside", false)
+	trigger.call("hide_those_inside")
+	them.global_position = box.global_position + Vector2(0, 400)
+	trigger.call("hide_those_inside")
+	var shown_out: bool = them.visible
+	check("another player inside the shop is hidden from you outside it, shown when you are in, and again when they come out",
+		hidden_out and shown_in and shown_out and trigger.call("covers", box, box.global_position)
+		and not trigger.call("covers", box, box.global_position + Vector2(0, 400)), [hidden_out, shown_in, shown_out])
+	them.global_position = box.global_position
+	trigger.call("hide_those_inside")
+	house.free()
+	check("  and a house that goes shows whoever it hid", them.visible)
+	var RemoteCode: GDScript = load("res://src/characters/remoteplayer.gd") as GDScript
+	var picture_node: Node2D = RemoteCode.new() as Node2D
+	var pet := AnimatedSprite2D.new()
+	picture_node.set("_pet", pet)
+	picture_node.call("set_hidden_indoors", true)
+	var both_hidden: bool = not picture_node.visible and not pet.visible
+	picture_node.call("set_hidden_indoors", false)
+	check("  a player's picture hides its pet with it", both_hidden and picture_node.visible and pet.visible)
+	pet.free()
+	picture_node.free()
+	them.queue_free()
+	await get_tree().process_frame
+	print("  (after the first descent: done)")
+
+
+# =============================================================================
+# THE GM PANEL, TIDIED AND LIVE (0.112.1)
+# =============================================================================
+# The owner: "can you update all of my tabs in gm panel" - and chose all of
+# tidy and dedupe, a new look, live data and what was missing. Steps 1 and 2:
+# the look and the tidy, and live data.
+func _test_the_gm_panel_tidied_and_live() -> void:
+	section("THE GM PANEL, TIDIED AND LIVE - every tab a button away, one text size, each switch in one place, tabs read again while open (0.112.1)")
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tabs: TabContainer = gm.get_node("%ownertabs") as TabContainer
+	var buttons: Array = gm.get("tab_buttons")
+	var grid: GridContainer = gm.find_child("tabbuttons", true, false) as GridContainer
+	var titles: Array = buttons.map(func(b: Button) -> String: return b.text)
+	check("every tab is a button, four to a row, where the strip that showed four of seven was",
+		not tabs.tabs_visible and grid != null and grid.columns == 4 and titles == ["Account", "Testing", "Server", "World", "Events", "Economy", "Health", "Guilds"]
+		and grid.get_index() == gm.get_node("%tabsscroll").get_index() - 1, titles)
+	(buttons[5] as Button).pressed.emit()
+	check("  a button picks its tab and is lit", tabs.current_tab == 5 and (buttons[5] as Button).button_pressed
+		and not (buttons[0] as Button).button_pressed)
+	tabs.current_tab = 0
+	check("  and the tab picked another way lights its button", (buttons[0] as Button).button_pressed
+		and not (buttons[5] as Button).button_pressed)
+	check("one text size: the tabs made in code draw at the scene's 13",
+		tabs.theme != null and tabs.theme.default_font_size == 13
+		and (gm.get("world_tab").get("on_switch") as Control).get_theme_font_size("font_size") == 13)
+	var testing: Node = tabs.get_node("testing")
+	var server: Node = tabs.get_node("server")
+	check("PvP and Trading are the Server tab's, under WHAT PLAYERS MAY DO - not Testing's (\"your own character only\")",
+		server.is_ancestor_of(gm.get_node("%pvpbutton")) and server.is_ancestor_of(gm.get_node("%tradebutton"))
+		and not testing.is_ancestor_of(gm.get_node("%pvpbutton"))
+		and server.find_child("playlabel", true, false) is Label
+		and (server.find_child("playlabel", true, false) as Label).text == "WHAT PLAYERS MAY DO")
+	check("  each switch in one place: the kill receipts the Health tab's alone, the item-id row gone (the catalogue gives)",
+		gm.get_node_or_null("%receiptsbutton") == null and gm.get("receipts_button") == gm.get("health_tab").get("receipts_switch")
+		and gm.get_node_or_null("%iteminput") == null and gm.get_node_or_null("%itembutton") == null
+		and gm.get_node_or_null("%cataloguebutton") != null)
+
+	# LIVE.
+	var world: Node = gm.get("world_tab")
+	var asked: Array = []
+	var now := int(Time.get_unix_time_from_system())
+	var view := {"settings": {"on": true, "hours": 3, "hit_on": true, "hit_percent": 25}, "state": {"on": true, "element": 0, "now": now},
+		"recent": [], "lands": [], "now": now}
+	world.set("fetch", func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": view.duplicate(true)})
+	gm.visible = true
+	await get_tree().process_frame
+	gm.set("read_at", {})
+	asked.clear()
+	(buttons[3] as Button).pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var read_on_pick: bool = asked == ["/api/server/world"]
+	(buttons[0] as Button).pressed.emit()
+	(buttons[3] as Button).pressed.emit()
+	await get_tree().process_frame
+	check("a tab picked is read again when its last read is stale - and not again within %d s" % int(gm.get("STALE_SECONDS")),
+		read_on_pick and asked.size() == 1, asked)
+	var timer: Timer = gm.get("_live_timer")
+	check("  and a clock reads the tab shown every %d s while the panel is open" % int(gm.get("LIVE_SECONDS")),
+		timer != null and is_equal_approx(timer.wait_time, 30.0) and not timer.is_stopped())
+	(world.get("hours_box") as SpinBox).value = 7.0
+	view["settings"]["hours"] = 3
+	await world.refresh()
+	var kept: bool = is_equal_approx((world.get("hours_box") as SpinBox).value, 7.0) and bool(world.get("edited"))
+	await world.refresh(true)
+	check("  a World setting changed and not saved is kept through a read; Refresh by hand puts the server's back",
+		kept and is_equal_approx((world.get("hours_box") as SpinBox).value, 3.0) and not bool(world.get("edited")))
+	gm.visible = false
+	await get_tree().process_frame
+	check("  closed, the clock stops", timer.is_stopped())
+
+	var events: Node = gm.get("events_tab")
+	var two := {"events": [{"id": 4, "name": "Double XP", "state": "coming", "starts_at": now + 600, "ends_at": now + 4200},
+		{"id": 9, "name": "1.5x Loot", "state": "coming", "starts_at": now + 900, "ends_at": now + 4500}], "now": now}
+	events.call("show_answer", two)
+	var pick: OptionButton = events.get("cancel_pick")
+	pick.select(pick.get_item_index(9))
+	events.call("show_answer", two)
+	check("the Events tab keeps the event picked to call off through a read",
+		pick.get_item_id(pick.selected) == 9)
+	var economy: Node = gm.get("economy_tab")
+	var economy_code: String = _code_src("res://src/ui/owner/economytab.gd")
+	check("  and the Economy tab's clock reads the flow and the canary, never rebuilding the rules' boxes under a typed number",
+		_func_body(economy_code, "func refresh_live(").contains("refresh_flow(") and _func_body(economy_code, "func refresh_live(").contains("refresh_canary(")
+		and not _func_body(economy_code, "func refresh_live(").contains("refresh_rules(")
+		and _func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func refresh_tab(").contains("economy_tab.refresh_live()")
+		and economy.has_method("refresh_live"))
+	# THE GUILDS TAB (step 3): every guild, renamed or disbanded.
+	var guilds: Node = gm.get("guilds_tab")
+	var sent: Array = []
+	var list := {"guilds": [{"name": "zeta", "founded_by": "bo", "created_at": now - 86400, "size": 1, "leader": "bo"},
+		{"name": "Alpha Wolves", "founded_by": "cy", "created_at": now - 3600, "size": 5, "leader": "cy"}], "now": now, "may_disband": true}
+	guilds.set("fetch", func(_path: String) -> Dictionary: return {"ok": true, "status": 200, "data": list.duplicate(true)})
+	guilds.set("send", func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		return {"ok": true, "status": 200, "data": {"guild": str(body.get("name", body.get("guild"))), "was": str(body.get("guild")),
+			"state": "renamed" if body.get("action") == "rename" else "disbanded", "members_removed": 5}})
+	await guilds.refresh()
+	var gpick: OptionButton = guilds.get("guild_pick")
+	check("the Guilds tab lists every guild - name, members, leader - sorted, and says what the one picked is",
+		guilds.get_parent() == tabs and gpick.item_count == 2 and gpick.get_item_text(0) == "Alpha Wolves - 5 members, led by cy"
+		and gpick.get_item_text(1) == "zeta - 1 member, led by bo"
+		and (guilds.get("about_label") as Label).text.contains("5 members, led by cy"), [gpick.get_item_text(0), (guilds.get("about_label") as Label).text])
+	await guilds.rename()
+	var asked_nothing: bool = sent.is_empty()
+	(guilds.get("name_edit") as LineEdit).text = "Alpha Pack"
+	(guilds.get("reason_edit") as LineEdit).text = "name was rude"
+	await guilds.rename()
+	check("  Rename needs a name and a reason, then asks the staff route",
+		asked_nothing and sent == [["/api/staff/guild", {"guild": "Alpha Wolves", "action": "rename", "name": "Alpha Pack", "reason": "name was rude"}]], sent)
+	sent.clear()
+	await guilds.disband()
+	var armed: bool = sent.is_empty() and (guilds.get("disband_button") as Button).text == "Sure? Disband"
+	await guilds.disband()
+	check("  Disband asks twice, then takes it down with the reason",
+		armed and sent == [["/api/staff/guild", {"guild": "Alpha Wolves", "action": "disband", "reason": "name was rude"}]], sent)
+	check("  and the tab is read with the others when picked and on the clock",
+		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func refresh_tab(").contains("guilds_tab.refresh()"))
+	gm.queue_free()
+	Api.is_owner = was_owner
+	await get_tree().process_frame
+	print("  (the GM panel, tidied and live: done)")

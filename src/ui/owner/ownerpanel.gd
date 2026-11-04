@@ -23,10 +23,38 @@
 # do backquote and Esc. It was a fixed box pinned to the top-left with no way
 # out but the key that opened it.
 #
-# THREE TABS, NO SCROLLING. Account (look up, sanctions, rank, moving people),
-# Testing (your own character) and Server (the switch). The tab strip sizes to
-# its tallest tab - use_hidden_tabs_for_min_size - so switching tabs never
-# resizes the window under the mouse, and the results box takes what is left.
+# SEVEN TABS, TWO ROWS OF BUTTONS (0.112.1). Account (look up, sanctions,
+# rank, moving people), Testing (your own character), Server (who may log in,
+# old versions, co-owners, and what players may do: PvP and trading), World,
+# Events, Economy and Health. The tab container sizes to its tallest tab -
+# use_hidden_tabs_for_min_size - so switching never resizes the window under
+# the mouse, and the results box takes what is left.
+#
+# THE OWNER: "can you update all of my tabs in gm panel" - tidy, a new look,
+# live data and what was missing. In this step (the look and the tidy):
+#   - the strip showed four of seven with arrows; its own bar is hidden and a
+#     grid of TAB_COLUMNS buttons picks the tab (_build_tab_buttons())
+#   - one text size: the code-built tabs drew at the theme's 16 beside the
+#     scene's 13 (TEXT_SIZE, a theme on the tab container)
+#   - PvP and Trading were on the Testing tab, "your own character only" -
+#     they are the server's, and moved to the Server tab; "Kills need the
+#     server's count" was on Testing and Health both, and is Health's alone
+#     (receipts_button is the Health tab's switch now)
+#   - three ways to give an item: the item-id row went (the catalogue does
+#     it, and Account's Give item for a player)
+#   - Gifts ledger moved to the Economy tab, Player stats to the Health tab
+#   - (step 3) an eighth tab, Guilds (guildstab.gd), in the grid's empty
+#     eighth place
+#
+# LIVE (0.112.1, step 2 - the owner chose "Live data"). Each tab read the
+# server once, when the panel opened. Now the tab shown is read again when it
+# is picked, if its last read is over STALE_SECONDS old, and every
+# LIVE_SECONDS while the panel is open (refresh_tab(), _live_timer). Quietly:
+# nothing in Results, and never over what the owner has typed and not sent -
+# the World tab keeps edited settings (WorldTab.edited), the Economy tab's
+# rules are not rebuilt by the clock (EconomyTab.refresh_live()), the Events
+# tab keeps the event picked to call off. The Health tab keeps its own
+# half-minute clock.
 extends Control
 
 
@@ -54,7 +82,17 @@ extends Control
 
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
-const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events", "Economy", "Health"]
+const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events", "Economy", "Health", "Guilds"]
+# THE GUILDS TAB (0.112.1, step 3 - "what was missing"): every guild, renamed
+# or disbanded; the server had both routes and the game asked neither.
+const GuildsTabScript := preload("res://src/ui/owner/guildstab.gd")
+# The tab buttons, four to a row; the one text size every tab draws at.
+const TAB_COLUMNS := 4
+const TEXT_SIZE := 13
+# LIVE: how long a tab's read is good for when it is picked, and how often the
+# tab shown is read again while the panel is open.
+const STALE_SECONDS := 10.0
+const LIVE_SECONDS := 30.0
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
@@ -87,6 +125,8 @@ var economy_tab: EconomyTab = null
 # kill receipts put to the server's own count, with the switch beside it
 # (healthtab.gd), added in _ready().
 var health_tab: HealthTab = null
+# The Guilds tab (guildstab.gd, no class_name) - 0.112.1.
+var guilds_tab: VBoxContainer = null
 # PLAYER STATS (0.47.0): the button at the top of the Server tab that opens
 # the owner's Player stats window (statswindow.gd, through the HUD). The
 # owner: "add it in my gm menu as a button somewhere".
@@ -137,11 +177,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var gold_input: LineEdit = get_node_or_null("%goldinput")
 @onready var gold_button: Button = get_node_or_null("%goldbutton")
 @onready var gold_bank_button: Button = get_node_or_null("%goldbankbutton")
-@onready var item_input: LineEdit = get_node_or_null("%iteminput")
-@onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
-@onready var item_button: Button = get_node_or_null("%itembutton")
 @onready var catalogue_button: Button = get_node_or_null("%cataloguebutton")
-@onready var gifts_button: Button = get_node_or_null("%giftsbutton")
+# Made by _ready() in the Economy tab's strip (0.112.1).
+var gifts_button: Button = null
 @onready var level_input: LineEdit = get_node_or_null("%levelinput")
 @onready var level_button: Button = get_node_or_null("%levelbutton")
 @onready var skill_pick: OptionButton = get_node_or_null("%skillpick")
@@ -162,7 +200,8 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
 # THE KILL RECEIPTS (0.57.0): kills paid only on the server's own count.
-@onready var receipts_button: CheckButton = get_node_or_null("%receiptsbutton")
+# The Health tab's switch, held to be shown (0.112.1) - set in _ready().
+var receipts_button: CheckButton = null
 # The Server tab's minimum build (0.11.8): old versions must update.
 @onready var minbuild_button: CheckButton = get_node_or_null("%minbuildbutton")
 @onready var minbuild_status: Label = get_node_or_null("%minbuildstatus")
@@ -265,24 +304,46 @@ func _ready() -> void:
 		else:
 			health_tab = tabs.get_node(^"health") as HealthTab
 		health_tab.report = _say
+		if tabs.get_node_or_null(^"guilds") == null:
+			guilds_tab = GuildsTabScript.new()
+			tabs.add_child(guilds_tab)
+		else:
+			guilds_tab = tabs.get_node(^"guilds")
+		guilds_tab.set("report", _say)
 		# ONE SWITCH, TWO PLACES: the Health tab's throws it through the
 		# Testing tab's own handler, password asked again and all.
 		health_tab.toggle_receipts = _on_receipts_toggled
-		var server_page: Node = tabs.get_node_or_null(^"server")
-		if server_page != null:
-			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
-			if stats_button == null:
-				stats_button = Button.new()
-				stats_button.name = "statsbutton"
-				stats_button.text = "Player stats"
-				stats_button.tooltip_text = "Who signs up, who comes back, where players stop and what gets played - players only, not staff."
-				stats_button.focus_mode = Control.FOCUS_NONE
-				server_page.add_child(stats_button)
-				server_page.move_child(stats_button, 0)
-			if not stats_button.pressed.is_connected(_on_stats_pressed):
-				stats_button.pressed.connect(_on_stats_pressed)
+		# PLAYER STATS ON THE HEALTH TAB, beside its Refresh (0.112.1; it was
+		# the Server tab's first button).
+		stats_button = health_tab.read_row.get_node_or_null(^"statsbutton") as Button
+		if stats_button == null:
+			stats_button = Button.new()
+			stats_button.name = "statsbutton"
+			stats_button.text = "Player stats"
+			stats_button.tooltip_text = "Who signs up, who comes back, where players stop and what gets played - players only, not staff."
+			stats_button.focus_mode = Control.FOCUS_NONE
+			health_tab.read_row.add_child(stats_button)
+			health_tab.read_row.move_child(stats_button, 1)
+		if not stats_button.pressed.is_connected(_on_stats_pressed):
+			stats_button.pressed.connect(_on_stats_pressed)
+		# THE GIFTS LEDGER ON THE ECONOMY TAB, in its strip (0.112.1; it was
+		# under the item catalogue on Testing).
+		if gifts_button == null:
+			gifts_button = Button.new()
+			gifts_button.name = "giftsbutton"
+			gifts_button.text = "Gifts"
+			gifts_button.tooltip_text = "What you have given away: gold, lusions and items, to players and to yourself, and its share of the gold in the world."
+			gifts_button.focus_mode = Control.FOCUS_NONE
+			economy_tab.strip.add_child(gifts_button)
+			economy_tab.strip.move_child(gifts_button, economy_tab.refresh_button.get_index())
 		for i in range(mini(tabs.get_tab_count(), TAB_TITLES.size())):
 			tabs.set_tab_title(i, TAB_TITLES[i])
+		# ONE TEXT SIZE for every tab: the scene's controls say 13, and the
+		# code-built tabs drew at the theme's default.
+		var look := Theme.new()
+		look.default_font_size = TEXT_SIZE
+		tabs.theme = look
+		_build_tab_buttons()
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
 		view_button.pressed.connect(_on_view_pressed)
 	if give_button != null and not give_button.pressed.is_connected(_on_give_pressed):
@@ -311,10 +372,6 @@ func _ready() -> void:
 		gold_bank_button.pressed.connect(_on_gold_pressed.bind(true))
 	if gold_input != null:
 		gold_input.text_submitted.connect(func(_t): _on_gold_pressed(false))
-	if item_button != null and not item_button.pressed.is_connected(_on_item_pressed):
-		item_button.pressed.connect(_on_item_pressed)
-	if item_input != null:
-		item_input.text_submitted.connect(func(_t): _on_item_pressed())
 	if catalogue_button != null and not catalogue_button.pressed.is_connected(_on_catalogue_pressed):
 		catalogue_button.pressed.connect(_on_catalogue_pressed)
 	if gifts_button != null and not gifts_button.pressed.is_connected(show_what_i_have_given):
@@ -355,6 +412,10 @@ func _ready() -> void:
 		trade_button.toggled.connect(_on_trade_toggled)
 	if receipts_button != null and not receipts_button.toggled.is_connected(_on_receipts_toggled):
 		receipts_button.toggled.connect(_on_receipts_toggled)
+	# THE ONE RECEIPTS SWITCH is the Health tab's now (0.112.1): it throws
+	# through toggle_receipts, so it is held here only to be shown.
+	if receipts_button == null and health_tab != null:
+		receipts_button = health_tab.receipts_switch
 	if minbuild_button != null and not minbuild_button.toggled.is_connected(_on_minbuild_toggled):
 		minbuild_button.toggled.connect(_on_minbuild_toggled)
 	if coowner_button != null and not coowner_button.toggled.is_connected(_on_coowner_toggled):
@@ -386,6 +447,117 @@ func _ready() -> void:
 	_build_server_button_styles()
 	_populate_ranks()
 	_refresh_maintenance()
+
+
+var tab_buttons: Array = []
+# LIVE: when each tab (by index) was last read, in ms; the clock; a read on its
+# way (one at a time).
+var read_at: Dictionary = {}
+var _live_timer: Timer = null
+var _reading: bool = false
+
+
+func _build_tab_buttons() -> void:
+	"""A grid of buttons for the tabs, in the tab container's own bar's place."""
+	if tabs == null or not tab_buttons.is_empty():
+		return
+	tabs.tabs_visible = false
+	var scroll: Node = get_node_or_null("%tabsscroll")
+	var rows: Node = scroll.get_parent() if scroll != null else null
+	if rows == null:
+		return
+	var grid := GridContainer.new()
+	grid.name = "tabbuttons"
+	grid.columns = TAB_COLUMNS
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	rows.add_child(grid)
+	rows.move_child(grid, scroll.get_index())
+	var group := ButtonGroup.new()
+	for i in tabs.get_tab_count():
+		var button := Button.new()
+		button.name = "tab%d" % i
+		button.text = tabs.get_tab_title(i)
+		button.toggle_mode = true
+		button.button_group = group
+		button.focus_mode = Control.FOCUS_NONE
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size", TEXT_SIZE)
+		button.pressed.connect(_pick_tab.bind(i))
+		grid.add_child(button)
+		tab_buttons.append(button)
+	tabs.tab_changed.connect(_light_tab_button)
+	tabs.tab_changed.connect(_on_tab_picked)
+	_light_tab_button(tabs.current_tab)
+	_live_timer = Timer.new()
+	_live_timer.name = "live"
+	_live_timer.wait_time = LIVE_SECONDS
+	_live_timer.timeout.connect(_on_live_clock)
+	add_child(_live_timer)
+
+
+func _on_tab_picked(index: int) -> void:
+	"""A tab picked is read again if its last read is stale (LIVE)."""
+	if visible and is_stale(index):
+		await refresh_tab(index)
+
+
+func _on_live_clock() -> void:
+	if visible and tabs != null:
+		await refresh_tab(tabs.current_tab)
+
+
+func is_stale(index: int) -> bool:
+	return Time.get_ticks_msec() - int(read_at.get(index, -1000000)) > int(STALE_SECONDS * 1000.0)
+
+
+func refresh_tab(index: int) -> void:
+	"""Read what tab `index` shows from the server again, quietly (LIVE)."""
+	if _reading or not Api.is_owner:
+		return
+	_reading = true
+	read_at[index] = Time.get_ticks_msec()
+	match index:
+		0:
+			await refresh_online()
+		1:
+			_sync_god_mode_button()
+			_sync_perf_button()
+			_sync_meter_button()
+			_sync_stress_pick()
+			_sync_rare_button()
+		2:
+			await _refresh_maintenance()
+			await _refresh_pvp()
+			await _refresh_trade()
+			await _refresh_minbuild()
+			await refresh_coowners()
+		3:
+			if world_tab != null and is_instance_valid(world_tab):
+				await world_tab.refresh()
+		4:
+			if events_tab != null and is_instance_valid(events_tab):
+				await events_tab.refresh()
+		5:
+			if economy_tab != null and is_instance_valid(economy_tab):
+				await economy_tab.refresh_live()
+		6:
+			if health_tab != null and is_instance_valid(health_tab):
+				await health_tab.refresh()
+		7:
+			if guilds_tab != null and is_instance_valid(guilds_tab):
+				await guilds_tab.refresh()
+	if is_instance_valid(self):
+		_reading = false
+
+
+func _pick_tab(index: int) -> void:
+	tabs.current_tab = index
+
+
+func _light_tab_button(index: int) -> void:
+	for i in tab_buttons.size():
+		(tab_buttons[i] as Button).set_pressed_no_signal(i == index)
 
 
 func close() -> void:
@@ -732,8 +904,19 @@ func _on_visibility_changed() -> void:
 			await economy_tab.refresh()
 		if health_tab != null and is_instance_valid(health_tab) and Api.is_owner:
 			await health_tab.refresh()
+		if guilds_tab != null and is_instance_valid(guilds_tab) and Api.is_owner:
+			await guilds_tab.refresh()
+		if not is_instance_valid(self):
+			return
+		# LIVE: everything was just read; the clock reads the tab shown again.
+		for i in TAB_TITLES.size():
+			read_at[i] = Time.get_ticks_msec()
+		if _live_timer != null and visible:
+			_live_timer.start()
 	else:
 		_disarm()
+		if _live_timer != null:
+			_live_timer.stop()
 
 
 # =============================================================================
@@ -1688,54 +1871,6 @@ func _on_gold_pressed(to_bank: bool) -> void:
 	var body: Node = get_tree().get_first_node_in_group("player")
 	CharacterData.adopt_server_gold({"carried_gold": int(data.get("gold", 0)),
 		"bank_gold": int(data.get("bank_gold", 0))}, body)
-
-
-func _on_item_pressed() -> void:
-	if item_input == null:
-		return
-
-	var wanted: String = item_input.text.strip_edges()
-	if wanted == "":
-		_set_testing_status("Type an item id first.")
-		return
-
-	var how_many: int = 1
-	if item_count_input != null:
-		var typed: String = item_count_input.text.strip_edges()
-		if typed != "" and typed.is_valid_int():
-			how_many = max(1, int(typed))
-
-	_set_testing_status("Asking the server...")
-	var res: Dictionary = await Api.post("/api/staff/grant", {
-		"slot": CharacterData.active_character_index,
-		"item_id": wanted,
-		"quantity": how_many,
-	})
-
-	if not is_instance_valid(self) or not is_inside_tree():
-		return
-	if not res.get("ok", false):
-		_set_testing_status(_refused(res))
-		return
-
-	# THE SERVER HANDS BACK THE WHOLE BAG, and the open inventory is told to
-	# redraw from it, found through the HUD's group the way the cooking screen
-	# finds it.
-	var data = res.get("data", {})
-	# What it came to, when it is money (THE GIFTS LEDGER, 0.20.0).
-	var money: String = ItemSpawner.money_text(data.get("worth") if data is Dictionary else null)
-	var came_to: String = " (%s)" % money if money != "" else ""
-	var container: Node = _open_inventory_container()
-	if container != null and data is Dictionary:
-		container.load_server_array(data.get("inventory", []))
-		_set_testing_status("Added %d x %s to your bag%s." % [how_many, wanted, came_to])
-		return
-
-	# THE ITEM IS REAL EVEN WHEN NOTHING IS OPEN TO SHOW IT. Saying "nothing
-	# happened" here would be a lie - it is on the server and will be in the
-	# bag on the next load.
-	_set_testing_status(
-		"Added %d x %s%s - open the inventory to see it." % [how_many, wanted, came_to])
 
 
 # THE ITEM CATALOGUE (itemspawner.gd) opens from here. It had a button of its

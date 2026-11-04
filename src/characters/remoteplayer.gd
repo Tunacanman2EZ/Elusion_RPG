@@ -147,6 +147,8 @@ var _badge: Label = null
 var _plate_zoom: float = -1.0
 var _pet: AnimatedSprite2D = null
 var _pet_face: String = "down"
+# Inside a house this game's player is outside of (set_hidden_indoors()).
+var indoors_hidden: bool = false
 
 # THEIR AIM AND THEIR HEALTH (0.41.0). The owner: "i need to be able to see
 # other players directional bar etc ... i want players to see everything i see
@@ -912,6 +914,15 @@ static func pet_parts(item_id: String) -> Dictionary:
 	return part
 
 
+func set_hidden_indoors(hidden: bool) -> void:
+	"""Hidden while inside a house this game's player is outside of (shop.gd,
+	0.112.1): the body and everything on it, and the pet that follows it."""
+	indoors_hidden = hidden
+	visible = not hidden
+	if _pet != null and is_instance_valid(_pet):
+		_pet.visible = not hidden
+
+
 func _build_pet() -> void:
 	if _pet != null and is_instance_valid(_pet):
 		_pet.queue_free()
@@ -925,6 +936,7 @@ func _build_pet() -> void:
 	_pet.scale = part["scale"] * part.get("root_scale", Vector2.ONE)
 	_pet.name = "remotepet_%d" % user_id
 	_pet.position = position + Vector2(0, -2)
+	_pet.visible = not indoors_hidden
 	# A SIBLING, so the world's Y-sort puts it in front of or behind things by
 	# where it stands, not by where its owner does.
 	get_parent().add_child.call_deferred(_pet)

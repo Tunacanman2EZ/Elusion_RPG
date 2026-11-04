@@ -41,7 +41,9 @@ const HEAD := Color(0.93, 0.73, 0.3)
 # The GM panel's inside width, near enough (the World tab's).
 const WIDTH := 250.0
 const DAY_CHOICES := [7, 14, 30, 90]
-const PAGES := [["flow", "Gold flow"], ["rules", "Rules"], ["canary", "Canary"]]
+# "Flow", not "Gold flow" (0.112.1): the strip holds Gifts too now, and the
+# page says "Gold, the last ..." itself.
+const PAGES := [["flow", "Flow"], ["rules", "Rules"], ["canary", "Canary"]]
 # How many sources and sinks a line names before "and N more".
 const REASONS_NAMED := 3
 
@@ -92,6 +94,8 @@ var pages: Dictionary = {}
 # Gold flow.
 var days_pick: OptionButton
 var refresh_button: Button
+# The page buttons' row; the GM panel adds Gifts to it (0.112.1).
+var strip: HBoxContainer
 var chart: GoldFlowChart
 var totals_label: Label
 var world_label: Label
@@ -123,7 +127,7 @@ func _init() -> void:
 
 
 func _build() -> void:
-	var strip := HBoxContainer.new()
+	strip = HBoxContainer.new()
 	strip.name = "pages"
 	strip.add_theme_constant_override("separation", 4)
 	add_child(strip)
@@ -133,13 +137,13 @@ func _build() -> void:
 		button.name = str(spec[0])
 		button.toggle_mode = true
 		button.button_group = group
-		button.add_theme_font_size_override("font_size", 14)
+		button.add_theme_font_size_override("font_size", 13)
 		button.pressed.connect(show_page.bind(str(spec[0])))
 		strip.add_child(button)
 		page_buttons[spec[0]] = button
 	refresh_button = _button("Refresh", "Read the flow, the rules and the canary again from the server.")
 	refresh_button.name = "refresh"
-	refresh_button.add_theme_font_size_override("font_size", 14)
+	refresh_button.add_theme_font_size_override("font_size", 13)
 	refresh_button.pressed.connect(refresh.bind(true))
 	strip.add_child(refresh_button)
 
@@ -260,6 +264,8 @@ func _button(text: String, hint: String) -> Button:
 	button.text = text
 	button.tooltip_text = hint
 	button.focus_mode = Control.FOCUS_NONE
+	# The GM panel's one size (0.112.1), as the Health tab's page buttons.
+	button.add_theme_font_size_override("font_size", 13)
 	return button
 
 
@@ -306,6 +312,15 @@ func refresh(by_hand: bool = false) -> void:
 	await refresh_flow(by_hand)
 	await refresh_rules(by_hand)
 	await refresh_canary(by_hand)
+
+
+func refresh_live() -> void:
+	"""What the GM panel's clock reads (0.112.1, LIVE): the flow and the
+	canary's last report - not the rules, whose boxes are rebuilt by a read
+	and would lose a number typed and not sent."""
+	await refresh_flow(false)
+	if is_instance_valid(self):
+		await refresh_canary(false)
 
 
 func days_wanted() -> int:

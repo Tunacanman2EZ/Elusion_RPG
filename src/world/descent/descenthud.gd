@@ -1,11 +1,18 @@
 # descenthud.gd - what the Descent says on screen (0.112.0): a plate at the
 # top with the floor, the room and the run's gold, a dot a room (done, here,
 # to come, the keeper last), the upgrades taken under it, a banner as each
-# room begins, the pick of three when a room promised an upgrade, the fade
+# room begins, the pick of three when a room promised an upgrade (a card
+# chosen, then Take it - CONFIRMED, below), the fade
 # between rooms, and how the run went. (The keeper's health is its own bar,
 # over it, as every boss's.) Built by
 # descentrun.gd, in a CanvasLayer of its own over the world and under the
 # HUD's windows (as the Endless's is).
+#
+# CONFIRMED (0.112.1). The owner: "we need a confirm button for upgrades cause
+# when round ends i click the upgrade on accident" - the pick comes up under
+# the cursor while the last monster is still being swung at. A click on a card
+# only chooses it (ringed in gold, `chosen`); Take it, under the cards, takes
+# it, and stays dimmed until a card is chosen.
 extends CanvasLayer
 
 const Boons := preload("res://src/world/descent/descentboons.gd")
@@ -15,6 +22,7 @@ const TOAST_SECONDS := 1.6
 const GOLD := Color(1.0, 0.86, 0.5)
 const HINT := Color(0.82, 0.78, 0.7)
 const CARD_SIZE := Vector2(210, 150)
+const CHOSEN := Color(1.0, 0.82, 0.3)
 const PIP_GAP := 26.0
 
 var run: Node = null
@@ -28,6 +36,10 @@ var banner_line: Label = null
 var toast_label: Label = null
 var pick_panel: PanelContainer = null
 var cards: Array = []
+var take_button: Button = null
+# The card chosen, -1 for none yet (CONFIRMED).
+var chosen: int = -1
+var _offered: Array = []
 var black: ColorRect = null
 var result: Label = null
 var _banner_left: float = 0.0
@@ -116,7 +128,7 @@ func _build_pick() -> void:
 	column.add_theme_constant_override("separation", 12)
 	pick_panel.add_child(column)
 	var heading := _label("heading", 24, GOLD)
-	heading.text = "Room clear!  Pick one"
+	heading.text = "Room clear!  Choose one, then Take it"
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(heading)
 	var row := HBoxContainer.new()
@@ -143,6 +155,14 @@ func _build_pick() -> void:
 			words.add_child(l)
 		row.add_child(card)
 		cards.append(card)
+	take_button = Button.new()
+	take_button.name = "take"
+	take_button.focus_mode = Control.FOCUS_NONE
+	take_button.custom_minimum_size = Vector2(220, 40)
+	take_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	take_button.add_theme_font_size_override("font_size", 18)
+	take_button.pressed.connect(_on_take)
+	column.add_child(take_button)
 	pick_panel.visible = false
 	add_child(pick_panel)
 
@@ -254,17 +274,47 @@ func show_pick(offers: Array) -> void:
 		(words.get_node("name") as Label).text = str(info["name"])
 		(words.get_node("does") as Label).text = str(info["does"])
 		(words.get_node("level") as Label).text = Boons.level_text(id)
+	_offered = offers.duplicate()
+	_choose(-1)
 	pick_panel.visible = true
 	paint()
 
 
 func hide_pick() -> void:
 	pick_panel.visible = false
+	_choose(-1)
 
 
 func _on_card(index: int) -> void:
-	if run != null:
-		run.call("pick", index)
+	"""A card clicked is chosen, not taken (CONFIRMED)."""
+	_choose(index)
+
+
+func _choose(index: int) -> void:
+	chosen = index if index >= 0 and index < _offered.size() else -1
+	for i in cards.size():
+		var card: Button = cards[i]
+		if i == chosen:
+			var ring := StyleBoxFlat.new()
+			ring.bg_color = Color(0.16, 0.12, 0.05, 0.95)
+			ring.border_color = CHOSEN
+			ring.set_border_width_all(3)
+			ring.set_corner_radius_all(4)
+			for look in ["normal", "hover", "pressed"]:
+				card.add_theme_stylebox_override(look, ring)
+		else:
+			for look in ["normal", "hover", "pressed"]:
+				card.remove_theme_stylebox_override(look)
+	if take_button != null:
+		take_button.disabled = chosen < 0
+		take_button.text = "Choose an upgrade" if chosen < 0 else \
+			"Take %s" % str(Boons.BOONS[str(_offered[chosen])]["name"])
+
+
+func _on_take() -> void:
+	"""Take it: the chosen card goes to the run."""
+	if chosen >= 0 and run != null:
+		run.call("pick", chosen)
 
 
 func show_result(words: String, won: bool) -> void:

@@ -449,41 +449,6 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "To bank"
 
-[node name="itemrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing" unique_id=1900112286]
-layout_mode = 2
-theme_override_constants/separation = 5
-
-[node name="iteminput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112287]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "The item's id, for example tinyhealthpotion."
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
-theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
-theme_override_font_sizes/font_size = 13
-placeholder_text = "item id"
-max_length = 64
-
-[node name="itemcountinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112288]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(46, 0)
-layout_mode = 2
-tooltip_text = "How many."
-theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
-theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
-theme_override_font_sizes/font_size = 13
-placeholder_text = "1"
-max_length = 4
-
-[node name="itembutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112289]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(86, 0)
-layout_mode = 2
-tooltip_text = "Put an item in your own bag, by its id. The Item catalogue below does the same with pictures."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Give item"
-
 [node name="cataloguebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -491,14 +456,6 @@ tooltip_text = "Every item in the game with its picture, searchable: one click p
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Item catalogue..."
-
-[node name="giftsbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Everything given away - by you, and by a co-owner - to players and to themselves, and what it came to, beside the gold in the game now. Printed in the box below."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Gifts ledger"
 
 [node name="levelrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 layout_mode = 2
@@ -571,41 +528,6 @@ tooltip_text = "Owner only. Damage is ignored entirely - the hit never lands, so
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "God mode"
-
-[node name="pvpbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
-theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
-size_flags_horizontal = 3
-tooltip_text = "Owner only. Announces in chat that you have gone hostile, and every client - even one on the login screen - can read it from /api/status. It does NOT make anybody damageable yet: nothing in this game can hurt another player. See CLAUDE.md, Decided not built: PvP and the world boss."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "PvP"
-
-[node name="tradebutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Owner only. Players may open trades with each other. Off stops anybody opening a new trade; a trade already open can still finish. Announced in chat, and the trade window says so. Mythic and Perfect finds wait 48 hours before they can be traded either way."
-focus_mode = 0
-theme_override_colors/font_pressed_color = Color(0.43137, 0.83922, 0.49412, 1)
-theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
-theme_override_font_sizes/font_size = 13
-text = "Trading"
-
-[node name="receiptsbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Owner only. On, a kill is paid only when the server's own count of the fight agrees the monster died (SECURITY_NOTES E-3, step 2). A game too old to wait for that count is refused, so set Old versions must update to 7 as well. Read killwatch.py's receipts line before switching it on. Not announced in chat."
-focus_mode = 0
-theme_override_colors/font_pressed_color = Color(0.43137, 0.83922, 0.49412, 1)
-theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
-theme_override_font_sizes/font_size = 13
-text = "Kills need the server's count"
 
 [node name="perfbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
@@ -728,6 +650,43 @@ theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
 theme_override_font_sizes/font_size = 11
 text = "Asking the server..."
 
+[node name="sep6" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/server"]
+layout_mode = 2
+
+[node name="playlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/server"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "WHAT PLAYERS MAY DO"
+
+[node name="playrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/server"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="pvpbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/server/playrow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+size_flags_horizontal = 3
+tooltip_text = "Owner only. Announces in chat that you have gone hostile, and every client - even one on the login screen - can read it from /api/status. It does NOT make anybody damageable yet: nothing in this game can hurt another player. See CLAUDE.md, Decided not built: PvP and the world boss."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "PvP"
+
+[node name="tradebutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/server/playrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Owner only. Players may open trades with each other. Off stops anybody opening a new trade; a trade already open can still finish. Announced in chat, and the trade window says so. Mythic and Perfect finds wait 48 hours before they can be traded either way."
+focus_mode = 0
+theme_override_colors/font_pressed_color = Color(0.43137, 0.83922, 0.49412, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
+theme_override_font_sizes/font_size = 13
+text = "Trading"
+
 [node name="resultsrow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2
 theme_override_constants/separation = 6
@@ -750,7 +709,7 @@ text = "Clear"
 
 [node name="ownerresults" type="RichTextLabel" parent="frame/margin/rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/default_color = Color(0.78431, 0.82353, 0.87059, 1)

@@ -19,6 +19,21 @@
 # (town_step()). The portals are found by name, so moving one in the editor
 # moves the pointer with it.
 #
+# STEADY (0.112.1). The owner: "the arrow pointing to the first enemy
+# jitters". It was placed from get_global_transform_with_canvas(): the camera
+# as the last frame DREW it - part way between two ticks, physics
+# interpolation - times where the character and the monster stood at the last
+# TICK. The two are apart by a share of a step that changes every frame (60
+# frames to 80 ticks), so the » shook while either walked. Now both ends are
+# where they are drawn: each tick keeps the last two places of the character
+# and the target (_physics_process(), after everything has moved), each frame
+# blends them by the engine's own fraction, and the screen is worked out from
+# the camera at the character's drawn place, held to its limits as Godot holds
+# it (player.gd camera_centre()). And it holds on: the target is kept unless
+# another is STICKY times nearer, and a » standing over a near target stays
+# over it out to NEAR_OUT times NEAR - it flicked between two monsters, and
+# between circling and standing over, at the edge.
+#
 # NO ART MADE: the » is a letter of the theme font, outlined like a name.
 # Built by the HUD under its windows (characterhud.gd, _ready()); no
 # class_name, so a fresh checkout needs no editor rescan.
@@ -47,12 +62,25 @@ const COLOUR := Color(1.0, 0.86, 0.5, 0.95)
 const OUTLINE := Color(0.1, 0.07, 0.07, 0.95)
 # How often the target is looked for again; the » moves every frame.
 const LOOK_SECONDS := 0.5
+# Another monster takes over only when this many times nearer; standing over a
+# target, the » keeps standing over it out to this many times NEAR.
+const STICKY := 1.3
+const NEAR_OUT := 1.15
 
 var arrow: Label = null
 var words: Label = null
 var target: Node2D = null
 var target_words: String = ""
 var _look_left: float = 0.0
+# Where the character and the target stood at the last two ticks, and which
+# nodes those were (a new one starts where it stands).
+var _body_seen: Node2D = null
+var _body_was: Vector2 = Vector2.ZERO
+var _body_now: Vector2 = Vector2.ZERO
+var _target_seen: Node2D = null
+var _target_was: Vector2 = Vector2.ZERO
+var _target_now: Vector2 = Vector2.ZERO
+var _over: bool = false
 
 
 func _init() -> void:
@@ -62,6 +90,8 @@ func _init() -> void:
 	arrow = _label("»", ARROW_SIZE)
 	words = _label("", WORDS_SIZE)
 	visible = false
+	# After everything that moves this tick, so the place kept is this tick's.
+	process_physics_priority = 1000
 
 
 func _label(text: String, font_size: int) -> Label:
@@ -95,11 +125,12 @@ static func town_step(player: Vector2, square_portal: Vector2, field_portal: Vec
 	return 1 if (player - middle).dot(along) > 0.0 else 0
 
 
-static func place(from: Vector2, to: Vector2, scale_by: float = 1.0) -> Dictionary:
+static func place(from: Vector2, to: Vector2, scale_by: float = 1.0, was_over: bool = false) -> Dictionary:
 	"""Where the » goes on screen and which way it turns: round the character
-	toward the target, or over a target that is near, pointing down at it."""
+	toward the target, or over a target that is near, pointing down at it - and
+	still over it out to NEAR_OUT times as far when it already was."""
 	var way: Vector2 = to - from
-	if way.length() <= NEAR * scale_by:
+	if way.length() <= NEAR * scale_by * (NEAR_OUT if was_over else 1.0):
 		return {"at": to - Vector2(0.0, OVER * scale_by), "angle": PI / 2.0, "over": true}
 	return {"at": from + way.normalized() * RING * scale_by, "angle": way.angle(), "over": false}
 
@@ -137,9 +168,11 @@ func _process(delta: float) -> void:
 		return
 	visible = true
 	var grow: float = _scale()
-	var from: Vector2 = body.get_global_transform_with_canvas().origin - Vector2(0.0, BODY_MIDDLE * grow)
-	var to: Vector2 = target.get_global_transform_with_canvas().origin
-	var at: Dictionary = place(from, to, grow)
+	var body_at: Vector2 = _drawn(body, _body_seen, _body_was, _body_now)
+	var from: Vector2 = _on_screen(body, body_at, body_at) - Vector2(0.0, BODY_MIDDLE * grow)
+	var to: Vector2 = _on_screen(body, body_at, _drawn(target, _target_seen, _target_was, _target_now))
+	var at: Dictionary = place(from, to, grow, _over)
+	_over = bool(at["over"])
 	arrow.add_theme_font_size_override("font_size", int(round(ARROW_SIZE * grow)))
 	words.add_theme_font_size_override("font_size", int(round(WORDS_SIZE * grow)))
 	words.text = target_words
@@ -151,6 +184,46 @@ func _process(delta: float) -> void:
 	words.position = words_at(at, arrow.size, words.size)
 
 
+func _physics_process(_delta: float) -> void:
+	"""The last two ticks' places, kept after everything has moved."""
+	if not visible and target == null:
+		_body_seen = null
+		_target_seen = null
+		return
+	var body: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
+	if body != null:
+		_body_was = _body_now if body == _body_seen else body.global_position
+		_body_now = body.global_position
+	_body_seen = body
+	var aim: Node2D = target if target != null and is_instance_valid(target) and target.is_inside_tree() else null
+	if aim != null:
+		_target_was = _target_now if aim == _target_seen else aim.global_position
+		_target_now = aim.global_position
+	_target_seen = aim
+
+
+static func _drawn(node: Node2D, seen: Node2D, was: Vector2, now: Vector2) -> Vector2:
+	"""Where `node` is drawn this frame: between its last two ticks by the
+	engine's fraction, as physics interpolation draws it."""
+	if node != seen:
+		return node.global_position
+	if not node.is_physics_interpolated_and_enabled():
+		return now
+	return was.lerp(now, Engine.get_physics_interpolation_fraction())
+
+
+func _on_screen(body: Node2D, body_at: Vector2, point: Vector2) -> Vector2:
+	"""`point` on the screen, with the camera where it is drawn this frame: on
+	the character drawn at `body_at`, held to its limits."""
+	var camera: Camera2D = body.get_node_or_null("camera2d") as Camera2D
+	if camera == null or not camera.is_inside_tree() or not camera.is_current() or not body.has_method("camera_centre"):
+		return body.get_canvas_transform() * point
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	var wanted: Vector2 = body_at + (camera.global_position - body.global_position) + camera.offset
+	var centre: Vector2 = body.call("camera_centre", camera, wanted, view)
+	return (point - centre) * camera.zoom + view / 2.0
+
+
 func _scale() -> float:
 	"""Bigger under a thumb, as the pad is (touchpad.gd's thumb_scale())."""
 	if not TouchControls.active:
@@ -160,6 +233,7 @@ func _scale() -> float:
 
 
 func _find_target(body: Node2D) -> void:
+	var was: Node2D = target if target != null and is_instance_valid(target) and target_words == WORDS_ENEMY else null
 	target = null
 	var area: String = AreaRegistry.current_area_id()
 	var scene: Node = get_tree().current_scene
@@ -178,6 +252,8 @@ func _find_target(body: Node2D) -> void:
 	if area == "bigfield" or area == "field":
 		var best: Node2D = null
 		var best_d: float = INF
+		var held: Node2D = was
+		var held_d: float = INF
 		for node in get_tree().get_nodes_in_group(&"enemies"):
 			var enemy := node as Node2D
 			if enemy == null or not enemy.is_inside_tree() or not enemy.is_visible_in_tree():
@@ -185,9 +261,14 @@ func _find_target(body: Node2D) -> void:
 			if "hp" in enemy and float(enemy.get("hp")) <= 0.0:
 				continue
 			var d: float = enemy.global_position.distance_squared_to(body.global_position)
+			if enemy == held:
+				held_d = d
 			if d < best_d:
 				best_d = d
 				best = enemy
+		# The one it points at already, unless another is a good deal nearer.
+		if held != null and held_d < INF and best_d * STICKY * STICKY > held_d:
+			best = held
 		target = best
 		target_words = WORDS_ENEMY
 

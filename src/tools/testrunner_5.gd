@@ -4640,9 +4640,10 @@ func _test_the_gm_panel_is_a_window() -> void:
 	# EVENTS (0.48.0), the world's events (eventstab.gd).
 	# AND ECONOMY (0.74.0): the gold flow, the economy's numbers and the canary
 	# (economytab.gd). AND HEALTH (0.78.0): the live server and the kill
-	# receipts (healthtab.gd).
-	check("Account, Testing, Server, World, Events, Economy and Health",
-		titles == ["Account", "Testing", "Server", "World", "Events", "Economy", "Health"], titles)
+	# receipts (healthtab.gd). AND GUILDS (0.112.1): every guild, renamed or
+	# disbanded (guildstab.gd).
+	check("Account, Testing, Server, World, Events, Economy, Health and Guilds",
+		titles == ["Account", "Testing", "Server", "World", "Events", "Economy", "Health", "Guilds"], titles)
 	check("sized to the tallest tab, so switching never resizes the window",
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,

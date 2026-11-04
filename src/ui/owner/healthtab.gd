@@ -27,8 +27,9 @@
 # panel opens, on Refresh and every REFRESH_SECONDS while it is on screen;
 # what Refresh read and what the switch did go in the panel's Results box
 # too (`report`). NARROW AND SHORT: four pages that take turns, nothing
-# scrolls. The switch is the Testing tab's too - one switch, two places, both
-# showing what the server holds (OwnerPanel._refresh_receipts()).
+# scrolls. The switch is here alone since 0.112.1 (it was the Testing tab's
+# too); the GM panel throws it through its own handler, password asked again
+# (OwnerPanel._on_receipts_toggled(), _refresh_receipts()).
 extends VBoxContainer
 class_name HealthTab
 
@@ -67,6 +68,8 @@ var page: String = "players"
 var page_buttons: Dictionary = {}
 var pages: Dictionary = {}
 var refresh_button: Button
+# Refresh's row; the GM panel adds Player stats to it (0.112.1).
+var read_row: HBoxContainer
 var as_of_label: Label
 # Players.
 var players_label: Label
@@ -115,7 +118,7 @@ func _build() -> void:
 		page_buttons[spec[0]] = button
 	# Refresh beside when it was read, under the pages: four page buttons are
 	# the strip's width.
-	var read_row := HBoxContainer.new()
+	read_row = HBoxContainer.new()
 	read_row.name = "read"
 	read_row.add_theme_constant_override("separation", 6)
 	add_child(read_row)
@@ -127,6 +130,10 @@ func _build() -> void:
 	as_of_label = _label("Not read yet.", SAY_NOTE, false)
 	as_of_label.name = "asof"
 	as_of_label.add_theme_font_size_override("font_size", 12)
+	# Gives way, with "...", now Player stats shares the row (0.112.1).
+	as_of_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	as_of_label.clip_text = true
+	as_of_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	read_row.add_child(as_of_label)
 
 	# ---- PLAYERS ---------------------------------------------------------------
@@ -172,7 +179,7 @@ func _build() -> void:
 	receipts_switch.name = "receiptsswitch"
 	receipts_switch.text = "Kills need the server's count"
 	receipts_switch.focus_mode = Control.FOCUS_NONE
-	receipts_switch.tooltip_text = "On: a kill is paid only when the server's own count of the fight agrees. The same switch as on the Testing tab. Off again is one click, and safe at any time."
+	receipts_switch.tooltip_text = "On: a kill is paid only when the server's own count of the fight agrees. Off again is one click, and safe at any time."
 	receipts_switch.disabled = true
 	receipts_switch.toggled.connect(_on_switch_toggled)
 	receipts_page.add_child(receipts_switch)
@@ -213,9 +220,8 @@ func _page(page_name: String) -> VBoxContainer:
 
 
 func _head(text: String) -> Label:
-	var label := _label(text, HEAD, false)
-	label.add_theme_font_size_override("font_size", 13)
-	return label
+	"""A page's heading, in the GM panel's one heading style (0.112.1)."""
+	return EventsTab.heading(text.to_upper())
 
 
 func _line(line_name: String) -> Label:

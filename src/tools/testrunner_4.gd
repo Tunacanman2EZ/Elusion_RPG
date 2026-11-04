@@ -1424,8 +1424,8 @@ func _test_gifts_are_counted() -> void:
 	check("  and an answer with no worth in it reads as before",
 		ItemSpawner.added_line({}, pile, 2) == "Added 2 × Pile of Gold to your bag.")
 	var panel_code: String = _code_src("res://src/ui/owner/ownerpanel.gd")
-	check("the Testing tab's Give item says it the same way",
-		panel_code.split("func _on_item_pressed")[1].split("\nfunc ")[0].contains("ItemSpawner.money_text("))
+	check("the Testing tab's item-id row is gone - the catalogue gives (0.112.1)",
+		not panel_code.contains("func _on_item_pressed") and not panel_code.contains("%iteminput"))
 
 	# --- WHAT I'VE GIVEN -------------------------------------------------------
 	var was_owner: bool = Api.is_owner
@@ -1433,12 +1433,12 @@ func _test_gifts_are_counted() -> void:
 	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
 	add_child(gm)
 	await get_tree().process_frame
-	var button: Button = gm.get_node_or_null("%giftsbutton") as Button
-	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
-	check("the Testing tab has the Gifts ledger, under the item catalogue",
-		button != null and testing_tab != null and testing_tab.is_ancestor_of(button)
-		and button.get_index() == gm.get_node("%cataloguebutton").get_index() + 1
-		and button.text == "Gifts ledger")
+	var button: Button = gm.get("gifts_button") as Button
+	var economy: Node = gm.get("economy_tab")
+	check("the Economy tab has the Gifts ledger, in its strip before Refresh (on Testing until 0.112.1)",
+		button != null and economy != null and button.get_parent() == economy.get("strip")
+		and button.get_index() == (economy.get("refresh_button") as Button).get_index() - 1
+		and button.text == "Gifts")
 	if button == null:
 		gm.queue_free()
 		Api.is_owner = was_owner
@@ -2074,17 +2074,17 @@ func _test_the_gm_panel_health_tab() -> void:
 		posted.append([path, body])
 		await get_tree().process_frame
 		return {"ok": true, "data": {"kill_receipts": true, "min_client_build": 7}}
-	var testing_switch: CheckButton = gm.get_node_or_null("%receiptsbutton") as CheckButton
+	var testing_switch: CheckButton = gm.get("receipts_button") as CheckButton
 	answers[0] = {"ok": true, "status": 200, "data": JSON.parse_string(JSON.stringify(view))}
 	answers[0]["data"]["receipts"]["on"] = true
 	answers[0]["data"]["receipts"]["verdict"] = "on"
 	answers[0]["data"]["receipts"]["min_build_low"] = false
 	tab.receipts_switch.button_pressed = true
 	await get_tree().create_timer(0.1).timeout
-	check("switched on from the Health tab: the owner's route, through the Testing tab's own handler",
+	check("switched on from the Health tab: the owner's route, through the panel's own handler",
 		posted == [["/api/server/receipts", {"on": true}]], posted)
-	check("  and both switches show it on; the tab reads again and says on",
-		testing_switch != null and testing_switch.button_pressed and tab.receipts_switch.button_pressed
+	check("  and the one switch shows it on (the panel holds the Health tab's); the tab reads again and says on",
+		testing_switch != null and testing_switch == tab.receipts_switch and tab.receipts_switch.button_pressed
 		and tab.verdict_label.text == "On: kills are paid only when the server's count agrees." and tab.build_label.text == "",
 		[str(testing_switch.button_pressed) if testing_switch != null else "no switch", tab.verdict_label.text])
 	gm.status_request = func(_path: String) -> Dictionary:

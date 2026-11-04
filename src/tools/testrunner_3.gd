@@ -496,8 +496,14 @@ func _test_stirring_lands() -> void:
 	tab.send = func(path: String, said: Dictionary) -> Dictionary:
 		sent.append([path, said])
 		return {"ok": true, "status": 200, "data": view}
-	check("before the server is read, Save and Stir it now wait - the controls are not its settings yet",
-		tab.save_button.disabled and tab.stir_button.disabled)
+	check("before the server is read, Save waits - the controls are not its settings yet",
+		tab.save_button.disabled)
+	# STIRRING BY HAND IS THE EVENTS TAB'S (0.112.1): the owner, "in events we
+	# can stir the world and in world we have stir also" - Events kept.
+	var to_events: Label = tab.find_child("toevents", true, false) as Label
+	check("  stirring by hand is the Events tab's: no Stir it now here, a line saying where it went (0.112.1)",
+		not ("stir_button" in tab) and not tab.has_method("stir") and to_events != null and to_events.text == WorldTab.TO_EVENTS
+		and EventsTab.KINDS.any(func(k: Array) -> bool: return k[0] == "stir"))
 	await tab.save()
 	check("  and Save sends nothing yet", sent.is_empty(), sent)
 	await tab.refresh()
@@ -537,32 +543,22 @@ func _test_stirring_lands() -> void:
 	check("  and Results says it was saved, with the settings the server now holds - not the \"Saving...\" on the way",
 		results.get_parsed_text().contains("Saved - the game hears it within one poll. Each stir lasts 3 h.")
 		and not results.get_parsed_text().contains("Saving..."), results.get_parsed_text())
-	sent.clear()
-	tab.land_pick.select(tab.land_pick.get_item_index(Element.Type.EARTH))
-	await tab.stir()
-	check("Stir it now: the land picked, to the stir route", sent == [["/api/server/world/stir", {"element": Element.Type.EARTH}]], sent)
-	tab.send = func(_path: String, _body: Dictionary) -> Dictionary:
-		return {"ok": false, "status": 409, "error": "Conflict"}
-	await tab.stir()
-	check("  refused because the lands are off: it says to switch them on", tab.say_label.text.begins_with("Switch the stirring lands on"))
 	var off_view: Dictionary = view.duplicate(true)
 	off_view["settings"]["on"] = false
 	tab.show_answer(off_view)
-	check("switched off: says so, and Stir it now waits", tab.status_label.text == "Switched off: nothing stirs."
-		and tab.stir_button.disabled)
+	check("switched off: says so", tab.status_label.text == "Switched off: nothing stirs.")
 	sent.clear()
 	tab.send = func(path: String, said: Dictionary) -> Dictionary:
 		sent.append([path, said])
 		return {"ok": true, "status": 200, "data": view}
 	tab.fetch = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
 	await tab.refresh()
-	check("a server without them: says to update it - in Results too - and Save and Stir it now wait again",
-		tab.say_label.text.contains("Update the server") and tab.save_button.disabled and tab.stir_button.disabled
+	check("a server without them: says to update it - in Results too - and Save waits again",
+		tab.say_label.text.contains("Update the server") and tab.save_button.disabled
 		and results.get_parsed_text().contains("This server does not have the stirring lands yet (404)"),
 		tab.say_label.text)
 	await tab.save()
-	await tab.stir()
-	check("  and neither Save nor Stir it now sends anything", sent.is_empty(), sent)
+	check("  and Save sends nothing", sent.is_empty(), sent)
 	gm.queue_free()
 	await get_tree().process_frame
 	Api.is_owner = was_owner
@@ -667,10 +663,10 @@ func _test_player_stats_window() -> void:
 		opened.append(method)
 		return true)
 	var button: Button = gm.get("stats_button") as Button
-	var server_page: Node = gm.get_node_or_null("%ownertabs").get_node_or_null(^"server") if gm.get_node_or_null("%ownertabs") else null
-	check("the GM panel's Server tab starts with a Player stats button",
-		button != null and server_page != null and button.get_parent() == server_page and button.get_index() == 0
-		and button.text == "Player stats")
+	var health: Node = gm.get("health_tab")
+	check("the GM panel's Health tab has a Player stats button, beside its Refresh (on the Server tab until 0.112.1)",
+		button != null and health != null and button.get_parent() == health.get("read_row")
+		and button.get_index() == (health.get("refresh_button") as Button).get_index() + 1 and button.text == "Player stats")
 	if button != null:
 		button.pressed.emit()
 	check("  pressing it opens the Player stats through the HUD", opened == ["open_player_stats"], opened)
@@ -1516,7 +1512,7 @@ func _test_land_report() -> void:
 	var nexts: Array = LandReportWindow.next_lines(sample, now).map(func(line: Array) -> String: return str(line[0]))
 	check("the next stir: when, which and why - and where to take it or pick another",
 		nexts == ["NEXT TO STIR", "At %s: %s" % [LocalTime.stamp(now + 3600, now), reason],
-			"To take it now or pick another, use Stir it now on the World tab."], nexts)
+			"To stir it or another now, use the Events tab: A land stirs."], nexts)
 	check("  the lands switched off: nothing, and why",
 		LandReportWindow.next_lines({"next": null}, now)[1][0] == "Nothing - the stirring lands are switched off (World tab).")
 	check("  a week of few kills is said to be a rough read",
@@ -1581,9 +1577,8 @@ func _test_land_report() -> void:
 		"next": {"element": 4, "name": "wind", "at": now + 3600, "reason": reason}}))
 	tab.fetch = func(_path: String) -> Dictionary: return {"ok": true, "status": 200, "data": view}
 	await tab.refresh()
-	check("the next stir and why, where the land's kills were - and it is the land offered for Stir it now",
-		tab.lands_label.text == "Next to stir (%s): %s" % [LocalTime.stamp(now + 3600, now), reason]
-		and tab.land_pick.get_item_id(tab.land_pick.selected) == Element.Type.WIND, tab.lands_label.text)
+	check("the next stir and why, where the land's kills were",
+		tab.lands_label.text == "Next to stir (%s): %s" % [LocalTime.stamp(now + 3600, now), reason], tab.lands_label.text)
 	var old_view: Dictionary = (view as Dictionary).duplicate(true)
 	old_view.erase("next")
 	tab.show_answer(old_view)
@@ -3611,8 +3606,9 @@ func _test_aim_holds_still_while_walking() -> void:
 	check("  and every class aims through it: aim_point() is steady_mouse_position() while the cursor is on the game",
 		_func_body(_code_src("res://src/characters/player.gd"), "func aim_point(").contains("return steady_mouse_position()"))
 	check("  read off the camera's own node - get_screen_center_position() answers with the drawn, in-between centre too",
-		not _func_body(_code_src("res://src/characters/player.gd"), "func _as_this_tick(").contains("camera.get_screen_center_position()")
-		and _func_body(_code_src("res://src/characters/player.gd"), "func _as_this_tick(").contains("camera.global_position + camera.offset")
+		not _func_body(_code_src("res://src/characters/player.gd"), "func _tick_shift(").contains("camera.get_screen_center_position()")
+		and _func_body(_code_src("res://src/characters/player.gd"), "func _tick_shift(").contains("camera.global_position + camera.offset")
+		and _func_body(_code_src("res://src/characters/player.gd"), "func _as_this_tick(").contains("_tick_shift()")
 		and _func_body(_code_src("res://src/characters/player.gd"), "func steady_mouse_position(").contains("_as_this_tick(get_global_mouse_position())"))
 	PlayerScript.pointer_on_game = kept
 	arena.queue_free()

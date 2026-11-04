@@ -2252,10 +2252,11 @@ func _test_a_kill_waits_for_the_servers_receipt() -> void:
 	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
 	add_child(gm)
 	await get_tree().process_frame
-	var button: CheckButton = gm.get_node_or_null("%receiptsbutton") as CheckButton
-	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
-	check("the GM panel has the receipts switch, on the Testing tab with the other world switches",
-		button != null and testing_tab != null and testing_tab.is_ancestor_of(button))
+	var button: CheckButton = gm.get("receipts_button") as CheckButton
+	var health_tab: Node = gm.get("health_tab")
+	check("the GM panel has the receipts switch, on the Health tab's Receipts page alone (on Testing too until 0.112.1)",
+		button != null and health_tab != null and health_tab.is_ancestor_of(button)
+		and gm.get_node_or_null("%receiptsbutton") == null)
 	if button == null:
 		gm.queue_free()
 		return
@@ -2312,10 +2313,10 @@ func _test_the_trade_switch_reaches_the_game() -> void:
 	add_child(gm)
 	await get_tree().process_frame
 	var button: CheckButton = gm.get_node_or_null("%tradebutton") as CheckButton
-	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	var server_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/server")
 	var pvp: Node = gm.get_node_or_null("%pvpbutton")
-	check("the GM panel has the trading switch, beside the other world switch, PvP",
-		button != null and testing_tab != null and testing_tab.is_ancestor_of(button)
+	check("the GM panel has the trading switch, beside the other world switch, PvP - on the Server tab (Testing until 0.112.1)",
+		button != null and server_tab != null and server_tab.is_ancestor_of(button)
 		and pvp != null and pvp.get_parent() == button.get_parent())
 	if button == null:
 		gm.queue_free()

@@ -859,18 +859,49 @@ func world_point_at(screen: Vector2) -> Vector2:
 func _as_this_tick(raw: Vector2) -> Vector2:
 	"""A point mapped through the last drawn frame's canvas, moved to where the
 	camera is this tick (steady_mouse_position())."""
+	return raw + _tick_shift()
+
+
+func _tick_shift() -> Vector2:
+	"""How far the camera is this tick from where the last drawn frame had it:
+	added to a point read through the drawn canvas, it is where it is now."""
 	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
 	if camera == null or not camera.is_inside_tree() or not camera.is_current():
-		return raw
+		return Vector2.ZERO
 	var view: Rect2 = get_viewport().get_visible_rect()
 	var drawn_centre: Vector2 = get_canvas_transform().affine_inverse() * view.get_center()
-	var centre: Vector2 = camera.global_position + camera.offset
-	var half: Vector2 = view.size / camera.zoom / 2.0
-	if camera.limit_right - camera.limit_left > half.x * 2.0:
-		centre.x = clampf(centre.x, camera.limit_left + half.x, camera.limit_right - half.x)
-	if camera.limit_bottom - camera.limit_top > half.y * 2.0:
-		centre.y = clampf(centre.y, camera.limit_top + half.y, camera.limit_bottom - half.y)
-	return raw + (centre - drawn_centre)
+	return camera_centre(camera, camera.global_position + camera.offset, view.size) - drawn_centre
+
+
+static func camera_centre(camera: Camera2D, wanted: Vector2, view_size: Vector2) -> Vector2:
+	"""Where `camera` puts the middle of the screen when it would put it at
+	`wanted`: held to its limits as Godot holds it - inside them, and IN THE
+	MIDDLE OF THEM on an axis where they are no wider than the view.
+
+	THE MIDDLE (0.112.1). The owner: "having directional errors in the
+	minigame". The Descent holds the camera to its room, 640 x 408, and the
+	owner plays zoomed out: at 2x and below the view is as wide as the room or
+	wider, Godot centres the room, and this said the camera was on the player
+	- every swing aimed at the cursor went off by up to 287 px of the world
+	(zz/aimcheck). A view no wider than the room was always right."""
+	var centre: Vector2 = wanted
+	if "limit_enabled" in camera and not bool(camera.get("limit_enabled")):
+		return centre
+	var half: Vector2 = view_size / camera.zoom / 2.0
+	var lows := Vector2(camera.limit_left, camera.limit_top)
+	var highs := Vector2(camera.limit_right, camera.limit_bottom)
+	for axis in 2:
+		if highs[axis] - lows[axis] > half[axis] * 2.0:
+			centre[axis] = clampf(centre[axis], lows[axis] + half[axis], highs[axis] - half[axis])
+		else:
+			centre[axis] = (lows[axis] + highs[axis]) / 2.0
+	return centre
+
+
+func screen_point_of(world_point: Vector2) -> Vector2:
+	"""A point in the world on the screen as it is this tick - world_point_at()
+	the other way round."""
+	return get_canvas_transform() * (world_point - _tick_shift())
 
 
 func _stamp_input() -> void:

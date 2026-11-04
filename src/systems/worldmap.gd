@@ -61,6 +61,11 @@ extends Node
 # can redraw while open; nothing else has to.
 signal explored(area_id: String)
 
+# The map pixels the last reveal_around() uncovered, as a rect in the area's
+# map (0.112.1): what the map window repaints of its fog (paint_fog()) when
+# `explored` is said, instead of the whole picture.
+var last_reveal: Rect2i = Rect2i()
+
 
 # =============================================================================
 # TUNING
@@ -493,6 +498,9 @@ func reveal_around(world_position: Vector2, area: String = "") -> bool:
 		_seen[area] = bits
 		_save_dirty = true
 		_revision_pending = true
+		var origin: Vector2i = info["origin"]
+		last_reveal = Rect2i(centre - origin - Vector2i(SEEN_RADIUS, SEEN_RADIUS),
+			Vector2i(SEEN_RADIUS * 2 + 1, SEEN_RADIUS * 2 + 1)).intersection(Rect2i(Vector2i.ZERO, info["size"]))
 		explored.emit(area)
 	return changed
 
@@ -592,6 +600,67 @@ func display_image(area: String = "", whole: bool = false) -> Image:
 			elif ground.a > 0.0:
 				out.set_pixel(x, y, ground.lerp(COLOUR_FOG, UNSEEN_DIM))
 	return out
+
+
+# THE FOG ON ITS OWN (0.112.1). The owner: "map is lagging when walking and
+# open". Every step that uncovered ground baked display_image() again, blew it
+# up six times and made its mipmaps - 54 ms in the Big Field (372 x 310), on
+# top of sending the 2232 x 1860 picture to the graphics card, several times a
+# second while walking somewhere new (zz/mapbench). Now the map window draws
+# the bare terrain (terrain_image(), the same every time) and over it the fog,
+# one map pixel a tile (fog_image()), and a step repaints only the fog it
+# uncovered (paint_fog() on last_reveal). Laid over the terrain the fog gives
+# what display_image() gives: the ground where seen, COLOUR_FOG UNSEEN_DIM of
+# the way over it where not (all the way where the whole map is not asked
+# for), and nothing where nothing is painted.
+
+func terrain_image(area: String = "") -> Image:
+	"""The area's ground as the map draws it, nothing hidden - a copy the
+	caller owns."""
+	if area == "":
+		area = area_id()
+	var info = _terrain.get(area, null)
+	if info == null or info.get("image", null) == null:
+		return null
+	return (info["image"] as Image).duplicate() as Image
+
+
+func fog_image(area: String = "", whole: bool = false) -> Image:
+	"""The fog over the area's terrain, one pixel a tile: clear where seen."""
+	if area == "":
+		area = area_id()
+	var size: Vector2i = map_size(area)
+	if size.x <= 0 or size.y <= 0:
+		return null
+	var out: Image = Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
+	paint_fog(area, Rect2i(Vector2i.ZERO, size), whole, out)
+	return out
+
+
+func paint_fog(area: String, rect: Rect2i, whole: bool, into: Image) -> void:
+	"""The fog of `rect` (map pixels) painted into `into`, which is the area's
+	size - only that rect, so a step costs its own few hundred pixels."""
+	var info = _terrain.get(area, null)
+	if info == null or info.get("image", null) == null or into == null:
+		return
+	var source: Image = info["image"]
+	var size: Vector2i = info["size"]
+	var area_rect := Rect2i(Vector2i.ZERO, size).intersection(rect)
+	var bits = _seen.get(area, null)
+	var have_bits: bool = bits is PackedByteArray
+	var dim := Color(COLOUR_FOG, UNSEEN_DIM)
+	var clear := Color(0, 0, 0, 0)
+	for y in range(area_rect.position.y, area_rect.end.y):
+		for x in range(area_rect.position.x, area_rect.end.x):
+			var index: int = y * size.x + x
+			if have_bits and (bits[index >> 3] & (1 << (index & 7))) != 0:
+				into.set_pixel(x, y, clear)
+			elif not whole:
+				into.set_pixel(x, y, COLOUR_FOG)
+			elif source.get_pixel(x, y).a > 0.0:
+				into.set_pixel(x, y, dim)
+			else:
+				into.set_pixel(x, y, clear)
 
 
 func map_size(area: String = "") -> Vector2i:

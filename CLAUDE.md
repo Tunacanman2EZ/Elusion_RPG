@@ -3163,6 +3163,107 @@ Healer's Run: three runs a day, its gold at Leave".
     when spent, over "Meteors - Space"; five when looted. The old top-left
     line says nothing now.
 
+### The GM panel, tidied, live and one tab more (0.112.1)
+
+The owner: "can you update all of my tabs in gm panel" - and, asked what
+update meant, all four: tidy and dedupe, a new look, live data, what was
+missing. Steps 1-3 of four (the HUD bar is step 4; GM_AND_HUD_PLAN.txt in
+the commit folder). `_test_the_gm_panel_tidied_and_live()` (testrunner_9)
+holds it; the live parts were watched failing when broken.
+
+- **Every tab a button** (ownerpanel.gd `_build_tab_buttons()`): the tab
+  container's own bar showed four of seven with arrows; it is hidden
+  (`tabs_visible` false) and a grid of `TAB_COLUMNS` (4) toggle buttons above
+  `%tabsscroll` picks the tab and lights with it (`_light_tab_button()` on
+  `tab_changed`). TAB_TITLES still names them; the tests read titles as before.
+- **One text size**: a Theme with `default_font_size` `TEXT_SIZE` (13) on
+  `%ownertabs` - the code-built tabs drew at the staff theme's 16. One heading
+  style: `EventsTab.heading()` (11, gold, capitals), on World ("THE STIRRING
+  LANDS"), Events ("SCHEDULE AN EVENT", "ON NOW AND COMING"), Health's pages
+  (`_head()`) and Guilds. Economy's strip at 13; "Gold flow" is "Flow".
+- **Each control in one place**: PvP and Trading moved from Testing ("your
+  own character only") to the Server tab under WHAT PLAYERS MAY DO
+  (`playrow`); "Kills need the server's count" is the Health tab's alone -
+  `receipts_button` is that switch, held to be shown (it throws through
+  `toggle_receipts`, so it is never connected twice); the Testing tab's
+  item-id row and `_on_item_pressed()` went (the Item catalogue gives, and
+  Account's Give item for a player); Gifts ledger is Economy's "Gifts" (made
+  in `economy_tab.strip`), Player stats the Health tab's, beside Refresh
+  (`health_tab.read_row`; its "as of" line gives way with "...").
+- **The height held**: the button grid is two rows where the bar was one, and
+  the panel cannot grow (its bottom must clear the menu bar, 644), so the
+  Results box's least is 46 (it was 72; it still takes what is left).
+- **Live** (step 2): the tab shown is read again when it is picked if its last
+  read is over `STALE_SECONDS` (10) old (`_on_tab_picked()`, `read_at`), and
+  every `LIVE_SECONDS` (30) while the panel is open (`_live_timer`, started by
+  `_on_visibility_changed()`, stopped on close) - `refresh_tab(index)`, one
+  read at a time, quietly. Never over what was typed and not sent: the World
+  tab keeps edited settings (`WorldTab.edited`, set by its controls, cleared
+  by Save or Refresh by hand); the Economy tab's clock is `refresh_live()`
+  (the flow and the canary, never `refresh_rules()`, which rebuilds the boxes);
+  the Events tab keeps the event picked to call off. Health keeps its own
+  clock.
+- **Guilds** (step 3, `src/ui/owner/guildstab.gd`, no class_name -
+  `GuildsTabScript`, the eighth tab in the grid's empty eighth place): every
+  guild (GET /api/guild/list, sorted: name, members, leader; what the one
+  picked is), and Rename (new name, the server's rule: 3-12, letters, numbers,
+  spaces, ' and -) or Disband (asks twice, `ARM_SECONDS`) with a reason, through
+  POST /api/staff/guild. The server had both since guilds came; the game asked
+  neither.
+- **Not added: an Economy "Supply" page.** GET /api/economy/supply ("is
+  every coin accounted for") is what the Canary page's checks already answer.
+
+### After the first Descent: aim, the pick, the map, the arrow, houses, one stir (0.112.1)
+
+The owner, playing 0.112.0, six things. `_test_after_the_first_descent()`
+(testrunner_9) holds them; each was watched failing when broken.
+
+- **"having directional errors in the minigame"** - zoomed out. The Descent
+  holds the camera to its room (640 x 408); at 2x and below the view is as
+  wide as the room or wider and Godot puts the camera in the MIDDLE of the
+  limits, but `_as_this_tick()` (player.gd) assumed it was on the player, so
+  the cursor's world point - every aimed swing - was up to 287 px off
+  (zz/aimcheck). `camera_centre()` is Godot's rule (clamp, or the middle where
+  the limits are no wider than the view; `limit_enabled` off is no hold) and
+  `_tick_shift()` uses it; `screen_point_of()` is `world_point_at()` the
+  other way round. 0 px at 3x, 2x and 1x.
+- **"we need a confirm button for upgrades"** (a stray swing's click took a
+  card): descenthud.gd - a card clicked is only `chosen` (a gold ring); Take
+  it (`take_button`, dimmed until then, "Take Bloodletter") takes it.
+- **"map is lagging when walking and open"**: every step that uncovered
+  ground rebuilt the whole map picture - `display_image()` (a GDScript loop
+  over every tile), blown up six times, mipmaps, a 2232 x 1860 upload - 56 ms
+  a step in the Big Field (zz/mapbench, zz/mapbench2). Now the terrain is
+  built once an area (`_built_for`) and the fog is its own layer over it
+  (worldmap.gd `terrain_image()`, `fog_image()`, `paint_fog()`; mapscreen.gd
+  "fog", drawn crisp by `FOG_SHADER`), and a step repaints the fog in
+  `WorldMap.last_reveal` alone: 0.35 ms. The picture is the same (2 pixels of
+  921,600 differ by more than 30). `refresh(area)` takes an area for the suite.
+- **"the arrow pointing to the first enemy jitters"**: guide.gd placed the »
+  from `get_global_transform_with_canvas()` - the drawn (interpolated) camera
+  times the TICK place. It keeps the last two ticks' places of the character
+  and the target (`_physics_process()`, `process_physics_priority` 1000, after
+  the movers), blends them by `Engine.get_physics_interpolation_fraction()`
+  (`_drawn()`), and maps them through the camera at the drawn place
+  (`_on_screen()`). Walking right in the Field the shake went 3.6 -> 0.3 px a
+  frame, worst 9.4 -> 1.7 (zz/newacct guide). It also keeps its monster unless
+  another is `STICKY` (1.3) times nearer, and stays over a near one out to
+  `NEAR_OUT` (1.15) times NEAR.
+- **"when a player goes into a house i can see them still"**: only this
+  game's body opens the shop (the trigger's mask is the player's layer; a
+  remote player is a picture). shop.gd hides a picture whose feet are in the
+  trigger's box (`covers()`) while you are outside and shows it while you are
+  in (remoteplayer.gd `set_hidden_indoors()`, its pet too), and shows again
+  only what it hid (`_hid`, and all of it on `_exit_tree()`).
+- **"in events we can stir the world and in world we have stir also"**: the
+  owner kept Events. The World tab's stir row is gone (worldtab.gd, STIRRING
+  BY HAND IS THE EVENTS TAB'S), the Lands window points to Events too.
+- **Not reproduced: "did not start with starter potions on a new acc."** A
+  new account against the API's own code (zz/newacct, a local server on a
+  fresh database) got 5 Tiny Health on key 1 and 5 Tiny Mana on key 2,
+  playing at once or after waiting on the select screen. The owner's steps
+  are the next thing to ask.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),
@@ -8468,14 +8569,18 @@ The server's side is in the API's CLAUDE.md, "The stirring lands".
 - **The GM panel's World tab** (`WorldTab`, src/ui/owner/worldtab.gd; owner
   only, after Server): the master switch, hours per stir, each of the six
   effects' switch and amount (one to a row: two to a row needed amount boxes
-  too narrow to show "1.75 x"), Save, a land and "Stir it now", what stirs now, the last stirs
-  (and who stirred one by hand), and each land's hunting. Saving and stirring
-  ask for the password again (step-up). **What each button did goes in the
+  too narrow to show "1.75 x"), Save, what stirs now, the last stirs
+  (and who stirred one by hand), and each land's hunting. Saving asks for the
+  password again (step-up). **Stirring by hand is the Events tab's** (0.112.1;
+  the owner: "in events we can stir the world and in world we have stir
+  also", and kept Events - now or later, 1-72 hours, a dry run, a report):
+  the World tab's "Stir it now" is gone and a line says so (`TO_EVENTS`);
+  POST /api/server/world/stir is still on the server, unused by the game. **What each button did goes in the
   panel's Results box too** (`report`, set to `OwnerPanel._say`; 0.46.1, the
   owner: "i want refresh to say it in the results"): Refresh writes what
   stirs now and every setting (`settings_text()`), Save the settings the
   server now holds, and every refusal; "Saving..." stays on the tab
-  (`_say_here()`), and opening the panel reads quietly. **Save and Stir it now wait until
+  (`_say_here()`), and opening the panel reads quietly. **Save waits until
   the server has been read**, and again after a read fails: unread, the
   controls hold their lowest values, and Save would send those. A 404 there
   means the server is from before 0.46.0, and it says so. Built narrow: the GM panel draws 370
@@ -8625,9 +8730,10 @@ when lands are busy; accept or override on the GM panel. The server holds it
   level 10 has a kill in the last two hours, while another will do. Nothing
   in the game decides it.
 - **The World tab** says the next stir and why where the land's kills were
-  (`WorldTab.next_text()`, from the world answer's `next`), and selects that
-  land in "Stir it now": pressing it is accepting now, picking another is
-  overriding. From a server before 0.50.0, the kills line as before.
+  (`WorldTab.next_text()`, from the world answer's `next`). (It also offered
+  that land for the tab's "Stir it now" until 0.112.1, when stirring by hand
+  went to the Events tab.) From a server before 0.50.0, the kills line as
+  before.
   A **Lands** button beside Refresh opens the Lands window
   (`open_lands`, set by the panel, through the HUD).
 - **The Lands window** (`LandReportWindow`, src/ui/owner/landreport.gd and

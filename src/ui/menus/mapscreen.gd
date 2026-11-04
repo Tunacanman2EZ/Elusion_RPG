@@ -20,7 +20,7 @@
 # The owner, of the Big Field and the new Field: "i need players to be able to
 # see the whole map". The window fills most of the screen (1160 x 640 as
 # drawn, and it resizes), the picture fits it at ANY scale, and ground not yet
-# walked is drawn too, darker (WorldMap.display_image(area, true)).
+# walked is drawn too, darker (the fog over it, WorldMap.fog_image(area, true)).
 #
 # IT WAS A WHOLE NUMBER, ALWAYS, and that is why it could not grow: the Big
 # Field is 385 x 322 tiles, which fits a 600 px frame once and not twice, so
@@ -41,6 +41,16 @@
 # THE PICTURE DOES NOT SIZE THE WINDOW. %mapview fills the frame and clips;
 # %mapground draws the picture at _offset, _fit (_layout()), so a window made
 # smaller by hand is not held open by its own map.
+#
+# WALKING WITH IT OPEN (0.112.1). The owner: "map is lagging when walking and
+# open". Each step that uncovered ground rebuilt the whole picture - 54 ms in
+# the Big Field, several times a second. The terrain is built once an area now
+# (_built_for, kept while the panel lives), and the fog is a layer of its own
+# over it ("fog", a child of %mapground): one map pixel a tile, drawn crisp by
+# FOG_SHADER, and a step repaints only what it uncovered (_on_explored(),
+# WorldMap.paint_fog() on WorldMap.last_reveal) - a few hundred pixels and a
+# 460 KB texture, where it was 4 million and a 22 MB one. The "explored" line
+# is counted again at most every EXPLORED_LINE_SECONDS.
 extends Control
 
 
@@ -63,6 +73,22 @@ const MAX_TEXTURE := 4096
 
 # ZOOM AND DRAG: a notch of the wheel, a press of - or +, and the closest it
 # goes - a tile this many interface pixels across (48 is the game's own 3x).
+# A tile's edge drawn sharp at any size: the texel's own colour except within
+# a screen pixel of its edge, where it blends - so the fog's edges line up with
+# the terrain's, blown up and drawn down, without blowing the fog up too.
+const FOG_SHADER := """shader_type canvas_item;
+void fragment() {
+	vec2 size = vec2(textureSize(TEXTURE, 0));
+	vec2 texel = UV * size;
+	vec2 seam = floor(texel + 0.5);
+	vec2 width = max(fwidth(texel), vec2(0.0001));
+	texel = seam + clamp((texel - seam) / width, -0.5, 0.5);
+	COLOR = texture(TEXTURE, texel / size);
+}
+"""
+# How often, at most, the "% explored" line is counted again while walking.
+const EXPLORED_LINE_SECONDS := 0.5
+
 const WHEEL_STEP := 1.25
 const BUTTON_STEP := 1.6
 const MAX_TILE_PX := 24.0
@@ -165,9 +191,17 @@ var _offset := Vector2.ZERO
 var _zoom: float = 1.0
 var _centre := Vector2(-1.0, -1.0)
 var _dragging: bool = false
-# The picture, blown up _sharp times (refresh()).
+# The picture, blown up _sharp times (refresh()) - the terrain alone, built
+# for the area and size in _built_for and not again.
 var _picture: Texture2D = null
 var _sharp: int = 1
+var _built_for: Array = []
+# The fog over it, one pixel a tile, and its layer (WALKING WITH IT OPEN).
+var _fog: Image = null
+var _fog_picture: ImageTexture = null
+var fog_layer: Control = null
+var _explored_stale: bool = false
+var _explored_left: float = 0.0
 
 # Collected on refresh(), not per frame: a landmark does not move, and the
 # group walk plus a fog lookup each is not work to redo sixty times a second
@@ -211,6 +245,17 @@ func _ready() -> void:
 		view.gui_input.connect(_on_view_input)
 	if ground != null:
 		ground.draw.connect(_draw_ground)
+		fog_layer = Control.new()
+		fog_layer.name = "fog"
+		fog_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fog_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+		fog_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		var crisp := ShaderMaterial.new()
+		crisp.shader = Shader.new()
+		crisp.shader.code = FOG_SHADER
+		fog_layer.material = crisp
+		fog_layer.draw.connect(_draw_fog)
+		ground.add_child(fog_layer)
 	if zoom_out_button != null:
 		zoom_out_button.pressed.connect(zoom_by.bind(1.0 / BUTTON_STEP))
 	if zoom_in_button != null:
@@ -221,13 +266,16 @@ func _ready() -> void:
 	visible = false
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# THE ARROW MOVES, THE MAP DOES NOT. Only the marker layer is asked to
 	# repaint, and only while the panel is open — the terrain underneath is a
 	# texture that has not changed.
 	if visible and markers != null:
 		_update_hover()
 		markers.queue_redraw()
+	_explored_left -= delta
+	if visible and _explored_stale and _explored_left <= 0.0:
+		_say_explored()
 
 
 # =============================================================================
@@ -251,8 +299,9 @@ func close() -> void:
 	closed.emit()
 
 
-func refresh() -> void:
-	_area = WorldMap.area_id()
+func refresh(area: String = "") -> void:
+	"""The area you stand in (or `area`, for the suite), drawn afresh."""
+	_area = area if area != "" else WorldMap.area_id()
 
 	if not WorldMap.ensure_built(_area):
 		# AN AREA WITH NO TILEMAP IS A REAL STATE, not a failure — the boss
@@ -268,16 +317,22 @@ func refresh() -> void:
 		_hover = -1
 		return
 
-	var image: Image = WorldMap.display_image(_area, true)
+	var image: Image = WorldMap.terrain_image(_area)
 	if image == null:
 		return
 
 	if view != null:
-		var big: Image = sharpen(image, MAX_SHARPEN)
-		_sharp = maxi(1, big.get_width() / maxi(1, image.get_width()))
-		# Mipmaps, for drawing it smaller than it is without dropping rows.
-		big.generate_mipmaps()
-		_picture = ImageTexture.create_from_image(big)
+		# THE TERRAIN ONCE AN AREA: it is the same picture every time.
+		var key: Array = [_area, WorldMap.map_size(_area)]
+		if _picture == null or _built_for != key:
+			var big: Image = sharpen(image, MAX_SHARPEN)
+			_sharp = maxi(1, big.get_width() / maxi(1, image.get_width()))
+			# Mipmaps, for drawing it smaller than it is without dropping rows.
+			big.generate_mipmaps()
+			_picture = ImageTexture.create_from_image(big)
+			_built_for = key
+		_fog = WorldMap.fog_image(_area, true)
+		_fog_picture = ImageTexture.create_from_image(_fog) if _fog != null else null
 		view.texture = null
 		view.custom_minimum_size = Vector2.ZERO
 		_layout()
@@ -285,11 +340,17 @@ func refresh() -> void:
 	if header_label != null:
 		header_label.text = AreaRegistry.display_name(_area) if _area != "" else "Map"
 
+	_say_explored()
+	_collect_landmarks()
+
+
+func _say_explored() -> void:
+	"""The "% explored" line, counted now."""
+	_explored_stale = false
+	_explored_left = EXPLORED_LINE_SECONDS
 	if explored_label != null:
 		explored_label.text = "%d%% explored - the darker ground is still to explore" % roundi(
 			WorldMap.explored_fraction(_area) * 100.0)
-
-	_collect_landmarks()
 
 
 static func fit_for(room: Vector2, map_px: Vector2) -> float:
@@ -356,6 +417,8 @@ func _layout() -> void:
 		ground.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS \
 			if _fit * _stretch() < float(_sharp) else CanvasItem.TEXTURE_FILTER_NEAREST
 		ground.queue_redraw()
+	if fog_layer != null:
+		fog_layer.queue_redraw()
 	view.mouse_default_cursor_shape = Control.CURSOR_MOVE if _zoom > 1.001 else Control.CURSOR_ARROW
 	if markers != null:
 		markers.queue_redraw()
@@ -365,6 +428,13 @@ func _draw_ground() -> void:
 	if _picture == null or _area == "":
 		return
 	ground.draw_texture_rect(_picture, Rect2(_offset, Vector2(WorldMap.map_size(_area)) * _fit), false)
+
+
+func _draw_fog() -> void:
+	"""The fog over the terrain, in the same rect (WALKING WITH IT OPEN)."""
+	if _fog_picture == null or _area == "":
+		return
+	fog_layer.draw_texture_rect(_fog_picture, Rect2(_offset, Vector2(WorldMap.map_size(_area)) * _fit), false)
 
 
 func zoom_by(factor: float, at: Variant = null) -> void:
@@ -427,8 +497,15 @@ func _on_view_resized() -> void:
 
 
 func _on_explored(area: String) -> void:
-	if visible and area == _area:
+	"""A step uncovered ground: repaint that much of the fog, not the map."""
+	if not visible or area != _area:
+		return
+	if _fog == null or _fog_picture == null or _fog.get_size() != WorldMap.map_size(_area):
 		refresh()
+		return
+	WorldMap.paint_fog(_area, WorldMap.last_reveal, true, _fog)
+	_fog_picture.update(_fog)
+	_explored_stale = true
 
 
 # =============================================================================

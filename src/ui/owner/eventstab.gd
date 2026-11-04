@@ -114,6 +114,7 @@ func _init() -> void:
 func _build() -> void:
 	# NARROW AND SHORT, like the World tab: the GM panel is 370 wide and holds
 	# its tallest tab at its drawn size (the suite measures both).
+	add_child(heading("SCHEDULE AN EVENT"))
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 6)
 	add_child(top)
@@ -247,6 +248,8 @@ func _build() -> void:
 	refresh_button.pressed.connect(refresh.bind(true))
 	buttons.add_child(refresh_button)
 
+	add_child(HSeparator.new())
+	add_child(heading("ON NOW AND COMING"))
 	list_label = _label("", SAY_NOTE)
 	list_label.name = "list"
 	add_child(list_label)
@@ -271,6 +274,15 @@ func _build() -> void:
 	add_child(say_label)
 	_on_kind_selected(0)
 	_on_day_selected(0)
+
+
+static func heading(words: String) -> Label:
+	"""A section's heading, as the scene's tabs draw theirs (0.112.1)."""
+	var label := Label.new()
+	label.text = words
+	label.add_theme_color_override("font_color", Color(0.82, 0.7, 0.45))
+	label.add_theme_font_size_override("font_size", 11)
+	return label
 
 
 func _label(text: String, colour: Color, wraps: bool = true) -> Label:
@@ -687,10 +699,14 @@ func show_answer(data: Dictionary) -> void:
 	answer["_read_at"] = int(Time.get_unix_time_from_system())
 	status_label.text = status_text(answer)
 	list_label.text = list_text(answer)
+	# The one picked to call off stays picked through a read (0.112.1, LIVE).
+	var kept_id: int = cancel_pick.get_item_id(cancel_pick.selected) if cancel_pick.selected >= 0 else -1
 	cancel_pick.clear()
 	for event in waiting(answer):
 		cancel_pick.add_item("%s (%s)" % [str(event.get("name", "?")), when_text(event, int(answer.get("now", 0)))],
 			int(event.get("id", 0)))
+	if kept_id > 0 and cancel_pick.get_item_index(kept_id) >= 0:
+		cancel_pick.select(cancel_pick.get_item_index(kept_id))
 	cancel_button.disabled = cancel_pick.item_count == 0
 	if cancel_pick.item_count == 0:
 		cancel_pick.add_item("Nothing to call off", 0)

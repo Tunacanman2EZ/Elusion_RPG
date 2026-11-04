@@ -8,8 +8,8 @@
 # shows it:
 #
 #   - NEXT TO STIR: the land the world would pick when the stir on now ends,
-#     and why - it passes over a land where a new player is learning. To take
-#     it now, or pick another, use "Stir it now" on the World tab.
+#     and why - it passes over a land where a new player is learning. To stir
+#     it or another now, the Events tab's "A land stirs" (0.112.1).
 #   - EVERY LAND: kills today and this week, players this week, new players
 #     there now, when it last stirred and had an event, its busiest hour (this
 #     computer's), and its status - busy (overfarmed), healthy, quiet, ignored
@@ -199,7 +199,7 @@ static func next_lines(data: Dictionary, now: int) -> Array:
 		out.append(["Nothing - the stirring lands are switched off (World tab).", DIM])
 		return out
 	out.append(["At %s: %s" % [LocalTime.stamp(int(upcoming.get("at", now)), now), str(upcoming.get("reason", ""))], PLAIN])
-	out.append(["To take it now or pick another, use Stir it now on the World tab.", DIM])
+	out.append(["To stir it or another now, use the Events tab: A land stirs.", DIM])
 	return out
 
 
