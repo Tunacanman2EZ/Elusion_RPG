@@ -110,6 +110,9 @@ const SPINNING_AXE_SCENE := preload("res://scene/projectiles/spinningaxe.tscn")
 # is_instance_valid(): the axe frees itself when it is caught, and a scene
 # change frees it with everything else.
 var _axe: SpinningAxe = null
+# A Descent run's Twin Axes (0.115.0): the second, thrown beside the first.
+var _twin: SpinningAxe = null
+const TWIN_TURN := 0.45
 # THE ROLL's two chances (spinningaxe.gd), as vars so a test can make a roll
 # certain either way, as Player.double_cast_chance is.
 var axe_wide_chance: float = SpinningAxe.WIDE_CHANCE
@@ -518,6 +521,8 @@ func attack_action() -> void:
 	var axe_mode: bool = equipped_weapon_attack() == ItemData.WeaponAttack.SPINNING_AXE
 	if axe_mode and axe_is_out():
 		_axe.recall()
+		if twin_is_out():
+			_twin.recall()
 		return
 
 	if is_attacking:
@@ -967,7 +972,24 @@ func throw_axe(aimed_at: Vector2) -> SpinningAxe:
 	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
 	Presence.tell_attack("axe", start, _axe.target, 0.0,
 		RemoteAttacks.flags_for_axe(_axe.wide, _axe.bloody))
+	# TWIN AXES (a Descent run's, 0.115.0): its twin thrown beside it, turned
+	# TWIN_TURN off the aim - unless the last one is still out.
+	if DescentBoons.twin_axes() and not twin_is_out():
+		_twin = SPINNING_AXE_SCENE.instantiate()
+		_twin.caster = self
+		_twin.twin = true
+		_twin.wide = _axe.wide
+		spawn_parent().add_child(_twin)
+		_twin.throw_to(start, start + (aimed_at - start).rotated(TWIN_TURN))
 	return _axe
+
+
+func twin_is_out() -> bool:
+	return _twin != null and is_instance_valid(_twin) and not _twin.is_queued_for_deletion()
+
+
+func _on_twin_caught() -> void:
+	_twin = null
 
 
 func _on_axe_caught() -> void:
@@ -979,6 +1001,9 @@ func _on_axe_caught() -> void:
 func _on_gear_changed() -> void:
 	# The axe taken off while it is out: it is back in the bag, so the one in
 	# the world goes. There is nothing to wait for it to fly back to.
+	if twin_is_out() and equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE:
+		_twin.queue_free()
+		_twin = null
 	if axe_is_out() and equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE:
 		_axe.queue_free()
 		_axe = null

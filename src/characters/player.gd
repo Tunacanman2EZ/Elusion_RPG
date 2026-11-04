@@ -1884,6 +1884,10 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	#
 	# AND WHAT THE ARMOUR RESISTS (0.11.0), a third factor - damage_taken().
 	var reduced_amount: int = damage_taken(amount, element)
+	# THE DESCENT'S WARD (0.115.0, descentboons.gd): a shield over the health,
+	# taken first. The number below still says the whole hit.
+	var warded: int = DescentBoons.absorb(reduced_amount)
+	reduced_amount -= warded
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))
@@ -1897,9 +1901,11 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	#
 	# Physical stays the label's own default colour — an unremarkable hit
 	# should look unremarkable.
-	_spawn_floating_label(reduced_amount, 0, element)
+	_spawn_floating_label(reduced_amount + warded, 0, element)
 
 	_play_hit_flash()
+	# A DESCENT RUN'S THORNS (0.115.0): the hit cuts every monster near you.
+	DescentBoons.thorns(self)
 
 	# THE ENDLESS RUN CATCHES A FALL (0.93.0): inside a run the blow that
 	# would kill leaves 1 health and wakes the player in its corridor

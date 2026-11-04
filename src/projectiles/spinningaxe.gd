@@ -96,6 +96,9 @@ const WALL_LAYERS := 0b11
 
 # Whether a wall stands between the axe and what it would cut (0.69.1).
 const Targets := preload("res://src/shared/targets.gd")
+# A Descent run's Double Axe upgrades (0.115.0): Storm, Harvester, Magnet,
+# Ricochet - all nothing off a run.
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 const TICK_SECONDS := 0.25
@@ -145,6 +148,10 @@ var _tick: float = 0.0
 # Seconds spent spinning since this throw landed; spin_rate() reads it.
 var _spun: float = 0.0
 var hits_dealt: int = 0
+# TWIN AXES (0.115.0): the second of a pair - its catch is warrior.gd's
+# _on_twin_caught(). And whether this throw has already flown on (Ricochet).
+var twin: bool = false
+var _bounced: bool = false
 # Cuts open wounds (bleed.gd). The suite turns it off to count the cuts alone.
 var wounds: bool = true
 
@@ -293,6 +300,9 @@ func advance(delta: float) -> void:
 			var stopped_short: bool = _fly_out(FLY_SPEED * delta)
 			_cut_what_it_passes()
 			if stopped_short or global_position.distance_to(target) < 0.5:
+				# RICOCHET (0.115.0): landed, it flies on once to the next one.
+				if not stopped_short and _ricochet():
+					return
 				state = State.SPINNING
 				_tick = 0.0
 				_spun = 0.0
@@ -314,6 +324,9 @@ func advance(delta: float) -> void:
 			while _tick >= TICK_SECONDS:
 				_tick -= TICK_SECONDS
 				_cut_everything_near()
+			# MAGNET (0.115.0): the near ones pulled in.
+			if not cosmetic and DescentBoons.magnet():
+				_pull_in(delta)
 			if global_position.distance_to(caster.global_position) > LEASH \
 					or (caster.has_method("is_afk") and caster.is_afk()):
 				recall()
@@ -321,8 +334,9 @@ func advance(delta: float) -> void:
 			_fly_toward(caster.global_position, RETURN_SPEED * delta)
 			_cut_what_it_passes()
 			if global_position.distance_to(caster.global_position) <= CATCH_DISTANCE:
-				if caster.has_method("_on_axe_caught"):
-					caster._on_axe_caught()
+				var caught: String = "_on_twin_caught" if twin else "_on_axe_caught"
+				if caster.has_method(caught):
+					caster.call(caught)
 				queue_free()
 
 
@@ -357,8 +371,43 @@ func reach() -> float:
 
 
 func base_reach() -> float:
-	"""HIT_RADIUS, or WIDE_REACH times it for a wide throw (THE ROLL)."""
-	return HIT_RADIUS * (WIDE_REACH if wide else 1.0)
+	"""HIT_RADIUS, or WIDE_REACH times it for a wide throw (THE ROLL) - and
+	a Descent run's Storm wider still."""
+	return HIT_RADIUS * (WIDE_REACH if wide else 1.0) * DescentBoons.axe_reach_scale()
+
+
+func _ricochet() -> bool:
+	"""Landed: with Ricochet, once a throw, on to the nearest monster past
+	its reach and within RICOCHET_REACH. True when it flew on."""
+	if cosmetic or _bounced or not DescentBoons.ricochet() or not is_inside_tree():
+		return false
+	_bounced = true
+	var best: Node2D = null
+	var best_far: float = DescentBoons.RICOCHET_REACH
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var e := enemy as Node2D
+		if e == null or (e.has_method("can_be_aimed_at") and not bool(e.call("can_be_aimed_at"))):
+			continue
+		var far: float = e.global_position.distance_to(global_position)
+		if far > base_reach() and far <= best_far:
+			best = e
+			best_far = far
+	if best == null:
+		return false
+	target = best.global_position
+	_passed.clear()
+	return true
+
+
+func _pull_in(delta: float) -> void:
+	"""Magnet: every monster within MAGNET_REACH of its reach a step closer."""
+	if not is_inside_tree():
+		return
+	var span: float = reach() * DescentBoons.MAGNET_REACH
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var e := enemy as Node2D
+		if e != null and e.has_method("pull_toward") and e.global_position.distance_to(global_position) <= span:
+			e.call("pull_toward", global_position, DescentBoons.MAGNET_SPEED * delta)
 
 
 static func rolls(roll: float, chance: float) -> bool:
@@ -511,6 +560,9 @@ func _cut_what_it_passes() -> void:
 		if _passed.has(id):
 			continue
 		var swing: int = _swing_damage()
+		# HARVESTER (0.115.0): harder on the way home.
+		if state == State.RETURNING:
+			swing = roundi(float(swing) * DescentBoons.harvester_scale())
 		# Passed only once it is cut: a monster behind a wall the axe flew
 		# along can still be cut where the wall ends.
 		if _cut(enemy, swing, swing):

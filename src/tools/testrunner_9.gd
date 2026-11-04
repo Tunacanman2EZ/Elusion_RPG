@@ -4061,13 +4061,15 @@ func _test_the_descent() -> void:
 		and body.global_position == run.get("entry_spot")
 	body.global_position = Vector2(320, 200)
 	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	# Marked on the floor first, then out (0.115.0).
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	var pack: Array = run.get("monsters")
 	var marked: bool = not pack.is_empty()
 	for m in pack:
 		marked = marked and (m as Node).has_meta(&"stress_copy") and (m as Node).get_parent() == enemies \
 			and (m as Node2D).global_position.distance_to(body.global_position) >= RunScript.SPAWN_CLEAR - 0.01
 	check("a run: through a door the screen fades, you come in at the room's front, the doors shut, and a pack of %d comes - marked as the owner's copies (no kill reported, never shared)"
-		% pack.size(), waiting and travelling and arrived and pack.size() == int(run.call("pack_size")) and pack.size() == 4 and marked)
+		% pack.size(), waiting and travelling and arrived and pack.size() == int(run.call("pack_size")) and pack.size() == 3 and marked)
 	for m in pack:
 		(m as Node).call("take_damage", 999999)
 	run.call("_process", 0.016)
@@ -4099,6 +4101,9 @@ func _test_the_descent() -> void:
 	# Through the door that does not promise an upgrade (they differ, so one
 	# does not): an upgrade room is what a run would give anyway.
 	var taken: Node = doors[0] if promise_a != "upgrade" else doors[1]
+	# A Rest has no fight (0.115.0): this walks into one that has.
+	if str(taken.get("reward")) == "rest":
+		taken.call("set_reward", "gold")
 	var promised: String = str(taken.get("reward"))
 	taken.emit_signal("walked_in", taken)
 	for i in 3:
@@ -4106,6 +4111,7 @@ func _test_the_descent() -> void:
 	var kept: bool = int(run.get("room")) == 2 and str(run.get("room_kind")) == promised and promised != "upgrade"
 	run.set("room_kind", "elite")
 	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	var elites: Array = (run.get("monsters") as Array).filter(func(m: Node) -> bool: return m.has_meta(&"descent_elite"))
 	check("  the door you take is the room you get (%s); an elite room brings its elite too, bigger and tougher"
 		% promised, kept and elites.size() == 1 and (run.get("monsters") as Array).size() == int(run.call("pack_size")) + 1
@@ -4785,3 +4791,409 @@ func _test_sharp_pixels() -> void:
 	Settings.set_value("sharp_pixels", was_sharp)
 	Settings.set_value("camera_zoom", was_zoom)
 	print("  (sharp pixels: done)")
+
+
+# =============================================================================
+# THE DESCENT, KINDER (0.115.0)
+# =============================================================================
+# The owner: "time to improve the decent feels pretty boring and chars die
+# fast". Step 1: a ward over your health, filled at every room cleared; the
+# crypt hitting softer floor by floor; smaller rooms; the pack in waves from
+# the edges, each spot marked first.
+func _test_the_descent_is_kinder() -> void:
+	section("THE DESCENT, KINDER - a ward, softer hits, smaller rooms, waves (0.115.0)")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const DoorScript := preload("res://src/world/descent/descentdoor.gd")
+	const Build := preload("res://src/tools/builddescent.gd")
+	# ---- the ward ----
+	Boons.clear()
+	Boons.fill_ward(400)
+	var off_run: bool = Boons.ward == 0 and Boons.absorb(50) == 0
+	Boons.active = true
+	Boons.fill_ward(400)
+	var full: bool = Boons.ward == 160 and Boons.ward_most == 160
+	var first: int = Boons.absorb(50)
+	var second: int = Boons.absorb(200)
+	var third: int = Boons.absorb(30)
+	check("the ward is 40% of your most health, takes a hit first, and once it is gone takes nothing; off a run there is none",
+		off_run and full and first == 50 and second == 110 and third == 0 and Boons.ward == 0, [first, second, third])
+	var hit_code: String = _code_src("res://src/characters/player.gd")
+	var hit_at: int = hit_code.find("func take_damage(")
+	var hit_body: String = hit_code.substr(hit_at, hit_code.find("\nfunc ", hit_at + 1) - hit_at)
+	var absorb_at: int = hit_body.find("DescentBoons.absorb(reduced_amount)")
+	check("  in your hits: after armour and the land, before your health - and the number says the whole hit",
+		absorb_at > hit_body.find("damage_taken(amount, element)") and absorb_at < hit_body.find("hp = clamp(hp - reduced_amount")
+		and hit_body.contains("_spawn_floating_label(reduced_amount + warded"))
+	# ---- softer floors ----
+	var takens: Array = RunScript.FLOORS.map(func(f: Dictionary) -> float: return float(f.get("taken", 1.0)))
+	Boons.floor_taken = 0.5
+	var soft: bool = is_equal_approx(Boons.taken_factor(), 0.5)
+	Boons.clear()
+	check("the crypt hits for half on floor 1, 0.7 on floor 2, 0.9 on floor 3 - and nothing of it off a run",
+		takens == [0.5, 0.7, 0.9] and soft and is_equal_approx(Boons.taken_factor(), 1.0), takens)
+	# ---- smaller rooms, in waves ----
+	var sizes: Array = []
+	var probe: Node = RunScript.new()
+	for at in [[0, 1], [0, 6], [2, 6]]:
+		probe.set("floor_index", at[0])
+		probe.set("room", at[1])
+		sizes.append(int(probe.call("pack_size")))
+	probe.free()
+	check("a room begins at 3 and never holds more than %d (floor 1 room 1, floor 1 room 6, floor 3 room 6: %s)"
+		% [RunScript.PACK_MOST, sizes], sizes == [3, 8, 10], sizes)
+	check("  in waves: up to 4 in one, up to 7 in two, more in three",
+		RunScript.waves_for(3) == 1 and RunScript.waves_for(4) == 1 and RunScript.waves_for(5) == 2
+		and RunScript.waves_for(7) == 2 and RunScript.waves_for(10) == 3)
+	# ---- a run, in a room of stand-ins ----
+	var room := Node2D.new()
+	add_child(room)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	room.add_child(world)
+	var props := Node2D.new()
+	props.name = "props"
+	world.add_child(props)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	for one in [["doorleft", 217.0], ["doorright", 424.0]]:
+		var door := Node2D.new()
+		door.set_script(DoorScript)
+		door.name = str(one[0])
+		door.position = Vector2(float(one[1]), Build.WALL_BACK)
+		props.add_child(door)
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var body := Node2D.new()
+	body.set_script(body_script)
+	room.add_child(body)
+	var run: Node = RunScript.new()
+	run.name = "descentrun"
+	run.set("player_override", body)
+	room.add_child(run)
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	var ward_on: bool = Boons.active and Boons.ward == 160 and body.get_node_or_null("wardring") != null
+	var hud: Node = run.get("hud")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	hud.call("paint")
+	var shown: bool = bool((hud.get("ward_row") as Control).visible) and (hud.get("ward_text") as Label).text == "160"
+	check("a run starts with the ward full, a gold ring at your feet and its bar on the plate",
+		ward_on and shown, [Boons.ward, shown])
+	# Floor 3, room 6: ten, in three waves.
+	run.call("_clear_monsters")
+	run.set("floor_index", 2)
+	run.set("room", 5)
+	run.call("_go", "gold")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	body.global_position = Vector2(320, 300)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var marked: Array = run.get("_coming")
+	var marks: Node2D = room.get_node_or_null("wavemarks") as Node2D
+	var before_out: int = (run.get("monsters") as Array).size()
+	check("floor 3's last room: ten in three waves; the first four are marked on the floor before they step out, the floor's hits at 0.9",
+		int(run.call("pack_size")) == 10 and marked.size() == 4 and before_out == 0 and marks != null
+		and int(run.call("waves_left")) == 2 and is_equal_approx(Boons.floor_taken, 0.9),
+		[marked.size(), before_out, run.call("waves_left")])
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	var out: Array = run.get("monsters")
+	var rect: Rect2 = run.get("room_rect")
+	var at_edges: bool = out.size() == 4
+	for m in out:
+		var p: Vector2 = (m as Node2D).global_position
+		at_edges = at_edges and (p.y <= rect.position.y + 30.5 or p.x <= rect.position.x + 34.5 or p.x >= rect.end.x - 34.5) \
+			and p.distance_to(body.global_position) >= RunScript.SPAWN_CLEAR - 0.01
+	check("  they step out at the room's edges, clear of you", at_edges)
+	for k in 3:
+		(out[k] as Node).call("take_damage", 999999)
+	run.call("_process", 0.016)
+	check("  one left of a wave, the next is marked", (run.get("_coming") as Array).size() == 3
+		and int(run.call("waves_left")) == 1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	run.call("_process", RunScript.WAVE_SECONDS + 0.1)
+	check("  and the last comes after %d seconds even if you have not cleared the one before" % int(RunScript.WAVE_SECONDS),
+		(run.get("_coming") as Array).size() == 3 and int(run.call("waves_left")) == 0)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	Boons.absorb(100)
+	var drained: int = Boons.ward
+	var not_yet: bool = int(run.get("state")) == RunScript.State.FIGHT
+	for m in (run.get("monsters") as Array):
+		if is_instance_valid(m):
+			(m as Node).call("take_damage", 999999)
+	run.call("_process", 0.016)
+	check("  the room is clear only when every wave is down - and clearing it fills the ward again (%d -> %d)" % [drained, Boons.ward],
+		not_yet and int(run.get("state")) != RunScript.State.FIGHT and Boons.ward == 160 and drained == 60)
+	# A fall ends the run: the ward and its ring go.
+	run.call("knock_out", body)
+	check("a fall ends it all: no ward, no ring", Boons.ward == 0 and not Boons.active
+		and (body.get_node_or_null("wardring") == null or (body.get_node("wardring") as Node).is_queued_for_deletion()))
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  (the Descent, kinder: done)")
+
+
+
+# =============================================================================
+# THE DESCENT, MORE TO CHOOSE (0.115.0)
+# =============================================================================
+# Step 2a of DESCENT_PLAN_2.txt: upgrades with rarities, five new ones, and
+# four new doors.
+func _descent_room_for_test(body_script: GDScript) -> Array:
+	"""[room, run, body, doors]: a Descent room of stand-ins."""
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const DoorScript := preload("res://src/world/descent/descentdoor.gd")
+	const Build := preload("res://src/tools/builddescent.gd")
+	var room := Node2D.new()
+	add_child(room)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	room.add_child(world)
+	var props := Node2D.new()
+	props.name = "props"
+	world.add_child(props)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	for one in [["doorleft", 217.0], ["doorright", 424.0]]:
+		var door := Node2D.new()
+		door.set_script(DoorScript)
+		door.name = str(one[0])
+		door.position = Vector2(float(one[1]), Build.WALL_BACK)
+		props.add_child(door)
+	var body := Node2D.new()
+	body.set_script(body_script)
+	room.add_child(body)
+	body.global_position = Vector2(320, 300)
+	var run: Node = RunScript.new()
+	run.name = "descentrun"
+	run.set("player_override", body)
+	room.add_child(run)
+	return [room, run, body, run.get("doors")]
+
+
+func _descent_enter(run: Node, kind: String, at_room: int = 2) -> void:
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	run.set("room", at_room - 1)
+	run.call("_clear_monsters")
+	run.call("_go", kind)
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+
+
+func _descent_kill_all(run: Node) -> void:
+	for m in (run.get("monsters") as Array):
+		if is_instance_valid(m):
+			(m as Node).call("take_damage", 99999999)
+
+
+func _test_the_descent_has_more_to_choose() -> void:
+	section("THE DESCENT, MORE TO CHOOSE - rarities, five new upgrades, four new doors (0.115.0)")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const DoorScript := preload("res://src/world/descent/descentdoor.gd")
+	const HudScript := preload("res://src/world/descent/descenthud.gd")
+	Boons.clear()
+	# ---- rarities ----
+	var unrated: Array = []
+	for id in Boons.ORDER:
+		if not Boons.RARITIES.has(Boons.rarity(id)) or not (Boons.BOONS[id] as Dictionary).has("rarity"):
+			unrated.append(id)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var seen: Dictionary = {"common": 0, "rare": 0, "epic": 0}
+	var three_different: bool = true
+	for i in 600:
+		var drawn: Array = Boons.offers(rng)
+		three_different = three_different and drawn.size() == 3 and drawn[0] != drawn[1] and drawn[1] != drawn[2] and drawn[0] != drawn[2]
+		for id in drawn:
+			seen[Boons.rarity(id)] += 1
+	var only_rare: bool = true
+	for i in 200:
+		for id in Boons.offers(rng, 3, "rare"):
+			only_rare = only_rare and Boons.rarity(id) != "common"
+	check("every upgrade is common, rare or epic; a pick is three different, commons most, epics least (%s)" % [seen],
+		unrated.is_empty() and Boons.BOONS.size() == Boons.ORDER.size() and three_different
+		and int(seen["common"]) > int(seen["rare"]) and int(seen["rare"]) > int(seen["epic"]) and int(seen["epic"]) > 0, unrated)
+	check("  a shrine, a challenge won and a keeper offer rare or better", only_rare)
+	# ---- the new five ----
+	Boons.active = true
+	Boons.levels = {"bulwark": 2}
+	Boons.fill_ward(400)
+	check("Bulwark: the ward is 15% more of your health a level (two: 70%, 280 of 400)", Boons.ward == 280, Boons.ward)
+	Boons.levels = {"execute": 1}
+	check("Execute: a monster under 15% dies to any hit; above it, the hit as it was",
+		Boons.executed(10, 100, 3) == 10 and Boons.executed(50, 100, 3) == 3 and Boons.executed(2, 100, 3) == 3)
+	var enemy_code: String = _code_src("res://src/enemies/baseenemy.gd")
+	var hit_at: int = enemy_code.find("func take_damage(")
+	var hit_body: String = enemy_code.substr(hit_at, enemy_code.find("\nfunc ", hit_at + 1) - hit_at)
+	var exec_at: int = hit_body.find("DescentBoons.executed(hp, max_hp, amount)")
+	check("  in a monster's take_damage, before the shared monster hears the hit and before its health moves",
+		exec_at > 0 and exec_at < hit_body.find("sync.own_hit(") and exec_at < hit_body.find("hp = max(hp - amount, 0)"))
+	Boons.levels = {"momentum": 1, "might": 0}
+	for i in 12:
+		Boons.note_kill()
+	check("Momentum: each kill in a room 4% more damage and speed, at most ten",
+		is_equal_approx(Boons.damage_factor(), 1.4) and is_equal_approx(Boons.speed_factor(), 1.4))
+	Boons.room_kills = 0
+	Boons.levels = {"secondwind": 1}
+	var once: bool = Boons.second_wind() and not Boons.second_wind()
+	Boons.new_floor()
+	check("Second Wind: once a floor", once and Boons.second_wind())
+	Boons.levels = {"thorns": 2}
+	check("Thorns: half a swing a level", Boons.thorns_cut(100.0) == 100)
+	var span_script := GDScript.new()
+	span_script.source_code = "extends Node2D\nfunc attack_damage_range() -> Vector2i:\n\treturn Vector2i(80, 120)\n"
+	span_script.reload()
+	var hit_script := GDScript.new()
+	hit_script.source_code = "extends Node2D\nvar took: int = 0\nfunc take_damage(amount: int, _e: int = 0) -> void:\n\ttook += amount\n"
+	hit_script.reload()
+	var arena := Node2D.new()
+	add_child(arena)
+	var me := Node2D.new()
+	me.set_script(span_script)
+	arena.add_child(me)
+	me.global_position = Vector2(100, 100)
+	var near := Node2D.new()
+	near.set_script(hit_script)
+	near.add_to_group("enemies")
+	arena.add_child(near)
+	near.global_position = Vector2(130, 100)
+	var far := Node2D.new()
+	far.set_script(hit_script)
+	far.add_to_group("enemies")
+	arena.add_child(far)
+	far.global_position = Vector2(300, 100)
+	Boons._thorns_at = -100000
+	var cut: int = Boons.thorns(me)
+	var again: int = Boons.thorns(me)
+	check("  it cuts every monster near you when you are hit - not one far off, and not twice in a moment",
+		cut == 1 and int(near.get("took")) == 100 and int(far.get("took")) == 0 and again == 0, [cut, near.get("took"), far.get("took")])
+	arena.queue_free()
+	var player_code: String = _code_src("res://src/characters/player.gd")
+	var take_at: int = player_code.find("func take_damage(")
+	var take_body: String = player_code.substr(take_at, player_code.find("\nfunc ", take_at + 1) - take_at)
+	check("  from your take_damage, after the hit lands", take_body.find("DescentBoons.thorns(self)") > take_body.find("hp = clamp(hp - reduced_amount"))
+	Boons.clear()
+	check("  and none of it off a run", Boons.executed(10, 100, 3) == 3 and Boons.momentum() == 1.0 and not Boons.second_wind()
+		and Boons.thorns_cut(100.0) == 0)
+	# ---- the doors, in a room of stand-ins ----
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	var body: Node2D = made[2]
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	var missing_icon: Array = []
+	for kind in RunScript.KINDS:
+		if kind != "elite" and not DoorScript.ICONS.has(kind):
+			missing_icon.append(kind)
+		elif DoorScript.ICONS.has(kind) and DirAccess.dir_exists_absolute("res://art/pack/icons") \
+				and not ResourceLoader.exists(str(DoorScript.ICONS[kind])):
+			missing_icon.append(kind)
+	check("seven doors a room can promise, each with its picture from the pack", RunScript.KINDS.size() == 7
+		and RunScript.KINDS.size() == RunScript.KIND_WEIGHTS.size() and missing_icon.is_empty(), missing_icon)
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	# A Rest.
+	_descent_enter(run, "rest")
+	var fire: bool = room.find_children("restfire", "", true, false).size() == 1
+	check("a Rest: no fight, the doors open as the fade ends, a fire in the middle, the ward full and half again (240 of 400)",
+		int(run.get("state")) == RunScript.State.CLEAR and (run.get("monsters") as Array).is_empty() and fire
+		and Boons.ward == 240 and bool(doors[0].get("open")), [run.get("state"), Boons.ward, fire])
+	run.call("_process", RunScript.FIGHT_DELAY + 1.0)
+	check("  and nothing comes after", (run.get("monsters") as Array).is_empty() and (run.get("_coming") as Array).is_empty())
+	# A Treasure.
+	_descent_enter(run, "treasure", 4)
+	var whole: int = mini(RunScript.PACK_MOST, RunScript.PACK_FIRST + 4)
+	check("a Treasure is lightly guarded: half the pack (%d of %d)" % [int(run.call("pack_size")), whole],
+		int(run.call("pack_size")) == ceili(whole / 2.0))
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	var gold_was: int = int(run.get("gold"))
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	check("  and pays three rooms' gold, no pick", int(run.get("gold")) - gold_was == RunScript.GOLD_BASE * RunScript.TREASURE_GOLD
+		and int(run.get("state")) == RunScript.State.CLEAR, int(run.get("gold")) - gold_was)
+	# A Shrine.
+	_descent_enter(run, "shrine")
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	var shrine_offers: Array = run.get("offers")
+	var all_rare: bool = not shrine_offers.is_empty()
+	for id in shrine_offers:
+		all_rare = all_rare and Boons.rarity(str(id)) != "common"
+	check("a Shrine: a rare or better pick - and the floor's monsters hit 15% harder after",
+		all_rare and is_equal_approx(Boons.shrine_taken, 1.15) and is_equal_approx(Boons.taken_factor(), 0.5 * 1.15), shrine_offers)
+	run.call("pick", 0)
+	# A Challenge, beaten.
+	_descent_enter(run, "challenge")
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var given: float = float(run.get("challenge_left"))
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	var won_offers: Array = run.get("offers")
+	var rare_won: bool = not won_offers.is_empty()
+	for id in won_offers:
+		rare_won = rare_won and Boons.rarity(str(id)) != "common"
+	check("a Challenge: %d seconds for this pack; beaten, a rare or better pick" % roundi(given),
+		is_equal_approx(given, RunScript.CHALLENGE_BASE + RunScript.CHALLENGE_EACH * int(run.call("pack_size")))
+		and rare_won and int(run.get("state")) == RunScript.State.PICK)
+	run.call("pick", 0)
+	# A Challenge, too slow.
+	_descent_enter(run, "challenge")
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	run.call("_process", given + 1.0)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	check("  too slow: no pick, the doors open", int(run.get("state")) == RunScript.State.CLEAR
+		and (run.get("offers") as Array).is_empty())
+	# Momentum counts this room's kills; a new room starts again.
+	check("Momentum's count is this room's kills, and a new room starts it again",
+		Boons.room_kills > 0)
+	_descent_enter(run, "gold")
+	check("  ...here", Boons.room_kills == 0)
+	# Down a floor lifts the shrine's price.
+	_descent_kill_all(run)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	_descent_enter(run, "down")
+	check("down a floor: the shrine's price lifted, Second Wind back", is_equal_approx(Boons.shrine_taken, 1.0)
+		and not Boons.wind_used)
+	# Second Wind catches a fall, once a floor.
+	Boons.levels["secondwind"] = 1
+	body.global_position = Vector2(300, 200)
+	body.set("hp", 0)
+	var caught: bool = bool(run.call("knock_out", body))
+	var stood: bool = caught and run.call("running") and int(body.get("hp")) == 1 and body.global_position == Vector2(300, 200) \
+		and Boons.ward == Boons.ward_most
+	body.set("hp", 0)
+	run.call("knock_out", body)
+	check("Second Wind: a fall leaves you standing where you were on a full ward, the run going on - the next fall that floor ends it",
+		stood and not bool(run.call("running")), [caught, body.get("hp")])
+	# The HUD: a card in its rarity's colour.
+	var hud: Node = run.get("hud")
+	hud.call("show_pick", ["might", "thorns", "secondwind"])
+	var names: Array = (hud.get("cards") as Array).map(func(c: Button) -> Color: return (c.get_node("words/name") as Label).get_theme_color("font_color"))
+	var level_line: String = ((hud.get("cards") as Array)[1] as Button).get_node("words/level").text
+	check("a card's name is in its rarity's colour, the rarity written under",
+		names[0] == Boons.RARITY_COLOURS["common"] and names[1] == Boons.RARITY_COLOURS["rare"]
+		and names[2] == Boons.RARITY_COLOURS["epic"] and level_line.begins_with("Rare"), level_line)
+	hud.call("hide_pick")
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  (the Descent, more to choose: done)")

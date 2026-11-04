@@ -24,6 +24,11 @@ const HINT := Color(0.82, 0.78, 0.7)
 const CARD_SIZE := Vector2(210, 150)
 const CHOSEN := Color(1.0, 0.82, 0.3)
 const PIP_GAP := 26.0
+# THE WARD (0.115.0): its bar on the plate, under the rooms.
+const WARD_BAR := Vector2(200, 10)
+const WARD_GOLD := Color(1.0, 0.8, 0.3)
+# AXE FURY's bar (0.115.0), under the ward's, while the Double Axe is on.
+const FURY_ORANGE := Color(1.0, 0.55, 0.2)
 
 var run: Node = null
 var plate: PanelContainer = null
@@ -31,6 +36,12 @@ var title: Label = null
 var detail: Label = null
 var pips: Control = null
 var boon_line: Label = null
+var ward_row: HBoxContainer = null
+var ward_bar: Control = null
+var ward_text: Label = null
+var fury_row: HBoxContainer = null
+var fury_bar: Control = null
+var fury_text: Label = null
 var banner: Label = null
 var banner_line: Label = null
 var toast_label: Label = null
@@ -85,6 +96,42 @@ func _ready() -> void:
 	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pips.draw.connect(_draw_pips)
 	column.add_child(pips)
+	ward_row = HBoxContainer.new()
+	ward_row.name = "ward"
+	ward_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	ward_row.add_theme_constant_override("separation", 8)
+	ward_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(ward_row)
+	var ward_name: Label = _label("wardname", 13, WARD_GOLD)
+	ward_name.text = "Ward"
+	ward_row.add_child(ward_name)
+	ward_bar = Control.new()
+	ward_bar.name = "wardbar"
+	ward_bar.custom_minimum_size = WARD_BAR
+	ward_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ward_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ward_bar.draw.connect(_draw_ward)
+	ward_row.add_child(ward_bar)
+	ward_text = _label("wardtext", 13, WARD_GOLD)
+	ward_row.add_child(ward_text)
+	fury_row = HBoxContainer.new()
+	fury_row.name = "fury"
+	fury_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	fury_row.add_theme_constant_override("separation", 8)
+	fury_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(fury_row)
+	var fury_name: Label = _label("furyname", 13, FURY_ORANGE)
+	fury_name.text = "Fury"
+	fury_row.add_child(fury_name)
+	fury_bar = Control.new()
+	fury_bar.name = "furybar"
+	fury_bar.custom_minimum_size = WARD_BAR
+	fury_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	fury_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fury_bar.draw.connect(_draw_fury)
+	fury_row.add_child(fury_bar)
+	fury_text = _label("furytext", 13, FURY_ORANGE)
+	fury_row.add_child(fury_text)
 	boon_line = _label("boons", 12, GOLD)
 	boon_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(boon_line)
@@ -188,10 +235,20 @@ func paint() -> void:
 		detail.text = "Floor %d  -  %s  -  %s  -  Gold %d" % [int(run.get("floor_index")) + 1, str(info["name"]),
 			"the keeper" if str(run.get("room_kind")) == "keeper" else "room %d of %d" % [maxi(1, int(run.get("room"))), run_rooms()],
 			int(run.get("gold"))]
+		# A CHALLENGE'S CLOCK (0.115.0), while it is fought.
+		if str(run.get("room_kind")) == "challenge" and float(run.get("challenge_left")) > 0.0 \
+				and int(run.get("state")) == 1:
+			detail.text += "  -  Clear it: %d s" % ceili(float(run.get("challenge_left")))
 	else:
 		detail.text = "Walk through a door to begin"
 	pips.visible = running
 	pips.queue_redraw()
+	ward_row.visible = running and Boons.ward_most > 0
+	ward_text.text = "%d" % Boons.ward
+	ward_bar.queue_redraw()
+	fury_row.visible = running and run.has_method("wears_axe") and bool(run.call("wears_axe"))
+	fury_text.text = "Q!" if Boons.fury_full() else "%d/%d" % [Boons.fury, Boons.FURY_NEEDS]
+	fury_bar.queue_redraw()
 	var taken: Array = []
 	for id in Boons.ORDER:
 		if Boons.level(id) > 0:
@@ -218,6 +275,23 @@ func paint() -> void:
 	if pick_panel.visible:
 		pick_panel.reset_size()
 		pick_panel.position = ((screen - pick_panel.size) / 2.0).floor()
+
+
+func _draw_ward() -> void:
+	"""The ward's bar: gold for what is left, dark for what is gone."""
+	var full: float = float(Boons.ward) / float(Boons.ward_most) if Boons.ward_most > 0 else 0.0
+	ward_bar.draw_rect(Rect2(Vector2.ZERO, WARD_BAR), Color(0.1, 0.08, 0.05, 0.9))
+	ward_bar.draw_rect(Rect2(Vector2.ZERO, Vector2(WARD_BAR.x * full, WARD_BAR.y)), WARD_GOLD)
+	ward_bar.draw_rect(Rect2(Vector2.ZERO, WARD_BAR), Color(WARD_GOLD, 0.6), false, 1.0)
+
+
+func _draw_fury() -> void:
+	"""Axe Fury's bar: orange as it fills, bright when Q is ready."""
+	var full: float = float(Boons.fury) / float(Boons.FURY_NEEDS)
+	fury_bar.draw_rect(Rect2(Vector2.ZERO, WARD_BAR), Color(0.1, 0.06, 0.04, 0.9))
+	fury_bar.draw_rect(Rect2(Vector2.ZERO, Vector2(WARD_BAR.x * full, WARD_BAR.y)),
+		Color(1.6, 0.9, 0.35) if Boons.fury_full() else FURY_ORANGE)
+	fury_bar.draw_rect(Rect2(Vector2.ZERO, WARD_BAR), Color(FURY_ORANGE, 0.6), false, 1.0)
 
 
 func _draw_pips() -> void:
@@ -272,8 +346,10 @@ func show_pick(offers: Array) -> void:
 		var info: Dictionary = Boons.BOONS[id]
 		var words: Node = card.get_node("words")
 		(words.get_node("name") as Label).text = str(info["name"])
+		# ITS RARITY (0.115.0): the name in the rarity's colour, the word under.
+		(words.get_node("name") as Label).add_theme_color_override("font_color", rarity_colour(id))
 		(words.get_node("does") as Label).text = str(info["does"])
-		(words.get_node("level") as Label).text = Boons.level_text(id)
+		(words.get_node("level") as Label).text = "%s  -  %s" % [Boons.rarity(id).capitalize(), Boons.level_text(id)]
 	_offered = offers.duplicate()
 	_choose(-1)
 	pick_panel.visible = true
@@ -302,6 +378,15 @@ func _choose(index: int) -> void:
 			ring.set_corner_radius_all(4)
 			for look in ["normal", "hover", "pressed"]:
 				card.add_theme_stylebox_override(look, ring)
+		elif i < _offered.size():
+			# Its rarity's rim (0.115.0).
+			var rim := StyleBoxFlat.new()
+			rim.bg_color = Color(0.1, 0.08, 0.07, 0.95)
+			rim.border_color = Color(rarity_colour(str(_offered[i])), 0.8)
+			rim.set_border_width_all(2)
+			rim.set_corner_radius_all(4)
+			for look in ["normal", "hover", "pressed"]:
+				card.add_theme_stylebox_override(look, rim)
 		else:
 			for look in ["normal", "hover", "pressed"]:
 				card.remove_theme_stylebox_override(look)
@@ -309,6 +394,10 @@ func _choose(index: int) -> void:
 		take_button.disabled = chosen < 0
 		take_button.text = "Choose an upgrade" if chosen < 0 else \
 			"Take %s" % str(Boons.BOONS[str(_offered[chosen])]["name"])
+
+
+static func rarity_colour(id: String) -> Color:
+	return Boons.RARITY_COLOURS.get(Boons.rarity(id), GOLD)
 
 
 func _on_take() -> void:

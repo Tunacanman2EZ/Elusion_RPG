@@ -52,6 +52,8 @@ class_name BaseEnemy
 
 # Who a monster may chase: you, and anybody sharing the area's monsters.
 const Targets := preload("res://src/shared/targets.gd")
+# A Descent run's Execute (0.115.0): take_damage() asks it.
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 # A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
 const HitFlash := preload("res://src/shared/hitflash.gd")
 
@@ -3301,6 +3303,10 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 		play_hit_flash()
 		Audio.play_at("enemy_hurt", global_position)
 		return
+
+	# A DESCENT RUN'S EXECUTE (0.115.0, descentboons.gd): this low, any hit
+	# takes all it has left. Nothing off a run.
+	amount = DescentBoons.executed(hp, max_hp, amount)
 
 	# WHOSE HIT THIS WAS. Somebody else's arrives through net_take_remote_hit(),
 	# which sets _net_applying_remote around this call; everything else that

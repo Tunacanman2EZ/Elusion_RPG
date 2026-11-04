@@ -3356,6 +3356,110 @@ The owner, playing 0.112.0, six things. `_test_after_the_first_descent()`
   playing at once or after waiting on the select screen. The owner's steps
   are the next thing to ask.
 
+### The Descent, kinder: a ward, softer hits, smaller rooms, waves (0.115.0)
+
+The owner: "time to improve the decent feels pretty boring and chars die
+fast", then "we can also use mythic weapon here some how" and "sounds good".
+Step 1 of the commit folder's DESCENT_PLAN_2.txt (steps 2 and 3: more to
+choose, mythic upgrades and Axe Fury; rooms that differ). Pictured:
+descent_ward_0115.png. Why it killed: no heal between up to 21 fights (the
+server takes back a heal it cannot explain), the open world's monsters (20 to
+60 a shot) and, by floor 3, 13 of them at once.
+
+- **The ward** (descentboons.gd): `WARD_SHARE` (0.4) of your most health,
+  `fill_ward()` at the run's start and at every room cleared
+  (descentrun.gd `fill_ward()`, in `_room_cleared()` before the pay and the
+  pick). `absorb()` takes a hit first: Player.take_damage() calls it after
+  `damage_taken()` (armour, the land, the half) and before the health write,
+  and the floating number still says the whole hit. Health never goes up, so
+  nothing for the server's heal check. Shown as a bar on the plate
+  (descenthud.gd `ward_row`, `_draw_ward()`) and a gold ring at your feet
+  (descentrun.gd `_ward_ring`, a child of the player at `WARD_RING_AT`,
+  drawn as an arc as full as the ward; dropped at the run's end and when the
+  area goes). `clear()` empties it.
+- **Softer hits**: FLOORS' `"taken"` (0.5, 0.7, 0.9), set as `floor_taken`
+  on each room entered, in `taken_factor()`; 1 off a run.
+- **Smaller rooms**: `pack_size()` is `PACK_FIRST` (2) + room + 2 a floor,
+  never over `PACK_MOST` (10): 3 to begin (it was 4), 10 at the bottom (it
+  was 13).
+- **Waves** (`_spawn_pack()` plans them, `waves_for()`: up to 4 in one, up
+  to 7 in two, else three; the elite in the last): each monster's spot, at
+  the room's back wall or sides clear of you (`_edge_spot()`), is a ring on
+  the floor (`_marks`, "wavemarks", violet, the elite's orange) that closes
+  over `MARK_SECONDS` (0.7) before it steps out (`_step_waves()`). The next
+  wave when `WAVE_NEXT_AT` (1) or fewer are left, or after `WAVE_SECONDS`
+  (9). The room is clear only with every wave down. The keeper comes alone,
+  at once, as before.
+
+`_test_the_descent_is_kinder()` (testrunner_9); `_test_the_descent()` waits
+out the marks and its first room is 3.
+
+**And more to choose (step 2's first half, the same 0.115.0).** Pictured:
+descent_more_0115.png.
+
+- **Rarities** (descentboons.gd): every BOONS entry has `"rarity"` -
+  common, rare or epic (`RARITIES`); `offers(rng, count, at_least)` draws by
+  `RARITY_WEIGHTS` (60/30/10) without repeats, `at_least` "rare" for a
+  Shrine, a Challenge won and a keeper. The card's name is in
+  `RARITY_COLOURS`, its rim too, the rarity written under
+  (descenthud.gd `rarity_colour()`). One-only upgrades say "Only one".
+- **Five more**: Bulwark (common, to 3: `ward_share()` +15% a level),
+  Thorns (rare, to 3: `thorns()` from Player.take_damage() after the hit,
+  half a swing a level - `attack_damage_range()`'s middle - to every
+  monster within `THORNS_REACH` 56, at most every 300 ms), Execute (rare:
+  `executed()` in BaseEnemy.take_damage(), before the shared monster hears
+  the hit - under `EXECUTE_BELOW` 15% any hit takes all it has), Momentum
+  (rare: `note_kill()` from the run, +4% damage and speed a kill this room,
+  to 10, `room_kills` reset on each room), Second Wind (epic:
+  `second_wind()` in descentrun.gd `knock_out()` - stand where you are, 1
+  health, ward full, once a floor; `new_floor()` gives it back).
+- **A kill counts as it falls**: `living()` calls `_note_fallen()` for
+  each monster down (a meta, so once), as does `_on_monster_gone()`.
+- **Four more doors** (`KINDS`, `KIND_WEIGHTS` 30/22/18/8/8/8/6; the
+  medallions the pack's own icons, descentdoor.gd `ICONS`, rims in `RIMS`):
+  Shrine (a fight, then a rare-or-better pick, and `shrine_taken` x1.15 in
+  `taken_factor()` for the rest of the floor), Treasure (half a pack,
+  `ceili()`, then `TREASURE_GOLD` 3 rooms' gold, no pick), Challenge
+  (`challenge_seconds()` = 15 + 2 a monster from the pack's coming, on the
+  plate as "Clear it: N s"; beaten, a rare-or-better pick; too slow, none),
+  Rest (no fight: `fill_ward(REST_OVER)` 1.5 on arriving, a fire -
+  `_light_fire()`, the crypt's candle cluster - in the middle, the doors
+  opened as the fade ends, not in `_arrive()`, or the screen stays black).
+
+`_test_the_descent_has_more_to_choose()` (testrunner_9, with
+`_descent_room_for_test()`, `_descent_enter()` and `_descent_kill_all()`).
+
+**And the Double Axe (step 2's second half, the same 0.115.0).** The owner:
+"we can also use mythic weapon here some how". Pictured: descent_axe_0115.png.
+
+- **Mythic upgrades** (descentboons.gd, rarity "mythic", orange, weight 12):
+  offered only when `offers()` is told `axe` (descentrun.gd `wears_axe()`:
+  `equipped_weapon_attack()` is SPINNING_AXE), and a keeper's pick always
+  holds one (`one_mythic`). Storm (to 3, `axe_reach_scale()` in
+  spinningaxe.gd `base_reach()`: +25% a level), Harvester (to 3,
+  `harvester_scale()` in `_cut_what_it_passes()` while RETURNING: +50% a
+  level), Magnet (`_pull_in()` while SPINNING: BaseEnemy `pull_toward()` on
+  everything within `MAGNET_REACH` (2.5) of its reach, `MAGNET_SPEED` 55
+  px/s), Ricochet (`_ricochet()` as it lands, once a throw: on to the nearest
+  monster past its reach within `RICOCHET_REACH` 140, not when a wall
+  stopped it), Twin Axes (warrior.gd `throw_axe()`: `_twin`, thrown
+  `TWIN_TURN` 0.45 rad off the aim, recalled with the first; a twin's catch
+  is `_on_twin_caught()`, so the first's `_axe` is never cleared by it).
+- **Axe Fury**: `note_kill()` fills `fury` to `FURY_NEEDS` (15); its bar
+  under the ward's (descenthud.gd `fury_row`, "Q!" when full) only while
+  the Double Axe is on. Q (KEY_Q, bound to nothing else; descentrun.gd
+  `_unhandled_input()`) in a FIGHT with it full: `unleash_fury()` - a
+  `GiantAxe` (an inner class: the axe scene's own spin frames, x3.5, an
+  orange ring) spiralling in round the room's middle (`FURY_RADII` of the
+  floor, `FURY_LAPS` 2, in to a quarter) for `FURY_SECONDS` (2.4), cutting
+  what is within `FURY_REACH` (56) for `FURY_SWINGS` (3) of your swings, a
+  monster at most every `FURY_HIT_GAP` (0.5 s). Its `step()` is what the
+  suite drives.
+
+`_test_the_double_axe_in_the_descent()` - in **testrunner_10.gd**, new: part
+9 passed 250 KB. testrunner.gd extends testrunner_10.gd, which extends
+testrunner_9.gd.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

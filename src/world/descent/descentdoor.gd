@@ -20,7 +20,14 @@ const WALLS_ART := "res://art/floordecoration/floorwalls.png"
 const ICONS := {
 	"upgrade": "res://art/pack/icons/attackiconcharacterstats.png",
 	"gold": "res://art/pack/currency/goldpile.png",
+	# STEP 2 (0.115.0): the pack's own pictures, whole.
+	"shrine": "res://art/pack/icons/magiciconcharacterstats.png",
+	"treasure": "res://art/pack/currency/platinumcoin.png",
+	"challenge": "res://art/pack/icons/agilityiconcharacterstats.png",
+	"rest": "res://art/pack/icons/defenceiconcharacterstats.png",
 }
+# The rim: gold, the keeper's red, a shrine's violet, a challenge's blue.
+const RIMS := {"keeper": Color(1.0, 0.45, 0.3), "shrine": Color(0.82, 0.5, 1.0), "challenge": Color(0.45, 0.75, 1.0)}
 const SKULL := Rect2(123, 91, 9, 9)
 const GOLD := Color(1.0, 0.86, 0.45)
 const RED := Color(1.0, 0.45, 0.3)
@@ -51,7 +58,7 @@ class Medal extends Node2D:
 			return
 		var lit: bool = bool(door.get("open"))
 		var a: float = 1.0 if lit else 0.6
-		var rim: Color = RED if kind == "keeper" else GOLD
+		var rim: Color = RIMS.get(kind, GOLD)
 		draw_circle(MEDAL_AT, MEDAL_RADIUS, Color(0.05, 0.04, 0.06, 0.9 * a))
 		draw_arc(MEDAL_AT, MEDAL_RADIUS, 0.0, TAU, 32, Color(rim, a), 1.5)
 		if lit:
