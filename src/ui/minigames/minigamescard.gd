@@ -42,6 +42,13 @@
 # asks the server nothing - step 1 pays nothing; inside it, the row's button
 # is Leave, to town.
 #
+# THE FORGE (forgerun.gd) is the fifth, the owner's alone while it is built
+# (`shows_forge`): THE TANK'S WORLD - an island in a lake of lava that floods
+# slice by slice - but open to every class (the owner: "open to any class but
+# the tank benefits the most"). Go travels there (its own area, as the
+# Descent is) and asks the server nothing - step 1 pays nothing; inside it,
+# the row's button is Leave, to town.
+#
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
 # asking (`open_lobby`): the run of the day is asked for when everyone is
@@ -73,6 +80,9 @@ const DESCENT_CLASS := "warrior"
 const FOR_WARRIORS := "For warriors - play your warrior"
 const DESCENT := "descent"
 const DESCENT_ENTRANCE := "descent_entrance"
+const FORGE_BLURB := "The tank's world: hold the anvil while the lava floods the island slice by slice. Any class - the tank lasts longest. Yours only while it is built."
+const FORGE := "forge"
+const FORGE_ENTRANCE := "forge_entrance"
 
 # The suite's doors: the two requests, where Go and Leave travel to, and which
 # area this game is in.
@@ -95,6 +105,8 @@ var open_stand: Callable = Callable(self, "_open_stand")
 # being played - it is the warrior's.
 var shows_descent: Callable = Callable(self, "_shows_descent")
 var class_now: Callable = Callable(CharacterData, "active_class_id")
+# The Forge's: who sees it (the owner, while it is built).
+var shows_forge: Callable = Callable(self, "_shows_forge")
 
 var hud: Node = null
 var title: Label = null
@@ -112,6 +124,9 @@ var stand_go: Button = null
 var descent_box: VBoxContainer = null
 var descent_status: Label = null
 var descent_go: Button = null
+var forge_box: VBoxContainer = null
+var forge_status: Label = null
+var forge_go: Button = null
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -268,6 +283,30 @@ func _init() -> void:
 	descent_go.custom_minimum_size = Vector2(72, 28)
 	descent_go.pressed.connect(_on_descent_go)
 	descent_row.add_child(descent_go)
+	forge_box = VBoxContainer.new()
+	forge_box.name = "forge"
+	forge_box.add_theme_constant_override("separation", 4)
+	column.add_child(forge_box)
+	forge_box.add_child(HSeparator.new())
+	forge_box.add_child(_label("forgegame", "The Forge", FONT_SIZE, COLOUR))
+	var forge_blurb: Label = _label("forgeblurb", FORGE_BLURB, 12, COLOUR_HINT)
+	forge_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	forge_blurb.custom_minimum_size = Vector2(WIDTH - 20.0, 0)
+	forge_box.add_child(forge_blurb)
+	var forge_row := HBoxContainer.new()
+	forge_row.add_theme_constant_override("separation", 10)
+	forge_box.add_child(forge_row)
+	forge_status = _label("forgestatus", "", FONT_SIZE, COLOUR_HINT)
+	forge_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	forge_status.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
+	forge_row.add_child(forge_status)
+	forge_go = Button.new()
+	forge_go.name = "forgego"
+	forge_go.text = "Go"
+	forge_go.focus_mode = Control.FOCUS_NONE
+	forge_go.custom_minimum_size = Vector2(72, 28)
+	forge_go.pressed.connect(_on_forge_go)
+	forge_row.add_child(forge_go)
 
 
 func _label(id: String, text: String, size: int, colour: Color) -> Label:
@@ -458,6 +497,7 @@ func paint() -> void:
 	_paint_healer()
 	_paint_stand()
 	_paint_descent()
+	_paint_forge()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -673,6 +713,30 @@ func _on_descent_go() -> void:
 
 
 func _shows_descent() -> bool:
+	return bool(Api.is_owner)
+
+
+func _paint_forge() -> void:
+	forge_box.visible = bool(shows_forge.call())
+	var inside: bool = str(area_now.call()) == FORGE
+	forge_status.text = "You are in the Forge." if inside else "Ready - any class goes down"
+	forge_status.add_theme_color_override("font_color", COLOUR_HINT if inside else COLOUR_READY)
+	forge_go.text = "Leave" if inside else "Go"
+	forge_go.tooltip_text = "Back up to town" if inside else "Down into the Forge - as you are, gear and all"
+
+
+func _on_forge_go() -> void:
+	if not bool(shows_forge.call()):
+		paint()
+		return
+	close()
+	if str(area_now.call()) == FORGE:
+		travel.call(TOWN, "")
+	else:
+		travel.call(FORGE, FORGE_ENTRANCE)
+
+
+func _shows_forge() -> bool:
 	return bool(Api.is_owner)
 
 

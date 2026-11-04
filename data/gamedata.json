@@ -2579,6 +2579,12 @@
 					"y": 1318.0
 				}
 			]
+		},
+		"forge": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 0.0,
+			"scene": "res://scene/forge.tscn",
+			"spawns": []
 		}
 	},
 	"classes": [

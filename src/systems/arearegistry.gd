@@ -45,6 +45,10 @@ const AREAS := {
 	# (src/world/descent/). From the Minigames card, the owner's alone while
 	# it is built.
 	"descent":   "res://scene/descent.tscn",
+	# The Forge (forgerun.gd) - the tank's world, an island in a lake of lava
+	# (src/world/forge/). From the Minigames card, the owner's alone while it
+	# is built.
+	"forge":     "res://scene/forge.tscn",
 }
 
 # WHAT A PLAYER READS for each area. Every screen that named an area ran the
@@ -60,6 +64,7 @@ const AREA_NAMES := {
 	"easteregg": "Easter Egg",
 	"endless":   "The Endless",
 	"descent":   "The Descent",
+	"forge":     "The Forge",
 }
 
 

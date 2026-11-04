@@ -3660,6 +3660,86 @@ the refusals, the stand-still stopped by a step and by a hit, the trip, the
 map's row and buttons. Watched fail with every stone lit and with moving
 ignored.
 
+### The Forge: the tank's world, an island that floods slice by slice (0.119.0)
+
+The owner, building a minigame for the tank ("the tank is a creator of
+armor and lives in the depths of fire where he forges equipment"), then of
+the mock-ups: "make the map like a disc make it bigger", "animated lava
+should only be here the rest stale ... the lava is graphics heavy so i
+need to use it wisely", "lava should fill like slices of pie preventing
+lava from spilling into that tiny circle" (the tank's light), "enemies
+spawn close and closer", "i need players to catch on fire and tanks gear
+just turns a little red", "everyone dies but time can be added to set a
+highscore", "open to any class but the tank benefits the most", then
+"lets build it then decide more" and, of the tank's aura, "push back lava
+only where he is standing to create safe walkways for the team". Step 1 of
+the commit folder's FORGE_PLAN.txt: the owner's alone (`Api.is_owner`),
+solo, pays nothing, no server change. Pictured (forge_0119.png).
+
+- **Its own area** (`scene/forge.tscn`, written by `src/tools/buildforge.gd`
+  - rebuilding it loses hand changes): the underground floor in a disc of
+  `RADIUS` (960) round `CENTRE`, a lake `BAND` (192) wide round it, the anvil
+  in the middle, its glow (`forgeglow`), the arrival `forge_entrance` just
+  south, five lava falls (lavafall.png, group "forge_falls") pouring out of
+  the dark into the lake's north edge, and a ring of solid quads past the
+  lake (`lakewall`). In `AreaRegistry` and `data/gamedata.json` (no monsters
+  placed; the API's copy can wait for the next export).
+- **The island's numbers are the run's** (forgerun.gd THE MAP), and the
+  builder preloads them - never the other way: src/tools/ is left out of
+  every export.
+- **The lake** (`lava`, z -11, its own TileSet): the town's lava tile
+  (propsandterrain.png cell (0,5), nine frames at three a second, random
+  starts) as source `BUBBLING`, its first frame still as `STILL`. It lies
+  under the whole island too, so a slice floods by taking its floor away.
+  `bubbles()` is the one rule, for the builder and every repaint: a cell
+  bubbles when it can be seen and floor lies within `BUBBLE_REACH`. Built,
+  348 of 4,060 cells bubble.
+- **The run** (`forgerun.gd`, group "forge_run"): WAITING - stand at the
+  anvil (`START_REACH`) for `START_HOLD`; COUNTDOWN; RUNNING - heat fills in
+  `fill_seconds()` (40 s, a tenth quicker each flood, never under 18); from
+  `WARN_AT` the next slice glows (`Marks`) and the falls pour twice as fast;
+  full, the slice floods from the rim to the light over `FLOOD_SECONDS`
+  (its floor cells furthest first, the front's lava repainted every
+  `FRONT_REPAINT`). `ORDER` is opposite slices in turn. All eight gone is THE
+  VOLCANO: everyone burns, harder each tick, until they fall.
+- **The light the lava never enters**: `SAFE_TANK` (294 - playerlight.tscn's
+  256 px glow at 2.3, halved) for a tank, `SAFE_OTHER` (210) for any other
+  class; the anvil's glow is sized to it.
+- **Fire**: in the lava anyone but the tank takes `LAVA_BURN` of their health
+  a tick as fire through `take_damage()`, plus the effects' burn (its tint),
+  and `Flames` are drawn on them while it lasts. The tank's sprite turns
+  `TANK_RED` instead (`redness()`, more in the lava and with the heat). In the
+  volcano the tank burns too.
+- **The tank's walkways**: while his aura is on, the lava inside its ellipse
+  (`aura_ellipse()`, read off the tank's own aura capsule) is island again -
+  the floor's tiles laid back (`_cool()`) - for `WALK_LINGER` (3 s) after the
+  ring moves on, then melts. `in_lava()` is false on one and no fire sprite
+  steps out of one. The aura's mana is the cost.
+- **Fire sprites** step out of the lava's edges (`edges()` /
+  `edge_spot()`: an open slice's rim, a flooded slice's light rim, the sides
+  where they meet, by length), so each flood brings them closer; more often
+  and more of them each flood (`spawn_gap()`, `alive_cap()`,
+  `spawn_count()`, `health_scale()`). The stress test's mark: no kill report,
+  never shared, pay nothing.
+- **Ice essence** (art/pack/materials/iceessence.png): one at a time, in an
+  open slice that is not the next to flood, at least half the radius out;
+  walked over, the heat drops `ESSENCE_COOL`. Lost if its slice floods.
+- **A fall is not a death**: `Player._endless_catches_fall()` asks
+  "forge_run" too; `knock_out()` - 1 health, effects cleared, beside the
+  anvil, "The forge held 4:12 ..." and the island whole again (`_reset_map()`).
+- **HUD** (`forgehud.gd`, layer 4): the plate (clock, slices, slain), the
+  heat bar ("The volcano" at the end), banners, the essence's toast, the
+  result and the run's best.
+- **The card** (`minigamescard.gd`): a Forge row for the owner
+  (`shows_forge`), any class: Go travels to "forge" / "forge_entrance";
+  inside, Leave to town.
+- **Open**: at the default zoom (3) the view is about 427 x 240, so from the
+  anvil the light's rim (294 out) and the lava past it are off screen; zoom 1
+  shows them. Whether the Forge sets the camera is the owner's call.
+
+`_test_the_forge()` (testrunner_10). Watched fail with every cell bubbling,
+the tank burning in the lava, the fall hook gone and the walkways off.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

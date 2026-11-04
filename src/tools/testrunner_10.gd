@@ -1476,3 +1476,274 @@ func _test_the_waystones() -> void:
 	WorldMap.last_reveal = kept_reveal
 	await get_tree().process_frame
 	print("  (the waystones: done)")
+
+
+# =============================================================================
+# THE FORGE (step 1)
+# =============================================================================
+# The owner: "lets build it then decide more" - the tank's world, an island in
+# a lake of lava that floods slice by slice ("enemies spawn close and closer",
+# "players catch on fire and tanks gear just turns a little red", "everyone
+# dies but time can be added"). Open to every class.
+
+func _forge_body_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = """extends Node2D
+var hp: int = 200
+var max_hp: int = 200
+var is_dying: bool = false
+var aura_active: bool = false
+var taken: Array = []
+func take_damage(amount: int, element: int) -> void:
+	taken.append([amount, element])
+"""
+	script.reload()
+	return script
+
+
+func _test_the_forge() -> void:
+	section("THE FORGE (step 1): the tank's world - an island in a lake of lava that floods slice by slice")
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	const BuildForge := preload("res://src/tools/buildforge.gd")
+	var c: Vector2 = Run.CENTRE
+	# ---- THE AREA ----------------------------------------------------------------
+	var packed: PackedScene = load(str(AreaRegistry.AREAS.get("forge", ""))) as PackedScene
+	var area: Node = packed.instantiate() if packed != null else null
+	check("the Forge is an area, named for players, with a map in gamedata.json, and its island loads",
+		AreaRegistry.has_area("forge") and AreaRegistry.display_name("forge") == "The Forge"
+		and (_load_gamedata().get("areas", {}) as Dictionary).has("forge") and area != null)
+	if area == null:
+		return
+	var run_node: Node = area.get_node_or_null("forgerun")
+	var lava: TileMapLayer = area.get_node_or_null("lava") as TileMapLayer
+	var anvil: Node2D = area.get_node_or_null("ysortworld/props/anvil") as Node2D
+	var falls: Array = area.get_node("ysortworld/props").get_children().filter(
+		func(n: Node) -> bool: return n is AnimatedSprite2D and n.is_in_group(&"forge_falls"))
+	var arrivals: Array = []
+	_collect_by_script(area, "res://src/world/fieldportal.gd", arrivals)
+	var arrival: Node2D = null
+	for a in arrivals:
+		if str(a.get("portal_id")) == "forge_entrance":
+			arrival = a
+	var north_falls: bool = falls.size() == BuildForge.FALLS_AT.size() and falls.all(
+		func(f: Node) -> bool: return (f as Node2D).position.y < c.y - Run.RADIUS and str((f as AnimatedSprite2D).autoplay) == "default")
+	check("  its run, the anvil in the middle, the arrival beside it in the light, %d falls along the north, the bullet zone and no story" % falls.size(),
+		run_node != null and run_node.get_script() == Run and anvil != null and anvil.position == c
+		and arrival != null and arrival.position.distance_to(c) < Run.SAFE_OTHER and north_falls
+		and area.get("tells_story") == false and area.get("bullet_zone") == true and lava != null)
+	# THE LAKE (the owner: "animated lava should only be here the rest stale").
+	var wrong: int = 0
+	var bubbling: int = 0
+	var still: int = 0
+	for cell in lava.get_used_cells():
+		var want: int = Run.BUBBLING if Run.bubbles(cell, {}, Run.SAFE_OTHER) else Run.STILL
+		if lava.get_cell_source_id(cell) != want:
+			wrong += 1
+		if want == Run.BUBBLING:
+			bubbling += 1
+		else:
+			still += 1
+	var moving := lava.tile_set.get_source(Run.BUBBLING) as TileSetAtlasSource
+	var resting := lava.tile_set.get_source(Run.STILL) as TileSetAtlasSource
+	var deep := Vector2i(floori(c.x / Run.LAVA_TILE), floori((c.y - Run.RADIUS - 150.0) / Run.LAVA_TILE))
+	check("the lake bubbles only where it meets the shore (%d cells) and lies still everywhere else (%d) - the town's lava tile, nine frames at three a second, each cell its own start" % [bubbling, still],
+		wrong == 0 and bubbling > 100 and still > bubbling * 5 and lava.get_cell_source_id(deep) == Run.STILL
+		and moving.texture.resource_path == "res://art/tiles/propsandterrain.png"
+		and moving.get_tile_animation_frames_count(Run.LAVA_CELL) == 9
+		and is_equal_approx(moving.get_tile_animation_speed(Run.LAVA_CELL), 3.0)
+		and moving.get_tile_animation_mode(Run.LAVA_CELL) == TileSetAtlasSource.TILE_ANIMATION_MODE_RANDOM_START_TIMES
+		and resting.texture == moving.texture and resting.get_tile_animation_frames_count(Run.LAVA_CELL) == 1,
+		[wrong, bubbling, still])
+	area.free()
+	# ---- THE PIE -------------------------------------------------------------------
+	var gone := {0: true}
+	check("slice 0 is north, 2 east, 4 south, 6 west, and opposite slices flood in turn",
+		Run.slice_of(c + Vector2(0, -500)) == 0 and Run.slice_of(c + Vector2(500, 0)) == 2
+		and Run.slice_of(c + Vector2(0, 500)) == 4 and Run.slice_of(c + Vector2(-500, 0)) == 6
+		and Run.ORDER == [0, 4, 2, 6, 1, 5, 3, 7])
+	check("  a gone slice is floor inside the light and lava past it; the rest of the island is floor; past the shore is lava",
+		Run.floor_at(c + Vector2(0, -250), gone, Run.SAFE_TANK) and not Run.floor_at(c + Vector2(0, -400), gone, Run.SAFE_TANK)
+		and Run.floor_at(c + Vector2(0, 400), gone, Run.SAFE_TANK) and not Run.floor_at(c + Vector2(0, 980), {}, Run.SAFE_TANK)
+		and absf(Run.SAFE_TANK - 256.0 / 2.0 * 2.3) < 1.0)
+	# ---- THE RUN, on a stand-in island ----------------------------------------------
+	var island := Node2D.new()
+	add_child(island)
+	var ground := TileMapLayer.new()
+	ground.name = "ground"
+	ground.tile_set = load("res://scene/world/underground.tres") as TileSet
+	island.add_child(ground)
+	var stand_lava := TileMapLayer.new()
+	stand_lava.name = "lava"
+	stand_lava.tile_set = BuildForge.lava_tiles()
+	island.add_child(stand_lava)
+	# A strip of floor north to south through the anvil, lava under the north.
+	for y in range(int((c.y - 900.0) / Run.TILE), int((c.y + 900.0) / Run.TILE)):
+		ground.set_cell(Vector2i(int(c.x / Run.TILE), y), 1, Vector2i(1, 1))
+	for y in range(int((c.y - 960.0) / Run.LAVA_TILE), int((c.y - 100.0) / Run.LAVA_TILE)):
+		stand_lava.set_cell(Vector2i(int(c.x / Run.LAVA_TILE), y), Run.STILL, Run.LAVA_CELL)
+	var floor_cells: int = ground.get_used_cells().size()
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	island.add_child(world)
+	for holder in ["props", "enemies"]:
+		var n := Node2D.new()
+		n.name = holder
+		world.add_child(n)
+	var glow := PointLight2D.new()
+	glow.name = "forgeglow"
+	island.add_child(glow)
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	var sprite := Sprite2D.new()
+	sprite.name = "animatedsprite2d"
+	body.add_child(sprite)
+	island.add_child(body)
+	body.global_position = c + Vector2(0, 20)
+	var run: Node = Run.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", "warrior")
+	island.add_child(run)
+	await get_tree().process_frame
+	# Lighting it.
+	run.call("_process", Run.START_HOLD + 0.01)
+	var counting: bool = int(run.get("state")) == Run.State.COUNTDOWN
+	run.call("_process", Run.COUNTDOWN_SECONDS + 0.01)
+	run.set("_spawn_clock", 9999.0)
+	run.set("_essence_clock", 9999.0)
+	check("standing at the anvil lights it, the clock runs after the countdown, and a warrior's light is the anvil's own (%s px)" % run.get("safe"),
+		counting and bool(run.call("running")) and is_equal_approx(float(run.get("safe")), Run.SAFE_OTHER)
+		and is_equal_approx(glow.texture_scale, Run.SAFE_OTHER / 128.0))
+	# The heat, the warning, the flood.
+	var fill: float = float(run.call("fill_seconds"))
+	run.call("_process", fill * Run.WARN_AT + 0.01)
+	var warned: bool = bool(run.call("warning")) and int(run.get("flooding")) == -1 and int(run.call("next_slice")) == 0
+	run.set("heat", 0.999)
+	run.call("_process", 0.05)
+	var started: bool = int(run.get("flooding")) == 0
+	run.call("_process", Run.FLOOD_SECONDS + 0.1)
+	var north_floor: int = 0
+	var light_floor: int = 0
+	for cell in ground.get_used_cells():
+		var mid: Vector2 = Run.floor_cell_mid(cell)
+		if mid.y < c.y and mid.distance_to(c) > Run.SAFE_OTHER:
+			north_floor += 1
+		elif mid.y < c.y:
+			light_floor += 1
+	check("heat warns from %d%%, then floods the north slice from the rim to the light: its floor goes, the light's and the south's stay" % int(Run.WARN_AT * 100),
+		warned and started and int(run.get("floods")) == 1 and (run.get("flooded") as Dictionary).has(0)
+		and north_floor == 0 and light_floor > 0 and ground.get_used_cells().size() < floor_cells
+		and is_equal_approx(float(run.get("heat")), 0.0) and float(run.call("fill_seconds")) < fill,
+		[warned, started, north_floor, light_floor])
+	# Closer and closer: the spots' mean distance from the anvil, one slice
+	# gone and then six.
+	var all_lava: bool = true
+	var one_gone: float = 0.0
+	var six_gone: float = 0.0
+	for i in 300:
+		var spot: Vector2 = run.call("edge_spot")
+		all_lava = all_lava and bool(run.call("in_lava", spot))
+		one_gone += spot.distance_to(c) / 300.0
+	var kept_flooded: Dictionary = run.get("flooded")
+	run.set("flooded", {0: true, 4: true, 2: true, 6: true, 1: true, 5: true})
+	for i in 300:
+		var spot: Vector2 = run.call("edge_spot")
+		all_lava = all_lava and bool(run.call("in_lava", spot))
+		six_gone += spot.distance_to(c) / 300.0
+	run.set("flooded", kept_flooded)
+	check("the fire sprites step out of the lava's edges, closer and closer: %d px from the anvil on average with one slice gone, %d with six; more and more often" % [roundi(one_gone), roundi(six_gone)],
+		all_lava and six_gone < one_gone - 150.0 and float(run.call("spawn_gap")) < Run.SPAWN_EVERY
+		and int(run.call("alive_cap")) > Run.ALIVE_FIRST)
+	# Fire.
+	body.global_position = c + Vector2(0, -420)
+	run.call("_process", Run.BURN_TICK + 0.01)
+	var hits: Array = body.get("taken")
+	var burnt: bool = hits.size() == 1 and int(hits[0][0]) == roundi(200 * Run.LAVA_BURN) \
+		and int(hits[0][1]) == Element.Type.FIRE and body.get_node_or_null("forgeflames") != null
+	run.set("class_override", "tank")
+	run.call("_process", Run.BURN_TICK + 0.01)
+	var tank_spared: bool = (body.get("taken") as Array).size() == 1 and float(run.call("redness")) > 0.4 \
+		and sprite.modulate != Color.WHITE
+	check("in the lava a warrior catches fire (%s a tick, flames on them); the tank does not - his gear turns red" % [hits],
+		burnt and tank_spared)
+	# The tank's walkways (the owner: "what if the tanks aura can push back lava
+	# only where he is standing to create safe walkways for the team").
+	var under: Vector2 = body.global_position + Run.AURA_OFFSET
+	var under_cell := Vector2i(floori(under.x / Run.TILE), floori(under.y / Run.TILE))
+	var lava_before: bool = bool(run.call("in_lava", under))
+	run.call("_process", Run.WALK_REPAINT + 0.01)
+	var no_aura: bool = int(run.call("walkway_cells")) == 0
+	body.set("aura_active", true)
+	run.call("_process", Run.WALK_REPAINT + 0.01)
+	var paved_cells: int = int(run.call("walkway_cells"))
+	var paved: bool = not bool(run.call("in_lava", under)) and ground.get_cell_source_id(under_cell) != -1 \
+		and bool(run.call("in_lava", body.global_position + Vector2(0, -150))) and paved_cells > 10
+	body.set("aura_active", false)
+	run.call("_process", Run.WALK_REPAINT + 0.01)
+	var lingers: bool = not bool(run.call("in_lava", under))
+	run.call("_process", Run.WALK_LINGER)
+	var melted: bool = bool(run.call("in_lava", under)) and int(run.call("walkway_cells")) == 0 \
+		and ground.get_cell_source_id(under_cell) == -1
+	check("the tank's aura pushes the lava back where he stands - island under his ring (%d cells), lingering %s s after he moves on, then melting; nothing without the aura" % [paved_cells, Run.WALK_LINGER],
+		lava_before and no_aura and paved and lingers and melted)
+	# Time added.
+	body.global_position = c + Vector2(0, 30)
+	run.set("heat", 0.5)
+	run.call("_lay_essence")
+	var essence: Node2D = run.get("_essence")
+	var placed: bool = essence != null and essence.global_position.distance_to(c) >= Run.RADIUS * Run.ESSENCE_NEAR \
+		and Run.slice_of(essence.global_position) != 0 and Run.slice_of(essence.global_position) != int(run.call("next_slice"))
+	if essence != null:
+		body.global_position = essence.global_position
+	run.call("_process", 0.01)
+	check("ice essence lies out in an open slice, never the one about to flood; walked over, it cools the heat",
+		placed and int(run.get("essences")) == 1 and float(run.get("heat")) < 0.5 - Run.ESSENCE_COOL + 0.05)
+	# The volcano: everyone burns, the tank too, harder each tick.
+	body.global_position = c + Vector2(0, 30)
+	run.set("floods", Run.SLICES)
+	var before: int = (body.get("taken") as Array).size()
+	run.call("_process", Run.BURN_TICK + 0.01)
+	run.call("_process", Run.BURN_TICK + 0.01)
+	var late: Array = (body.get("taken") as Array).slice(before)
+	check("once every slice is gone the volcano burns everyone, the tank too, harder each tick %s" % [late],
+		bool(run.call("volcano")) and late.size() == 2 and int(late[1][0]) > int(late[0][0]))
+	# A fall.
+	body.global_position = Vector2(-5000, -5000)
+	var elsewhere: bool = not bool(run.call("knock_out", body))
+	body.global_position = c + Vector2(0, 30)
+	var caught: bool = bool(run.call("knock_out", body))
+	check("a fall off the island is an ordinary death; on it you wake by the anvil on 1 health, the run is over, and the island is whole again",
+		elsewhere and caught and int(body.get("hp")) == 1 and body.global_position == run.get("entry_spot")
+		and int(run.get("state")) == Run.State.WAITING and str(run.get("last_result")).begins_with("The forge held")
+		and ground.get_used_cells().size() == floor_cells and (run.get("flooded") as Dictionary).is_empty()
+		and sprite.modulate == Color.WHITE)
+	check("  the player's fall is caught by the Forge's run, as the Endless's and the Descent's are",
+		_func_body(_code_src("res://src/characters/player.gd"), "func _endless_catches_fall(").contains("&\"forge_run\""))
+	island.queue_free()
+	await get_tree().process_frame
+	# ---- THE CARD -------------------------------------------------------------------
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	var went: Array = []
+	card.set("travel", func(area_id: String, spawn_id: String) -> void: went.append([area_id, spawn_id]))
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("shows_forge", func() -> bool: return false)
+	card.call("paint")
+	var hidden: bool = not card.forge_box.visible
+	card.set("shows_forge", func() -> bool: return true)
+	card.set("class_now", func() -> String: return "mage")
+	card.call("open")
+	card.call("paint")
+	var shown: bool = card.forge_box.visible and card.forge_go.text == "Go" and not card.forge_go.disabled
+	card.call("_on_forge_go")
+	card.set("area_now", func() -> String: return "forge")
+	card.call("paint")
+	var leave_text: String = card.forge_go.text
+	card.call("_on_forge_go")
+	check("on the Minigames card for the owner alone, any class: Go goes down (%s), and inside it is Leave, to town" % str(went),
+		hidden and shown and leave_text == "Leave" and went.size() == 2 and went[0] == ["forge", "forge_entrance"]
+		and went[1] == ["elusion", ""])
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  (the forge: done)")

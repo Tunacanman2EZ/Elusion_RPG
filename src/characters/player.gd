@@ -2076,11 +2076,11 @@ var _died_before_load: bool = false
 
 
 func _endless_catches_fall() -> bool:
-	# The Endless's and, since 0.112.0, the Descent's: a fall in either wakes
-	# you where the run says, and is no death.
+	# The Endless's and, since 0.112.0, the Descent's, and the Forge's: a fall
+	# in any of them wakes you where the run says, and is no death.
 	if not is_inside_tree():
 		return false
-	for group in [&"endless_run", &"descent_run"]:
+	for group in [&"endless_run", &"descent_run", &"forge_run"]:
 		var run: Node = get_tree().get_first_node_in_group(group)
 		if run != null and bool(run.call("knock_out", self)):
 			return true
