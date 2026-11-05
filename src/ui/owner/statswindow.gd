@@ -30,8 +30,8 @@ const DAY_CHOICES := [7, 30, 90]
 const DEFAULT_DAYS := 30
 
 const HEAD := Color(0.93, 0.73, 0.3)
-const PLAIN := Color(0.84, 0.88, 0.93)
-const DIM := Color(0.55, 0.6, 0.67)
+const PLAIN := Color(0.9, 0.86, 0.78)
+const DIM := Color(0.62, 0.58, 0.52)
 const GOOD := Color(0.55, 0.86, 0.6)
 const BAD := Color(0.95, 0.55, 0.5)
 const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

@@ -15,10 +15,10 @@ class_name HoursChart
 extends Control
 
 
-const SURFACE := Color("#12161d")
-const GRID := Color("#262c35")
+const SURFACE := Color("#17130f")
+const GRID := Color("#2f2820")
 const TEXT := Color("#e6e9ee")
-const MUTED := Color("#9aa3af")
+const MUTED := Color("#ab9f8c")
 const BAR := Color("#3987e5")
 const BAR_HOVER := Color("#6aa6ee")
 const PAD_LEFT := 30.0
@@ -125,7 +125,7 @@ func _draw() -> void:
 		var wide: float = font.get_string_size(words, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x + 14.0
 		var at: Rect2 = _bar_rect(hover, top, plot)
 		var box := Rect2(clampf(at.position.x - wide / 2.0, 2.0, size.x - wide - 2.0), 1.0, wide, 20.0)
-		draw_rect(box, Color(0.04, 0.05, 0.07, 0.95))
+		draw_rect(box, Color(0.06, 0.054, 0.048, 0.95))
 		draw_rect(box, GRID, false, 1.0)
 		draw_string(font, box.position + Vector2(7.0, 14.0), words, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, TEXT)
 

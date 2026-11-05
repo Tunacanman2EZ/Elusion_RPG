@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cbngu4ostlmb" path="res://src/ui/menus/gameover.gd" id="1_pocqk"]
 [ext_resource type="Texture2D" uid="uid://c5o2yel3ffmjp" path="res://art/menu/game over.png" id="2_6xpx0"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 
 [node name="gameover" type="Control" unique_id=285483500]
 layout_mode = 3
@@ -10,6 +11,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("3_theme")
 script = ExtResource("1_pocqk")
 
 [node name="TextureRect" type="TextureRect" parent="." unique_id=561673467]

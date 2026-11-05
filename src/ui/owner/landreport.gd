@@ -25,12 +25,12 @@ extends Control
 
 const PATH := "/api/server/insights"
 const HEAD := Color(0.93, 0.73, 0.3)
-const PLAIN := Color(0.84, 0.88, 0.93)
-const DIM := Color(0.55, 0.6, 0.67)
+const PLAIN := Color(0.9, 0.86, 0.78)
+const DIM := Color(0.62, 0.58, 0.52)
 const GOOD := Color(0.55, 0.86, 0.6)
 const BAD := Color(0.95, 0.55, 0.5)
 const STATUS_COLOURS := {"busy": Color(0.96, 0.62, 0.42), "healthy": Color(0.55, 0.86, 0.6),
-	"quiet": Color(0.73, 0.78, 0.84), "ignored": Color(0.55, 0.6, 0.67)}
+	"quiet": Color(0.8, 0.76, 0.68), "ignored": Color(0.62, 0.58, 0.52)}
 const STATUS_WORDS := {"busy": "busy", "healthy": "healthy", "quiet": "quiet", "ignored": "ignored"}
 const COLUMNS := ["Land", "Today", "Week", "Players", "New now", "Stirred", "Event", "Busiest", "Status"]
 

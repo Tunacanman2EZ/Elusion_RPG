@@ -38,8 +38,8 @@ extends VBoxContainer
 signal picked(days_on: int)
 
 const TITLE := Color(0.56, 0.93, 0.62)
-const PLAIN := Color(0.84, 0.88, 0.93)
-const DIM := Color(0.55, 0.6, 0.67)
+const PLAIN := Color(0.9, 0.86, 0.78)
+const DIM := Color(0.62, 0.58, 0.52)
 const TODAY := Color(0.93, 0.78, 0.4)
 const TODAY_FILL := Color(0.3, 0.24, 0.12)
 # The HUD's events green (characterhud.gd, EVENT_COLOUR); a past one dimmer.
@@ -397,6 +397,14 @@ func _edge(cell: Button) -> void:
 		return
 	for state in ["normal", "hover"]:
 		var plain_box: StyleBox = cell.get_theme_stylebox(state)
+		# THE GM PANEL'S BUTTON IS THE HOTBAR'S FRAME since 0.120.0 (the
+		# owner: "get rid of the dull brown ... well conformed"): today's is
+		# that frame lit in gold.
+		if plain_box is StyleBoxTexture:
+			var lit := (plain_box as StyleBoxTexture).duplicate() as StyleBoxTexture
+			lit.modulate_color = TODAY
+			cell.add_theme_stylebox_override(state, lit)
+			continue
 		if not (plain_box is StyleBoxFlat):
 			continue
 		var warm := (plain_box as StyleBoxFlat).duplicate() as StyleBoxFlat

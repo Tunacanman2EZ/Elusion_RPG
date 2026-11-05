@@ -131,6 +131,25 @@ const SPAWN_CLEAR := 110.0
 # How far into the lava past an edge a sprite steps out.
 const EDGE_IN := 22.0
 
+# ---- WHAT IT PAYS (0.120.0) ---------------------------------------------------
+# The owner, 4 Nov: "Rewards + daily wait". Go asks the server, once a day as
+# the Endless (minigamescard.gd). Every fire sprite slain pays its own loot -
+# no XP - into this character's chest by the arrival (the Endless's chest,
+# endlesschest.gd, for CHEST_GAME): it carries CHEST_META, so BaseEnemy._die()
+# sends it to Combat.report_endless_kill() and POST /api/minigames/kill, and
+# the server holds the kills to schedule(). It still carries the stress test's
+# MARK: no ordinary kill, never shared or numbered. And each run's time goes
+# to POST /api/minigames/best (best_post), which keeps the best.
+const CHEST_GAME := "forge"
+const CHEST_META := &"chest_game"
+const ChestScript := preload("res://src/world/endless/endlesschest.gd")
+# Beside the arrival, in the light.
+const CHEST_SPOT := CENTRE + Vector2(72, 124)
+# The volcano as the server believes it: this long, and everybody has fallen.
+const VOLCANO_BELIEVED := 60
+# The chest's arrow shows to a player this near the anvil while no run is on.
+const CHEST_BECKON := Rect2(CENTRE - Vector2(320, 320), Vector2(640, 640))
+
 # ---- THE TANK'S WALKWAYS ------------------------------------------------------
 const WALK_LINGER := 3.0
 const WALK_REPAINT := 0.1
@@ -168,6 +187,12 @@ var hud: Node = null
 # THE SUITE'S SEAMS: the player and the class, standing in for the real ones.
 var player_override: Node2D = null
 var class_override: String = ""
+# The chest (0.120.0), and where a run's time is sent - Api.post in the game,
+# a stand-in in the suite.
+var chest: Node2D = null
+var best_post: Callable = Callable()
+# The server's word on the best, after the last run's time was sent.
+var server_best: int = 0
 
 var _rng := RandomNumberGenerator.new()
 var _hold: float = 0.0
@@ -209,6 +234,16 @@ func _ready() -> void:
 	hud.set("run", self)
 	add_child(hud)
 	_size_light()
+	# THE CHEST (0.120.0): what the fire sprites paid, kept on the server.
+	chest = ChestScript.new()
+	chest.name = "forgechest"
+	chest.set("game", CHEST_GAME)
+	chest.set("empty_words", "Your chest is empty - every fire sprite you slay pays into it.")
+	chest.position = CHEST_SPOT
+	chest.set("corridor", CHEST_BECKON)
+	var props: Node = area.get_node_or_null("ysortworld/interactables") if area != null else null
+	if props != null or area != null:
+		(props if props != null else area).add_child.call_deferred(chest)
 
 
 func _exit_tree() -> void:
@@ -368,6 +403,33 @@ func health_scale() -> float:
 	return 1.0 + HEALTH_PER_FLOOD * floods
 
 
+# THE SCHEDULE THE SERVER HOLDS A KILL TO (0.120.0). The server cannot see a
+# run, so it holds the fire sprites reported since the Go to what this could
+# have sent by then (minigames/services.py forge_ceiling()) - AT ITS FASTEST:
+# each phase is a flood's heat filling with no ice essence cooling it, and the
+# flood itself left out, so the next phase's quicker spawns start sooner than
+# they can. Written into gamedata.json by exportgamedata.gd (the scene's name
+# turned into its enemy id), so after changing the spawns, the heat or the cap
+# alive, re-export and copy the file to the API. _test_the_forge_pays()
+# fails when gamedata.json no longer says what this does.
+static func schedule() -> Dictionary:
+	var phases: Array = []
+	for k in SLICES:
+		phases.append({
+			"seconds": snappedf(maxf(HEAT_FASTEST, HEAT_SECONDS * pow(HEAT_QUICKER, k)), 0.01),
+			"gap": snappedf(maxf(SPAWN_FASTEST, SPAWN_EVERY * pow(SPAWN_QUICKER, k)), 0.001),
+			"count": 1 + k / 3,
+		})
+	return {
+		"sprite_scenes": [SPRITE],
+		"phases": phases,
+		"volcano": {"gap": snappedf(maxf(SPAWN_FASTEST, SPAWN_EVERY * pow(SPAWN_QUICKER, SLICES)), 0.001),
+			"count": 1 + SLICES / 3},
+		"volcano_believed": VOLCANO_BELIEVED,
+		"alive_most": ALIVE_FIRST + ALIVE_PER_FLOOD * SLICES,
+	}
+
+
 # =============================================================================
 # THE RUN
 # =============================================================================
@@ -396,6 +458,7 @@ func _process(delta: float) -> void:
 			_step_essence(delta)
 	_paint_falls()
 	_paint_tank()
+	_process_chest()
 	if _marks != null and is_instance_valid(_marks):
 		_marks.queue_redraw()
 
@@ -763,6 +826,7 @@ func _bring(enemy_id: String, at: Vector2, health: float) -> Node2D:
 		return null
 	var monster := packed.instantiate() as Node2D
 	monster.set_meta(MARK, true)
+	monster.set_meta(CHEST_META, CHEST_GAME)
 	if "notice_range" in monster:
 		monster.set("notice_range", NOTICE)
 	if "leash_range" in monster:
@@ -906,6 +970,7 @@ func end_run() -> void:
 		words += "  -  %d ice essence" % essences
 	last_result = words
 	best = maxf(best, held)
+	_send_time(held)
 	_clear_monsters()
 	BulletZone.clear_enemy_shots(self)
 	_drop_essence()
@@ -918,6 +983,35 @@ func end_run() -> void:
 	_unredden()
 	if hud != null:
 		hud.call("show_result", words)
+
+
+func _send_time(held: float) -> void:
+	"""The run's time to the server, which keeps the best (0.120.0). Not
+	awaited by end_run(): the result is said now, the server's best when it
+	answers."""
+	if held < 1.0:
+		return
+	if not best_post.is_valid() and not Api.is_logged_in():
+		return
+	var body: Dictionary = {"game": CHEST_GAME, "seconds": int(held)}
+	var res: Dictionary
+	if best_post.is_valid():
+		res = await best_post.call("/api/minigames/best", body)
+	else:
+		res = await Api.post("/api/minigames/best", body, 6.0)
+	if not is_instance_valid(self) or not is_inside_tree() or not res.get("ok", false):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	server_best = maxi(server_best, int(data.get("best", 0)))
+	best = maxf(best, float(server_best))
+	if bool(data.get("new_best", false)) and hud != null and hud.has_method("toast"):
+		hud.call("toast", "A new best: %s" % clock_text(float(server_best)))
+
+
+func _process_chest() -> void:
+	"""The chest's arrow is for a player near the anvil while no run is on."""
+	if chest != null and is_instance_valid(chest):
+		chest.set("corridor", Rect2() if state != State.WAITING else CHEST_BECKON)
 
 
 # =============================================================================

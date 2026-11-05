@@ -1170,7 +1170,7 @@ func _update_name_swatch() -> void:
 	behind.border_width_top = 1
 	behind.border_width_right = 1
 	behind.border_width_bottom = 1
-	behind.border_color = Color(0.4, 0.33, 0.22, 1.0)
+	behind.border_color = Color(0.62, 0.52, 0.32, 1.0)
 	behind.corner_radius_top_left = 2
 	behind.corner_radius_top_right = 2
 	behind.corner_radius_bottom_right = 2

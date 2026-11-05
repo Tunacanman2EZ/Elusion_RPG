@@ -233,8 +233,8 @@ func _build_tip() -> void:
 	_tip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# The hotbar's own frame (scene/ui/hotbar.tscn): a dark box, a gold rim.
 	var frame := StyleBoxFlat.new()
-	frame.bg_color = Color(0.11, 0.09, 0.07, 0.94)
-	frame.border_color = Color(0.48, 0.39, 0.26, 1)
+	frame.bg_color = Color(0.075, 0.066, 0.058, 0.94)
+	frame.border_color = Color(0.78, 0.64, 0.36, 1)
 	frame.set_border_width_all(2)
 	frame.set_corner_radius_all(4)
 	frame.set_content_margin_all(8)

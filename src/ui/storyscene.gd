@@ -109,7 +109,7 @@ func _build_label() -> void:
 	_panel = PanelContainer.new()
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.09, 0.07, 0.92)   # dark brown, mostly opaque
+	style.bg_color = Color(0.075, 0.066, 0.058, 0.92)   # near-black, mostly opaque
 	style.border_color = Color(0.85, 0.65, 0.2)      # warm gold
 	style.border_width_left = 4
 	style.border_width_right = 4

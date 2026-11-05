@@ -232,15 +232,18 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 # in the corridor (endlesschest.gd), held to what the run could have sent since
 # the Go. Nothing drops on the floor; the chest's count goes up, a mythic is
 # celebrated as one found in the Field is, and a pet is said.
-func report_endless_kill(enemy_id: String, killer: Node) -> void:
+#
+# THE FORGE'S TOO (0.120.0): its fire sprites report here with `game` "forge"
+# (forgerun.gd), into the chest by the island's arrival.
+func report_endless_kill(enemy_id: String, killer: Node, game: String = "endless") -> void:
 	if enemy_id == "" or not Api.is_logged_in() or Api.is_known_offline():
 		return
-	var body: Dictionary = {"game": "endless", "slot": CharacterData.active_character_index, "enemy_id": enemy_id}
+	var body: Dictionary = {"game": game, "slot": CharacterData.active_character_index, "enemy_id": enemy_id}
 	var res: Dictionary = await kill_post.call("/api/minigames/kill", body, KILL_TIMEOUT)
 	var target: Node = _reward_target(killer)
 	if not res.get("ok", false):
 		if OS.is_debug_build():
-			print("[KILL] endless %s unpaid (%d) - %s" % [enemy_id, int(res.get("status", 0)), res.get("error", "")])
+			print("[KILL] %s %s unpaid (%d) - %s" % [game, enemy_id, int(res.get("status", 0)), res.get("error", "")])
 		return
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	if is_inside_tree():
@@ -253,8 +256,8 @@ func report_endless_kill(enemy_id: String, killer: Node) -> void:
 	if not (data.get("cut", []) as Array).is_empty():
 		_notify(target, "Your chest is full - the least of it made room.")
 	if OS.is_debug_build():
-		print("[KILL] endless %s - %d item(s) into the chest, %d cells held" % [
-			enemy_id, _array(data.get("added", [])).size(), _int(data.get("used", 0))])
+		print("[KILL] %s %s - %d item(s) into the chest, %d cells held" % [
+			game, enemy_id, _array(data.get("added", [])).size(), _int(data.get("used", 0))])
 
 
 # =============================================================================

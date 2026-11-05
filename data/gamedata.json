@@ -5610,6 +5610,59 @@
 			"xp_reward": 84
 		}
 	],
+	"forge": {
+		"alive_most": 50,
+		"phases": [
+			{
+				"count": 1,
+				"gap": 3.0,
+				"seconds": 40.0
+			},
+			{
+				"count": 1,
+				"gap": 2.4,
+				"seconds": 36.0
+			},
+			{
+				"count": 1,
+				"gap": 1.92,
+				"seconds": 32.4
+			},
+			{
+				"count": 2,
+				"gap": 1.536,
+				"seconds": 29.16
+			},
+			{
+				"count": 2,
+				"gap": 1.229,
+				"seconds": 26.24
+			},
+			{
+				"count": 2,
+				"gap": 0.983,
+				"seconds": 23.62
+			},
+			{
+				"count": 3,
+				"gap": 0.786,
+				"seconds": 21.26
+			},
+			{
+				"count": 3,
+				"gap": 0.629,
+				"seconds": 19.13
+			}
+		],
+		"sprites": [
+			"firesprite"
+		],
+		"volcano": {
+			"count": 3,
+			"gap": 0.503
+		},
+		"volcano_believed": 60
+	},
 	"generated_at": 1792659542,
 	"items": [
 		{

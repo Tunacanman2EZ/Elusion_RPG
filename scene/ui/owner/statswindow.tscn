@@ -50,7 +50,7 @@ vertical_alignment = 1
 
 [node name="hint" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "owner only - players, not staff"
 vertical_alignment = 1
@@ -78,7 +78,7 @@ text = "Refresh"
 
 [node name="dayslabel" type="Label" parent="frame/margin/rows/toprow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 text = "New players from the last"
 vertical_alignment = 1
@@ -116,7 +116,7 @@ selection_enabled = true
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 18)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Press Refresh."

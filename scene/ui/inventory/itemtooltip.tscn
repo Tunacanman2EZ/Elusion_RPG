@@ -6,7 +6,7 @@
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
 content_margin_top = 1.0
 content_margin_bottom = 1.0
-bg_color = Color(0.5, 0.42, 0.28, 0.4)
+bg_color = Color(0.86, 0.72, 0.42, 0.45)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat_bg"]
 content_margin_left = 4.0

@@ -46,7 +46,7 @@ const REASON_WORDS := {
 }
 
 const COLOUR_BAD := Color(1.0, 0.55, 0.45)
-const COLOUR_PLAIN := Color(0.73, 0.78, 0.84)
+const COLOUR_PLAIN := Color(0.8, 0.76, 0.68)
 const COLOUR_ARMED := Color(1.0, 0.62, 0.5)
 
 var _window: PanelWindow = null

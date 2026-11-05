@@ -51,7 +51,7 @@ vertical_alignment = 1
 
 [node name="hint" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "owner only - counts, never names"
 vertical_alignment = 1
@@ -79,7 +79,7 @@ text = "Refresh"
 
 [node name="toplabel" type="Label" parent="frame/margin/rows/toprow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 text = "The next stir and why, every land this week, and when players are on."
 vertical_alignment = 1
@@ -109,7 +109,7 @@ selection_enabled = true
 unique_name_in_owner = true
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Players online by hour, your time."
@@ -124,7 +124,7 @@ script = ExtResource("3_hours")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 18)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Press Refresh."

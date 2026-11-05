@@ -1498,35 +1498,44 @@ func _test_the_powers_read_in_words() -> void:
 
 
 func _test_the_staff_windows_share_one_look() -> void:
-	section("STAFF WINDOWS - Owner, Staff and Powers wear one navy and gold theme")
+	section("STAFF WINDOWS - Owner, Staff and Powers wear the game's own look: dark, gold, the hotbar's frames")
 
 	# Asked for on day 1: the three staff windows had three looks (navy, brown,
-	# navy) and none had the inventory's gold boxes. They now share
-	# staff_ui_theme.tres, so a colour changed there changes all three.
+	# navy) and none had the inventory's gold boxes. They share
+	# staff_ui_theme.tres, so a colour changed there changes all three. Navy
+	# until 0.121.0, when the owner asked for "everything in the game" in the
+	# hotbar's frames ("get rid of the dull brown and just make everything look
+	# pretty and well conformed"): the same near-black and gold as the game's
+	# own theme, its buttons, fields and tabs the hotbar's socket.
 	const STAFF_THEME_PATH := "res://assets/themes/staff_ui_theme.tres"
+	const SOCKET_ART := "res://art/images/hotbarslot.png"
 	var theme: Theme = load(STAFF_THEME_PATH) as Theme
+	var game_theme: Theme = load("res://assets/themes/rpg_ui_theme.tres") as Theme
 	check("the staff theme loads", theme != null)
 	if theme == null:
 		return
 	var window: StyleBoxFlat = theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
-	var tab_on: StyleBoxFlat = theme.get_stylebox("tab_selected", "TabContainer") as StyleBoxFlat
+	var game_window: StyleBoxFlat = game_theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	var tab_on: StyleBoxTexture = theme.get_stylebox("tab_selected", "TabContainer") as StyleBoxTexture
 	var tab_box: StyleBoxFlat = theme.get_stylebox("panel", "TabContainer") as StyleBoxFlat
-	var is_navy := func(c: Color) -> bool: return c.b > c.r and c.b > c.g and c.v < 0.2
+	var button: StyleBoxTexture = theme.get_stylebox("normal", "Button") as StyleBoxTexture
+	var is_dark := func(c: Color) -> bool: return c.v < 0.15
 	var is_gold := func(c: Color) -> bool: return c.r > c.g and c.g > c.b and c.r > 0.45
-	check("  its windows are navy with a gold frame",
-		window != null and is_navy.call(window.bg_color) and is_gold.call(window.border_color)
-		and window.border_width_left >= 2,
+	check("  its windows are the game's: near-black in a gold frame",
+		window != null and game_window != null and is_dark.call(window.bg_color) and is_gold.call(window.border_color)
+		and window.bg_color == game_window.bg_color and window.border_width_left >= 2,
 		str(window.bg_color) + " " + str(window.border_color) if window != null else "no window style")
-	check("  its tabs and the page under them are boxed in gold",
-		tab_on != null and tab_box != null and is_gold.call(tab_on.border_color)
+	check("  its buttons and tabs are the hotbar's frame, and the page under the tabs is boxed in gold",
+		button != null and button.texture != null and button.texture.resource_path == SOCKET_ART
+		and tab_on != null and tab_on.texture != null and tab_box != null
 		and is_gold.call(tab_box.border_color) and tab_box.border_width_top >= 1)
 	check("  it has the header box and the inner box every window uses",
 		theme.get_type_variation_base(&"PanelHeader") == &"PanelContainer"
 		and theme.get_type_variation_base(&"PanelSub") == &"PanelContainer")
 	var staff_menu: StyleBoxFlat = theme.get_stylebox("panel", "PopupMenu") as StyleBoxFlat
-	check("  and its dropdown lists and menus are navy in a gold frame, not Godot's grey",
+	check("  and its dropdown lists and menus are dark in a gold frame, not Godot's grey",
 		theme.has_stylebox("panel", "PopupMenu") and staff_menu != null
-		and is_navy.call(staff_menu.bg_color) and is_gold.call(staff_menu.border_color))
+		and is_dark.call(staff_menu.bg_color) and is_gold.call(staff_menu.border_color))
 
 	# NO WINDOW MAY QUIETLY KEEP ITS OLD LOOK. A per-node style override beats
 	# the theme, so one left behind keeps an old colour no matter what the theme

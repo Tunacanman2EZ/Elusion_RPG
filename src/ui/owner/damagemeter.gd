@@ -43,8 +43,8 @@ const RECENT_MOST := 6000
 const ROWS_MOST := 12
 
 const HEAD := Color(0.93, 0.73, 0.3)
-const PLAIN := Color(0.84, 0.88, 0.93)
-const DIM := Color(0.55, 0.6, 0.67)
+const PLAIN := Color(0.9, 0.86, 0.78)
+const DIM := Color(0.62, 0.58, 0.52)
 const GOOD := Color(0.55, 0.86, 0.6)
 const BAD := Color(0.95, 0.55, 0.5)
 
@@ -65,7 +65,7 @@ const CLASS_COLOURS := {
 	"tank": Color(0.62, 0.74, 0.46),
 	"healer": Color(0.95, 0.82, 0.4),
 }
-const OTHER_CLASS := Color(0.6, 0.62, 0.68)
+const OTHER_CLASS := Color(0.66, 0.62, 0.56)
 const WARN := Color(0.96, 0.8, 0.4)
 # Where the window was last dragged to, kept while the game runs.
 static var last_position: Vector2 = Vector2(16, 120)
@@ -391,7 +391,7 @@ func _build() -> void:
 	# SOLID. At 0.88 whatever stood behind it - another window, the HUD - showed
 	# through in patches and the numbers sat on two colours.
 	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.055, 0.065, 0.09, 0.97)
+	box.bg_color = Color(0.06, 0.054, 0.048, 0.97)
 	box.border_color = Color(0.93, 0.73, 0.3, 0.7)
 	box.set_border_width_all(1)
 	box.set_corner_radius_all(4)

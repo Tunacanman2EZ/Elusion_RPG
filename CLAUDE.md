@@ -3845,6 +3845,109 @@ nice for this mini game".
 `_test_the_dynamite_held_and_cheap_in_the_forge()` (testrunner_10); the touch
 pad's check (testrunner_3) holds the Dynamite repeating and the aura not.
 
+### The Forge pays: once a day, a chest by the arrival, the best time kept (0.120.0)
+
+The owner, 4 Nov, choosing all four of the Forge's next steps (FORGE_PLAN.txt
+in the commit folder) - this is the first, "Rewards + daily wait". The
+server's half is the API's CLAUDE.md, "The Forge: once a day ...".
+
+- **Go asks the server** (minigamescard.gd `_on_forge_go()`, POST
+  /api/minigames/enter `{game: "forge"}`): once a day, as the Endless; a 409
+  is the wait ("Back in 13h 20m"), no answer is UNREACHABLE. The status says
+  the best the server keeps ("Ready  ·  best 4:30", `best_text()`), from the
+  listing's `best`. The tile is DAILY. Inside, Leave asks twice while the
+  chest holds loot ("Leave anyway") - the next Go empties it. The row's dot
+  (`note_wait()`) only for somebody the card shows the Forge to.
+- **Every fire sprite slain pays its own loot into the chest**, no XP:
+  forgerun.gd `_bring()` gives it `CHEST_META` ("chest_game" = "forge")
+  beside the stress test's MARK, which still keeps it off every ordinary road
+  (no /api/combat/kill, never shared or numbered). BaseEnemy._die() sends a
+  monster with that meta to `Combat.report_endless_kill(id, killer, game)`
+  (`game` new, "endless" by default).
+- **The chest is the Endless's** (endlesschest.gd, its `game` and
+  `empty_words` new), made by the run at `CHEST_SPOT`, beside the arrival in
+  the light, and out of the anvil's START_REACH. Its "Grab your loot" arrow
+  is for a player within `CHEST_BECKON` of the anvil while no run is on
+  (`_process_chest()`). It asks the server nothing while signed out.
+- **The schedule the server holds a kill to** is `forgerun.gd schedule()`,
+  written into gamedata.json's `"forge"` by exportgamedata.gd
+  (`_export_forge()`): a phase a flood at its fastest (the heat's fill with
+  no essence, the spawn gap and count), the volcano believed
+  `VOLCANO_BELIEVED` (60 s), 50 alive. **Change the spawns, the heat or the
+  cap alive: re-export and copy gamedata.json to the API.**
+- **A run's time goes to the server** at its end (`_send_time()`, POST
+  /api/minigames/best, `best_post` the suite's seam; not under a second),
+  which keeps the best; a new best is toasted, `server_best` kept.
+
+`_test_the_forge_pays()` (testrunner_10): gamedata.json against schedule(),
+the chest and its arrow, a sprite's marks and its report (watched fail with
+the report taken out), the time sent, the card's Go, wait, best and Leave.
+The old Forge card check now answers Go's request.
+
+### One look for the whole game: the hotbar's frames (the same 0.120.0)
+
+The owner, of the hero screen: "we need to clean this up add the styles and
+maybe a picture of the characters on the top left of the boxs we are going to
+update everything in the game to get these styles all the buttons everything
+in them need to get rid of the dull brown and just make everything look pretty
+and well conformed", then "keep going gotta update everything". "The styles"
+are the hotbar's key frames (art/images/hotbarslot.png, his art), which the
+login screen took in 0.119.1.
+
+- **The game's theme** (assets/themes/rpg_ui_theme.tres, 32 windows): every
+  Button, OptionButton, LineEdit and tab is the hotbar's frame
+  (`StyleBoxTexture_button*`, `_socket_field*`, `_socket_tab_*`); headers
+  (PanelHeader) and cards (PanelSlot) too; windows are near-black with a
+  bright gold edge (`StyleBoxFlat_window`), inner boxes (PanelSub, the tab
+  page) a flat dark box with a thin gold line (`StyleBoxFlat_box` - the
+  frame's two-tone fill stretched over a big box showed as a line across its
+  middle), sliders a gold fill on a dark track. The old brown flats are gone
+  from the file. ButtonSocket and PanelSocket (bag cells, the bank's buttons)
+  are as they were.
+- **The frame without its empty edge.** hotbarslot.png has 4 transparent
+  pixels round the rim - right between hotbar keys, wrong on a button, where
+  the rim sat 4 px inside its box and text ran into it. The button, field,
+  tab, header and card frames take `region_rect` Rect2(4, 4, 24, 24) and
+  3 px texture margins, so the rim is the box's edge, as the flat border
+  was; content margins 8 x 3 (buttons, fields), close to the old sizes.
+- **The staff theme** (staff_ui_theme.tres - Owner, Staff, Powers and the
+  owner's windows) is the same look now, not navy: the same window, box and
+  menu colours, its buttons, fields, tabs and header the frame, each with
+  the content margins it had (at least 8 x 3), so its dense windows keep
+  their sizes. Ban, Unban and the maintenance switch keep their red and green.
+- **Windows with their own boxes**: the bar at the bottom and its menus
+  (characterhud.tscn `StyleBoxFlat_navbar`), the hotbar's frame, the touch
+  pad's, the options pickers (its own small theme, now the frame), the
+  owner panel's status and results boxes, the message box, the damage meter,
+  the item catalogue's cells, the events tab, the story box, and the dull
+  borders of the cooking well, the gear well, the chat log and the tooltip's
+  line - each from brown or navy to the near-black and gold. The death screen
+  had no theme at all (Godot's grey buttons) and has the game's now.
+- **The hero screen** (characterselect.gd `_dress_cards()`): each class's
+  picture in the top left of its card (its sprite facing down, cropped -
+  minigamescard.gd `portrait_of()`) in a frame of the class's colour, its
+  name and level beside it, its line under, Select green, Create gold,
+  Delete red (the login screen's `_dress()`), the buttons at the card's foot,
+  the window as tall as the cards. **The pictures load in the background**
+  (`_ask_portrait()`, `_process()`): loading a class scene on this screen
+  while the world loads ahead in a thread (begun on the login screen) stopped
+  the game dead, and cost 150-240 ms a class when it did not.
+
+- **The staff windows' words and charts** (the owner: "finish updating staff
+  hud"): the cool blue-greys in every owner and staff window - the
+  scripts' `PLAIN`, `DIM`, `SAY_NOTE` and `COLOUR_PLAIN`, the scenes' text,
+  field and placeholder colours, the Powers window's lines
+  (characterhud.gd `_powers_line` calls) - are the warm creams and greys of
+  the game's text, and the staff theme gives a Label and a RichTextLabel the
+  game's cream. The three charts (goldflowchart, onlinechart, hourschart)
+  sit on a warm near-black with warm grid lines and hover boxes; their
+  series colours (blue minted / players, orange burned / everyone) are the
+  data's and stay. Colours that mean something stay too: good green, bad
+  red, the staff desk's lavender notes, rarity edges, class colours.
+
+The staff look's test (testrunner_5) checks the game's colours and the
+frame instead of navy.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

@@ -50,7 +50,7 @@ vertical_alignment = 1
 
 [node name="hint" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "owner only - restore asks twice"
 vertical_alignment = 1
@@ -72,8 +72,8 @@ theme_override_constants/separation = 6
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
-theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_colors/font_color = Color(0.92, 0.9, 0.85, 1)
+theme_override_colors/font_placeholder_color = Color(0.55, 0.52, 0.47, 1)
 theme_override_font_sizes/font_size = 13
 placeholder_text = "username"
 
@@ -128,7 +128,7 @@ theme_override_constants/separation = 4
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_colors/font_color = Color(0.8, 0.76, 0.68, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Type a player's name, then Load."
@@ -136,7 +136,7 @@ text = "Type a player's name, then Load."
 [node name="historynote" type="Label" parent="frame/margin/rows"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
 theme_override_font_sizes/font_size = 10
 autowrap_mode = 3
 text = "Restoring puts back their level, gold, gear, pet, bag and skills, and signs them out so their game reloads it. The bank and lusions are the account's and do not change. An item they have traded away since comes back as a second copy."

@@ -42,7 +42,7 @@ const PREVIEW_PATH := "/api/world/events/preview"
 const DRY_RUN_PLAYERS := 20
 const SAY_GOOD := Color(0.55, 0.86, 0.6)
 const SAY_BAD := Color(0.95, 0.55, 0.5)
-const SAY_NOTE := Color(0.78, 0.82, 0.87)
+const SAY_NOTE := Color(0.84, 0.8, 0.72)
 const HEAD := Color(0.56, 0.93, 0.62)
 # The GM panel's inside width, near enough: it is 370 wide.
 const WIDTH := 250.0
@@ -199,8 +199,8 @@ func _build() -> void:
 	calendar_popup = PopupPanel.new()
 	calendar_popup.name = "calendarpopup"
 	var frame := StyleBoxFlat.new()
-	frame.bg_color = Color(0.07, 0.06, 0.09, 0.97)
-	frame.border_color = Color(0.55, 0.45, 0.3)
+	frame.bg_color = Color(0.06, 0.054, 0.048, 0.97)
+	frame.border_color = Color(0.78, 0.64, 0.36)
 	frame.set_border_width_all(2)
 	frame.set_corner_radius_all(3)
 	frame.set_content_margin_all(8.0)

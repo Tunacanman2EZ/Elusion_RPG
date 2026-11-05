@@ -3430,6 +3430,11 @@ func _die() -> void:
 		# corridor instead: its own loot, rolled by the server, no XP.
 		if has_meta(&"run_extra") and enemy_data != null and enemy_data.grants_rewards:
 			Combat.report_endless_kill(enemy_data.enemy_id, _local_player())
+		# A FORGE FIRE SPRITE (0.120.0, forgerun.gd's CHEST_META): the stress
+		# test's mark keeps it off every ordinary road, and this pays its loot
+		# into the Forge's chest.
+		elif has_meta(&"chest_game") and enemy_data != null and enemy_data.grants_rewards:
+			Combat.report_endless_kill(enemy_data.enemy_id, _local_player(), str(get_meta(&"chest_game")))
 
 	# BEFORE queue_free(), and through the autoload rather than a player node
 	# on this enemy. audio.gd's header is about exactly this case: a player

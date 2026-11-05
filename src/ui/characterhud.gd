@@ -1560,7 +1560,7 @@ func _load_powers() -> void:
 		child.queue_free()
 
 	_powers_line(rows, "Read from the server's own route decorators, not a hand-kept list."
-		+ " Point at a line to see the route behind it.", Color(0.45, 0.50, 0.58), 11)
+		+ " Point at a line to see the route behind it.", Color(0.55, 0.51, 0.45), 11)
 
 	var res: Dictionary = await Api.get_json("/api/staff/powers", Api.PROBE_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
@@ -1597,11 +1597,11 @@ func _render_powers(rows: VBoxContainer, data: Dictionary) -> void:
 
 		var routes: Array = entry.get("routes", [])
 		if routes.is_empty() and entry.get("notes", []).is_empty():
-			_powers_line(rows, "    nothing beyond playing the game", Color(0.55, 0.60, 0.68), 12)
+			_powers_line(rows, "    nothing beyond playing the game", Color(0.62, 0.58, 0.52), 12)
 		for route in routes:
 			if route is Dictionary:
 				var line: Label = _powers_line(rows, "    " + power_words(route),
-					Color(0.78, 0.83, 0.89), 12)
+					Color(0.84, 0.8, 0.72), 12)
 				# A Label ignores the mouse by default, and a control that
 				# ignores the mouse never shows its tooltip.
 				line.tooltip_text = "%s %s" % [str(route.get("method", "")), str(route.get("path", ""))]
@@ -1663,9 +1663,9 @@ func _build_message_box() -> void:
 	frame.visible = false
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.058, 0.070, 0.094, 0.86)
+	style.bg_color = Color(0.06, 0.054, 0.048, 0.86)
 	style.border_width_left = 3
-	style.border_color = Color(0.25, 0.33, 0.43)
+	style.border_color = Color(0.62, 0.52, 0.32)
 	style.corner_radius_top_left = 4
 	style.corner_radius_top_right = 4
 	style.corner_radius_bottom_right = 4
@@ -2597,7 +2597,7 @@ func _read_broadcast_messages(messages: Variant, announce: bool = true) -> void:
 			continue
 		var kind: String = str(entry.get("kind", "system"))
 		var body: String = str(entry.get("body", ""))
-		var colour: Color = Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94)
+		var colour: Color = Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.92, 0.88, 0.8)
 		if kind == WORLD_BROADCAST_KIND:
 			colour = land_colour()
 		elif kind == EVENT_BROADCAST_KIND:

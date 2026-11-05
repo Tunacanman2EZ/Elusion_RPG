@@ -45,9 +45,10 @@
 # THE FORGE (forgerun.gd) is the fifth, the owner's alone while it is built
 # (`shows_forge`): THE TANK'S WORLD - an island in a lake of lava that floods
 # slice by slice - but open to every class (the owner: "open to any class but
-# the tank benefits the most"). Go travels there (its own area, as the
-# Descent is) and asks the server nothing - step 1 pays nothing; inside it,
-# the row's button is Leave, to town.
+# the tank benefits the most"). Go asks the server first since 0.120.0 -
+# once a day, as the Endless, and the status says your best time - then
+# travels there (its own area, as the Descent is); inside it, the row's button
+# is Leave, to town, asked twice while the chest holds loot.
 #
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
@@ -172,6 +173,14 @@ var _failed: bool = false
 # server until the next Go - which empties it - so leaving it is losing it.
 # The first press says so; the second leaves. Opening the card again forgets.
 var _leave_armed: bool = false
+# THE FORGE'S DAY AND BEST (0.120.0), as the server last said them.
+var forge_wait: int = 0
+var forge_best: int = 0
+var _forge_known: bool = false
+var _forge_said_msec: int = 0
+var _forge_busy: bool = false
+var _forge_failed: bool = false
+var _forge_leave_armed: bool = false
 
 # A RUN TO PLAY LIGHTS THE BAR'S BUTTON (0.113.0; since 0.113.1 until you go
 # in, not until the card is opened - the owner: "green vanished after i
@@ -242,7 +251,7 @@ func _init() -> void:
 	descent_go = _go_button("descentgo", _on_descent_go)
 	(descent[4] as HBoxContainer).add_child(descent_go)
 	var forge: Array = _tile(column, "forge", "The Forge", FORGE_BLURB,
-		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
+		[TAG_DAILY, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
 		["TANK BEST", Color(0.55, 0.3, 0.12), "The tank's world - he lasts longest"]])
 	forge_box = forge[0]
 	forge_status = forge[3]
@@ -487,6 +496,8 @@ func close() -> bool:
 
 func open() -> void:
 	_leave_armed = false
+	_forge_leave_armed = false
+	_forge_failed = false
 	_healer_said = ""
 	visible = true
 	move_to_front()
@@ -514,6 +525,14 @@ func take_listing(res: Dictionary) -> void:
 				_healer_said_msec = Time.get_ticks_msec()
 				_healer_known = true
 				note_wait(HEALER_GAME, 0 if healer_left > 0 else healer_wait)
+			if game is Dictionary and str(game.get("id", "")) == FORGE:
+				forge_wait = maxi(0, int(game.get("ready_in", 0)))
+				forge_best = maxi(0, int(game.get("best", 0)))
+				_forge_said_msec = Time.get_ticks_msec()
+				_forge_known = true
+				# Its dot only for somebody the card shows it to.
+				if bool(shows_forge.call()):
+					note_wait(FORGE, forge_wait)
 			if game is Dictionary and str(game.get("id", "")) == GAME:
 				ready_in = maxi(0, int(game.get("ready_in", 0)))
 				_said_at_msec = Time.get_ticks_msec()
@@ -772,24 +791,88 @@ func _shows_descent() -> bool:
 	return bool(Api.is_owner)
 
 
+# THE FORGE'S DAY (0.120.0). The owner: "Rewards + daily wait". Go asks the
+# server first (POST /api/minigames/enter, "forge"): once a day, as the
+# Endless, and the fire sprites pay into the chest by the island's arrival
+# only inside it. The status says the best time the server keeps. Inside,
+# Leave asks twice while the chest holds loot - the next Go empties it.
+static func best_text(seconds: int) -> String:
+	return "" if seconds <= 0 else "best %d:%02d" % [seconds / 60, seconds % 60]
+
+
+func forge_left_now() -> int:
+	if not _forge_known:
+		return 0
+	return maxi(0, forge_wait - int((Time.get_ticks_msec() - _forge_said_msec) / 1000))
+
+
 func _paint_forge() -> void:
 	forge_box.visible = bool(shows_forge.call())
 	var inside: bool = str(area_now.call()) == FORGE
-	forge_status.text = "You are in the Forge." if inside else "Ready - any class goes down"
-	forge_status.add_theme_color_override("font_color", COLOUR_HINT if inside else COLOUR_READY)
-	forge_go.text = "Leave" if inside else "Go"
-	forge_go.tooltip_text = "Back up to town" if inside else "Down into the Forge - as you are, gear and all"
+	var best: String = best_text(forge_best)
+	var colour: Color = COLOUR_READY
+	forge_go.disabled = _forge_busy
+	if inside:
+		var held: int = chest_held()
+		forge_status.text = "Your chest holds %d. Leave it and your next Go empties it." % held if held > 0 \
+			else "You are in the Forge."
+		colour = COLOUR_WAIT if held > 0 else COLOUR_HINT
+		forge_go.text = "Leave anyway" if _forge_leave_armed and held > 0 else "Leave"
+		forge_go.tooltip_text = "Back up to town"
+	else:
+		forge_go.text = "Go"
+		forge_go.tooltip_text = "Down into the Forge, as you are - your day starts now"
+		var left: int = forge_left_now()
+		if left > 0:
+			forge_status.text = wait_text(left) + ("  ·  " + best if best != "" else "")
+			colour = COLOUR_WAIT
+			forge_go.disabled = true
+		elif _forge_failed:
+			forge_status.text = UNREACHABLE
+			colour = COLOUR_WAIT
+		elif _forge_busy:
+			forge_status.text = "Asking the server..."
+			colour = COLOUR_HINT
+		else:
+			forge_status.text = "Ready  ·  " + best if best != "" else "Ready - any class goes down"
+	forge_status.add_theme_color_override("font_color", colour)
 
 
 func _on_forge_go() -> void:
-	if not bool(shows_forge.call()):
+	if not bool(shows_forge.call()) or _forge_busy:
 		paint()
 		return
-	close()
 	if str(area_now.call()) == FORGE:
+		if chest_held() > 0 and not _forge_leave_armed:
+			_forge_leave_armed = true
+			paint()
+			_place()
+			return
+		_forge_leave_armed = false
+		close()
 		travel.call(TOWN, "")
-	else:
+		return
+	_forge_busy = true
+	_forge_failed = false
+	paint()
+	var res: Dictionary = await enter_request.call("/api/minigames/enter", {"game": FORGE}, 6.0)
+	if not is_instance_valid(self):
+		return
+	_forge_busy = false
+	if res.get("ok", false):
+		forget_wait(FORGE)
+		close()
 		travel.call(FORGE, FORGE_ENTRANCE)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if int(res.get("status", 0)) == 409:
+		forge_wait = maxi(0, int(data.get("ready_in", 0)))
+		_forge_said_msec = Time.get_ticks_msec()
+		_forge_known = true
+		note_wait(FORGE, forge_wait)
+	else:
+		_forge_failed = true
+	paint()
 
 
 func _shows_forge() -> bool:

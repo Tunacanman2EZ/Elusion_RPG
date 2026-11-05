@@ -268,9 +268,9 @@ static func describe(item: ItemData) -> String:
 static func _frame_for(tier: int) -> StyleBoxFlat:
 	if not _frames.has(tier):
 		var box := StyleBoxFlat.new()
-		box.bg_color = Color(0.08, 0.09, 0.13)
+		box.bg_color = Color(0.1, 0.086, 0.072)
 		box.set_border_width_all(2)
-		box.border_color = GameConstants.rarity_colour(tier) if tier >= 2 else Color(0.25, 0.27, 0.33)
+		box.border_color = GameConstants.rarity_colour(tier) if tier >= 2 else Color(0.36, 0.31, 0.24)
 		box.set_corner_radius_all(2)
 		_frames[tier] = box
 	return _frames[tier]
@@ -280,7 +280,7 @@ static func _hover_for(tier: int) -> StyleBoxFlat:
 	var key: int = 1000 + tier
 	if not _frames.has(key):
 		var box: StyleBoxFlat = _frame_for(tier).duplicate()
-		box.bg_color = Color(0.16, 0.18, 0.25)
+		box.bg_color = Color(0.2, 0.17, 0.12)
 		_frames[key] = box
 	return _frames[key]
 
@@ -495,4 +495,4 @@ func _say(line: String, bad: bool = false) -> void:
 		return
 	status.text = line
 	status.add_theme_color_override("font_color",
-		Color(1.0, 0.55, 0.45) if bad else Color(0.73, 0.78, 0.84))
+		Color(1.0, 0.55, 0.45) if bad else Color(0.8, 0.76, 0.68))

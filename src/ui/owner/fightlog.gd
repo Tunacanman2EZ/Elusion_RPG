@@ -930,7 +930,7 @@ class GroupChart extends Control:
 	func _draw() -> void:
 		var font: Font = get_theme_default_font()
 		var small: int = 11
-		var dim := Color(0.55, 0.6, 0.67, 0.9)
+		var dim := Color(0.62, 0.58, 0.52, 0.9)
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.035))
 		var strip: int = strip_height()
 		var plot := Rect2(Vector2(6, 18), size - Vector2(12, 36 + strip))

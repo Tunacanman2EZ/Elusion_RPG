@@ -27,14 +27,14 @@ class_name GoldFlowChart
 extends Control
 
 
-const SURFACE := Color("#12161d")
-const GRID := Color("#262c35")
-const ZERO := Color("#3a424e")
+const SURFACE := Color("#17130f")
+const GRID := Color("#2f2820")
+const ZERO := Color("#4a4035")
 const TEXT := Color("#e6e9ee")
-const MUTED := Color("#9aa3af")
+const MUTED := Color("#ab9f8c")
 const MINTED := Color("#3987e5")
 const BURNED := Color("#d95926")
-const NET := Color("#c9ced6")
+const NET := Color("#d8d0c2")
 const PAD_LEFT := 34.0
 const PAD_RIGHT := 6.0
 const PAD_TOP := 22.0
@@ -243,7 +243,7 @@ func _draw_hover(font: Font, plot: Rect2, point: Vector2) -> void:
 	if box.end.x > size.x - 2.0:
 		box.position.x = point.x - 10.0 - box.size.x
 	box.position.x = maxf(2.0, box.position.x)
-	draw_rect(box, Color(0.04, 0.05, 0.07, 0.95))
+	draw_rect(box, Color(0.06, 0.054, 0.048, 0.95))
 	draw_rect(box, GRID, false, 1.0)
 	for i in lines.size():
 		draw_string(font, box.position + Vector2(7.0, 16.0 + 15.0 * i), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1,

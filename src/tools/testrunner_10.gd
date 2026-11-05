@@ -1726,8 +1726,16 @@ func _test_the_forge() -> void:
 	add_child(card_hud)
 	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
 	var went: Array = []
+	var entered: Array = []
 	card.set("travel", func(area_id: String, spawn_id: String) -> void: went.append([area_id, spawn_id]))
 	card.set("area_now", func() -> String: return "elusion")
+	# Go asks the server first since 0.120.0 (_test_the_forge_pays() has the day).
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": false})
+	# No chest left in the tree by an earlier section holds Leave back.
+	card.set("chest_count", func() -> int: return 0)
+	card.set("enter_request", func(path: String, body: Dictionary, _t: float = 0.0) -> Dictionary:
+		entered.append([path, body])
+		return {"ok": true, "status": 200, "data": {"ok": true, "game": "forge"}})
 	card.set("shows_forge", func() -> bool: return false)
 	card.call("paint")
 	var hidden: bool = not card.forge_box.visible
@@ -1736,14 +1744,14 @@ func _test_the_forge() -> void:
 	card.call("open")
 	card.call("paint")
 	var shown: bool = card.forge_box.visible and card.forge_go.text == "Go" and not card.forge_go.disabled
-	card.call("_on_forge_go")
+	await card.call("_on_forge_go")
 	card.set("area_now", func() -> String: return "forge")
 	card.call("paint")
 	var leave_text: String = card.forge_go.text
 	card.call("_on_forge_go")
 	check("on the Minigames card for the owner alone, any class: Go goes down (%s), and inside it is Leave, to town" % str(went),
 		hidden and shown and leave_text == "Leave" and went.size() == 2 and went[0] == ["forge", "forge_entrance"]
-		and went[1] == ["elusion", ""])
+		and went[1] == ["elusion", ""] and entered == [["/api/minigames/enter", {"game": "forge"}]], [went, entered])
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  (the forge: done)")
@@ -1860,7 +1868,7 @@ func _test_the_login_and_minigames_look() -> void:
 	var pictured: bool = tiles.all(func(t: Control) -> bool:
 		var pics: Array = t.find_children("*", "TextureRect", true, false)
 		return t is PanelContainer and t.visible and pics.size() == 1 and (pics[0] as TextureRect).texture != null)
-	var tagged: bool = card.forge_box.find_children("tag", "Label", true, false).size() == 3 \
+	var tagged: bool = card.forge_box.find_children("tag", "Label", true, false).size() == 4 \
 		and card.endless_box.find_children("tag", "Label", true, false).size() == 1
 	check("the Minigames card is a tile a game - each its portrait from the game's own art and its tags - and %d px tall (it was 640)" % roundi(card.size.y),
 		pictured and tagged and card.size.y < 480.0 and card.forge_go.get_parent().get_parent() == card.forge_box)
@@ -1966,3 +1974,245 @@ func _test_the_dynamite_held_and_cheap_in_the_forge() -> void:
 	arena.queue_free()
 	await get_tree().process_frame
 	print("  dynamite: held, it throws on; in the Forge a tenth of the mana")
+
+
+# 0.120.0. The owner, 4 Nov: "Rewards + daily wait" - the Forge's step 1 of
+# four (FORGE_PLAN.txt). The server's half is the API's test_minigames.py MG-14.
+func _test_the_forge_pays() -> void:
+	section("THE FORGE PAYS - once a day, every fire sprite into a chest by the arrival, the best time kept (0.120.0)")
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	# ---- the schedule the server holds a kill to ----
+	var made: Dictionary = Run.schedule()
+	var file := FileAccess.open("res://data/gamedata.json", FileAccess.READ)
+	var parsed: Variant = JSON.parse_string(file.get_as_text()) if file != null else null
+	var exported: Dictionary = (parsed as Dictionary).get("forge", {}) if parsed is Dictionary else {}
+	var phases: Array = made["phases"]
+	var written: Array = exported.get("phases", [])
+	var same: bool = written.size() == phases.size() and phases.size() == Run.SLICES
+	for i in mini(written.size(), phases.size()):
+		same = same and is_equal_approx(float(written[i].get("seconds", -1)), float(phases[i]["seconds"])) \
+			and is_equal_approx(float(written[i].get("gap", -1)), float(phases[i]["gap"])) \
+			and int(written[i].get("count", -1)) == int(phases[i]["count"])
+	var volcano: Dictionary = exported.get("volcano", {})
+	check("gamedata.json carries the Forge's schedule as forgerun.gd makes it (change the spawns or the heat: re-export, copy to the API)",
+		same and Array(exported.get("sprites", [])) == ["firesprite"] and made["sprite_scenes"] == [Run.SPRITE]
+		and int(exported.get("alive_most", -1)) == int(made["alive_most"])
+		and int(exported.get("volcano_believed", -1)) == Run.VOLCANO_BELIEVED
+		and is_equal_approx(float(volcano.get("gap", -1)), float(made["volcano"]["gap"]))
+		and int(volcano.get("count", -1)) == int(made["volcano"]["count"]), [written.size(), exported.get("sprites")])
+	check("  at its fastest: the first flood 40 s at a sprite each 3 s, the last 19.13 s at three each 0.629 s, 50 alive",
+		is_equal_approx(float(phases[0]["seconds"]), 40.0) and is_equal_approx(float(phases[0]["gap"]), 3.0)
+		and int(phases[0]["count"]) == 1 and is_equal_approx(float(phases[7]["seconds"]), 19.13)
+		and is_equal_approx(float(phases[7]["gap"]), 0.629) and int(phases[7]["count"]) == 3
+		and int(made["alive_most"]) == 50, [phases[0], phases[7]])
+
+	# ---- a fire sprite pays the chest ----
+	var island := Node2D.new()
+	add_child(island)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	island.add_child(world)
+	for holder in ["props", "enemies", "interactables"]:
+		var n := Node2D.new()
+		n.name = holder
+		world.add_child(n)
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	island.add_child(body)
+	body.global_position = Vector2(-90000, -90000)
+	var run: Node = Run.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", "tank")
+	island.add_child(run)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var chest: Node2D = world.get_node_or_null("interactables/forgechest") as Node2D
+	run.call("_process", 0.01)
+	check("the Forge has its chest beside the arrival, the Forge's, its arrow for the light round the anvil between runs",
+		chest != null and chest == run.get("chest") and chest.position == Run.CHEST_SPOT
+		and str(chest.get("game")) == "forge" and chest.get("corridor") == Run.CHEST_BECKON
+		and Run.CHEST_SPOT.distance_to(Run.CENTRE) > Run.START_REACH
+		and str(chest.get("empty_words")).contains("fire sprite"), chest)
+	run.set("_spawn_clock", 9999.0)
+	run.set("_essence_clock", 9999.0)
+	run.set("state", Run.State.RUNNING)
+	run.call("_process", 0.0)
+	check("  and no arrow while a run is on", chest != null and chest.get("corridor") == Rect2())
+	run.set("state", Run.State.WAITING)
+
+	var kept_post: Callable = Combat.kill_post
+	var kept_token: String = Api.token
+	var kept_known: bool = Api.reachability_known
+	var kept_online: bool = Api.server_online
+	Api.token = "test-not-a-real-token"
+	var posts: Array = []
+	Combat.kill_post = func(path: String, sent: Dictionary, _timeout: float) -> Dictionary:
+		posts.append([path, sent.duplicate()])
+		await get_tree().process_frame
+		return {"ok": true, "status": 200, "data": {"used": 2, "added": [{"item_id": "coppercoin", "quantity": 9}],
+			"cut": [], "mythic": "", "pet_won": false, "chest_id": "chest:forge:0"}}
+	var sprite: Node = run.call("_bring", Run.SPRITE, Run.CENTRE + Vector2(400, 0), 1.0)
+	await get_tree().process_frame
+	check("a fire sprite the Forge brings carries the chest's mark and the stress test's: no ordinary kill",
+		sprite != null and str(sprite.get_meta(Run.CHEST_META, "")) == "forge" and sprite.has_meta(Run.MARK)
+		and sprite.call("get_enemy_id") == "", sprite)
+	Api.reachability_known = true
+	Api.server_online = true
+	if sprite != null:
+		sprite.call("_die")
+	for i in 6:
+		await get_tree().process_frame
+	check("  slain, it reports to /api/minigames/kill for the Forge, never /api/combat/kill, and the chest's count follows",
+		posts.size() == 1 and str(posts[0][0]) == "/api/minigames/kill" and posts[0][1].get("game") == "forge"
+		and posts[0][1].get("enemy_id") == "firesprite" and chest != null and int(chest.get("used")) == 2, posts)
+	Combat.kill_post = kept_post
+
+	# ---- the run's time ----
+	var times: Array = []
+	run.set("best_post", func(path: String, sent: Dictionary) -> Dictionary:
+		times.append([path, sent.duplicate()])
+		await get_tree().process_frame
+		return {"ok": true, "status": 200, "data": {"seconds": 270, "best": 270, "new_best": true}})
+	run.set("state", Run.State.RUNNING)
+	run.set("elapsed", 270.4)
+	run.call("end_run")
+	for i in 3:
+		await get_tree().process_frame
+	check("a run's end sends its time, and the server's best is kept",
+		times == [["/api/minigames/best", {"game": "forge", "seconds": 270}]] and int(run.get("server_best")) == 270
+		and float(run.get("best")) >= 270.0, [times, run.get("server_best")])
+	times.clear()
+	run.set("state", Run.State.RUNNING)
+	run.set("elapsed", 0.4)
+	run.call("end_run")
+	await get_tree().process_frame
+	check("  a run of no time at all sends nothing", times.is_empty(), times)
+	Api.token = kept_token
+	Api.reachability_known = kept_known
+	Api.server_online = kept_online
+	island.queue_free()
+	await get_tree().process_frame
+
+	# ---- the card: Go asks, the day, the best ----
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	var area: Array = ["elusion"]
+	var entering: Array = [{"ok": false, "status": 409, "data": {"ready_in": 48000}}]
+	var held: Array = [0]
+	var went: Array = []
+	card.set("shows_forge", func() -> bool: return true)
+	card.set("area_now", func() -> String: return area[0])
+	card.set("travel", func(area_id: String, spawn_id: String) -> void: went.append([area_id, spawn_id]))
+	card.set("chest_count", func() -> int: return held[0])
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"games": [{"id": "forge", "ready_in": 0, "best": 270}]}})
+	card.set("enter_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary: return entering[0])
+	await card.call("open")
+	var ready_line: String = card.forge_status.text
+	await card.call("_on_forge_go")
+	check("the card says your best beside Ready (%s); inside the day Go says how long is left and waits" % ready_line,
+		ready_line == "Ready  ·  best 4:30" and card.forge_status.text == "Back in 13h 20m  ·  best 4:30"
+		and card.forge_go.disabled and went.is_empty(), [card.forge_status.text, went])
+	area[0] = "forge"
+	held[0] = 3
+	card.call("paint")
+	var holds: String = card.forge_status.text
+	card.call("_on_forge_go")
+	var armed: String = card.forge_go.text
+	card.call("_on_forge_go")
+	check("  inside with loot in the chest, Leave asks twice, saying the next Go empties it",
+		holds == "Your chest holds 3. Leave it and your next Go empties it." and armed == "Leave anyway"
+		and went == [["elusion", ""]], [holds, armed, went])
+	check("the Forge is DAILY on the card", card.forge_box.find_children("tag", "Label", true, false).any(
+		func(t: Label) -> bool: return t.text == "DAILY"))
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  the forge pays: its schedule, the chest, the time, the card")
+
+
+# 0.120.0. The owner, of the hero screen: "add the styles and maybe a picture
+# of the characters on the top left of the boxs ... get rid of the dull brown
+# and just make everything look pretty and well conformed", and "keep going
+# gotta update everything".
+func _test_one_look_for_the_game() -> void:
+	section("ONE LOOK - every button and box the hotbar's frame, the browns gone, the heroes pictured (0.120.0)")
+	const SOCKET_ART := "res://art/images/hotbarslot.png"
+	var theme: Theme = load("res://assets/themes/rpg_ui_theme.tres") as Theme
+	var framed := func(box: StyleBox) -> bool:
+		return box is StyleBoxTexture and (box as StyleBoxTexture).texture != null \
+			and (box as StyleBoxTexture).texture.resource_path == SOCKET_ART
+	var cropped := func(box: StyleBox) -> bool:
+		return box is StyleBoxTexture and (box as StyleBoxTexture).region_rect == Rect2(4, 4, 24, 24) \
+			and is_equal_approx((box as StyleBoxTexture).texture_margin_left, 3.0)
+	var parts: Array = [["normal", "Button"], ["hover", "Button"], ["pressed", "Button"], ["disabled", "Button"],
+		["normal", "OptionButton"], ["normal", "LineEdit"], ["focus", "LineEdit"], ["tab_selected", "TabContainer"],
+		["tab_unselected", "TabContainer"], ["panel", "PanelHeader"], ["panel", "PanelSlot"]]
+	var plain: Array = []
+	for part in parts:
+		var box: StyleBox = theme.get_stylebox(part[0], part[1])
+		if not (framed.call(box) and cropped.call(box)):
+			plain.append("%s/%s" % [part[1], part[0]])
+	check("every button, dropdown, field, tab, header and card in the game's theme is the hotbar's frame, its empty edge cropped",
+		plain.is_empty(), plain)
+	var window: StyleBoxFlat = theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	var inner: StyleBoxFlat = theme.get_stylebox("panel", "PanelSub") as StyleBoxFlat
+	check("  windows near-black in a bright gold edge; an inner box a dark box with a thin gold line",
+		window != null and window.bg_color.v < 0.1 and window.border_color.r > 0.7 and window.border_width_left >= 3
+		and inner != null and inner.bg_color.v < 0.12 and inner.border_color.r > 0.8 and inner.border_width_top == 1)
+	var source: String = FileAccess.get_file_as_string("res://assets/themes/rpg_ui_theme.tres")
+	check("  and none of the old browns is left in it",
+		not source.contains("Color(0.18, 0.15, 0.12") and not source.contains("Color(0.12, 0.1, 0.08")
+		and not source.contains("StyleBoxFlat_button_normal"))
+	var nav: StyleBoxFlat = _node_prop_in_scene("res://scene/ui/characterhud.tscn", "navframe",
+		"theme_override_styles/panel") as StyleBoxFlat
+	check("the bar at the bottom wears the windows' colours", nav != null and nav.bg_color.v < 0.1
+		and nav.border_color.r > 0.7, nav)
+	var over: PackedScene = load("res://scene/ui/menus/gameover.tscn") as PackedScene
+	var death: Control = over.instantiate() as Control
+	check("the death screen has the game's theme, not Godot's grey", death.theme != null
+		and death.theme.resource_path == "res://assets/themes/rpg_ui_theme.tres")
+	death.free()
+
+	# ---- the hero screen ----
+	var kept: Array = []
+	for i in 4:
+		kept.append(CharacterData.character_slots[i])
+	CharacterData.character_slots[0] = {"character": "warrior", "level": 99}
+	CharacterData.character_slots[1] = null
+	var select: Control = (load("res://scene/ui/menus/characterselect.tscn") as PackedScene).instantiate() as Control
+	select.call("_build_slot_extras")
+	select.call("_dress_cards")
+	select.call("update_slot_labels")
+	var grid: Node = select.get_node(select.GRID_PATH)
+	var pictured: Array = []
+	for hero in ["warrior", "mage", "tank", "healer"]:
+		var top: Node = grid.get_node_or_null("%s/vbox/top" % hero)
+		var frame: Node = top.get_node_or_null("portraitframe") if top != null else null
+		var words: Node = top.get_node_or_null("words") if top != null else null
+		if frame != null and frame.get_node_or_null("portrait") is TextureRect and words != null \
+				and words.get_node_or_null("classname") != null and top.get_index() == 0:
+			pictured.append(hero)
+	var level: Label = select.get_node("%label1")
+	var picked: Button = select.get_node("%selectbutton1")
+	var made: Button = select.get_node("%createbutton2")
+	check("each hero card has its picture in the top left, framed, its name and level beside it",
+		pictured == ["warrior", "mage", "tank", "healer"] and level.get_parent().name == "words"
+		and level.text == "Level 99", [pictured, level.get_parent().name, level.text])
+	var tint := func(button: Button) -> Color:
+		var box: StyleBoxTexture = button.get_theme_stylebox("hover") as StyleBoxTexture
+		return box.modulate_color if box != null else Color.BLACK
+	var delete_one: Button = select.get("delete_buttons")[0]
+	check("  Select green, Create gold, Delete red - and the buttons at the card's foot",
+		tint.call(picked).g > tint.call(picked).r and tint.call(made).r > tint.call(made).b
+		and tint.call(delete_one).r > tint.call(delete_one).g
+		and grid.get_node("warrior/vbox/push").get_index() == grid.get_node("warrior/vbox/buttons").get_index() - 1,
+		[tint.call(picked), tint.call(made), tint.call(delete_one)])
+	check("  the pictures are asked of a thread, never loaded on the spot (the world may be loading ahead)",
+		_func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _ask_portrait(").contains("load_threaded_request")
+		and not _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _dress_cards(").contains("portrait_of("))
+	select.free()
+	for i in 4:
+		CharacterData.character_slots[i] = kept[i]
+	print("  one look: the themes, the bar, the death screen, the hero cards")

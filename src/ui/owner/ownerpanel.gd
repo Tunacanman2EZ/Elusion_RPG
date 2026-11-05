@@ -101,7 +101,7 @@ const StressCrowd := preload("res://src/world/stresscrowd.gd")
 const SAY_GOOD := Color(0.55, 0.86, 0.6)
 const SAY_BAD := Color(0.95, 0.55, 0.5)
 const SAY_WARN := Color(0.95, 0.82, 0.5)
-const SAY_NOTE := Color(0.78, 0.82, 0.87)
+const SAY_NOTE := Color(0.84, 0.8, 0.72)
 const SAY_HEAD := Color(0.93, 0.73, 0.3)
 # The colour the old inline status lines were, kept for the quick answers the
 # Testing tab and the teleport row give.

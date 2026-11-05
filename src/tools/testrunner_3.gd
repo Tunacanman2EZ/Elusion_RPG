@@ -1068,18 +1068,19 @@ func _test_world_events() -> void:
 		today_socket)
 	cal.show_days(real_now, 366, -1, [])
 	today_cell = cal.cell_for(int(today_date.get("day", 1)))
-	var today_box: StyleBoxFlat = today_cell.get_theme_stylebox("normal") as StyleBoxFlat if today_cell != null else null
-	var plain_cell_box: StyleBoxFlat = null
+	# The GM panel's button is the hotbar's frame since 0.120.0: today's is
+	# that frame lit in gold, the plain cells' own box otherwise unchanged.
+	var today_box: StyleBoxTexture = today_cell.get_theme_stylebox("normal") as StyleBoxTexture if today_cell != null else null
+	var plain_cell_box: StyleBoxTexture = null
 	for child in cal.grid.get_children():
 		if child is Button and not (child as Button).has_theme_stylebox_override("normal"):
-			plain_cell_box = (child as Button).get_theme_stylebox("normal") as StyleBoxFlat
+			plain_cell_box = (child as Button).get_theme_stylebox("normal") as StyleBoxTexture
 			break
-	check("  today with nothing on: a warm fill and a gold edge, in the GM panel's own button style, not the engine's",
-		today_box != null and plain_cell_box != null and today_box.bg_color.is_equal_approx(EventCalendar.TODAY_FILL)
-		and today_box.border_color.is_equal_approx(EventCalendar.TODAY)
-		and today_box.border_width_left == plain_cell_box.border_width_left
+	check("  today with nothing on: the GM panel's own button, its frame lit in gold, not the engine's",
+		today_box != null and plain_cell_box != null and today_box.modulate_color.is_equal_approx(EventCalendar.TODAY)
+		and today_box.texture == plain_cell_box.texture and today_box.region_rect == plain_cell_box.region_rect
 		and is_equal_approx(today_box.content_margin_left, plain_cell_box.content_margin_left),
-		[today_box.border_color, today_box.content_margin_left] if today_box else ["no box"])
+		[today_box.modulate_color, today_box.content_margin_left] if today_box else ["no box"])
 	tab.open_calendar()
 	await get_tree().process_frame
 	var offered_right: bool = true

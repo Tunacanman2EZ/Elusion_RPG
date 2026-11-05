@@ -224,6 +224,7 @@ func _run() -> void:
 	# THE ENDLESS'S SCHEDULE (0.93.4): after _annotate_placement(), which maps
 	# every enemy scene to its enemy_id.
 	var endless: Dictionary = _export_endless()
+	var forge: Dictionary = _export_forge()
 
 	if items.is_empty():
 		_fail("found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
@@ -246,6 +247,7 @@ func _run() -> void:
 		"areas": areas,
 		"combat": combat,
 		"endless": endless,
+		"forge": forge,
 	}
 
 	if not _validate(constants, items, enemies, classes):
@@ -1856,6 +1858,34 @@ func _export_endless() -> Dictionary:
 		"stages": made.get("stages", []),
 		"elites": ids["elites"],
 		"bosses": ids["bosses"],
+	}
+
+
+# THE FORGE'S SCHEDULE (0.120.0): forgerun.gd's schedule(), its sprite scene
+# turned into its enemy id, for the server's ceiling on the Forge's chest.
+const ForgeRunScript := preload("res://src/world/forge/forgerun.gd")
+
+
+func _export_forge() -> Dictionary:
+	var made: Dictionary = ForgeRunScript.schedule()
+	var sprites: Array = []
+	for scene_name in made.get("sprite_scenes", []):
+		var path: String = "%s%s.tscn" % [ENEMY_SCENES, scene_name]
+		var enemy_id: String = String(_scene_to_enemy.get(path, ""))
+		if enemy_id == "":
+			_fail("the Forge sends %s, which maps to no enemy_id - the server would refuse its kills." % path)
+			continue
+		if not sprites.has(enemy_id):
+			sprites.append(enemy_id)
+	sprites.sort()
+	print("    forge: %s, %d phases written for the server's ceiling" % [", ".join(PackedStringArray(sprites)),
+		(made.get("phases", []) as Array).size()])
+	return {
+		"sprites": sprites,
+		"phases": made.get("phases", []),
+		"volcano": made.get("volcano", {}),
+		"volcano_believed": int(made.get("volcano_believed", 0)),
+		"alive_most": int(made.get("alive_most", 0)),
 	}
 
 

@@ -33,6 +33,10 @@
 # with loot here and it says so; step on it again and it goes. The next Go
 # empties the chest.
 #
+# THE FORGE'S TOO (0.120.0): forgerun.gd makes one beside the island's arrival
+# with `game` "forge" - every fire sprite slain pays into it - and points its
+# arrow at the light round the anvil between runs.
+#
 # Built in code, no class_name, so a fresh checkout needs no editor rescan.
 extends Area2D
 
@@ -60,6 +64,10 @@ const BECKON_EDGE := Color(0, 0, 0, 0.85)
 var panel_cells: int = CHEST_CELLS
 var panel_columns: int = CHEST_COLUMNS
 var panel_title: String = TITLE
+# WHOSE CHEST (0.120.0): the Endless's by default; the Forge's run sets
+# "forge" (forgerun.gd) and what an empty one says.
+var game: String = GAME
+var empty_words: String = "Your chest is empty - the elites and bosses you slay pay into it."
 
 # SEAMS FOR THE SUITE. In the game: GET /api/loot/chest for this character.
 var chest_request: Callable = Callable()
@@ -257,9 +265,15 @@ func _read(then_open: bool) -> void:
 		_open_lid()
 	var res: Dictionary
 	if chest_request.is_valid():
-		res = await chest_request.call(GAME, _slot())
+		res = await chest_request.call(game, _slot())
+	elif not Api.is_logged_in():
+		# Nobody to ask for (a test's island, or signed out).
+		_asking = false
+		if then_open:
+			_shut_lid()
+		return
 	else:
-		res = await Api.get_json("/api/loot/chest?game=%s&slot=%d" % [GAME, _slot()], READ_TIMEOUT)
+		res = await Api.get_json("/api/loot/chest?game=%s&slot=%d" % [game, _slot()], READ_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_asking = false
@@ -273,7 +287,7 @@ func _read(then_open: bool) -> void:
 		return
 	if used == 0:
 		_shut_lid()
-		_say("Your chest is empty - the elites and bosses you slay pay into it.")
+		_say(empty_words)
 		return
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	var who: Node = player_nearby if is_instance_valid(player_nearby) else null

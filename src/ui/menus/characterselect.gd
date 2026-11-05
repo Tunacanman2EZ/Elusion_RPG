@@ -66,6 +66,7 @@ func _ready() -> void:
 	AreaRegistry.prefetch(WORLD_AREA)
 	_build_logout_row()
 	_build_slot_extras()
+	_dress_cards()
 	update_slot_labels()
 
 
@@ -661,3 +662,137 @@ func _confirm_delete() -> void:
 	confirm_keep_button.disabled = false
 	confirm_name.editable = true
 	confirm_delete_button.disabled = not _typed_matches(confirm_name.text)
+
+
+# =============================================================================
+# THE CARDS, DRESSED (0.121.0)
+# =============================================================================
+# The owner: "we need to clean this up add the styles and maybe a picture of
+# the characters on the top left of the boxs ... get rid of the dull brown and
+# just make everything look pretty and well conformed". Each class card: its
+# picture in the top left (the class's own sprite facing down, cropped -
+# the Minigames card's portrait_of()) in a hotbar frame of the class's colour,
+# its name and level beside it, its line under, and its buttons in the
+# hotbar's frames - Select green, Create gold, Delete red, as Enter Elusion is
+# a green bar on the login screen. The frames of the card, the header and Log
+# out are the theme's (rpg_ui_theme.tres, the hotbar's since 0.121.0).
+const CardScript := preload("res://src/ui/minigames/minigamescard.gd")
+const LoginScript := preload("res://src/ui/menus/loginmenu.gd")
+const CLASS_SCENE := "res://scene/characters/%s.tscn"
+const PORTRAIT := 56.0
+const SELECT_TINT := Color(0.6, 1.0, 0.6)
+const CREATE_TINT := Color(1.0, 0.86, 0.5)
+const DELETE_TINT := Color(1.0, 0.55, 0.5)
+const LEVEL_COLOUR := Color(0.98, 0.86, 0.55)
+
+
+func _dress_cards() -> void:
+	var grid: Node = get_node_or_null(GRID_PATH)
+	if grid == null or grid.has_meta(&"dressed"):
+		return
+	grid.set_meta(&"dressed", true)
+	# As tall as the cards need, not a fixed 400.
+	var panel: Control = get_node_or_null("centercontainer/mainpanel") as Control
+	if panel != null:
+		panel.custom_minimum_size.y = 0.0
+	var levels: Array = _slot_labels()
+	var selects: Array = [%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]
+	var creates: Array = [%createbutton1, %createbutton2, %createbutton3, %createbutton4]
+	for i in SLOT_CLASSES.size():
+		var column: VBoxContainer = grid.get_node_or_null("%s/vbox" % SLOT_CLASSES[i]) as VBoxContainer
+		if column == null:
+			continue
+		column.alignment = BoxContainer.ALIGNMENT_BEGIN
+		var heading: Label = column.get_node_or_null("classname") as Label
+		var colour: Color = heading.get_theme_color("font_color") if heading != null else Color.WHITE
+		var top := HBoxContainer.new()
+		top.name = "top"
+		top.add_theme_constant_override("separation", 10)
+		column.add_child(top)
+		column.move_child(top, 0)
+		var frame := PanelContainer.new()
+		frame.name = "portraitframe"
+		frame.custom_minimum_size = Vector2(PORTRAIT, PORTRAIT)
+		frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		frame.add_theme_stylebox_override("panel", LoginScript.socket(colour))
+		var picture := TextureRect.new()
+		picture.name = "portrait"
+		picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		picture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_ask_portrait(picture, CLASS_SCENE % SLOT_CLASSES[i])
+		frame.add_child(picture)
+		top.add_child(frame)
+		var words := VBoxContainer.new()
+		words.name = "words"
+		words.alignment = BoxContainer.ALIGNMENT_CENTER
+		words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		words.add_theme_constant_override("separation", 0)
+		top.add_child(words)
+		if heading != null:
+			_move_into(heading, words)
+			heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			heading.add_theme_font_size_override("font_size", 20)
+		var level: Label = levels[i] as Label
+		_move_into(level, words)
+		level.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		level.add_theme_color_override("font_color", LEVEL_COLOUR)
+		if i < class_lines.size() and class_lines[i] != null:
+			(class_lines[i] as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		LoginScript._dress(selects[i], SELECT_TINT)
+		LoginScript._dress(creates[i], CREATE_TINT)
+		if i < delete_buttons.size() and delete_buttons[i] != null:
+			LoginScript._dress(delete_buttons[i], DELETE_TINT)
+		# The buttons at the card's foot, whatever the line above says.
+		var row: Node = column.get_node_or_null("buttons")
+		if row != null:
+			var push := Control.new()
+			push.name = "push"
+			push.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			column.add_child(push)
+			column.move_child(push, row.get_index())
+
+
+# THE PICTURES LOAD IN THE BACKGROUND. A class's picture is read off its scene
+# (portrait_of()), and loading a class scene here while the world loads ahead
+# in a thread (AreaRegistry.prefetch(), begun on the login screen) stopped the
+# game dead - and cost 150-240 ms a class even when it did not. So each is
+# asked of the thread too, and set when it arrives (_process()).
+var _portraits_waiting: Dictionary = {}
+
+
+func _ask_portrait(picture: TextureRect, path: String) -> void:
+	if not ResourceLoader.exists(path):
+		return
+	if ResourceLoader.has_cached(path):
+		picture.texture = CardScript.portrait_of(path)
+		return
+	if ResourceLoader.load_threaded_request(path) == OK:
+		_portraits_waiting[path] = picture
+		set_process(true)
+
+
+func _process(_delta: float) -> void:
+	for path in _portraits_waiting.keys():
+		var status: int = ResourceLoader.load_threaded_get_status(path)
+		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			continue
+		var picture: TextureRect = _portraits_waiting[path]
+		_portraits_waiting.erase(path)
+		if status != ResourceLoader.THREAD_LOAD_LOADED:
+			continue
+		# Held while the picture is cut, so load() inside finds it cached.
+		var _scene: Resource = ResourceLoader.load_threaded_get(path)
+		if is_instance_valid(picture):
+			picture.texture = CardScript.portrait_of(path)
+	if _portraits_waiting.is_empty():
+		set_process(false)
+
+
+func _move_into(node: Node, parent: Node) -> void:
+	"""A node of this scene moved into one built here, its %name kept (the
+	owner let go while it moves, then given back)."""
+	var keep: Node = node.owner
+	node.owner = null
+	node.reparent(parent, false)
+	node.owner = keep
