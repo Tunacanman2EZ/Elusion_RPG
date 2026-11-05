@@ -3013,6 +3013,14 @@ func _test_the_descent_together() -> void:
 		and int(run_a.call("pack_size")) == 8 and int(run_a.call("elites_for", "upgrade")) == 2 and shared
 		and (run_b.get("monsters") as Array).is_empty() and (run_b.get("_coming") as Array).is_empty()
 		and (run_b.get("_waves") as Array).is_empty(), [run_a.get("players"), run_b.get("room"), pack_a.size()])
+	var first: Dictionary = RunScript.FLOORS[0]
+	check("  and both are hit harder for two - x%.2f (PARTY_HIT; x%.2f for four, x1 alone), the keeper too, the follower's the same"
+		% [RunScript.PARTY_HIT[2], RunScript.PARTY_HIT[4]],
+		RunScript.PARTY_HIT[1] == 1.0 and RunScript.PARTY_HIT[4] > RunScript.PARTY_HIT[2]
+		and is_equal_approx(float(run_a.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.PARTY_HIT[2])
+		and is_equal_approx(float(run_b.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.PARTY_HIT[2])
+		and is_equal_approx(float(run_a.call("taken_for", "keeper")), float(first["keeper_taken"]) * RunScript.PARTY_HIT[2]),
+		[run_a.call("taken_for", "upgrade"), run_b.call("taken_for", "upgrade"), run_b.get("players")])
 	# ---- the room clear; the doors wait for everybody's pick ----
 	_descent_kill_all(run_a)
 	run_a.call("_process", 0.016)
@@ -3183,3 +3191,139 @@ func _test_the_floor_itself_fights() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the floor itself fights: done")
+
+
+func _mix_kinds(lands: Node) -> Array:
+	"""The hazards still going, by kind, sorted."""
+	var kinds: Array = []
+	for hz in lands.get("hazards"):
+		if not bool(hz["done"]):
+			kinds.append(str(hz["k"]))
+	kinds.sort()
+	return kinds
+
+
+func _mix_fresh(lands: Node) -> void:
+	lands.set("hazards", [])
+	lands.set("_touch_left", 0.0)
+	lands.set("_env_left", 999.0)
+
+
+func _mix_last(body: Node) -> Array:
+	var hits: Array = body.get("hits")
+	return hits[hits.size() - 1] if not hits.is_empty() else []
+
+
+func _test_the_mixes_react() -> void:
+	section("THE MIXES REACT (0.128.0): puddles, explosions, melting, steam, shocks, ice and the wind blowing it all")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	Boons.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	var body: Node2D = made[2]
+	await get_tree().process_frame
+	var lands: Node2D = run.call("_lands_node")
+	lands.call("begin_env", RunScript.ALL_LANDS, 2)
+	var hit: int = LandsScript.env_hit(2)
+	var at: Vector2 = body.global_position
+	# ---- a bubble popped leaves a puddle, and standing in it soaks ----
+	_mix_fresh(lands)
+	var bubble: Dictionary = lands.call("spawn_env", "bubble", body)
+	bubble["p"] = at
+	lands.call("step", 0.016)
+	var after_pop: Array = _mix_kinds(lands)
+	var pop_hit: Array = _mix_last(body)
+	lands.set("_touch_left", 0.0)
+	lands.call("step", LandsScript.PUDDLE_WARN + 0.05)
+	check("a bubble popped on you leaves a puddle (%s), and standing in it soaks you for half (%s)" % [after_pop, _mix_last(body)],
+		after_pop == ["puddle"] and pop_hit == [hit, Element.Type.WATER] and _mix_last(body) == [maxi(1, hit / 2), Element.Type.WATER])
+	# ---- a spark in a gas cloud: it explodes ----
+	_mix_fresh(lands)
+	var gas: Dictionary = lands.call("spawn_env", "gas", body)
+	gas["p"] = at + Vector2(0, -40)
+	gas["t"] = 2.0
+	var spark: Dictionary = lands.call("spawn_env", "spark", body)
+	spark["p"] = at + Vector2(0, -40)
+	lands.call("step", 0.016)
+	check("  a spark in a gas cloud blows it up (%s): fire for twice the hit on you beside it (%s)" % [_mix_kinds(lands), _mix_last(body)],
+		_mix_kinds(lands) == ["blast"] and _mix_last(body) == [hit * 2, Element.Type.FIRE])
+	# ---- a spark through falling hail: melted to a puddle ----
+	_mix_fresh(lands)
+	var hits_before: int = (body.get("hits") as Array).size()
+	var hail: Dictionary = lands.call("spawn_env", "hail", body)
+	hail["p"] = Vector2(150, 150)
+	var spark_b: Dictionary = lands.call("spawn_env", "spark", body)
+	spark_b["p"] = Vector2(150, 150)
+	lands.call("step", 0.016)
+	var melted: Array = _mix_kinds(lands)
+	# ---- a spark into a puddle: put out ----
+	_mix_fresh(lands)
+	var puddle: Dictionary = lands.call("_patch", "puddle", Vector2(480, 150))
+	(lands.get("hazards") as Array).append(puddle)
+	var spark_c: Dictionary = lands.call("spawn_env", "spark", body)
+	spark_c["p"] = Vector2(480, 150)
+	lands.call("step", 0.016)
+	check("  fire meets ice and water far from you: hail melts before it lands (%s), a spark goes out in steam (%s), nobody hit"
+		% [melted, _mix_kinds(lands)], melted == ["puddle"] and _mix_kinds(lands) == ["puddle", "steam"]
+		and (body.get("hits") as Array).size() == hits_before)
+	# ---- a flare over puddles: the light runs through them ----
+	_mix_fresh(lands)
+	var under: Dictionary = lands.call("_patch", "puddle", at)
+	under["t"] = 1.0
+	(lands.get("hazards") as Array).append(under)
+	var flare: Dictionary = lands.call("spawn_env", "flare", body)
+	flare["p"] = at + Vector2(80, 0)
+	flare["t"] = float(flare["w"]) - 0.01
+	lands.call("step", 0.016)
+	check("  a flare flashing 80 px off shocks the puddle you stand in (%s): light, half again the hit" % [_mix_last(body)],
+		_mix_last(body) == [roundi(float(hit) * 1.5), Element.Type.LIGHT] and under.has("shock"))
+	# ---- hail on a puddle: ice ----
+	_mix_fresh(lands)
+	var pool: Dictionary = lands.call("_patch", "puddle", Vector2(480, 150))
+	pool["t"] = 1.0
+	(lands.get("hazards") as Array).append(pool)
+	var hail_b: Dictionary = lands.call("spawn_env", "hail", body)
+	hail_b["p"] = Vector2(495, 150)
+	hail_b["t"] = float(hail_b["w"]) - 0.01
+	lands.call("step", 0.016)
+	var frozen: Array = _mix_kinds(lands)
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "ice":
+			hz["p"] = at
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	check("  hail landing on a puddle freezes it (%s), and the ice chills you on it (%s)" % [frozen, _mix_last(body)],
+		frozen == ["hail", "ice"] and _mix_last(body) == [maxi(1, hit / 2), Element.Type.ICE])
+	# ---- a gust blows what floats along its lane ----
+	_mix_fresh(lands)
+	var gust: Dictionary = lands.call("spawn_env", "gust", body)
+	gust["p"] = Vector2(320, 200)
+	gust["dir"] = 1.0
+	gust["t"] = float(gust["w"]) - 0.01
+	var cloud: Dictionary = lands.call("spawn_env", "gas", body)
+	cloud["p"] = Vector2(300, 200)
+	cloud["v"] = Vector2.ZERO
+	var edge: Dictionary = lands.call("spawn_env", "bubble", body)
+	edge["p"] = Vector2(600, 190)
+	edge["v"] = Vector2.ZERO
+	var outside: Dictionary = lands.call("spawn_env", "gas", body)
+	outside["p"] = Vector2(300, 260)
+	outside["v"] = Vector2.ZERO
+	lands.call("step", 0.016)
+	var cloud_x: float = (cloud["p"] as Vector2).x
+	var edge_x: float = (edge["p"] as Vector2).x
+	check("  a gust blows the gas in its lane %.0f px (%.0f -> %.0f), a bubble only to the wall (%.0f), not what is out of its lane"
+		% [LandsScript.GUST_PUSH, 300.0, cloud_x, edge_x],
+		is_equal_approx(cloud_x, 300.0 + LandsScript.GUST_PUSH) and edge_x <= (run.get("room_rect") as Rect2).end.x - 11.0
+		and is_equal_approx((outside["p"] as Vector2).x, 300.0))
+	lands.call("end")
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the mixes react: done")

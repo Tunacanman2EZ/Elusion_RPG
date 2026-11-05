@@ -70,7 +70,8 @@
 #     PICK_WAIT). A fall leaves you DOWN (Boons.out: nothing hits you, a
 #     ghost at the front) until the room is clear, when you stand with half
 #     a ward; the run ends when the whole party is down. Scaled for the
-#     party (PARTY_CROWD, PARTY_HEALTH, PARTY_BOSS, an elite more a player).
+#     party (PARTY_CROWD, PARTY_HEALTH, PARTY_BOSS, an elite more a player),
+#     and hits a party harder (PARTY_HIT, 0.128.0).
 #   - THE DEEP: past the Dark Keeper the run goes on - the seven floors
 #     again (floor_info() names them "the Deep"), every number up each time
 #     round (deep_round()), until you fall. The best run is the deepest.
@@ -298,6 +299,16 @@ const PICK_WAIT := 20.0
 const PARTY_CROWD := [1.0, 1.0, 1.5, 2.0, 2.5]
 const PARTY_HEALTH := [1.0, 1.0, 1.2, 1.4, 1.6]
 const PARTY_BOSS := [1.0, 1.0, 1.75, 2.5, 3.25]
+# AND A PARTY IS HIT HARDER (0.128.0, taken_for()). The owner: "how is player
+# survivability with a team of 4 measure it out for me if its too high we
+# make the game even harder". Measured (zz/descparty4.gd, level 22 in ember,
+# players who stand and fight): the crowd is split four ways, so each player
+# took about what one alone takes - and the healer's ring gave most of it
+# back. Over floor 4 a warrior alone lost a full health and ward in 78 s; in
+# a party of four, in 437 s, and the tank was healed more than it took on
+# every floor to 4. At 1.75 for four the warrior's comes back to about a
+# solo player's, and the tank still holds.
+const PARTY_HIT := [1.0, 1.0, 1.25, 1.5, 1.75]
 const OUT_ALPHA := 0.4
 # A ROOM'S WEATHER (0.127.0, room_lands()): from this floor (an index) a
 # second land may mix in, this often and this much more each floor down;
@@ -512,7 +523,7 @@ func taken_for(kind: String) -> float:
 	72 of them: a warrior's health never moved. The softer hits are for the
 	crypt's packs; the keeper is the floor's test - since the seven floors,
 	at its floor's "keeper_taken", which lifts the weak ones to the ladder."""
-	var deeper: float = 1.0 + DEEP_TAKEN_STEP * float(deep_round())
+	var deeper: float = (1.0 + DEEP_TAKEN_STEP * float(deep_round())) * party_scale(PARTY_HIT)
 	if kind == "keeper":
 		return float(floor_info().get("keeper_taken", 1.0)) * deeper
 	return float(floor_info().get("taken", 1.0)) * deeper

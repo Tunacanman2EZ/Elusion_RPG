@@ -1,6 +1,7 @@
 extends Node2D
 
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
+const RangeRingScript := preload("res://src/shared/rangering.gd")
 # descentlands.gd - THE LANDS SHINE IN THE DESCENT (0.124.0, step 1 of the
 # commit folder's DESCENT_PLAN_3.txt). A child of the run (descentrun.gd
 # _lands), over the room's floor.
@@ -53,6 +54,16 @@ const StatusEffects := preload("res://src/characters/statuseffects.gd")
 # Each hits for env_hit() (more each floor), and at most every TOUCH_GAP.
 # Drawn in code: what lies on the floor by this node, what floats by `_air`
 # over the weather.
+#
+# AND THEY REACT (0.128.0, _react()) - the owner: "ok resume", after "when
+# two weathers mix in one room ... they react to each other":
+#   a bubble popped leaves a PUDDLE (soaked while you stand in it)
+#   a spark in a gas cloud      - the cloud EXPLODES (fire, twice the hit)
+#   a spark through hail's shadow - it melts before it lands: a puddle
+#   a spark into water          - put out, in a puff of STEAM
+#   a flare flashing over puddles - the light runs through them (SHOCK)
+#   hail landing on a puddle    - it freezes to ICE (chilled on it)
+#   a gust                      - blows what floats and the gas along it
 
 const WARN := 0.7
 # The first throw this long after the pack comes; then every gap().
@@ -87,6 +98,17 @@ const GAS_FROM := 2
 const GAS_CHANCE := 0.35
 const GAS_TICK := 0.5
 const AIR_Z := 7
+# AND THEY REACT (0.128.0): a puddle and ice, how long and how wide; how far a
+# flare's light runs through puddles; how far a hail freezes one; how far a
+# gust blows what is in its lane; an explosion's reach past the cloud.
+const PUDDLE_LIFE := 4.0
+const PUDDLE_WARN := 0.5
+const PUDDLE_R := 18.0
+const ICE_LIFE := 5.0
+const SHOCK_REACH := 1.5
+const FREEZE_REACH := 24.0
+const GUST_PUSH := 70.0
+const BLAST_PAST := 12.0
 const KIND_FOR := {Element.Type.FIRE: "spark", Element.Type.ICE: "hail", Element.Type.WATER: "bubble",
 	Element.Type.WIND: "gust", Element.Type.LIGHT: "flare", Element.Type.EARTH: "rock", Element.Type.DARK: "wisp"}
 
@@ -111,6 +133,9 @@ var env_hits: int = 0
 var _env_left: float = -1.0
 var _touch_left: float = 0.0
 var _air: Node2D = null
+# What a hazard made this step (a puddle, a blast), joined after it.
+var _born: Array = []
+var reactions: Dictionary = {}
 
 
 static func gap(floor_index: int) -> float:
@@ -431,6 +456,9 @@ func begin_env(lands: Array, floor_index: int, faster: bool = false) -> void:
 		_air = Node2D.new()
 		_air.name = "air"
 		_air.z_index = AIR_Z
+		# Sparks, flares, wisps and blasts glow: not darkened with the room
+		# (0.128.0 - an explosion in the Dark Below read as a grey disc).
+		_air.material = RangeRingScript.unshaded()
 		_air.draw.connect(_draw_air)
 		add_child(_air)
 
@@ -449,10 +477,14 @@ func _step_env(delta: float) -> void:
 			if env_floor >= GAS_FROM and randf() < GAS_CHANCE:
 				spawn_env("gas", me)
 	var still: Array = []
+	_born = []
 	for hz in hazards:
 		if _step_hazard(hz, delta, me):
 			still.append(hz)
 	hazards = still
+	_react(me)
+	hazards.append_array(_born)
+	_born = []
 	queue_redraw()
 	if _air != null and is_instance_valid(_air):
 		_air.queue_redraw()
@@ -519,6 +551,7 @@ func _near(at: Vector2, reach: float, rect: Rect2) -> Vector2:
 func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 	"""One hazard's moment; false when it is over."""
 	hz["t"] = float(hz["t"]) + delta
+	hz["just"] = false
 	var t: float = float(hz["t"])
 	var kind: String = str(hz["k"])
 	if t >= float(hz["life"]) or bool(hz["done"]):
@@ -535,6 +568,9 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				var effect: StringName = StatusEffects.BURN if kind == "spark" else StatusEffects.SOAKED
 				_env_hit(me, hit, Element.Type.FIRE if kind == "spark" else Element.Type.WATER, effect, p)
 				hz["done"] = true
+				# A BUBBLE POPPED LEAVES A PUDDLE (0.128.0).
+				if kind == "bubble":
+					_born.append(_patch("puddle", p))
 		"wisp":
 			if me != null:
 				var p: Vector2 = hz["p"]
@@ -546,6 +582,7 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 		"hail", "rock", "flare":
 			if t >= float(hz["w"]) and not bool(hz.get("landed", false)):
 				hz["landed"] = true
+				hz["just"] = true
 				var p: Vector2 = hz["p"]
 				if me != null and _touches(me, p, float(hz["r"])):
 					match kind:
@@ -556,6 +593,9 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 						"flare":
 							_env_hit(me, hit, Element.Type.LIGHT, StatusEffects.DAZZLE, p)
 		"gust":
+			if t >= float(hz["w"]) and not bool(hz.get("fired", false)):
+				hz["fired"] = true
+				hz["just"] = true
 			if t >= float(hz["w"]) and not bool(hz.get("landed", false)) and me != null:
 				var lane: float = float(hz["h"]) / 2.0
 				if absf(me.global_position.y - (hz["p"] as Vector2).y) <= lane:
@@ -570,7 +610,98 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 					hz["tick"] = GAS_TICK
 					me.call("take_damage", maxi(1, roundi(float(hit) * 0.5)), Element.Type.POISON)
 					env_hits += 1
+		"puddle", "ice":
+			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
+				if kind == "puddle":
+					_env_hit(me, maxi(1, hit / 2), Element.Type.WATER, StatusEffects.SOAKED, hz["p"])
+				else:
+					_env_hit(me, maxi(1, hit / 2), Element.Type.ICE, StatusEffects.CHILL, hz["p"])
 	return true
+
+
+func _patch(kind: String, at: Vector2) -> Dictionary:
+	"""A puddle, ice, a blast or a puff of steam where a reaction left it."""
+	var hz: Dictionary = {"k": kind, "t": 0.0, "w": 0.0, "life": 0.5, "r": PUDDLE_R, "p": at, "v": Vector2.ZERO,
+		"done": false, "tick": 0.0}
+	match kind:
+		"puddle":
+			hz["w"] = PUDDLE_WARN
+			hz["life"] = PUDDLE_LIFE
+		"ice":
+			hz["life"] = ICE_LIFE
+		"blast":
+			hz["life"] = 0.4
+	reactions[kind] = int(reactions.get(kind, 0)) + 1
+	return hz
+
+
+func _react(me: Node2D) -> void:
+	"""AND THEY REACT (0.128.0): what one hazard does to another this step."""
+	var hit: int = env_hit(env_floor)
+	for hz in hazards:
+		if bool(hz["done"]):
+			continue
+		var kind: String = str(hz["k"])
+		var p: Vector2 = hz["p"]
+		if kind == "spark":
+			for other in hazards:
+				if bool(other["done"]) or is_same(other, hz):
+					continue
+				var near: float = p.distance_to(other["p"])
+				match str(other["k"]):
+					"gas":
+						# THE CLOUD EXPLODES.
+						if float(other["t"]) >= float(other["w"]) and near <= float(other["r"]):
+							other["done"] = true
+							hz["done"] = true
+							var blast: Dictionary = _patch("blast", other["p"])
+							blast["r"] = float(other["r"]) + BLAST_PAST
+							_born.append(blast)
+							if me != null and _touches(me, other["p"], float(blast["r"])):
+								_touch_left = 0.0
+								_env_hit(me, hit * 2, Element.Type.FIRE, StatusEffects.BURN, other["p"])
+					"hail":
+						# MELTED BEFORE IT LANDS.
+						if not bool(other.get("landed", false)) and near <= float(other["r"]):
+							other["done"] = true
+							hz["done"] = true
+							_born.append(_patch("puddle", other["p"]))
+					"bubble", "puddle":
+						# PUT OUT.
+						if near <= float(other["r"]):
+							hz["done"] = true
+							_born.append(_patch("steam", p))
+				if bool(hz["done"]):
+					break
+		elif bool(hz.get("just", false)):
+			match kind:
+				"flare":
+					# THE LIGHT RUNS THROUGH THE PUDDLES.
+					for other in hazards:
+						if str(other["k"]) == "puddle" and not bool(other["done"]) \
+								and p.distance_to(other["p"]) <= float(hz["r"]) * SHOCK_REACH:
+							other["shock"] = float(other["t"])
+							reactions["shock"] = int(reactions.get("shock", 0)) + 1
+							if me != null and _touches(me, other["p"], float(other["r"])):
+								_touch_left = 0.0
+								_env_hit(me, roundi(float(hit) * 1.5), Element.Type.LIGHT, StatusEffects.DAZZLE, other["p"])
+				"hail":
+					# FROZEN TO ICE.
+					for other in hazards:
+						if str(other["k"]) == "puddle" and not bool(other["done"]) \
+								and p.distance_to(other["p"]) <= FREEZE_REACH + float(other["r"]):
+							other["done"] = true
+							_born.append(_patch("ice", other["p"]))
+				"gust":
+					# BLOWN ALONG THE LANE - held in the room.
+					var lane: float = float(hz["h"]) / 2.0
+					var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-12.0)
+					for other in hazards:
+						if str(other["k"]) in ["spark", "bubble", "wisp", "gas"] and not bool(other["done"]) \
+								and absf((other["p"] as Vector2).y - p.y) <= lane:
+							var to: Vector2 = (other["p"] as Vector2) + Vector2(GUST_PUSH * float(hz["dir"]), 0.0)
+							other["p"] = Vector2(clampf(to.x, rect.position.x, rect.end.x), to.y)
+							reactions["blown"] = int(reactions.get("blown", 0)) + 1
 
 
 func _touches(me: Node2D, at: Vector2, radius: float) -> bool:
@@ -620,6 +751,20 @@ func _draw_floor_hazards() -> void:
 						x += lane.size.x
 					var y: float = lane.position.y + float(k * 6 % int(maxf(1.0, lane.size.y)))
 					draw_line(Vector2(x, y), Vector2(x + 18.0 * float(hz["dir"]), y), Color(0.9, 1.0, 0.95, 0.25 + 0.5 * grow), 1.0)
+			"puddle", "ice":
+				var fade: float = clampf((float(hz["life"]) - t) / 0.6, 0.0, 1.0)
+				var colour := Color(0.35, 0.6, 1.0, 0.35) if kind == "puddle" else Color(0.8, 0.95, 1.0, 0.5)
+				if kind == "puddle" and t < w:
+					colour.a *= grow
+				if hz.has("shock") and t - float(hz["shock"]) < 0.35:
+					colour = Color(1.0, 0.95, 0.5, 0.75)
+				draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
+				draw_circle(Vector2.ZERO, float(hz["r"]), Color(colour, colour.a * fade))
+				draw_arc(Vector2.ZERO, float(hz["r"]), 0.0, TAU, 20, Color(colour * 1.4, 0.6 * fade), 1.0)
+				if kind == "ice":
+					var shine := Color(1.0, 1.0, 1.0, 0.7 * fade)
+					draw_line(Vector2(-8, -5), Vector2(-2, -9), shine, 1.0)
+					draw_line(Vector2(2, 4), Vector2(9, -1), shine, 1.0)
 			"gas":
 				var alpha: float = (0.12 + 0.1 * sin(t * 4.0)) if t >= w else 0.08 * grow
 				for k in 5:
@@ -643,6 +788,23 @@ func _draw_air() -> void:
 			"wisp":
 				_air.draw_circle(p, 9.0, Color(0.55, 0.3, 0.95, 0.25))
 				_air.draw_circle(p, 4.0, Color(0.8, 0.6, 1.0, 0.9))
+			"blast":
+				# Over everything, as the flare's flash is (0.128.0).
+				var b: float = clampf(t / float(hz["life"]), 0.0, 1.0)
+				var reach: float = float(hz["r"])
+				_air.draw_set_transform(p, 0.0, Vector2(1.0, 0.6))
+				_air.draw_circle(Vector2.ZERO, reach * (0.5 + 0.5 * b), Color(1.0, 0.45, 0.1, 0.55 * (1.0 - b)))
+				_air.draw_circle(Vector2.ZERO, reach * (0.25 + 0.3 * b), Color(1.0, 0.9, 0.55, 0.85 * (1.0 - b)))
+				for k in 10:
+					var ray := Vector2.from_angle(float(k) * TAU / 10.0 + 0.3)
+					_air.draw_line(ray * reach * (0.3 + 0.5 * b), ray * reach * (0.55 + 0.6 * b), Color(1.0, 0.8, 0.35, 1.0 - b), 2.0)
+				_air.draw_arc(Vector2.ZERO, reach * (0.6 + 0.6 * b), 0.0, TAU, 28, Color(1.0, 0.85, 0.4, 1.0 - b), 3.0)
+				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			"steam":
+				var rise: float = clampf(t / float(hz["life"]), 0.0, 1.0)
+				for k in 3:
+					_air.draw_circle(p + Vector2(float(k - 1) * 5.0, -14.0 * rise - float(k) * 3.0), 4.0 + 3.0 * rise,
+						Color(0.95, 0.95, 1.0, 0.45 * (1.0 - rise)))
 			"flare":
 				var w: float = maxf(0.001, float(hz["w"]))
 				if t < w:

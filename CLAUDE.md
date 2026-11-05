@@ -4138,6 +4138,72 @@ Pictured: descent_floor_hazards_0127.png.
 
 `_test_the_floor_itself_fights()` (testrunner_10).
 
+### The mixes react: puddles, explosions, steam, shocks, ice, the wind (0.128.0)
+
+The owner: "ok resume", after "Next would be the mixes reacting to each
+other: sparks setting off gas, puddles carrying lightning, ice freezing
+puddles, wind blowing everything around". Pictured:
+descent_mixes_0128.png. All in descentlands.gd; each game's own, never sent.
+
+- **New hazards made by others** (`_patch()`, joined after the step through
+  `_born`; `reactions` counts each kind made): a **puddle** (`PUDDLE_R` 18,
+  `PUDDLE_WARN` 0.5 s, `PUDDLE_LIFE` 4 s; soaked at half the hit while you
+  stand in it), **ice** (`ICE_LIFE` 5 s; chill at half the hit), a
+  **blast** (0.4 s, drawn) and **steam** (0.5 s, drawn).
+- **What reacts** (`_react()`, after every hazard has stepped; a hazard
+  sets `just` the step it lands or fires):
+  - a bubble popped on you leaves a puddle where it popped;
+  - a spark in a gas cloud past its warning: both go, a blast the cloud's
+    size plus `BLAST_PAST` (12), and you inside it take fire at twice the
+    hit with burn - whatever `TOUCH_GAP` says;
+  - a spark through hail not yet landed melts it to a puddle;
+  - a spark into a bubble or a puddle goes out in steam;
+  - a flare landing shocks every puddle within its reach x `SHOCK_REACH`
+    (1.5): one you stand in hits for light at half again the hit, with
+    dazzle, whatever `TOUCH_GAP` says; the puddle flashes yellow (`shock`);
+  - hail landing within `FREEZE_REACH` (24) of a puddle's edge freezes it;
+  - a gust firing (`fired`, now apart from hitting you, `landed`) blows
+    every spark, bubble, wisp and gas cloud in its lane `GUST_PUSH` (70) px
+    its way, held in the room.
+- **The air glows**: the "air" child draws with `RangeRing.unshaded()`, so
+  sparks, flares, wisps, bubbles, steam and blasts are not darkened by the
+  room's CanvasModulate (an explosion in the Dark Below read as a grey
+  disc). What lies on the floor still darkens with the room.
+
+`_test_the_mixes_react()` (testrunner_10): each reaction staged and stepped;
+sabotaged by taking `_react()` out (five checks red).
+
+### A party is hit harder in the Descent (0.128.0)
+
+The owner: "how is player survivability with a team of 4 measure it out for
+me if its too high we make the game even harder". Measured with
+`zz/descparty4.gd` (sandbox only): the real run at the party's scale, real
+class scenes at level 22 in the ember set (the owner's own warrior), each
+walking to the fight and holding attack, the tank's aura kept lit, skills
+every 1.5 s - players who stand and fight, never dodge. Nobody falls: each
+is held at 60% health, so every point lost is a hit taken and every point
+gained a heal. The healer's ring heals each player in it (in a party each
+game heals its own; in one process the bench does it for the other three).
+
+- **Before**: the crowd is split four ways, so each player took about what
+  a player alone takes, and the healer's ring gave most of it back. Over
+  floor 4 a warrior alone lost a full health and ward (582 + 40%) in 78 s;
+  in a party of four, in 437 s - the mage 133 s, the healer 387 s, and the
+  tank was healed more than it took on every floor to 4. Floor 7 (the Dark
+  Below) still killed everyone standing still within seconds but the tank
+  (104 s). Rooms took a party 1.4 to 2.5 times a warrior's time alone, and
+  the elite rooms (three elites at 1.6 health) stalled past 150 s.
+- **PARTY_HIT** (descentrun.gd, by party size: 1, 1, 1.25, 1.5, 1.75)
+  multiplies `taken_for()`, so every hit on a player in a party - monsters,
+  keepers, hazards - lands harder. After, floor 4: the party's warrior 76 s
+  (alone 78), the tank 114 s, the healer 48 s, the mage 17 s. A follower
+  takes the party's size from the leader's line, so its hits match.
+- The run of a bench varies a good deal (which rooms stall, the healer's
+  mana in a long fight): read two runs before tuning on one.
+
+`_test_the_descent_together()` (testrunner_10) holds the table for two;
+sabotaged by taking the factor out.
+
 ### Every class in the Descent, each its own upgrades (0.125.0)
 
 The owner: "any class can join but we have to set up bonuses for all 4
