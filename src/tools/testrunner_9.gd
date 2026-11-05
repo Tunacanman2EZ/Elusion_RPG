@@ -4069,8 +4069,10 @@ func _test_the_descent() -> void:
 	for m in pack:
 		marked = marked and (m as Node).has_meta(&"stress_copy") and (m as Node).get_parent() == enemies \
 			and (m as Node2D).global_position.distance_to(body.global_position) >= RunScript.SPAWN_CLEAR - 0.01
-	check("a run: through a door the screen fades, you come in at the room's front, the doors shut, and a pack of %d comes - marked as the owner's copies (no kill reported, never shared)"
-		% pack.size(), waiting and travelling and arrived and pack.size() == int(run.call("pack_size")) and pack.size() == 3 and marked)
+	var first_elites: int = pack.filter(func(m: Node) -> bool: return m.has_meta(&"descent_elite")).size()
+	check("a run: through a door the screen fades, you come in at the room's front, the doors shut, and a pack of %d comes, an elite among them - marked as the owner's copies (no kill reported, never shared)"
+		% pack.size(), waiting and travelling and arrived and pack.size() == int(run.call("pack_size")) + int(run.call("elites_for", "upgrade"))
+		and pack.size() == 6 and first_elites == 1 and marked, [pack.size(), first_elites])
 	for m in pack:
 		(m as Node).call("take_damage", 999999)
 	run.call("_process", 0.016)
@@ -4114,9 +4116,16 @@ func _test_the_descent() -> void:
 	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	var elites: Array = (run.get("monsters") as Array).filter(func(m: Node) -> bool: return m.has_meta(&"descent_elite"))
-	check("  the door you take is the room you get (%s); an elite room brings its elite too, bigger and tougher"
-		% promised, kept and elites.size() == 1 and (run.get("monsters") as Array).size() == int(run.call("pack_size")) + 1
-		and is_equal_approx((elites[0] as Node2D).scale.x, RunScript.ELITE_SIZE))
+	var queued: int = 0
+	var queued_elites: int = 0
+	for wave in (run.get("_waves") as Array):
+		for entry in (wave as Array):
+			queued += 1
+			queued_elites += 1 if bool(entry[2]) else 0
+	check("  the door you take is the room you get (%s); an elite room brings three elites, bigger and tougher (0.123.0: every fight one, an elite room two more)"
+		% promised, kept and elites.size() >= 1 and elites.size() + queued_elites == 3
+		and (run.get("monsters") as Array).size() + queued == int(run.call("pack_size")) + 3
+		and is_equal_approx((elites[0] as Node2D).scale.x, RunScript.ELITE_SIZE), [elites.size(), queued_elites, queued])
 	Boons.levels["fortune"] = 2
 	var gold_before: int = int(run.get("gold"))
 	run.call("_pay", 100)
@@ -4139,14 +4148,14 @@ func _test_the_descent() -> void:
 	(doors[0] as Node).emit_signal("walked_in", doors[0])
 	for i in 3:
 		run.call("_process", RunScript.FADE_SECONDS)
-	check("  after the sixth room both doors lead to the keeper; the Fire Keeper beaten, a pick, then both doors go down to floor 2, room 1",
+	check("  after the last room (%d) both doors lead to the keeper; the Fire Keeper beaten, a pick, then both doors go down to floor 2, room 1" % RunScript.ROOMS,
 		the_keeper and down and int(run.get("floor_index")) == 1 and int(run.get("room")) == 1)
-	# THE BOTTOM: the third keeper wins.
+	# THE BOTTOM: the seventh keeper wins (0.123.0; it was the third).
 	run.call("_clear_monsters")
 	run.set("floor_index", RunScript.FLOORS.size() - 1)
 	run.set("room_kind", "keeper")
 	run.call("_room_cleared")
-	check("  the third keeper beaten is the bottom: the run won, its upgrades gone, the doors open to go again",
+	check("  the seventh keeper beaten is the bottom: the run won, its upgrades gone, the doors open to go again",
 		int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You reached the bottom")
 		and not Boons.active and str(doors[0].get("reward")) == "begin" and bool(doors[0].get("open")))
 	# A FALL.
@@ -4842,21 +4851,22 @@ func _test_the_descent_is_kinder() -> void:
 	Boons.floor_taken = 0.5
 	var soft: bool = is_equal_approx(Boons.taken_factor(), 0.5)
 	Boons.clear()
-	check("the crypt hits for half on floor 1, 0.7 on floor 2, 0.9 on floor 3 - and nothing of it off a run",
-		takens == [0.5, 0.7, 0.9] and soft and is_equal_approx(Boons.taken_factor(), 1.0), takens)
+	check("the crypt hits for half on floor 1, then harder each floor down to 1.2 on the seventh (0.123.0) - and nothing of it off a run",
+		takens == [0.5, 0.65, 0.8, 0.9, 1.0, 1.1, 1.2] and soft and is_equal_approx(Boons.taken_factor(), 1.0), takens)
 	# ---- smaller rooms, in waves ----
 	var sizes: Array = []
 	var probe: Node = RunScript.new()
-	for at in [[0, 1], [0, 6], [2, 6]]:
+	for at in [[0, 1], [0, RunScript.ROOMS], [RunScript.FLOORS.size() - 1, RunScript.ROOMS]]:
 		probe.set("floor_index", at[0])
 		probe.set("room", at[1])
 		sizes.append(int(probe.call("pack_size")))
 	probe.free()
-	check("a room begins at 3 and never holds more than %d (floor 1 room 1, floor 1 room 6, floor 3 room 6: %s)"
-		% [RunScript.PACK_MOST, sizes], sizes == [3, 8, 10], sizes)
-	check("  in waves: up to 4 in one, up to 7 in two, more in three",
-		RunScript.waves_for(3) == 1 and RunScript.waves_for(4) == 1 and RunScript.waves_for(5) == 2
-		and RunScript.waves_for(7) == 2 and RunScript.waves_for(10) == 3)
+	check("a room begins at 5 and never holds more than %d (0.123.0; floor 1 room 1, floor 1 room 4, floor 7 room 4: %s)"
+		% [RunScript.PACK_MOST, sizes], sizes == [5, 8, 20], sizes)
+	check("  in waves of up to five, four at most",
+		RunScript.waves_for(3) == 1 and RunScript.waves_for(5) == 1 and RunScript.waves_for(6) == 2
+		and RunScript.waves_for(10) == 2 and RunScript.waves_for(11) == 3 and RunScript.waves_for(20) == 4
+		and RunScript.waves_for(40) == 4)
 	# ---- a run, in a room of stand-ins ----
 	var room := Node2D.new()
 	add_child(room)
@@ -4896,40 +4906,45 @@ func _test_the_descent_is_kinder() -> void:
 	var shown: bool = bool((hud.get("ward_row") as Control).visible) and (hud.get("ward_text") as Label).text == "160"
 	check("a run starts with the ward full, a gold ring at your feet and its bar on the plate",
 		ward_on and shown, [Boons.ward, shown])
-	# Floor 3, room 6: ten, in three waves.
+	# The bottom floor's last room (0.123.0): twenty and four elites, in four
+	# waves of five and an elite.
 	run.call("_clear_monsters")
-	run.set("floor_index", 2)
-	run.set("room", 5)
+	run.set("floor_index", RunScript.FLOORS.size() - 1)
+	run.set("room", RunScript.ROOMS - 1)
 	run.call("_go", "gold")
 	for i in 3:
 		run.call("_process", RunScript.FADE_SECONDS)
 	body.global_position = Vector2(320, 300)
 	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
 	var marked: Array = run.get("_coming")
+	var marked_elites: int = marked.filter(func(e: Array) -> bool: return bool(e[3])).size()
 	var marks: Node2D = room.get_node_or_null("wavemarks") as Node2D
 	var before_out: int = (run.get("monsters") as Array).size()
-	check("floor 3's last room: ten in three waves; the first four are marked on the floor before they step out, the floor's hits at 0.9",
-		int(run.call("pack_size")) == 10 and marked.size() == 4 and before_out == 0 and marks != null
-		and int(run.call("waves_left")) == 2 and is_equal_approx(Boons.floor_taken, 0.9),
-		[marked.size(), before_out, run.call("waves_left")])
+	check("the bottom floor's last room: twenty and four elites in four waves; the first six, an elite with them, are marked on the floor before they step out, the floor's hits at 1.2",
+		int(run.call("pack_size")) == 20 and int(run.call("elites_for", "gold")) == 4 and marked.size() == 6
+		and marked_elites == 1 and before_out == 0 and marks != null
+		and int(run.call("waves_left")) == 3 and is_equal_approx(Boons.floor_taken, 1.2),
+		[marked.size(), marked_elites, before_out, run.call("waves_left")])
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	var out: Array = run.get("monsters")
 	var rect: Rect2 = run.get("room_rect")
-	var at_edges: bool = out.size() == 4
+	var at_edges: bool = out.size() == 6
 	for m in out:
 		var p: Vector2 = (m as Node2D).global_position
 		at_edges = at_edges and (p.y <= rect.position.y + 30.5 or p.x <= rect.position.x + 34.5 or p.x >= rect.end.x - 34.5) \
 			and p.distance_to(body.global_position) >= RunScript.SPAWN_CLEAR - 0.01
 	check("  they step out at the room's edges, clear of you", at_edges)
-	for k in 3:
+	for k in 4:
 		(out[k] as Node).call("take_damage", 999999)
 	run.call("_process", 0.016)
-	check("  one left of a wave, the next is marked", (run.get("_coming") as Array).size() == 3
-		and int(run.call("waves_left")) == 1)
+	check("  two left of a wave, the next is marked", (run.get("_coming") as Array).size() == 6
+		and int(run.call("waves_left")) == 2)
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	run.call("_process", RunScript.WAVE_SECONDS + 0.1)
-	check("  and the last comes after %d seconds even if you have not cleared the one before" % int(RunScript.WAVE_SECONDS),
-		(run.get("_coming") as Array).size() == 3 and int(run.call("waves_left")) == 0)
+	check("  and the next comes after %d seconds even if you have not cleared the one before" % int(RunScript.WAVE_SECONDS),
+		(run.get("_coming") as Array).size() == 6 and int(run.call("waves_left")) == 1)
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	run.call("_process", RunScript.WAVE_SECONDS + 0.1)
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	Boons.absorb(100)
 	var drained: int = Boons.ward
@@ -4940,6 +4955,28 @@ func _test_the_descent_is_kinder() -> void:
 	run.call("_process", 0.016)
 	check("  the room is clear only when every wave is down - and clearing it fills the ward again (%d -> %d)" % [drained, Boons.ward],
 		not_yet and int(run.get("state")) != RunScript.State.FIGHT and Boons.ward == 160 and drained == 60)
+	# A KEEPER HITS AT FULL (0.123.0) - the owner: "fire boss in warriors run
+	# was doing 0 damage to warrior". Every floor's keeper, and its room as
+	# it is entered.
+	var keeper_takens: Array = []
+	var pack_takens: Array = []
+	var taken_probe: Node = RunScript.new()
+	for f in RunScript.FLOORS.size():
+		taken_probe.set("floor_index", f)
+		keeper_takens.append(float(taken_probe.call("taken_for", "keeper")))
+		pack_takens.append(float(taken_probe.call("taken_for", "fight")))
+	taken_probe.free()
+	run.call("_clear_monsters")
+	run.set("floor_index", 0)
+	run.set("room", RunScript.ROOMS)
+	run.call("_go", "keeper")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	var from_table: Array = RunScript.FLOORS.map(func(f: Dictionary) -> float: return float(f["keeper_taken"]))
+	check("  but a keeper's room hits at its floor's keeper_taken, the Fire Keeper's at full or more, set as its room is entered (0.123.0: the Fire Keeper did 0 to a warrior) %s" % [keeper_takens],
+		keeper_takens == from_table and float(keeper_takens[0]) >= 1.0 and pack_takens == takens
+		and str(run.get("room_kind")) == "keeper" and is_equal_approx(Boons.floor_taken, float(keeper_takens[0])),
+		[run.get("room_kind"), Boons.floor_taken, pack_takens])
 	# A fall ends the run: the ward and its ring go.
 	run.call("knock_out", body)
 	check("a fall ends it all: no ward, no ring", Boons.ward == 0 and not Boons.active
@@ -4999,6 +5036,9 @@ func _descent_enter(run: Node, kind: String, at_room: int = 2) -> void:
 
 
 func _descent_kill_all(run: Node) -> void:
+	# Every wave still to come too (0.123.0: rooms come in more of them).
+	run.set("_waves", [])
+	run.set("_coming", [])
 	for m in (run.get("monsters") as Array):
 		if is_instance_valid(m):
 			(m as Node).call("take_damage", 99999999)
@@ -5161,7 +5201,7 @@ func _test_the_descent_has_more_to_choose() -> void:
 	for id in won_offers:
 		rare_won = rare_won and Boons.rarity(str(id)) != "common"
 	check("a Challenge: %d seconds for this pack; beaten, a rare or better pick" % roundi(given),
-		is_equal_approx(given, RunScript.CHALLENGE_BASE + RunScript.CHALLENGE_EACH * int(run.call("pack_size")))
+		is_equal_approx(given, RunScript.CHALLENGE_BASE + RunScript.CHALLENGE_EACH * (int(run.call("pack_size")) + 2 * int(run.call("elites_for", "challenge"))))
 		and rare_won and int(run.get("state")) == RunScript.State.PICK)
 	run.call("pick", 0)
 	# A Challenge, too slow.

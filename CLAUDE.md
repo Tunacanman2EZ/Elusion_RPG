@@ -3380,7 +3380,9 @@ server takes back a heal it cannot explain), the open world's monsters (20 to
   drawn as an arc as full as the ward; dropped at the run's end and when the
   area goes). `clear()` empties it.
 - **Softer hits**: FLOORS' `"taken"` (0.5, 0.7, 0.9), set as `floor_taken`
-  on each room entered, in `taken_factor()`; 1 off a run.
+  on each room entered, in `taken_factor()`; 1 off a run, and 1 in a
+  keeper's room since 0.123.0 (`taken_for()`) - then, with the seven
+  floors, the floor's `"keeper_taken"`, and the packs' ladder 0.5 to 1.2.
 - **Smaller rooms**: `pack_size()` is `PACK_FIRST` (2) + room + 2 a floor,
   never over `PACK_MOST` (10): 3 to begin (it was 4), 10 at the bottom (it
   was 13).
@@ -3928,6 +3930,107 @@ events ... lets fix pets and mythics". forgerun.gd's header has all of it.
 
 `_test_the_forge_gear_and_eruption()` (testrunner_10); `_test_the_forge()`'s
 lava and volcano checks changed with the rules.
+
+### The stories: the mages' sealing, the smith, the warrior (0.123.0)
+
+The owner: "after the mages minigame there is a story where the mages were
+trying to stop a volcano from erupting by sealing it with meteors all in
+attempt to save the land; the volcano erupted the moment the final meteor hit
+devastating everything for miles on end; the enemies triumphed. This is
+because something larger then the monsters was being conjured a being that is
+irregular large beings that break the rules in a string of fate in parallel
+dimensions", then "sounds good did you already get the tanks lore?" - the
+smith's, from FORGE_PLAN.txt. Both are told in the game's story screen
+(StoryScreen, storyscene.gd: black, a line at a time, any key skips), once a
+character, remembered with the opening story's `field.gd story_seen()` /
+`mark_story_seen()` under their own keys.
+
+- **The sealing** (magestandscreen.gd `STORY`, five lines): the stand's
+  `finished` (the portal fell) is wired to `_on_stand_over()`, which waits
+  `STORY_AFTER` (2.5 s, the fall's words first) and calls `tell_story()`.
+  While `story` plays, `_input()` leaves every key to it - the screen
+  otherwise takes every key, and the story skips on an unhandled one.
+- **The smith** (forgerun.gd `STORY`, four lines): `_tell_story()`, deferred
+  from `_ready()`, the first time a character arrives on the island -
+  `tells_story()` is false on a suite's stand-in (a `player_override`, or a
+  parent that is not the current scene).
+- **The warrior** (descentrun.gd `STORY`, five lines; the owner: "the
+  warrior was battle tested his whole life monsters were always a threat;
+  dungeons were progressive trials for acquiring power ... this dungeon was
+  different it was a trap ... The warrior did not have unlimited stamina or
+  magic"): `_tell_story()`, deferred from `_ready()`, the first time a
+  character enters the crypt - the Forge's rule for when (`tells_story()`).
+- **On the site**: the Lore page's chapters IX "The Sealing", X "The
+  Smith" and XI "The Trap" (Into the Deep and Your Part in It are XII and
+  XIII now).
+
+`_test_the_stories_of_the_stand_and_the_forge()` (testrunner_10).
+
+**And a keeper hits at full (the same 0.123.0).** The owner: "fire boss in
+warriors run was doing 0 damage to warrior". Measured on a 180-health warrior
+in the sandbox: on the first floor's half (FLOORS' `"taken"`), on top of
+every hit's half and the defence tier, the Fire Keeper's burns came to 1 each,
+its pincer orbs to 4 and its spikes to 13 - about 20 a second - and the ward
+(72) soaked the first several seconds, so health never moved in a quick
+fight. Now descentrun.gd `taken_for(kind)` is 1 in a keeper's room on every
+floor and the floor's share in every other (`_arrive()` sets `floor_taken`
+from it): burns 2, orbs 8, spikes 27, about 45 a second. (With the seven
+floors, below, a keeper's room is its floor's `"keeper_taken"` instead.) The packs keep
+their softer hits. Held in `_test_the_descent_is_kinder()` (testrunner_9).
+
+**And the axe comes back to hand in each room (the same 0.123.0).** The
+owner: "axe stays there every round no respawn lol". Every room of a run is
+the same floor dressed again and the warrior is moved to its entrance, inside
+the axe's `LEASH`, so an axe left spinning went on cutting the next room's
+pack. `_arrive()` calls warrior.gd `put_axes_away()`: the axe and its twin
+are called home (`recall()`, so other screens' pictures come home too) and
+freed at once, and the next throw is the warrior's. Held in
+`_test_the_double_axe_in_the_descent()` (testrunner_10).
+
+### The Descent goes deeper: seven floors, elites in every fight (0.123.0)
+
+The owner: "we need more enemies in the descent and we need more then 3
+levels we also make sure all bosses are hitting", then "we need more elites
+this needs to be super hard and even better with a party" (the party is the
+next step, not built). Pictured: descent_deeper_0123.png (the Drowned
+Halls, the Deep Roots, the Dark Keeper calling help).
+
+- **Seven floors, one a land** (descentrun.gd `FLOORS`, each with its
+  `land`): the Crypt (skeletons, the Fire Keeper), the Frozen Halls (ice),
+  the Drowned Halls (water), the Windworn Halls (wind), the Shining Vault
+  (light), the Deep Roots (earth), the Dark Below (dark, the Dark Keeper).
+  Each land's sprite, slime and bush mage, its fire sprite and bush sniper
+  the elites (earth's mage is `bushmage`); every keeper one of the seven
+  bosses. `ROOMS` 4 and the keeper a floor: 35 fights (it was 21). A floor
+  below the Crypt is washed in its land's colour (`_wash_floor()`, a
+  ColorRect "floorwash" over `room_rect`, added, `FLOOR_WASH` 0.1, z -9).
+- **Harder down the floors**: `"health"` 1.0, 1.6, 2.6, 4.0, 5.5, 3.4, 2.4
+  (the lands' own monsters differ - a dark sprite has 1,155, a light one
+  214); `"taken"` 0.5, 0.65, 0.8, 0.9, 1.0, 1.1, 1.2.
+- **More monsters**: `PACK_FIRST` 4, `PACK_MOST` 20 (5 in the first room, 20
+  at the bottom), waves of up to `WAVE_MOST` (5), at most `WAVES_MOST` (4),
+  the next at `WAVE_NEXT_AT` (2) left.
+- **Elites in every fight** (`elites_for()`): 1, one more every
+  `ELITES_FLOORS` (2) floors - 1, 1, 2, 2, 3, 3, 4 - an elite room
+  `ELITE_ROOM_MORE` (2) more, a Treasure, a Rest and the keeper's room
+  none; the last wave's first, then the one before. A Challenge counts an
+  elite as two monsters.
+- **Every keeper hits, and climbs** (`"keeper_taken"`, through
+  `taken_for()`): the seven measured alone at full on a 180-health warrior
+  with no armour differed eight times over (wind 15 a second, water 19, ice
+  24, light 32, fire 48, earth 55, dark 116 with an 81 spike). 1.1, 2.9,
+  4.1, 6.5, 2.5, 2.1, 0.7 put them at roughly 30-50, 45, 65, 45-75, 60-90,
+  70-100 and 85-130 a second (6.5 s samples; the bosses' patterns make any
+  one sample swing by half). The adds in a keeper's room hit at it too.
+- **A keeper calls its floor** (`_step_keeper()`): `KEEPER_CALL_FIRST` (8)
+  seconds in, then every `KEEPER_CALL_SECONDS` (18), `KEEPER_CALL_SIZE` (2)
+  + the floor's number of its monsters and `keeper_call_elites()` (1, two
+  from floor 4, three on floor 7) elites, marked like a wave, with "<name>
+  calls for help!"; none while `KEEPER_ADDS_MOST` (12) stand. When it
+  falls they are freed and the room is clear.
+
+`_test_the_descent_goes_deeper()` (testrunner_10); the older Descent checks
+carry the new numbers (`_descent_kill_all()` drops the waves still to come).
 
 ### The island is wiped: the volcano's heart (0.122.0)
 

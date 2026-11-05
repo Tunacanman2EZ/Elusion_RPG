@@ -24,13 +24,30 @@
 #            (_open_doors(): an upgrade, gold, or an elite - gold and an
 #            upgrade both). Walk through the one you want.
 #
-# ROOMS fights a floor, then its keeper (FLOORS: the Crypt, the Frozen Halls,
-# the Dark Below). Beating the third keeper wins the run.
+# ROOMS fights a floor, then its keeper (FLOORS). Beating the last keeper
+# wins the run.
+#
+# SEVEN FLOORS, AND SUPER HARD (0.123.0) - the owner: "we need more enemies in
+# the descent and we need more then 3 levels we also make sure all bosses are
+# hitting", then "we need more elites this needs to be super hard". A floor
+# for every land, each its own monsters and its land's boss as the keeper
+# (the Crypt, the Frozen Halls, the Drowned Halls, the Windworn Halls, the
+# Shining Vault, the Deep Roots, the Dark Below), four rooms and the keeper
+# a floor - 35 fights; beating the seventh keeper wins. Each floor below the
+# Crypt is washed in its land's colour (_wash_floor()). Packs start at five
+# and reach PACK_MOST, in waves of up to WAVE_MOST; every fight room brings
+# elites (elites_for(): one, one more every ELITES_FLOORS floors, an elite
+# room ELITE_ROOM_MORE more); and a keeper hits at its floor's
+# "keeper_taken" (the seven bosses measured on one warrior differ eight
+# times over - wind 15 a second, dark 116 - so each is lifted to its place
+# on a ladder) and calls its floor's monsters and elites every
+# KEEPER_CALL_SECONDS (_step_keeper()), who fall when it does.
 #
 # STEP 1 OF THE SECOND PLAN (0.115.0) - the owner: "feels pretty boring and
 # chars die fast". A WARD (descentboons.gd) over your health, full at the
 # start and again at every room cleared; the crypt's monsters hit for half on
-# the first floor, 0.7 on the second, 0.9 on the third (FLOORS' "taken"); a
+# the first floor, 0.7 on the second, 0.9 on the third (FLOORS' "taken"; a
+# keeper at full since 0.123.0, taken_for()); a
 # room starts at three monsters and never holds more than PACK_MOST; and the
 # pack comes in waves (waves_for()), each from the room's edges, every spot
 # glowing MARK_SECONDS before its monster steps out (_marks).
@@ -59,6 +76,20 @@
 # knock_out() first - you wake at the room's front on 1 health, every effect
 # cleared, and the run is over. Your gear and bag are as they were.
 #
+# THE WARRIOR'S STORY (0.123.0), the owner's: "the warrior was battle tested
+# his whole life monsters were always a threat; dungeons were progressive
+# trials for acquiring power some hero's acquired powers and died shortly
+# after. Dungeons are massive loot pillars that can raise a entire economy;
+# the warrior already had 2 power's a slash that could cut through anything,
+# and a devastating double axe that could change size and be controlled at
+# will. having a family is not uncommon everyone has someone to protect but
+# this dungeon was different it was a trap the amount of enemies and elites
+# that were flooding into the dungeon was overwhelming. The warrior did not
+# have unlimited stamina or magic". STORY, in the game's story screen
+# (StoryScreen), the first time a character arrives in the crypt (field.gd
+# story_seen(), key STORY_KEY) - only in the real area, never on a suite's
+# stand-in (player_override, or a parent that is not the current scene).
+#
 # WHAT IT PAYS, IN STEP 1: nothing. The gold is counted for the run; the
 # server pays it in step 3. The monsters carry the stress test's mark
 # (stresscrowd.gd's META): no kill report, never shared or numbered, never
@@ -66,21 +97,47 @@
 extends Node
 
 const Boons := preload("res://src/world/descent/descentboons.gd")
+const Field := preload("res://src/world/field.gd")
+const STORY_KEY := "#warrior"
+const STORY := [
+	"The warrior was battle-tested his whole life. Monsters were always a threat.",
+	"Dungeons were trials of power - some heroes won their powers there and died soon after. And every dungeon was a pillar of loot, rich enough to raise an entire economy.",
+	"He already carried two powers: a slash that could cut through anything, and a devastating double axe that could change its size and move at his will.",
+	"Having a family is not uncommon - everyone has someone to protect. But this dungeon was different. It was a trap.",
+	"Enemies and elites flooded in, more than anyone could hold - and the warrior did not have unlimited stamina or magic.",
+]
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 
 enum State { WAITING, FIGHT, PICK, CLEAR, TRAVEL }
 
 const MARK := &"stress_copy"
-const ROOMS := 6
+const ROOMS := 4
+# Each floor: its land (the wash over its floor, none for the Crypt), its
+# monsters and elites, its keeper; "health" multiplies its monsters' health
+# (and its keeper's), "taken" every hit on you in its rooms, "keeper_taken"
+# in its keeper's room (taken_for()).
 const FLOORS := [
-	{"name": "the Crypt", "monsters": ["skeleton", "skeletonsoldier"], "elites": ["skeletonelite"],
-		"keeper": "fireboss", "keeper_name": "The Fire Keeper", "health": 1.0, "taken": 0.5},
-	{"name": "the Frozen Halls", "monsters": ["icesprite", "iceslime", "icebushmage"],
+	{"name": "the Crypt", "land": Element.Type.NONE, "monsters": ["skeleton", "skeletonsoldier"],
+		"elites": ["skeletonelite"], "keeper": "fireboss", "keeper_name": "The Fire Keeper",
+		"health": 1.0, "taken": 0.5, "keeper_taken": 1.1},
+	{"name": "the Frozen Halls", "land": Element.Type.ICE, "monsters": ["icesprite", "iceslime", "icebushmage"],
 		"elites": ["icefiresprite", "icebushsniper"], "keeper": "iceboss", "keeper_name": "The Ice Keeper",
-		"health": 1.6, "taken": 0.7},
-	{"name": "the Dark Below", "monsters": ["darksprite", "darkslime", "darkbushmage"],
+		"health": 1.6, "taken": 0.65, "keeper_taken": 2.9},
+	{"name": "the Drowned Halls", "land": Element.Type.WATER, "monsters": ["watersprite", "waterslime", "waterbushmage"],
+		"elites": ["waterfiresprite", "waterbushsniper"], "keeper": "waterboss", "keeper_name": "The Water Keeper",
+		"health": 2.6, "taken": 0.8, "keeper_taken": 4.1},
+	{"name": "the Windworn Halls", "land": Element.Type.WIND, "monsters": ["windsprite", "windslime", "windbushmage"],
+		"elites": ["windfiresprite", "windbushsniper"], "keeper": "windboss", "keeper_name": "The Wind Keeper",
+		"health": 4.0, "taken": 0.9, "keeper_taken": 6.5},
+	{"name": "the Shining Vault", "land": Element.Type.LIGHT, "monsters": ["lightsprite", "lightslime", "lightbushmage"],
+		"elites": ["lightfiresprite", "lightbushsniper"], "keeper": "lightboss", "keeper_name": "The Light Keeper",
+		"health": 5.5, "taken": 1.0, "keeper_taken": 2.5},
+	{"name": "the Deep Roots", "land": Element.Type.EARTH, "monsters": ["earthsprite", "earthslime", "bushmage"],
+		"elites": ["earthfiresprite", "earthbushsniper"], "keeper": "earthboss", "keeper_name": "The Earth Keeper",
+		"health": 3.4, "taken": 1.1, "keeper_taken": 2.1},
+	{"name": "the Dark Below", "land": Element.Type.DARK, "monsters": ["darksprite", "darkslime", "darkbushmage"],
 		"elites": ["darkfiresprite", "darkbushsniper"], "keeper": "bossenemy", "keeper_name": "The Dark Keeper",
-		"health": 2.3, "taken": 0.9},
+		"health": 2.4, "taken": 1.2, "keeper_taken": 0.7},
 ]
 # What a door can promise, and how often.
 const KINDS := ["upgrade", "gold", "elite", "shrine", "treasure", "challenge", "rest"]
@@ -150,13 +207,33 @@ class GiantAxe extends Node2D:
 		draw_circle(Vector2.ZERO, FURY_REACH, Color(1.0, 0.55, 0.2, 0.14))
 		draw_arc(Vector2.ZERO, FURY_REACH, 0.0, TAU, 40, Color(1.8, 1.0, 0.4, 0.7), 2.0)
 # A pack: PACK_FIRST + the room's number + PACK_FLOOR a floor down, never
-# over PACK_MOST (0.115.0: it began at 4 and reached 13).
-const PACK_FIRST := 2
+# over PACK_MOST (0.115.0: it began at 4 and reached 13, then 3 and 10; since
+# 0.123.0, five on the first room and 20 at the bottom).
+const PACK_FIRST := 4
 const PACK_FLOOR := 2
-const PACK_MOST := 10
+const PACK_MOST := 20
 # IN WAVES (0.115.0): the next comes when this many or fewer are left of the
 # last, or after WAVE_SECONDS; each monster's spot glows MARK_SECONDS first.
-const WAVE_NEXT_AT := 1
+# A wave holds WAVE_MOST at most, and a pack comes in WAVES_MOST at most.
+const WAVE_NEXT_AT := 2
+const WAVE_MOST := 5
+const WAVES_MOST := 4
+# ELITES IN EVERY FIGHT (0.123.0, elites_for()): ELITES_FIRST, one more every
+# ELITES_FLOORS floors down; an elite room ELITE_ROOM_MORE more; a Treasure none.
+const ELITES_FIRST := 1
+const ELITES_FLOORS := 2
+const ELITE_ROOM_MORE := 2
+# THE KEEPER CALLS ITS FLOOR (0.123.0, _step_keeper()): KEEPER_CALL_FIRST
+# seconds in, then every KEEPER_CALL_SECONDS, KEEPER_CALL_SIZE + the floor's
+# number of its monsters and keeper_call_elites() elites - none while
+# KEEPER_ADDS_MOST stand. When it falls, they do.
+const KEEPER_CALL_FIRST := 8.0
+const KEEPER_CALL_SECONDS := 18.0
+const KEEPER_CALL_SIZE := 2
+const KEEPER_ADDS_MOST := 12
+# A floor below the Crypt is washed in its land's colour, this strong, added.
+const FLOOR_WASH := 0.1
+const WASH_Z := -9
 const WAVE_SECONDS := 9.0
 const MARK_SECONDS := 0.7
 const ROOM_HEALTH_STEP := 0.1
@@ -206,6 +283,9 @@ var offers: Array = []
 var best: String = ""
 var last_result: String = ""
 var doors: Array = []
+var _keeper: Node2D = null
+var _keeper_call: float = 0.0
+var _wash: ColorRect = null
 var monsters: Array = []
 var hud: Node = null
 # The suite's door: who the run is for.
@@ -249,6 +329,23 @@ func _ready() -> void:
 			doors.append(door)
 			door.connect("walked_in", _on_walked_in)
 	_set_doors(true, "begin", "begin")
+	_tell_story.call_deferred()
+
+
+func tells_story() -> bool:
+	"""The warrior's story is told in the real crypt only, once a character."""
+	if player_override != null or not is_inside_tree() or get_tree().current_scene != get_parent():
+		return false
+	return not Field.story_seen(Field.story_key() + STORY_KEY)
+
+
+func _tell_story() -> void:
+	if not tells_story():
+		return
+	Field.mark_story_seen(Field.story_key() + STORY_KEY)
+	var screen := StoryScreen.new()
+	get_parent().add_child(screen)
+	screen.play(STORY, true)
 
 
 func _exit_tree() -> void:
@@ -264,6 +361,20 @@ func _player() -> Node2D:
 
 func floor_info() -> Dictionary:
 	return FLOORS[clampi(floor_index, 0, FLOORS.size() - 1)]
+
+
+func taken_for(kind: String) -> float:
+	"""How hard this floor's monsters hit in a room of this kind (Boons'
+	`floor_taken`). A KEEPER HITS AT FULL (0.123.0) - the owner: "fire boss in
+	warriors run was doing 0 damage to warrior". At the first floor's half, on
+	top of every hit's half and the defence tier, the Fire Keeper's orbs and
+	burns came to 1 each and its spikes to 13, and the ward soaked the first
+	72 of them: a warrior's health never moved. The softer hits are for the
+	crypt's packs; the keeper is the floor's test - since the seven floors,
+	at its floor's "keeper_taken", which lifts the weak ones to the ladder."""
+	if kind == "keeper":
+		return float(floor_info().get("keeper_taken", 1.0))
+	return float(floor_info().get("taken", 1.0))
 
 
 func running() -> bool:
@@ -351,12 +462,13 @@ func _arrive(kind: String) -> void:
 		rerolls_paid = 0
 	room += 1
 	room_kind = "keeper" if room > ROOMS else kind
-	Boons.floor_taken = float(floor_info().get("taken", 1.0))
+	Boons.floor_taken = taken_for(room_kind)
 	Boons.room_kills = 0
 	challenge_left = 0.0
 	challenge_won = false
 	_clear_monsters()
 	_dress()
+	_wash_floor()
 	if room_kind == "rest":
 		_light_fire()
 	var player: Node2D = _player()
@@ -365,6 +477,10 @@ func _arrive(kind: String) -> void:
 		player.reset_physics_interpolation()
 		if player.has_method("snap_camera"):
 			player.call("snap_camera")
+		# A WARRIOR'S AXE COMES WITH YOU (0.123.0, warrior.gd put_axes_away()):
+		# left spinning, it stayed in the next room.
+		if player.has_method("put_axes_away"):
+			player.call("put_axes_away")
 	_fight_in = FIGHT_DELAY
 	if hud != null:
 		hud.call("announce", room_title(), _room_line())
@@ -423,6 +539,8 @@ func _process(delta: float) -> void:
 					_spawn_pack()
 			else:
 				_step_waves(delta)
+				if room_kind == "keeper":
+					_step_keeper(delta)
 				if room_kind == "challenge":
 					challenge_left = maxf(0.0, challenge_left - delta)
 				if living() == 0 and _coming.is_empty() and _waves.is_empty():
@@ -613,12 +731,30 @@ func pack_size() -> int:
 
 
 func challenge_seconds() -> float:
-	return CHALLENGE_BASE + CHALLENGE_EACH * pack_size()
+	# An elite counts for two (0.123.0: every fight brings them now).
+	return CHALLENGE_BASE + CHALLENGE_EACH * (pack_size() + 2 * elites_for(room_kind))
 
 
 static func waves_for(size: int) -> int:
-	"""How many waves a pack of `size` comes in."""
-	return 1 if size <= 4 else (2 if size <= 7 else 3)
+	"""How many waves a pack of `size` comes in: WAVE_MOST to a wave, never
+	more than WAVES_MOST."""
+	return clampi(ceili(float(size) / float(WAVE_MOST)), 1, WAVES_MOST)
+
+
+func elites_for(kind: String) -> int:
+	"""How many elites a room of this kind brings on this floor (0.123.0)."""
+	if kind in ["keeper", "treasure", "rest"]:
+		return 0
+	var count: int = ELITES_FIRST + floori(float(floor_index) / float(ELITES_FLOORS))
+	if kind == "elite":
+		count += ELITE_ROOM_MORE
+	return count
+
+
+func keeper_call_elites() -> int:
+	"""Elites in each of a keeper's calls: one, two from the fourth floor,
+	three on the seventh."""
+	return 1 + floori(float(floor_index) / 3.0)
 
 
 func health_scale() -> float:
@@ -628,8 +764,9 @@ func health_scale() -> float:
 func _spawn_pack() -> void:
 	var info: Dictionary = floor_info()
 	if room_kind == "keeper":
-		_bring(str(info["keeper"]), _spot(Vector2(room_rect.get_center().x, room_rect.position.y + 80.0)),
+		_keeper = _bring(str(info["keeper"]), _spot(Vector2(room_rect.get_center().x, room_rect.position.y + 80.0)),
 			float(info["health"]) * KEEPER_HEALTH)
+		_keeper_call = KEEPER_CALL_FIRST
 		return
 	# IN WAVES (0.115.0): the pack split as evenly as it goes, the elite in
 	# the last, and the first wave marked now.
@@ -642,11 +779,67 @@ func _spawn_pack() -> void:
 		_waves.append([])
 	for i in size:
 		(_waves[floori(float(i * count) / float(size))] as Array).append([str(kinds[_rng.randi_range(0, kinds.size() - 1)]), health_scale(), false])
-	if room_kind == "elite":
-		var elites: Array = info["elites"]
-		(_waves[count - 1] as Array).append([str(elites[_rng.randi_range(0, elites.size() - 1)]),
+	# ELITES IN EVERY FIGHT (0.123.0): the last wave's first, then the one
+	# before it, round again.
+	var elites: Array = info["elites"]
+	for e in elites_for(room_kind):
+		(_waves[count - 1 - e % count] as Array).append([str(elites[_rng.randi_range(0, elites.size() - 1)]),
 			health_scale() * ELITE_HEALTH, true])
 	_next_wave()
+
+
+func _step_keeper(delta: float) -> void:
+	"""THE KEEPER CALLS ITS FLOOR (0.123.0): its monsters and elites, marked
+	at the room's edges like a wave, every KEEPER_CALL_SECONDS while it
+	stands and fewer than KEEPER_ADDS_MOST do. When it falls, they fall
+	with it and the room is clear."""
+	if _keeper == null or not is_instance_valid(_keeper) or int(_keeper.get("hp")) <= 0 \
+			or bool(_keeper.get("_death_resolved")):
+		if not _coming.is_empty():
+			_coming = []
+			_paint_marks()
+		for m in monsters:
+			if is_instance_valid(m) and m != _keeper and not (m as Node).is_queued_for_deletion():
+				(m as Node).queue_free()
+		return
+	_keeper_call -= delta
+	if _keeper_call > 0.0:
+		return
+	_keeper_call = KEEPER_CALL_SECONDS
+	if living() - 1 + _coming.size() >= KEEPER_ADDS_MOST:
+		return
+	var info: Dictionary = floor_info()
+	var kinds: Array = info["monsters"]
+	var elites: Array = info["elites"]
+	for i in KEEPER_CALL_SIZE + floor_index:
+		_coming.append([str(kinds[_rng.randi_range(0, kinds.size() - 1)]), _edge_spot(), health_scale(), false, MARK_SECONDS])
+	for i in keeper_call_elites():
+		_coming.append([str(elites[_rng.randi_range(0, elites.size() - 1)]), _edge_spot(),
+			health_scale() * ELITE_HEALTH, true, MARK_SECONDS])
+	_paint_marks()
+	if hud != null:
+		hud.call("toast", "%s calls for help!" % str(info["keeper_name"]))
+
+
+func _wash_floor() -> void:
+	"""Each floor below the Crypt washed in its land's colour (0.123.0): a
+	ColorRect over the floor, added, under everything standing."""
+	var land: int = int(floor_info().get("land", Element.Type.NONE))
+	if _wash == null or not is_instance_valid(_wash):
+		if get_parent() == null:
+			return
+		_wash = ColorRect.new()
+		_wash.name = "floorwash"
+		_wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_wash.position = room_rect.position
+		_wash.size = room_rect.size
+		_wash.z_index = WASH_Z
+		var adding := CanvasItemMaterial.new()
+		adding.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_wash.material = adding
+		get_parent().add_child(_wash)
+	var colour: Color = Element.colour_for(land)
+	_wash.color = Color(colour.r, colour.g, colour.b, FLOOR_WASH) if land != Element.Type.NONE else Color(0, 0, 0, 0)
 
 
 func _next_wave() -> void:

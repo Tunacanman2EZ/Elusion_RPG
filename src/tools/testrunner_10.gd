@@ -127,6 +127,18 @@ func _test_the_double_axe_in_the_descent() -> void:
 	var catch_code: String = _func_body(axe_code, "func advance(")
 	check("  and its catch is its own, so the axe in hand is not forgotten",
 		twin_freed and catch_code.contains("\"_on_twin_caught\" if twin else \"_on_axe_caught\""))
+	# IN HAND AGAIN (0.123.0) - the owner: "axe stays there every round no
+	# respawn lol". A new room of the run puts the axe and its twin away.
+	warrior.call("put_axes_away")
+	var put_first: bool = first.is_queued_for_deletion() and not bool(warrior.call("axe_is_out"))
+	var again: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(100, 0))
+	var again_twin: SpinningAxe = warrior.get("_twin")
+	warrior.call("put_axes_away")
+	var arrive_code: String = _func_body(_code_src("res://src/world/descent/descentrun.gd"), "func _arrive(")
+	check("  a new room of the run puts the axe and its twin away at once, so the next throw is yours (0.123.0)",
+		put_first and again != null and again != first and again.is_queued_for_deletion() and again_twin != null
+		and again_twin.is_queued_for_deletion() and warrior.get("_axe") == null and warrior.get("_twin") == null
+		and arrive_code.contains("player.call(\"put_axes_away\")"), [put_first, again_twin])
 	first.queue_free()
 	second.queue_free()
 	warrior.free()
@@ -2432,3 +2444,207 @@ func _test_the_forge_gear_and_eruption() -> void:
 	await get_tree().process_frame
 	print("  the Forge's gear: the hammer, wading, the tank's fire, the eruption")
 
+
+# =============================================================================
+# THE STORIES (0.123.0)
+# =============================================================================
+# The owner, of the Stand: "after the mages minigame there is a story where
+# the mages were trying to stop a volcano from erupting by sealing it with
+# meteors ..."; and of the Forge, "did you already get the tanks lore?" - "the
+# tank lived generations making armor but eventually fate decided the lava
+# would rise ...".
+
+func _test_the_stories_of_the_stand_and_the_forge() -> void:
+	section("THE STORIES (0.123.0): the mages' sealing when the Stand's portal falls, the smith's when you first reach the Forge, the warrior's when you first enter the Descent")
+	const Descent := preload("res://src/world/descent/descentrun.gd")
+	const StandScreen := preload("res://src/world/magestand/magestandscreen.gd")
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	const FieldScript := preload("res://src/world/field.gd")
+	var key: String = FieldScript.story_key()
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	for k in [StandScreen.STORY_KEY, Run.STORY_KEY, Descent.STORY_KEY]:
+		if cfg.has_section_key("story", (key + k).replace("/", "|")):
+			cfg.erase_section_key("story", (key + k).replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	# ---- THE SEALING -------------------------------------------------------------
+	var screen: CanvasLayer = StandScreen.open(get_tree())
+	await get_tree().process_frame
+	var stand: Node = screen.get("run")
+	var wired: bool = stand != null and stand.is_connected("finished", Callable(screen, "_on_stand_over"))
+	screen.call("tell_story")
+	var told: Node = screen.get("story")
+	check("when the Stand's portal falls the mages' story plays over it, in the game's story screen - five lines, the owner's",
+		wired and told is StoryScreen and told.get_parent() == screen and (told.get("_blocks") as Array) == StandScreen.STORY
+		and StandScreen.STORY.size() == 5 and str(StandScreen.STORY[2]).contains("the volcano erupted")
+		and str(StandScreen.STORY[4]).contains("parallel dimensions"), [wired, told])
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	screen.call("_input", esc)
+	check("  while it plays every key is the story's (any key skips it) - Escape does not leave the Stand under it; remembered for the character",
+		is_instance_valid(screen) and not screen.is_queued_for_deletion() and FieldScript.story_seen(key + StandScreen.STORY_KEY))
+	told.call("_finish")
+	await get_tree().process_frame
+	screen.call("_on_stand_over")
+	await get_tree().process_frame
+	check("  once a character: the next fall tells it no more",
+		screen.get("story") == null or not is_instance_valid(screen.get("story")))
+	screen.call("close")
+	await get_tree().process_frame
+	# ---- THE SMITH -------------------------------------------------------------------
+	var kept_scene: Node = get_tree().current_scene
+	var island := Node2D.new()
+	island.name = "forgestoryisland"
+	get_tree().root.add_child(island)
+	get_tree().current_scene = island
+	var run: Node = Run.new()
+	run.name = "forgerun"
+	island.add_child(run)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var smith: Node = null
+	for child in island.get_children():
+		if child is StoryScreen:
+			smith = child
+	check("the first time a character reaches the Forge the smith's story is told - four lines, the owner's, and remembered",
+		smith != null and (smith.get("_blocks") as Array) == Run.STORY and Run.STORY.size() == 4
+		and str(Run.STORY[1]).contains("lava would rise") and FieldScript.story_seen(key + Run.STORY_KEY), smith)
+	island.queue_free()
+	await get_tree().process_frame
+	var island2 := Node2D.new()
+	get_tree().root.add_child(island2)
+	get_tree().current_scene = island2
+	var run2: Node = Run.new()
+	island2.add_child(run2)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var again: bool = island2.get_children().any(func(n: Node) -> bool: return n is StoryScreen)
+	var stand_in: Node = Run.new()
+	stand_in.set("player_override", Node2D.new())
+	check("  once a character; and never on a suite's stand-in island (a player handed in, or not the scene being played)",
+		not again and not bool(stand_in.call("tells_story")))
+	(stand_in.get("player_override") as Node).free()
+	stand_in.free()
+	island2.queue_free()
+	await get_tree().process_frame
+	# ---- THE WARRIOR -----------------------------------------------------------------
+	var crypt := Node2D.new()
+	crypt.name = "descentstorycrypt"
+	get_tree().root.add_child(crypt)
+	get_tree().current_scene = crypt
+	var descent: Node = Descent.new()
+	descent.name = "descentrun"
+	crypt.add_child(descent)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var warrior: Node = null
+	for child in crypt.get_children():
+		if child is StoryScreen:
+			warrior = child
+	var stand_in_descent: Node = Descent.new()
+	stand_in_descent.set("player_override", Node2D.new())
+	check("the first time a character enters the Descent the warrior's story is told - five lines, the owner's, remembered; never on a stand-in",
+		warrior != null and (warrior.get("_blocks") as Array) == Descent.STORY and Descent.STORY.size() == 5
+		and str(Descent.STORY[3]).contains("It was a trap") and str(Descent.STORY[4]).contains("unlimited stamina or magic")
+		and FieldScript.story_seen(key + Descent.STORY_KEY) and not bool(stand_in_descent.call("tells_story")), warrior)
+	(stand_in_descent.get("player_override") as Node).free()
+	stand_in_descent.free()
+	crypt.queue_free()
+	get_tree().current_scene = kept_scene
+	await get_tree().process_frame
+	print("  the stories: the sealing, the smith, the warrior")
+
+
+
+# =============================================================================
+# THE DESCENT GOES DEEPER (0.123.0)
+# =============================================================================
+# The owner: "we need more enemies in the descent and we need more then 3
+# levels we also make sure all bosses are hitting", then "we need more elites
+# this needs to be super hard".
+func _test_the_descent_goes_deeper() -> void:
+	section("THE DESCENT GOES DEEPER (0.123.0): seven floors, one a land, more monsters and elites, keepers that call their floor")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	# ---- the floors ----
+	var keepers: Dictionary = {}
+	var lands: Dictionary = {}
+	var missing: Array = []
+	for f in RunScript.FLOORS:
+		keepers[str(f["keeper"])] = true
+		lands[int(f["land"])] = true
+		for id in (f["monsters"] as Array) + (f["elites"] as Array) + [f["keeper"]]:
+			if not ResourceLoader.exists("res://scene/enemy/%s.tscn" % str(id)):
+				missing.append(id)
+	check("seven floors of %d rooms and a keeper, each keeper a different one of the seven bosses, the Fire Keeper first and the Dark last, every monster a scene the game has"
+		% RunScript.ROOMS, RunScript.FLOORS.size() == 7 and RunScript.ROOMS == 4 and keepers.size() == 7 and missing.is_empty()
+		and str(RunScript.FLOORS[0]["keeper"]) == "fireboss" and str(RunScript.FLOORS[6]["keeper"]) == "bossenemy",
+		[keepers.keys(), missing])
+	check("  every floor a land of its own, the Crypt none",
+		lands.size() == 7 and int(RunScript.FLOORS[0]["land"]) == Element.Type.NONE)
+	# ---- elites ----
+	var probe: Node = RunScript.new()
+	var by_floor: Array = []
+	var calls: Array = []
+	for f in RunScript.FLOORS.size():
+		probe.set("floor_index", f)
+		by_floor.append(int(probe.call("elites_for", "upgrade")))
+		calls.append(int(probe.call("keeper_call_elites")))
+	probe.set("floor_index", 0)
+	var elite_room: int = int(probe.call("elites_for", "elite"))
+	var none: bool = int(probe.call("elites_for", "treasure")) == 0 and int(probe.call("elites_for", "keeper")) == 0 \
+		and int(probe.call("elites_for", "rest")) == 0
+	probe.free()
+	check("elites in every fight: %s down the floors, an elite room two more (%d), a Treasure, a Rest and the keeper's room none" % [by_floor, elite_room],
+		by_floor == [1, 1, 2, 2, 3, 3, 4] and elite_room == 3 and none, by_floor)
+	# ---- the keeper calls its floor ----
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_clear_monsters")
+	run.set("floor_index", 1)
+	run.set("room", RunScript.ROOMS)
+	run.call("_go", "keeper")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var keeper: Node = run.get("_keeper")
+	var alone: bool = (run.get("monsters") as Array).size() == 1 and keeper != null \
+		and str(keeper.scene_file_path).ends_with("iceboss.tscn") and (run.get("_coming") as Array).is_empty()
+	var wash: ColorRect = room.get_node_or_null("floorwash") as ColorRect
+	var ice: Color = Element.colour_for(Element.Type.ICE)
+	var washed: bool = wash != null and wash.color.is_equal_approx(Color(ice.r, ice.g, ice.b, RunScript.FLOOR_WASH)) \
+		and is_equal_approx(Boons.floor_taken, float(RunScript.FLOORS[1]["keeper_taken"]))
+	run.call("_process", RunScript.KEEPER_CALL_FIRST)
+	var called: Array = run.get("_coming")
+	var called_elites: int = called.filter(func(e: Array) -> bool: return bool(e[3])).size()
+	var told: String = str((run.get("hud").get("toast_label") as Label).text)
+	check("the Ice Keeper comes alone on a floor washed blue, hitting at its floor's keeper_taken; %d seconds in it calls %d of its floor, an elite with them (%s)"
+		% [int(RunScript.KEEPER_CALL_FIRST), called.size(), told],
+		alone and washed and called.size() == RunScript.KEEPER_CALL_SIZE + 1 + 1 and called_elites == 1
+		and told.contains("calls for help"), [alone, washed, called.size(), called_elites])
+	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	var with_help: int = (run.get("monsters") as Array).size()
+	keeper.call("take_damage", 99999999)
+	run.call("_process", 0.016)
+	await get_tree().process_frame
+	run.call("_process", 0.016)
+	check("  they step out, and when the keeper falls they fall with it and the room is clear (%d were standing)" % with_help,
+		with_help == 5 and int(run.call("living")) == 0 and int(run.get("state")) == RunScript.State.PICK,
+		[with_help, run.call("living"), run.get("state")])
+	run.set("floor_index", 0)
+	run.call("_wash_floor")
+	check("  and the Crypt is not washed", wash != null and is_instance_valid(wash) and is_zero_approx(wash.color.a))
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the Descent goes deeper: done")

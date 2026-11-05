@@ -998,6 +998,22 @@ func _on_axe_caught() -> void:
 	Audio.play("axe_catch")
 
 
+func put_axes_away() -> void:
+	# IN HAND AGAIN AT ONCE (0.123.0) - the owner, of the Descent: "axe stays
+	# there every round no respawn lol". Every room of a run is the same
+	# floor dressed again (descentrun.gd _arrive()), and the warrior is moved
+	# to its entrance, inside the axe's LEASH - so an axe left spinning in the
+	# middle went on cutting the next room's pack with nobody throwing it. It
+	# is called home (the picture on other screens too) and caught here, with
+	# no flight; the next throw is the warrior's.
+	for axe in [_axe, _twin]:
+		if axe != null and is_instance_valid(axe) and not (axe as Node).is_queued_for_deletion():
+			(axe as SpinningAxe).recall()
+			(axe as Node).queue_free()
+	_axe = null
+	_twin = null
+
+
 func _on_gear_changed() -> void:
 	# The axe taken off while it is out: it is back in the bag, so the one in
 	# the world goes. There is nothing to wait for it to fly back to.

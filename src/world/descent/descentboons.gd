@@ -40,7 +40,8 @@
 #
 # AND THE CRYPT HITS SOFTER (0.115.0): its monsters are the open world's, built
 # for groups. `floor_taken` (descentrun.gd FLOORS' "taken", set as each room is
-# entered) is in taken_factor(): half on the first floor, then 0.7, then 0.9.
+# entered) is in taken_factor(): half on the first floor, then 0.7, then 0.9 -
+# and 1 in a keeper's room (0.123.0, descentrun.gd taken_for()).
 #
 # STEP 2 (0.115.0): RARITIES and five more. Each upgrade is common, rare or
 # epic (RARITY_WEIGHTS: a rare one comes about half as often as a common, an

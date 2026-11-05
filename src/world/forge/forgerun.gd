@@ -105,6 +105,11 @@
 # Player.take_damage() asks knock_out() first - you wake beside the anvil on
 # 1 health, every effect cleared, and the run is over: "The forge held 4:12".
 #
+# THE SMITH'S STORY (0.123.0): the owner's, above, told in the game's story
+# screen (StoryScreen) the first time a character arrives on the island
+# (field.gd story_seen(), key STORY_KEY) - only in the real area, never on a
+# suite's stand-in island (player_override, not the current scene).
+#
 # WHAT IT PAYS: since 0.120.0, every fire sprite's loot into your chest (the
 # server's pets and mythics ten times rarer here since 0.121.0). The legacy
 # armour, a party of four and the high-score board are the next steps.
@@ -197,6 +202,16 @@ const WALK_REPAINT := 0.1
 # 42.3 round and 147.6 long, laid on its side, 13.5 px over his feet).
 const AURA_HALF := Vector2(73.8, 42.3)
 const AURA_OFFSET := Vector2(-0.9, -13.5)
+
+# ---- THE SMITH'S STORY (0.123.0) ----------------------------------------------
+const Field := preload("res://src/world/field.gd")
+const STORY_KEY := "#smith"
+const STORY := [
+	"For generations the tank lived in the depths of fire, a master smith forging armour at his anvil.",
+	"But fate decided the lava would rise.",
+	"The master smith fell with his own creations - a rough cycle, where life is temporary.",
+	"One day his armour will be a legacy for the next smith. Hold the forge as long as you can.",
+]
 
 # ---- THE ANVIL'S GEAR (0.121.0) ----------------------------------------------
 const FORGE_REACH := 56.0
@@ -367,6 +382,23 @@ func _ready() -> void:
 	var props: Node = area.get_node_or_null("ysortworld/interactables") if area != null else null
 	if props != null or area != null:
 		(props if props != null else area).add_child.call_deferred(chest)
+	_tell_story.call_deferred()
+
+
+func tells_story() -> bool:
+	"""The smith's story is told on the real island only, once a character."""
+	if player_override != null or not is_inside_tree() or get_tree().current_scene != get_parent():
+		return false
+	return not Field.story_seen(Field.story_key() + STORY_KEY)
+
+
+func _tell_story() -> void:
+	if not tells_story():
+		return
+	Field.mark_story_seen(Field.story_key() + STORY_KEY)
+	var screen := StoryScreen.new()
+	get_parent().add_child(screen)
+	screen.play(STORY, true)
 
 
 func _exit_tree() -> void:

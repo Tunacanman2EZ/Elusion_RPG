@@ -45,6 +45,17 @@
 #
 # No god mode here (the owner: "we also do not need godmode on this mode").
 #
+# THE SEALING (0.123.0), the owner's story for after the Stand: "the mages
+# were trying to stop a volcano from erupting by sealing it with meteors all
+# in attempt to save the land; the volcano erupted the moment the final meteor
+# hit devastating everything for miles on end; the enemies triumphed. This is
+# because something larger then the monsters was being conjured a being that
+# is irregular large beings that break the rules in a string of fate in
+# parallel dimensions". When the portal falls (the stand's `finished`),
+# STORY_AFTER later STORY plays in the game's story screen (StoryScreen),
+# once a character (field.gd's story_seen(), key STORY_KEY); while it plays
+# this screen leaves every key to it, so any key skips it.
+#
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
@@ -80,8 +91,20 @@ const HOW_TO_TOUCH := {
 }
 # The star's button (0.111.0): the dark right of the field, low, for a thumb.
 const STAR_BUTTON := Rect2(-186.0, -84.0, 170.0, 64.0)
+const Field := preload("res://src/world/field.gd")
+const STORY_AFTER := 2.5
+const STORY_KEY := "#sealing"
+const STORY := [
+	"The mages could not hold the wall forever. So they turned their meteors on the mountain itself.",
+	"Stone upon stone, they sealed the volcano - every meteor cast to save the land.",
+	"The moment the final meteor struck, the volcano erupted, devastating everything for miles on end.",
+	"The monsters triumphed. They had never been the true threat.",
+	"Something larger was being conjured: irregular beings, vast, that break the rules - bound together by a string of fate across parallel dimensions.",
+]
 
 var run: Node2D = null
+# The story playing over the stand, while it plays (THE SEALING).
+var story: CanvasLayer = null
 # Worded for keys and a mouse, or for a phone (_word_for_touch(), 0.110.2).
 var _how_to_lines: Array = []
 var start_button: Button = null
@@ -435,6 +458,7 @@ func start() -> void:
 	run.name = "stand"
 	run.set("seed_value", seed_value)
 	run.position = StandScript.HALF
+	run.finished.connect(_on_stand_over)
 	viewport.add_child(run)
 	run.set_process(false)
 	results.visible = false
@@ -442,6 +466,26 @@ func start() -> void:
 	_leave_armed = 0.0
 	start_panel.visible = true
 	_centre(start_panel)
+
+
+func _on_stand_over() -> void:
+	"""The portal fell: the mages' story, once a character, a moment later."""
+	if Field.story_seen(Field.story_key() + STORY_KEY):
+		return
+	await get_tree().create_timer(STORY_AFTER).timeout
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	tell_story()
+
+
+func tell_story() -> void:
+	"""THE SEALING, now, over everything - and remembered for the character."""
+	if story != null and is_instance_valid(story):
+		return
+	Field.mark_story_seen(Field.story_key() + STORY_KEY)
+	story = StoryScreen.new()
+	add_child(story)
+	story.play(STORY)
 
 
 func begin() -> void:
@@ -670,7 +714,9 @@ func _input(event: InputEvent) -> void:
 			_aim_screen = drag.position
 		return
 	# THE GAME BEHIND IT HEARS NO KEYS while this is up. Escape is Leave;
-	# Space starts.
+	# Space starts. While the story plays every key is its own: any key skips.
+	if story != null and is_instance_valid(story):
+		return
 	if event is InputEventKey:
 		var key := event as InputEventKey
 		if key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
