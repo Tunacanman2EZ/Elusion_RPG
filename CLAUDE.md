@@ -4096,6 +4096,48 @@ bonuses, step 3 the horde). Pictured: descent_step1_0124.png.
 
 `_test_the_lands_shine_in_the_descent()` (testrunner_10).
 
+**One floor's weather at a time (0.127.0; written as 0.126.1, never shipped
+alone).** The owner, with a picture of the
+Frozen Halls: "so there is blue and red is it mixing fields?" - the Crypt's
+embers still falling with the snow. `set_weather()` never kept the node it
+made (`_weather`), so it never freed it, and each floor's weather piled on the
+last. It keeps it now, and takes the old one out of the tree before it frees
+it, so the new one is named "weather". Held in the same test.
+
+### The floor itself fights: sparks, hail, bubbles, gusts, flares, rocks, wisps, gas (0.127.0)
+
+The owner, of the piled-up weather: "looks amazing ... i was thinking that
+might be ok to just do random on rooms we could add enviromental damage
+effects on the field", "when i think of enviromental damage i mean bubbles or
+sparks that can catch a player on fire poison gas etc", "start building them".
+Pictured: descent_floor_hazards_0127.png.
+
+- **A room's lands** (descentrun.gd `lands_for_room()`, `room_lands`, rolled
+  in `_arrive()`): the floor's own (`floor_land()`, the Crypt's fire), and
+  from `MIX_FROM` (floor 3) a second of `ALL_LANDS` at `MIX_CHANCE` +
+  `MIX_STEP` a floor - always in the Deep. Its weather (descentlands.gd
+  `set_weathers()`: one CPUParticles2D a land, "weather", "weather2", each at
+  `MIX_THIN` when two) and its hazards both. A party's line carries the
+  second land (its thirteenth number); a game following takes it.
+- **The floor's own hazards** (descentlands.gd `begin_env()`, from
+  `_begin_hazards()` with the keeper's - room 2 on, not a Rest or the
+  keeper's room; `_step_env()` in `step()`): every `env_gap()` (4 s on floor
+  1, `ENV_GAP_STEP` less a floor, never under `ENV_GAP_LEAST`), `env_count()`
+  of the room's lands' kinds (`KIND_FOR`), and from `GAS_FROM` (floor 3) poison
+  gas at `GAS_CHANCE` - each `spawn_env()`ed for this game's own player, a
+  Dictionary in `hazards`, drawn in code (on the floor by the node,
+  `_draw_floor_hazards()`; airborne by its child "air", `AIR_Z`, over the
+  weather): spark (falls from the top, burn), bubble (rises from the bottom,
+  soaked), wisp (drifts after you at 32 + 3 a floor, wither), hail (a shadow
+  0.9 s, then chill), rock (1.1 s, twice the hit, root), flare (1 s, 60 px of
+  dazzle), gust (a lane 40 high, 1 s, then a shove along it), gas (1.2 s, then
+  6 s drifting, poison every `GAS_TICK` while inside, at half the hit). Each
+  hits for `env_hit()` (8, +4 a floor - then the floor's "taken" and every
+  hit's half) through Player.take_damage() and StatusEffects.apply_to(), at
+  most every `TOUCH_GAP` (0.6). Each game's own, never sent.
+
+`_test_the_floor_itself_fights()` (testrunner_10).
+
 ### Every class in the Descent, each its own upgrades (0.125.0)
 
 The owner: "any class can join but we have to set up bonuses for all 4

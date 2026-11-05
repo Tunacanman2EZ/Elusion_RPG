@@ -2711,6 +2711,12 @@ func _test_the_lands_shine_in_the_descent() -> void:
 		and caster.has_meta(&"stress_copy") and not (run.get("monsters") as Array).has(caster)
 	check("the first room of a floor is calm, with the floor's weather and its line (%s); from the second, the floor's keeper throws its hazards - hidden, never a target, never counted"
 		% felt, first_calm and felt.begins_with("The fire burns you") and hidden, [first_calm, caster])
+	await get_tree().process_frame
+	var skies: Array = lands.find_children("*", "CPUParticles2D", false, false)
+	var snow: Color = LandsScript.weather_for(Element.Type.ICE)["colour"]
+	check("  one floor's weather at a time: down in the Frozen Halls, its snow and not the Crypt's embers still (0.126.0)",
+		skies.size() == 1 and (skies[0] as CPUParticles2D).color == snow and str(skies[0].name) == "weather",
+		[skies.size(), skies.map(func(n: Node) -> Color: return (n as CPUParticles2D).color)])
 	run.call("_process", LandsScript.FIRST)
 	var warned: Array = lands.get("_warns")
 	var marked: bool = warned.size() == 1 and str(warned[0][3]).begins_with("frost0") or warned.size() == 1 and str(warned[0][3]).begins_with("frost")
@@ -3042,6 +3048,8 @@ func _test_the_descent_together() -> void:
 		and str(run_b.get("room_kind")) == promised, [run_a.get("room"), run_b.get("room"), run_b.get("room_kind")])
 	# ---- down, until everybody is ----
 	run_a.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	# Whatever the two picks were, no Second Wind to keep the fallen standing.
+	Boons.levels.erase("secondwind")
 	var downed: bool = bool(run_a.call("knock_out", body_a))
 	var down_not_out: bool = downed and Boons.out and bool(run_a.call("running")) and is_equal_approx(body_a.modulate.a, RunScript.OUT_ALPHA)
 	var nothing_lands: bool = _func_body(_code_src("res://src/characters/player.gd"), "func take_damage(").contains("if DescentBoons.out:")
@@ -3070,3 +3078,108 @@ func _test_the_descent_together() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the Descent together: done")
+
+
+# =============================================================================
+# THE FLOOR ITSELF FIGHTS (0.127.0)
+# =============================================================================
+# The owner: "when i think of enviromental damage i mean bubbles or sparks
+# that can catch a player on fire poison gas etc", "start building them".
+func _test_the_floor_itself_fights() -> void:
+	section("THE FLOOR ITSELF FIGHTS (0.127.0): sparks, hail, bubbles, gusts, flares, rocks, wisps and poison gas - and a second land's weather mixed in")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	Boons.clear()
+	var counts: Array = []
+	for f in 7:
+		counts.append(LandsScript.env_count(f))
+	var every_land: bool = true
+	for land in RunScript.ALL_LANDS:
+		every_land = every_land and LandsScript.KIND_FOR.has(land) and not LandsScript.weather_for(land).is_empty()
+	check("every land its own hazard (%s), one every %.1f s on floor 1 down to %.1f, hitting for %d up to %d, %s at a time"
+		% [LandsScript.KIND_FOR.values(), LandsScript.env_gap(0), LandsScript.env_gap(7), LandsScript.env_hit(0), LandsScript.env_hit(6), counts],
+		every_land and is_equal_approx(LandsScript.env_gap(0), LandsScript.ENV_GAP_FIRST) and LandsScript.env_gap(10) >= LandsScript.ENV_GAP_LEAST
+		and LandsScript.env_hit(6) > LandsScript.env_hit(0) and counts == [1, 1, 1, 2, 2, 2, 3])
+	# ---- a room of stand-ins, its player keeping what hit it ----
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	var body: Node2D = made[2]
+	await get_tree().process_frame
+	# ---- mixing ----
+	var mixed_early: int = 0
+	var mixed_deep: int = 0
+	var mixed_seventh: int = 0
+	for i in 60:
+		run.set("floor_index", 1)
+		mixed_early += 1 if (run.call("lands_for_room") as Array).size() > 1 else 0
+		run.set("floor_index", 6)
+		mixed_seventh += 1 if (run.call("lands_for_room") as Array).size() > 1 else 0
+		run.set("floor_index", 8)
+		mixed_deep += 1 if (run.call("lands_for_room") as Array).size() > 1 else 0
+	run.set("floor_index", 0)
+	check("a second land mixes in from floor 3, more often deeper, always in the Deep (%d, %d, %d of 60)" % [mixed_early, mixed_seventh, mixed_deep],
+		mixed_early == 0 and mixed_seventh > 0 and mixed_seventh < 60 and mixed_deep == 60)
+	# ---- each hazard, touched ----
+	var lands: Node2D = run.call("_lands_node")
+	lands.call("begin_env", RunScript.ALL_LANDS, 2)
+	var got: Array = []
+	var expected: Array = []
+	for one in [["spark", Element.Type.FIRE, 0.016], ["bubble", Element.Type.WATER, 0.016], ["wisp", Element.Type.DARK, 0.016],
+			["hail", Element.Type.ICE, 0.95], ["rock", Element.Type.EARTH, 1.15], ["flare", Element.Type.LIGHT, 1.05],
+			["gust", Element.Type.WIND, 1.05], ["gas", Element.Type.POISON, 1.25]]:
+		lands.set("hazards", [])
+		lands.set("_touch_left", 0.0)
+		lands.set("_env_left", 999.0)
+		var before: int = (body.get("hits") as Array).size()
+		var hz: Dictionary = lands.call("spawn_env", str(one[0]), body)
+		hz["p"] = body.global_position
+		if str(one[0]) == "gust":
+			hz["p"] = Vector2(320, body.global_position.y)
+		lands.call("step", float(one[2]))
+		var hits: Array = body.get("hits")
+		got.append(int(hits[hits.size() - 1][1]) if hits.size() > before else -1)
+		expected.append(int(one[1]))
+	check("  each, touched or stood in, hits as its land: spark fire, bubble water, wisp dark, hail ice, rock earth, flare light, gust wind, gas poison",
+		got == expected, [got, expected])
+	lands.set("hazards", [])
+	lands.set("_touch_left", 0.0)
+	var count_was: int = (body.get("hits") as Array).size()
+	var far: Dictionary = lands.call("spawn_env", "spark", body)
+	far["p"] = body.global_position + Vector2(200, 0)
+	var near_a: Dictionary = lands.call("spawn_env", "spark", body)
+	near_a["p"] = body.global_position
+	var near_b: Dictionary = lands.call("spawn_env", "spark", body)
+	near_b["p"] = body.global_position
+	lands.call("step", 0.016)
+	check("  one far away does nothing, and two at once hit once (TOUCH_GAP)", (body.get("hits") as Array).size() == count_was + 1)
+	lands.call("end")
+	# ---- in a room ----
+	(made[3][0] as Node).emit_signal("walked_in", made[3][0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_clear_monsters")
+	run.set("floor_index", 2)
+	run.set("room", 1)
+	run.call("_go", "gold")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var room_lands: Array = run.get("room_lands")
+	var skies: int = lands.find_children("*", "CPUParticles2D", false, false).size()
+	var made_before: int = int(lands.get("env_made"))
+	run.call("_process", LandsScript.ENV_FIRST + 0.05)
+	var line: Array = run.call("line")
+	check("  room 2 of the Drowned Halls: its lands %s each with weather (%d), and %.1f s in, the floor's first hazards; the party's line carries the mix"
+		% [room_lands, skies, LandsScript.ENV_FIRST],
+		room_lands.size() >= 1 and int(room_lands[0]) == Element.Type.WATER and skies == room_lands.size()
+		and int(lands.get("env_made")) - made_before >= LandsScript.env_count(2) and line.size() == 13
+		and int(line[12]) == (int(room_lands[1]) if room_lands.size() > 1 else -1), [room_lands, skies, lands.get("env_made")])
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the floor itself fights: done")

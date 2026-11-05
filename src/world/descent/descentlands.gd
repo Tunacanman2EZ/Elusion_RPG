@@ -1,4 +1,6 @@
 extends Node2D
+
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
 # descentlands.gd - THE LANDS SHINE IN THE DESCENT (0.124.0, step 1 of the
 # commit folder's DESCENT_PLAN_3.txt). A child of the run (descentrun.gd
 # _lands), over the room's floor.
@@ -32,6 +34,25 @@ extends Node2D
 #
 # THE ORBS' EFFECTS STRONGER: the Descent's bullet zone carries every orb's
 # element at effect_for() (the fields' are at half), stronger each floor.
+#
+# THE FLOOR ITSELF FIGHTS (0.127.0) - the owner, of the weather: "when i
+# think of enviromental damage i mean bubbles or sparks that can catch a
+# player on fire poison gas etc", "start building them". From the second
+# room, every ENV gap the room's lands (one, or two mixed - descentrun.gd
+# room_lands()) loose their own hazard on this game's player (begin_env(),
+# _step_env()), each seen coming and stepped out of:
+#   spark   (fire)   a bright ember drifting down - touched, you burn
+#   hail    (ice)    a shadow grows, the stone lands - chilled
+#   bubble  (water)  rising from the floor - touched, it pops: soaked
+#   gust    (wind)   a lane of streaks thickens, then shoves you along it
+#   flare   (light)  a mote swells and flashes - near it, tunnel vision
+#   rock    (earth)  a shadow of falling grit, then the rock - rooted
+#   wisp    (dark)   drifts after you - touched, withered (hits doubled)
+#   gas     (poison) from floor 3: a green cloud seeps up and drifts -
+#                    inside it, poison every GAS_TICK
+# Each hits for env_hit() (more each floor), and at most every TOUCH_GAP.
+# Drawn in code: what lies on the floor by this node, what floats by `_air`
+# over the weather.
 
 const WARN := 0.7
 # The first throw this long after the pack comes; then every gap().
@@ -49,6 +70,25 @@ const EFFECTS_MOST := 1.0
 # Volleys that spread from a point in every direction, rather than at you.
 const RINGS := [&"prism", &"vortex"]
 const WEATHER_Z := 3
+# A second land's weather, mixed in, thins both to this share.
+const MIX_THIN := 0.6
+# THE FLOOR ITSELF (0.127.0): the first hazard this long after the pack, then
+# every env_gap(); how hard they hit; at most one hit this often; how near a
+# touch counts; poison gas from this floor (an index), this often a gap.
+const ENV_FIRST := 3.0
+const ENV_GAP_FIRST := 4.0
+const ENV_GAP_STEP := 0.3
+const ENV_GAP_LEAST := 1.6
+const ENV_HIT_FIRST := 8
+const ENV_HIT_STEP := 4
+const TOUCH_GAP := 0.6
+const TOUCH_SLACK := 8.0
+const GAS_FROM := 2
+const GAS_CHANCE := 0.35
+const GAS_TICK := 0.5
+const AIR_Z := 7
+const KIND_FOR := {Element.Type.FIRE: "spark", Element.Type.ICE: "hail", Element.Type.WATER: "bubble",
+	Element.Type.WIND: "gust", Element.Type.LIGHT: "flare", Element.Type.EARTH: "rock", Element.Type.DARK: "wisp"}
 
 var run: Node = null
 var phase: int = 0
@@ -58,9 +98,19 @@ var _left: float = -1.0
 var _turn: int = 0
 # [origin, seconds left, caster, volley name, aim, reach, colour]
 var _warns: Array = []
-var _weather: CPUParticles2D = null
-var _weather_land: int = -1
+var _weathers: Array = []
+var _weather_lands: Array = []
 var thrown: int = 0
+# THE FLOOR ITSELF (0.127.0).
+var env_lands: Array = []
+var env_floor: int = 0
+var env_every: float = ENV_GAP_FIRST
+var hazards: Array = []
+var env_made: int = 0
+var env_hits: int = 0
+var _env_left: float = -1.0
+var _touch_left: float = 0.0
+var _air: Node2D = null
 
 
 static func gap(floor_index: int) -> float:
@@ -92,14 +142,19 @@ func begin(keeper_ids: Array, floor_index: int, faster: bool = false) -> void:
 
 
 func end() -> void:
-	"""No hazards: the casters freed, the marks gone."""
+	"""No hazards: the casters freed, the marks gone, the floor quiet."""
 	for caster in _casters:
 		if is_instance_valid(caster):
 			(caster as Node).queue_free()
 	_casters = []
 	_warns = []
 	_left = -1.0
+	env_lands = []
+	hazards = []
+	_env_left = -1.0
 	queue_redraw()
+	if _air != null and is_instance_valid(_air):
+		_air.queue_redraw()
 
 
 func active() -> bool:
@@ -107,7 +162,9 @@ func active() -> bool:
 
 
 func step(delta: float) -> void:
-	"""The run's FIGHT, after the pack has come: count down, mark, throw."""
+	"""The run's FIGHT, after the pack has come: count down, mark, throw -
+	and the floor's own hazards."""
+	_step_env(delta)
 	if _casters.is_empty():
 		return
 	var still: Array = []
@@ -212,6 +269,7 @@ func _make_caster(id: String) -> Node2D:
 
 
 func _draw() -> void:
+	_draw_floor_hazards()
 	for warn in _warns:
 		var at: Vector2 = warn[0]
 		var left: float = clampf(float(warn[1]) / WARN, 0.0, 1.0)
@@ -257,20 +315,45 @@ static func weather_for(land: int) -> Dictionary:
 
 func set_weather(land: int, rect: Rect2) -> void:
 	"""The floor's weather over `rect` (none for a land with none)."""
-	if land == _weather_land and _weather != null and is_instance_valid(_weather):
+	set_weathers([land], rect)
+
+
+func set_weathers(lands: Array, rect: Rect2) -> void:
+	"""Each land's weather over `rect`, thinned when two mix (0.127.0: a
+	room may mix a second land's in). The old ones go first."""
+	var same: bool = lands == _weather_lands and not _weathers.is_empty()
+	for w in _weathers:
+		same = same and is_instance_valid(w)
+	if same:
 		return
-	if _weather != null and is_instance_valid(_weather):
-		_weather.queue_free()
-	_weather = null
-	_weather_land = land
+	for w in _weathers:
+		if is_instance_valid(w):
+			# Out of the tree now, so the next takes the name "weather".
+			if (w as Node).get_parent() == self:
+				remove_child(w)
+			(w as Node).queue_free()
+	_weathers = []
+	_weather_lands = lands.duplicate()
+	for k in lands.size():
+		var parts: CPUParticles2D = _make_weather(int(lands[k]), rect, MIX_THIN if lands.size() > 1 else 1.0)
+		if parts == null:
+			continue
+		parts.name = "weather" if _weathers.is_empty() else "weather%d" % (_weathers.size() + 1)
+		add_child(parts)
+		parts.reset_physics_interpolation()
+		# Kept, so the next room's takes its place (0.126.1: it was never kept,
+		# and every floor's weather piled on the last).
+		_weathers.append(parts)
+
+
+func _make_weather(land: int, rect: Rect2, share: float) -> CPUParticles2D:
 	var w: Dictionary = weather_for(land)
 	if w.is_empty():
-		return
+		return null
 	var parts := CPUParticles2D.new()
-	parts.name = "weather"
 	parts.z_index = WEATHER_Z
 	parts.position = rect.get_center()
-	parts.amount = int(w["amount"])
+	parts.amount = maxi(4, roundi(float(w["amount"]) * share))
 	parts.lifetime = float(w["life"])
 	parts.preprocess = float(w["life"])
 	parts.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
@@ -295,8 +378,7 @@ func set_weather(land: int, rect: Rect2) -> void:
 	var adding := CanvasItemMaterial.new()
 	adding.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	parts.material = adding
-	add_child(parts)
-	parts.reset_physics_interpolation()
+	return parts
 
 
 static func _speck(shape: String) -> ImageTexture:
@@ -315,3 +397,256 @@ static func _speck(shape: String) -> ImageTexture:
 				a = clampf(1.0 - d, 0.0, 1.0) if shape == "dot" else (1.0 if d > 0.55 and d < 1.0 else 0.0)
 			image.set_pixel(x, y, Color(1, 1, 1, a))
 	return ImageTexture.create_from_image(image)
+
+
+
+# =============================================================================
+# THE FLOOR ITSELF (0.127.0)
+# =============================================================================
+
+static func env_gap(floor_index: int) -> float:
+	return maxf(ENV_GAP_LEAST, ENV_GAP_FIRST - ENV_GAP_STEP * float(floor_index))
+
+
+static func env_hit(floor_index: int) -> int:
+	return ENV_HIT_FIRST + ENV_HIT_STEP * floor_index
+
+
+static func env_count(floor_index: int) -> int:
+	"""How many hazards each gap: one, one more every three floors."""
+	return 1 + floori(float(floor_index) / 3.0)
+
+
+func begin_env(lands: Array, floor_index: int, faster: bool = false) -> void:
+	"""The floor's own hazards for this room, from `lands`' kinds."""
+	env_lands = []
+	for land in lands:
+		if KIND_FOR.has(int(land)):
+			env_lands.append(int(land))
+	env_floor = floor_index
+	env_every = env_gap(floor_index) * (0.5 if faster else 1.0)
+	hazards = []
+	_env_left = ENV_FIRST if not env_lands.is_empty() else -1.0
+	if _air == null or not is_instance_valid(_air):
+		_air = Node2D.new()
+		_air.name = "air"
+		_air.z_index = AIR_Z
+		_air.draw.connect(_draw_air)
+		add_child(_air)
+
+
+func _step_env(delta: float) -> void:
+	if env_lands.is_empty() and hazards.is_empty():
+		return
+	var me: Node2D = run.call("_player") as Node2D if run != null else null
+	_touch_left -= delta
+	if not env_lands.is_empty():
+		_env_left -= delta
+		if _env_left <= 0.0 and me != null:
+			_env_left = env_every
+			for i in env_count(env_floor):
+				spawn_env(str(KIND_FOR[env_lands[randi() % env_lands.size()]]), me)
+			if env_floor >= GAS_FROM and randf() < GAS_CHANCE:
+				spawn_env("gas", me)
+	var still: Array = []
+	for hz in hazards:
+		if _step_hazard(hz, delta, me):
+			still.append(hz)
+	hazards = still
+	queue_redraw()
+	if _air != null and is_instance_valid(_air):
+		_air.queue_redraw()
+
+
+func spawn_env(kind: String, me: Node2D) -> Dictionary:
+	"""One hazard of `kind`, placed for this game's player."""
+	var rect: Rect2 = run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)
+	var at: Vector2 = me.global_position
+	var hz: Dictionary = {"k": kind, "t": 0.0, "w": 0.0, "life": 8.0, "r": 8.0, "p": at, "v": Vector2.ZERO,
+		"done": false, "tick": 0.0}
+	match kind:
+		"spark":
+			hz["p"] = Vector2(randf_range(rect.position.x + 10.0, rect.end.x - 10.0), rect.position.y + 6.0)
+			hz["v"] = Vector2(randf_range(-25.0, 25.0), randf_range(35.0, 55.0))
+			hz["r"] = 7.0
+		"bubble":
+			hz["p"] = Vector2(randf_range(rect.position.x + 10.0, rect.end.x - 10.0), rect.end.y - 8.0)
+			hz["v"] = Vector2(0.0, -randf_range(22.0, 38.0))
+			hz["life"] = 10.0
+			hz["r"] = 9.0
+		"wisp":
+			hz["p"] = run.call("_edge_spot") if run != null and run.has_method("_edge_spot") else rect.position
+			hz["life"] = 9.0
+			hz["speed"] = 32.0 + 3.0 * float(env_floor)
+		"hail":
+			hz["p"] = _near(at, 60.0, rect)
+			hz["w"] = 0.9
+			hz["life"] = 1.15
+			hz["r"] = 20.0
+		"flare":
+			hz["p"] = _near(at, 80.0, rect)
+			hz["w"] = 1.0
+			hz["life"] = 1.3
+			hz["r"] = 60.0
+		"rock":
+			hz["p"] = _near(at, 50.0, rect)
+			hz["w"] = 1.1
+			hz["life"] = 1.4
+			hz["r"] = 20.0
+		"gust":
+			hz["p"] = Vector2(rect.get_center().x, clampf(at.y + randf_range(-30.0, 30.0), rect.position.y + 20.0, rect.end.y - 20.0))
+			hz["dir"] = 1.0 if randf() < 0.5 else -1.0
+			hz["h"] = 40.0
+			hz["w"] = 1.0
+			hz["life"] = 1.35
+		"gas":
+			hz["p"] = _near(at, 120.0, rect)
+			hz["v"] = Vector2.from_angle(randf() * TAU) * 8.0
+			hz["w"] = 1.2
+			hz["life"] = 7.2
+			hz["r"] = 46.0
+	hazards.append(hz)
+	env_made += 1
+	return hz
+
+
+func _near(at: Vector2, reach: float, rect: Rect2) -> Vector2:
+	var spot: Vector2 = at + Vector2.from_angle(randf() * TAU) * randf_range(0.0, reach)
+	var inner: Rect2 = rect.grow(-12.0)
+	return Vector2(clampf(spot.x, inner.position.x, inner.end.x), clampf(spot.y, inner.position.y, inner.end.y))
+
+
+func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
+	"""One hazard's moment; false when it is over."""
+	hz["t"] = float(hz["t"]) + delta
+	var t: float = float(hz["t"])
+	var kind: String = str(hz["k"])
+	if t >= float(hz["life"]) or bool(hz["done"]):
+		return false
+	var hit: int = env_hit(env_floor)
+	match kind:
+		"spark", "bubble":
+			var p: Vector2 = hz["p"]
+			p += (hz["v"] as Vector2) * delta
+			if kind == "bubble":
+				p.x += sin(t * 3.0 + p.y * 0.05) * 12.0 * delta
+			hz["p"] = p
+			if me != null and _touches(me, p, float(hz["r"])):
+				var effect: StringName = StatusEffects.BURN if kind == "spark" else StatusEffects.SOAKED
+				_env_hit(me, hit, Element.Type.FIRE if kind == "spark" else Element.Type.WATER, effect, p)
+				hz["done"] = true
+		"wisp":
+			if me != null:
+				var p: Vector2 = hz["p"]
+				p = p.move_toward(me.global_position, float(hz["speed"]) * delta)
+				hz["p"] = p
+				if _touches(me, p, float(hz["r"])):
+					_env_hit(me, hit, Element.Type.DARK, StatusEffects.WITHER, p)
+					hz["done"] = true
+		"hail", "rock", "flare":
+			if t >= float(hz["w"]) and not bool(hz.get("landed", false)):
+				hz["landed"] = true
+				var p: Vector2 = hz["p"]
+				if me != null and _touches(me, p, float(hz["r"])):
+					match kind:
+						"hail":
+							_env_hit(me, hit, Element.Type.ICE, StatusEffects.CHILL, p)
+						"rock":
+							_env_hit(me, hit * 2, Element.Type.EARTH, StatusEffects.ROOT, p)
+						"flare":
+							_env_hit(me, hit, Element.Type.LIGHT, StatusEffects.DAZZLE, p)
+		"gust":
+			if t >= float(hz["w"]) and not bool(hz.get("landed", false)) and me != null:
+				var lane: float = float(hz["h"]) / 2.0
+				if absf(me.global_position.y - (hz["p"] as Vector2).y) <= lane:
+					hz["landed"] = true
+					var from: Vector2 = me.global_position - Vector2(30.0 * float(hz["dir"]), 0.0)
+					_env_hit(me, hit, Element.Type.WIND, StatusEffects.SHOVE, from)
+		"gas":
+			hz["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2) * delta
+			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
+				hz["tick"] = float(hz["tick"]) - delta
+				if float(hz["tick"]) <= 0.0:
+					hz["tick"] = GAS_TICK
+					me.call("take_damage", maxi(1, roundi(float(hit) * 0.5)), Element.Type.POISON)
+					env_hits += 1
+	return true
+
+
+func _touches(me: Node2D, at: Vector2, radius: float) -> bool:
+	return me.global_position.distance_to(at) <= radius + TOUCH_SLACK
+
+
+func _env_hit(me: Node2D, amount: int, element: int, effect: StringName, from: Vector2) -> void:
+	"""A hazard lands on this game's player - at most every TOUCH_GAP."""
+	if _touch_left > 0.0 or not me.has_method("take_damage"):
+		return
+	_touch_left = TOUCH_GAP
+	me.call("take_damage", amount, element)
+	StatusEffects.apply_to(me, effect, amount, from, false, 1.0)
+	env_hits += 1
+
+
+func _draw_floor_hazards() -> void:
+	for hz in hazards:
+		var t: float = float(hz["t"])
+		var w: float = maxf(0.001, float(hz["w"]))
+		var p: Vector2 = hz["p"]
+		var kind: String = str(hz["k"])
+		var grow: float = clampf(t / w, 0.0, 1.0)
+		match kind:
+			"hail", "rock":
+				var colour := Color(0.85, 0.95, 1.0) if kind == "hail" else Color(0.55, 0.42, 0.3)
+				if not bool(hz.get("landed", false)):
+					draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
+					draw_circle(Vector2.ZERO, float(hz["r"]) * grow, Color(0.0, 0.0, 0.0, 0.25 + 0.3 * grow))
+					draw_arc(Vector2.ZERO, float(hz["r"]), 0.0, TAU, 24, Color(colour, 0.7), 1.5)
+				else:
+					var after: float = clampf((t - w) / 0.3, 0.0, 1.0)
+					draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
+					draw_arc(Vector2.ZERO, float(hz["r"]) * (1.0 + after), 0.0, TAU, 24, Color(colour * 1.5, 1.0 - after), 3.0)
+			"flare":
+				draw_set_transform(p, 0.0, Vector2(1.0, 0.6))
+				draw_arc(Vector2.ZERO, float(hz["r"]), 0.0, TAU, 32, Color(1.0, 0.9, 0.5, 0.35 + 0.4 * grow), 1.5)
+			"gust":
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				var rect: Rect2 = run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)
+				var lane := Rect2(rect.position.x, p.y - float(hz["h"]) / 2.0, rect.size.x, float(hz["h"]))
+				var live: bool = t >= w
+				draw_rect(lane, Color(0.85, 1.0, 0.9, 0.08 + 0.12 * grow if not live else 0.3))
+				for k in 7:
+					var x: float = lane.position.x + fmod(float(k) * 97.0 + t * 260.0 * float(hz["dir"]), lane.size.x)
+					if x < lane.position.x:
+						x += lane.size.x
+					var y: float = lane.position.y + float(k * 6 % int(maxf(1.0, lane.size.y)))
+					draw_line(Vector2(x, y), Vector2(x + 18.0 * float(hz["dir"]), y), Color(0.9, 1.0, 0.95, 0.25 + 0.5 * grow), 1.0)
+			"gas":
+				var alpha: float = (0.12 + 0.1 * sin(t * 4.0)) if t >= w else 0.08 * grow
+				for k in 5:
+					var off := Vector2.from_angle(float(k) * 1.26 + t * 0.4) * float(hz["r"]) * 0.45
+					draw_set_transform(p + off, 0.0, Vector2(1.0, 0.7))
+					draw_circle(Vector2.ZERO, float(hz["r"]) * 0.6, Color(0.35, 0.85, 0.25, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_air() -> void:
+	for hz in hazards:
+		var p: Vector2 = hz["p"]
+		var t: float = float(hz["t"])
+		match str(hz["k"]):
+			"spark":
+				_air.draw_circle(p, 6.0, Color(1.0, 0.5, 0.15, 0.25))
+				_air.draw_circle(p, 3.0, Color(1.0, 0.8, 0.4, 0.95))
+			"bubble":
+				_air.draw_arc(p, float(hz["r"]), 0.0, TAU, 20, Color(0.6, 0.85, 1.0, 0.85), 1.5)
+				_air.draw_circle(p + Vector2(-3, -3), 1.5, Color(1, 1, 1, 0.8))
+			"wisp":
+				_air.draw_circle(p, 9.0, Color(0.55, 0.3, 0.95, 0.25))
+				_air.draw_circle(p, 4.0, Color(0.8, 0.6, 1.0, 0.9))
+			"flare":
+				var w: float = maxf(0.001, float(hz["w"]))
+				if t < w:
+					_air.draw_circle(p, 3.0 + 10.0 * (t / w), Color(1.0, 0.95, 0.6, 0.4 + 0.5 * (t / w)))
+				else:
+					var after: float = clampf((t - w) / 0.3, 0.0, 1.0)
+					_air.draw_circle(p, float(hz["r"]) * (0.6 + 0.4 * after), Color(1.0, 1.0, 0.85, 0.7 * (1.0 - after)))

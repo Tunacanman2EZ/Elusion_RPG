@@ -299,6 +299,14 @@ const PARTY_CROWD := [1.0, 1.0, 1.5, 2.0, 2.5]
 const PARTY_HEALTH := [1.0, 1.0, 1.2, 1.4, 1.6]
 const PARTY_BOSS := [1.0, 1.0, 1.75, 2.5, 3.25]
 const OUT_ALPHA := 0.4
+# A ROOM'S WEATHER (0.127.0, room_lands()): from this floor (an index) a
+# second land may mix in, this often and this much more each floor down;
+# always in the Deep.
+const MIX_FROM := 2
+const MIX_CHANCE := 0.25
+const MIX_STEP := 0.1
+const ALL_LANDS := [Element.Type.FIRE, Element.Type.ICE, Element.Type.WATER, Element.Type.WIND,
+	Element.Type.LIGHT, Element.Type.EARTH, Element.Type.DARK]
 const LINE_KINDS := ["", "upgrade", "gold", "elite", "shrine", "treasure", "challenge", "rest", "impossible",
 	"keeper", "down", "begin"]
 const WASH_Z := -9
@@ -365,6 +373,7 @@ var my_door: int = 0
 var _door_kinds: Array = ["", ""]
 var _pick_wait: float = 0.0
 var _line: Array = []
+var room_lands: Array = []
 var _keeper_call: float = 0.0
 var _wash: ColorRect = null
 var monsters: Array = []
@@ -635,6 +644,7 @@ func _arrive(kind: String) -> void:
 	_clear_monsters()
 	_dress()
 	_wash_floor()
+	room_lands = lands_for_room()
 	_dress_land()
 	if room_kind == "rest":
 		_light_fire()
@@ -1076,6 +1086,8 @@ func _begin_hazards() -> void:
 	"""THE KEEPER'S HAZARDS (0.124.0): from the second room of a floor."""
 	if room >= 2 and room_kind != "rest" and room_kind != "keeper":
 		_lands_node().call("begin", hazard_keepers(), floor_index, room_kind == "impossible")
+		# THE FLOOR ITSELF (0.127.0): the room's lands' own hazards.
+		_lands_node().call("begin_env", room_lands, floor_index, room_kind == "impossible")
 
 
 func _step_keeper(delta: float) -> void:
@@ -1131,11 +1143,35 @@ func _lands_node() -> Node2D:
 	return _lands
 
 
+func floor_land() -> int:
+	"""The floor's own land - the Crypt's is its keeper's fire."""
+	var land: int = int(floor_info().get("land", Element.Type.NONE))
+	return land if land != Element.Type.NONE else Element.Type.FIRE
+
+
+func lands_for_room() -> Array:
+	"""A ROOM'S WEATHER (0.127.0): the floor's land, and from MIX_FROM
+	sometimes a second (always in the Deep) - its weather and its hazards
+	both. A game following takes the leader's (its line's last number)."""
+	var lands: Array = [floor_land()]
+	var mixed: int = -1
+	if following() and _line.size() >= 13:
+		mixed = int(_line[12])
+	elif deep_round() > 0 or (floor_index >= MIX_FROM
+			and _rng.randf() < MIX_CHANCE + MIX_STEP * float(floor_index - MIX_FROM)):
+		var others: Array = ALL_LANDS.filter(func(l: int) -> bool: return l != lands[0])
+		mixed = int(others[_rng.randi_range(0, others.size() - 1)])
+	if mixed >= 0 and mixed != int(lands[0]):
+		lands.append(mixed)
+	return lands
+
+
 func _dress_land() -> void:
 	"""The floor's weather (the Crypt's is its keeper's embers) and how
 	strongly the orbs carry their element here."""
-	var land: int = int(floor_info().get("land", Element.Type.NONE))
-	_lands_node().call("set_weather", land if land != Element.Type.NONE else Element.Type.FIRE, room_rect)
+	if room_lands.is_empty():
+		room_lands = lands_for_room()
+	_lands_node().call("set_weathers", room_lands, room_rect)
 	var zone: BulletZone = BulletZone.find(self)
 	if zone != null:
 		zone.element_effects = true
@@ -1538,7 +1574,7 @@ static func kind_of(code: int) -> String:
 func line() -> Array:
 	"""(Leader.) The run as the party follows it: [key, state, floor, room,
 	kind, left door, right door, doors open, travels, countdown tenths,
-	players, gold] - whole numbers."""
+	players, gold, the room's second land or -1 (0.127.0)] - whole numbers."""
 	var left: String = str(doors[0].get("reward")) if doors.size() > 0 and is_instance_valid(doors[0]) else ""
 	var right: String = str(doors[1].get("reward")) if doors.size() > 1 and is_instance_valid(doors[1]) else ""
 	# ON THE WAY, WHERE TO: a game following arrives where this one will,
@@ -1550,7 +1586,8 @@ func line() -> Array:
 		else:
 			at = [floor_index, room + 1, "keeper" if room + 1 > ROOMS else _travel_to]
 	return [run_key, state, int(at[0]), int(at[1]), code_of(str(at[2])), code_of(left), code_of(right),
-		1 if _doors_open() else 0, travel_seq, roundi(countdown_left * 10.0), players, gold]
+		1 if _doors_open() else 0, travel_seq, roundi(countdown_left * 10.0), players, gold,
+		int(room_lands[1]) if room_lands.size() > 1 else -1]
 
 
 func my_line() -> Array:
