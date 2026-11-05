@@ -43,6 +43,28 @@
 # on a ladder) and calls its floor's monsters and elites every
 # KEEPER_CALL_SECONDS (_step_keeper()), who fall when it does.
 #
+# STEP 1 OF THE THIRD PLAN (0.124.0, the commit folder's DESCENT_PLAN_3.txt) -
+# the owner: "double bosses impossible rooms we need effects added also lets
+# make those elements shine", "everyone has to die at some point", and
+# "fields should use the bosses elemental hazards in this minigame".
+#   - THE LANDS SHINE (descentlands.gd, _lands): every fight room from the
+#     second of a floor throws its keeper's own volleys and stalagmites at
+#     you (the Light Keeper's PRISM spokes are the lasers), each floor has
+#     its weather, its line under the banner ("felt"), a stronger wash, and
+#     the orbs' effects grow stronger each floor.
+#   - DOUBLE KEEPERS (keepers_for()): from floor 4 the keeper comes with the
+#     last floor's keeper beside it, an ECHO (KEEPER_ECHO_HEALTH of its
+#     health, its hits held to its own floor's ladder by ECHO_HIT); on floor
+#     7 and in the Deep, another drawn from the rest.
+#   - IMPOSSIBLE ROOMS: from floor IMPOSSIBLE_FROM + 1 a door may promise one
+#     (IMPOSSIBLE_CHANCE, once a floor): IMPOSSIBLE_PACK packs at once, an
+#     elite in every wave, a keeper of another land in the middle, the
+#     hazards twice as often - for an epic or better pick and
+#     IMPOSSIBLE_GOLD rooms' gold.
+#   - THE DEEP: past the Dark Keeper the run goes on - the seven floors
+#     again (floor_info() names them "the Deep"), every number up each time
+#     round (deep_round()), until you fall. The best run is the deepest.
+#
 # STEP 1 OF THE SECOND PLAN (0.115.0) - the owner: "feels pretty boring and
 # chars die fast". A WARD (descentboons.gd) over your health, full at the
 # start and again at every room cleared; the crypt's monsters hit for half on
@@ -98,6 +120,7 @@ extends Node
 
 const Boons := preload("res://src/world/descent/descentboons.gd")
 const Field := preload("res://src/world/field.gd")
+const LandsScript := preload("res://src/world/descent/descentlands.gd")
 const STORY_KEY := "#warrior"
 const STORY := [
 	"The warrior was battle-tested his whole life. Monsters were always a threat.",
@@ -117,31 +140,32 @@ const ROOMS := 4
 # (and its keeper's), "taken" every hit on you in its rooms, "keeper_taken"
 # in its keeper's room (taken_for()).
 const FLOORS := [
-	{"name": "the Crypt", "land": Element.Type.NONE, "monsters": ["skeleton", "skeletonsoldier"],
+	{"name": "the Crypt", "felt": "The fire burns you", "land": Element.Type.NONE, "monsters": ["skeleton", "skeletonsoldier"],
 		"elites": ["skeletonelite"], "keeper": "fireboss", "keeper_name": "The Fire Keeper",
 		"health": 1.0, "taken": 0.5, "keeper_taken": 1.1},
-	{"name": "the Frozen Halls", "land": Element.Type.ICE, "monsters": ["icesprite", "iceslime", "icebushmage"],
+	{"name": "the Frozen Halls", "felt": "The cold freezes you", "land": Element.Type.ICE, "monsters": ["icesprite", "iceslime", "icebushmage"],
 		"elites": ["icefiresprite", "icebushsniper"], "keeper": "iceboss", "keeper_name": "The Ice Keeper",
 		"health": 1.6, "taken": 0.65, "keeper_taken": 2.9},
-	{"name": "the Drowned Halls", "land": Element.Type.WATER, "monsters": ["watersprite", "waterslime", "waterbushmage"],
+	{"name": "the Drowned Halls", "felt": "Soaked, your defence is halved", "land": Element.Type.WATER, "monsters": ["watersprite", "waterslime", "waterbushmage"],
 		"elites": ["waterfiresprite", "waterbushsniper"], "keeper": "waterboss", "keeper_name": "The Water Keeper",
 		"health": 2.6, "taken": 0.8, "keeper_taken": 4.1},
-	{"name": "the Windworn Halls", "land": Element.Type.WIND, "monsters": ["windsprite", "windslime", "windbushmage"],
+	{"name": "the Windworn Halls", "felt": "The wind throws you about", "land": Element.Type.WIND, "monsters": ["windsprite", "windslime", "windbushmage"],
 		"elites": ["windfiresprite", "windbushsniper"], "keeper": "windboss", "keeper_name": "The Wind Keeper",
 		"health": 4.0, "taken": 0.9, "keeper_taken": 6.5},
-	{"name": "the Shining Vault", "land": Element.Type.LIGHT, "monsters": ["lightsprite", "lightslime", "lightbushmage"],
+	{"name": "the Shining Vault", "felt": "The light blinds you", "land": Element.Type.LIGHT, "monsters": ["lightsprite", "lightslime", "lightbushmage"],
 		"elites": ["lightfiresprite", "lightbushsniper"], "keeper": "lightboss", "keeper_name": "The Light Keeper",
 		"health": 5.5, "taken": 1.0, "keeper_taken": 2.5},
-	{"name": "the Deep Roots", "land": Element.Type.EARTH, "monsters": ["earthsprite", "earthslime", "bushmage"],
+	{"name": "the Deep Roots", "felt": "The earth roots you", "land": Element.Type.EARTH, "monsters": ["earthsprite", "earthslime", "bushmage"],
 		"elites": ["earthfiresprite", "earthbushsniper"], "keeper": "earthboss", "keeper_name": "The Earth Keeper",
 		"health": 3.4, "taken": 1.1, "keeper_taken": 2.1},
-	{"name": "the Dark Below", "land": Element.Type.DARK, "monsters": ["darksprite", "darkslime", "darkbushmage"],
+	{"name": "the Dark Below", "felt": "The dark doubles every hit", "land": Element.Type.DARK, "monsters": ["darksprite", "darkslime", "darkbushmage"],
 		"elites": ["darkfiresprite", "darkbushsniper"], "keeper": "bossenemy", "keeper_name": "The Dark Keeper",
 		"health": 2.4, "taken": 1.2, "keeper_taken": 0.7},
 ]
 # What a door can promise, and how often.
-const KINDS := ["upgrade", "gold", "elite", "shrine", "treasure", "challenge", "rest"]
-const KIND_WEIGHTS := [30, 22, 18, 8, 8, 8, 6]
+const KINDS := ["upgrade", "gold", "elite", "shrine", "treasure", "challenge", "rest", "impossible"]
+# An Impossible room is never rolled with the rest: _open_doors() offers one.
+const KIND_WEIGHTS := [30, 22, 18, 8, 8, 8, 6, 0]
 # A Treasure pays this many rooms' gold for half a pack; a Rest's ward is this
 # much over a full one; a Challenge gives CHALLENGE_BASE seconds and
 # CHALLENGE_EACH more a monster.
@@ -232,7 +256,27 @@ const KEEPER_CALL_SECONDS := 18.0
 const KEEPER_CALL_SIZE := 2
 const KEEPER_ADDS_MOST := 12
 # A floor below the Crypt is washed in its land's colour, this strong, added.
-const FLOOR_WASH := 0.1
+const FLOOR_WASH := 0.16
+# DOUBLE KEEPERS (0.124.0, keepers_for()): from this floor (an index) the
+# keeper brings an echo; an echo's health and how hard it hits, against its
+# own floor's keeper_taken.
+const DOUBLE_FROM := 3
+const KEEPER_ECHO_HEALTH := 0.6
+const ECHO_HIT := 0.6
+# IMPOSSIBLE ROOMS (0.124.0): from this floor (an index), this often a pair of
+# doors, once a floor; how many packs, the gold, the keeper's health.
+const IMPOSSIBLE_FROM := 2
+const IMPOSSIBLE_CHANCE := 0.2
+const IMPOSSIBLE_PACK := 3
+const IMPOSSIBLE_GOLD := 5
+const IMPOSSIBLE_KEEPER_HEALTH := 0.6
+const IMPOSSIBLE_WAVES := 8
+# THE DEEP (0.124.0): each time round, this much more health, harder hits,
+# more elites a room and a bigger pack.
+const DEEP_HEALTH_STEP := 0.6
+const DEEP_TAKEN_STEP := 0.25
+const DEEP_ELITES := 2
+const DEEP_PACK := 4
 const WASH_Z := -9
 const WAVE_SECONDS := 9.0
 const MARK_SECONDS := 0.7
@@ -284,6 +328,10 @@ var best: String = ""
 var last_result: String = ""
 var doors: Array = []
 var _keeper: Node2D = null
+var _keepers: Array = []
+var _lands: Node2D = null
+var _impossible_floor: int = -1
+var deepest: int = -1
 var _keeper_call: float = 0.0
 var _wash: ColorRect = null
 var monsters: Array = []
@@ -360,7 +408,50 @@ func _player() -> Node2D:
 
 
 func floor_info() -> Dictionary:
-	return FLOORS[clampi(floor_index, 0, FLOORS.size() - 1)]
+	"""This floor's row of FLOORS - in the Deep, the seven again, named so."""
+	var info: Dictionary = FLOORS[maxi(0, floor_index) % FLOORS.size()]
+	if deep_round() == 0:
+		return info
+	var deep: Dictionary = info.duplicate()
+	deep["name"] = "the Deep %d: %s" % [deep_round(), str(info["name"])]
+	return deep
+
+
+func deep_round() -> int:
+	"""0 on the seven floors; 1 the first time round the Deep, and on."""
+	return floori(float(maxi(0, floor_index)) / float(FLOORS.size()))
+
+
+func keepers_for() -> Array:
+	"""[keeper id, health, hit scale] for each keeper of this floor's keeper
+	room: its own, and from DOUBLE_FROM an echo - the last floor's keeper
+	before floor 7, then one of the others drawn at random."""
+	var info: Dictionary = floor_info()
+	var made: Array = [[str(info["keeper"]), float(info["health"]) * KEEPER_HEALTH * deep_health(), 1.0]]
+	if floor_index < DOUBLE_FROM:
+		return made
+	var other: Dictionary
+	if floor_index < FLOORS.size() - 1:
+		other = FLOORS[floor_index - 1]
+	else:
+		var rest: Array = FLOORS.filter(func(f: Dictionary) -> bool: return str(f["keeper"]) != str(info["keeper"]))
+		other = rest[_rng.randi_range(0, rest.size() - 1)]
+	made.append([str(other["keeper"]), float(other["health"]) * KEEPER_ECHO_HEALTH * deep_health(),
+		float(other["keeper_taken"]) / float(info["keeper_taken"]) * ECHO_HIT])
+	return made
+
+
+func deep_health() -> float:
+	return 1.0 + DEEP_HEALTH_STEP * float(deep_round())
+
+
+func hazard_keepers() -> Array:
+	"""Whose hazards this room throws (descentlands.gd): the floor's keeper -
+	in the Deep, another land's with it."""
+	var ids: Array = [str(floor_info()["keeper"])]
+	if deep_round() > 0:
+		ids.append(str(FLOORS[(floor_index + 3) % FLOORS.size()]["keeper"]))
+	return ids
 
 
 func taken_for(kind: String) -> float:
@@ -372,9 +463,10 @@ func taken_for(kind: String) -> float:
 	72 of them: a warrior's health never moved. The softer hits are for the
 	crypt's packs; the keeper is the floor's test - since the seven floors,
 	at its floor's "keeper_taken", which lifts the weak ones to the ladder."""
+	var deeper: float = 1.0 + DEEP_TAKEN_STEP * float(deep_round())
 	if kind == "keeper":
-		return float(floor_info().get("keeper_taken", 1.0))
-	return float(floor_info().get("taken", 1.0))
+		return float(floor_info().get("keeper_taken", 1.0)) * deeper
+	return float(floor_info().get("taken", 1.0)) * deeper
 
 
 func running() -> bool:
@@ -389,6 +481,7 @@ func start_run() -> void:
 	Boons.clear()
 	Boons.active = true
 	floor_index = 0
+	_impossible_floor = -1
 	room = 0
 	gold = 0
 	slain = 0
@@ -469,6 +562,7 @@ func _arrive(kind: String) -> void:
 	_clear_monsters()
 	_dress()
 	_wash_floor()
+	_dress_land()
 	if room_kind == "rest":
 		_light_fire()
 	var player: Node2D = _player()
@@ -493,7 +587,9 @@ func _arrive(kind: String) -> void:
 
 func room_title() -> String:
 	if room_kind == "keeper":
-		return str(floor_info()["keeper_name"])
+		return str(floor_info()["keeper_name"]) + (" and an echo" if floor_index >= DOUBLE_FROM else "")
+	if room_kind == "impossible":
+		return "Impossible"
 	return "Floor %d - room %d" % [floor_index + 1, room]
 
 
@@ -505,6 +601,8 @@ func _room_line() -> String:
 			return "Gold when it is clear"
 		"keeper":
 			return "The keeper of %s" % str(floor_info()["name"])
+		"impossible":
+			return "Everything at once - an epic pick if you live"
 		"shrine":
 			return "A shrine: a stronger upgrade - and the floor hits harder after"
 		"treasure":
@@ -513,6 +611,9 @@ func _room_line() -> String:
 			return "Clear it in %d seconds for a rare upgrade" % roundi(challenge_seconds())
 		"rest":
 			return "A rest: your ward full and half again for the next room"
+	# THE FLOOR'S OWN LINE as you come down to it (0.124.0).
+	if room == 1:
+		return "%s - an upgrade when it is clear" % str(floor_info().get("felt", ""))
 	return "An upgrade when it is clear"
 
 
@@ -539,6 +640,8 @@ func _process(delta: float) -> void:
 					_spawn_pack()
 			else:
 				_step_waves(delta)
+				if _lands != null and is_instance_valid(_lands):
+					_lands.call("step", delta)
 				if room_kind == "keeper":
 					_step_keeper(delta)
 				if room_kind == "challenge":
@@ -580,6 +683,9 @@ func living() -> int:
 
 func _room_cleared() -> void:
 	var info: Dictionary = floor_info()
+	# The hazards stop with the fight.
+	if _lands != null and is_instance_valid(_lands):
+		_lands.call("end")
 	# THE WARD FULL AGAIN for the next room (0.115.0).
 	fill_ward()
 	match room_kind:
@@ -591,12 +697,17 @@ func _room_cleared() -> void:
 			_offer()
 		"keeper":
 			_pay(GOLD_BASE * (floor_index + 1) * KEEPER_GOLD)
-			if floor_index >= FLOORS.size() - 1:
-				_end_run(true)
-				return
+			# NO BOTTOM (0.124.0): past the Dark Keeper, the Deep.
 			if hud != null:
-				hud.call("announce", "%s falls!" % str(info["keeper_name"]), "Pick one - then down to floor %d" % (floor_index + 2))
+				var next_line: String = "Pick one - then down into the Deep" if floor_index + 1 >= FLOORS.size() \
+					and deep_round() == 0 else "Pick one - then down to floor %d" % (floor_index + 2)
+				hud.call("announce", "%s falls!" % str(info["keeper_name"]), next_line)
 			_offer("rare")
+		"impossible":
+			_pay(GOLD_BASE * (floor_index + 1) * IMPOSSIBLE_GOLD)
+			if hud != null:
+				hud.call("announce", "You lived!", "An epic pick")
+			_offer("epic")
 		"shrine":
 			Boons.shrine_taken *= 1.0 + Boons.SHRINE_CURSE
 			if hud != null:
@@ -685,7 +796,14 @@ func _open_doors() -> void:
 		_set_doors(true, "keeper", "keeper")
 	else:
 		var first: String = _roll_kind("")
-		_set_doors(true, first, _roll_kind(first))
+		var second: String = _roll_kind(first)
+		# AN IMPOSSIBLE ROOM (0.124.0): from IMPOSSIBLE_FROM, sometimes, once
+		# a floor - the second door.
+		if floor_index >= IMPOSSIBLE_FROM and _impossible_floor != floor_index \
+				and _rng.randf() < IMPOSSIBLE_CHANCE:
+			second = "impossible"
+			_impossible_floor = floor_index
+		_set_doors(true, first, second)
 
 
 func _roll_kind(not_this: String) -> String:
@@ -725,7 +843,9 @@ func _on_walked_in(door: Node2D) -> void:
 # =============================================================================
 
 func pack_size() -> int:
-	var size: int = mini(PACK_MOST, PACK_FIRST + room + PACK_FLOOR * floor_index)
+	var size: int = mini(PACK_MOST + DEEP_PACK * deep_round(), PACK_FIRST + room + PACK_FLOOR * floor_index)
+	if room_kind == "impossible":
+		return size * IMPOSSIBLE_PACK
 	# A Treasure is lightly guarded: half (rounded up).
 	return ceili(size / 2.0) if room_kind == "treasure" else size
 
@@ -745,10 +865,22 @@ func elites_for(kind: String) -> int:
 	"""How many elites a room of this kind brings on this floor (0.123.0)."""
 	if kind in ["keeper", "treasure", "rest"]:
 		return 0
-	var count: int = ELITES_FIRST + floori(float(floor_index) / float(ELITES_FLOORS))
+	var count: int = ELITES_FIRST + floori(float(mini(floor_index, FLOORS.size() - 1)) / float(ELITES_FLOORS)) \
+		+ DEEP_ELITES * deep_round()
 	if kind == "elite":
 		count += ELITE_ROOM_MORE
+	if kind == "impossible":
+		# One in every wave, at least.
+		count = maxi(count, waves_in(pack_size()))
 	return count
+
+
+func waves_in(size: int) -> int:
+	"""How many waves this room's pack of `size` comes in: an Impossible
+	room's in up to IMPOSSIBLE_WAVES, the rest waves_for()."""
+	if room_kind == "impossible":
+		return clampi(ceili(float(size) / float(WAVE_MOST)), 1, IMPOSSIBLE_WAVES)
+	return waves_for(size)
 
 
 func keeper_call_elites() -> int:
@@ -758,21 +890,30 @@ func keeper_call_elites() -> int:
 
 
 func health_scale() -> float:
-	return float(floor_info()["health"]) * (1.0 + ROOM_HEALTH_STEP * (room - 1))
+	return float(floor_info()["health"]) * (1.0 + ROOM_HEALTH_STEP * (room - 1)) * deep_health()
 
 
 func _spawn_pack() -> void:
 	var info: Dictionary = floor_info()
 	if room_kind == "keeper":
-		_keeper = _bring(str(info["keeper"]), _spot(Vector2(room_rect.get_center().x, room_rect.position.y + 80.0)),
-			float(info["health"]) * KEEPER_HEALTH)
+		# DOUBLE KEEPERS (0.124.0): its own in the middle, an echo beside it.
+		_keepers = []
+		var made: Array = keepers_for()
+		for k in made.size():
+			var entry: Array = made[k]
+			var off: float = 0.0 if made.size() == 1 else (-110.0 if k == 0 else 110.0)
+			var boss: Node2D = _bring(str(entry[0]), _spot(Vector2(room_rect.get_center().x + off, room_rect.position.y + 80.0)),
+				float(entry[1]), float(entry[2]))
+			if boss != null:
+				_keepers.append(boss)
+		_keeper = _keepers[0] if not _keepers.is_empty() else null
 		_keeper_call = KEEPER_CALL_FIRST
 		return
 	# IN WAVES (0.115.0): the pack split as evenly as it goes, the elite in
 	# the last, and the first wave marked now.
 	var kinds: Array = info["monsters"]
 	var size: int = pack_size()
-	var count: int = waves_for(size)
+	var count: int = waves_in(size)
 	_waves = []
 	challenge_left = challenge_seconds()
 	for w in count:
@@ -785,7 +926,18 @@ func _spawn_pack() -> void:
 	for e in elites_for(room_kind):
 		(_waves[count - 1 - e % count] as Array).append([str(elites[_rng.randi_range(0, elites.size() - 1)]),
 			health_scale() * ELITE_HEALTH, true])
+	# AN IMPOSSIBLE ROOM'S KEEPER (0.124.0): another land's, in the middle, at
+	# IMPOSSIBLE_KEEPER_HEALTH, its hits held to its own floor's ladder.
+	if room_kind == "impossible":
+		var rest: Array = FLOORS.filter(func(f: Dictionary) -> bool: return str(f["keeper"]) != str(info["keeper"]))
+		var other: Dictionary = rest[_rng.randi_range(0, rest.size() - 1)]
+		_bring(str(other["keeper"]), _spot(room_rect.get_center()),
+			float(other["health"]) * IMPOSSIBLE_KEEPER_HEALTH * deep_health(),
+			float(other["keeper_taken"]) / float(info["taken"]) * ECHO_HIT)
 	_next_wave()
+	# THE KEEPER'S HAZARDS (0.124.0): from the second room of a floor.
+	if room >= 2 and room_kind != "rest":
+		_lands_node().call("begin", hazard_keepers(), floor_index, room_kind == "impossible")
 
 
 func _step_keeper(delta: float) -> void:
@@ -793,20 +945,19 @@ func _step_keeper(delta: float) -> void:
 	at the room's edges like a wave, every KEEPER_CALL_SECONDS while it
 	stands and fewer than KEEPER_ADDS_MOST do. When it falls, they fall
 	with it and the room is clear."""
-	if _keeper == null or not is_instance_valid(_keeper) or int(_keeper.get("hp")) <= 0 \
-			or bool(_keeper.get("_death_resolved")):
+	if not keepers_standing():
 		if not _coming.is_empty():
 			_coming = []
 			_paint_marks()
 		for m in monsters:
-			if is_instance_valid(m) and m != _keeper and not (m as Node).is_queued_for_deletion():
+			if is_instance_valid(m) and not _keepers.has(m) and not (m as Node).is_queued_for_deletion():
 				(m as Node).queue_free()
 		return
 	_keeper_call -= delta
 	if _keeper_call > 0.0:
 		return
 	_keeper_call = KEEPER_CALL_SECONDS
-	if living() - 1 + _coming.size() >= KEEPER_ADDS_MOST:
+	if living() - _keepers.size() + _coming.size() >= KEEPER_ADDS_MOST:
 		return
 	var info: Dictionary = floor_info()
 	var kinds: Array = info["monsters"]
@@ -819,6 +970,38 @@ func _step_keeper(delta: float) -> void:
 	_paint_marks()
 	if hud != null:
 		hud.call("toast", "%s calls for help!" % str(info["keeper_name"]))
+
+
+func keepers_standing() -> bool:
+	"""Any of this room's keepers still up (DOUBLE KEEPERS: the room is theirs
+	until the last falls)."""
+	for boss in _keepers:
+		if is_instance_valid(boss) and int(boss.get("hp")) > 0 and not bool(boss.get("_death_resolved")):
+			return true
+	return false
+
+
+func _lands_node() -> Node2D:
+	"""The lands' hazards and weather (descentlands.gd), over the floor."""
+	if _lands == null or not is_instance_valid(_lands):
+		_lands = LandsScript.new()
+		_lands.name = "descentlands"
+		_lands.z_index = -1
+		_lands.set("run", self)
+		if get_parent() != null:
+			get_parent().add_child(_lands)
+	return _lands
+
+
+func _dress_land() -> void:
+	"""The floor's weather (the Crypt's is its keeper's embers) and how
+	strongly the orbs carry their element here."""
+	var land: int = int(floor_info().get("land", Element.Type.NONE))
+	_lands_node().call("set_weather", land if land != Element.Type.NONE else Element.Type.FIRE, room_rect)
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		zone.element_effects = true
+		zone.effect_strength = LandsScript.effect_for(floor_index)
 
 
 func _wash_floor() -> void:
@@ -953,7 +1136,7 @@ func _spot(prefer: Vector2 = Vector2.INF) -> Vector2:
 	return area.position + Vector2(_rng.randf() * area.size.x, 0.0)
 
 
-func _bring(enemy_id: String, at: Vector2, health: float) -> Node2D:
+func _bring(enemy_id: String, at: Vector2, health: float, hits: float = 1.0) -> Node2D:
 	var path: String = "res://scene/enemy/%s.tscn" % enemy_id
 	var packed: PackedScene = load(path) as PackedScene if ResourceLoader.exists(path) else null
 	var container: Node = get_parent().get_node_or_null("ysortworld/enemies") if get_parent() != null else null
@@ -961,6 +1144,10 @@ func _bring(enemy_id: String, at: Vector2, health: float) -> Node2D:
 		return null
 	var monster := packed.instantiate() as Node2D
 	monster.set_meta(MARK, true)
+	# ITS OWN HITS, SCALED (0.124.0: an echo keeper's, an Impossible room's):
+	# its own copy of its numbers, before _ready() reads them.
+	if not is_equal_approx(hits, 1.0):
+		_scale_hits(monster, hits)
 	if "notice_range" in monster:
 		monster.set("notice_range", NOTICE)
 	if "leash_range" in monster:
@@ -981,6 +1168,18 @@ func _bring(enemy_id: String, at: Vector2, health: float) -> Node2D:
 	monster.tree_exiting.connect(_on_monster_gone.bind(monster))
 	monsters.append(monster)
 	return monster
+
+
+func _scale_hits(monster: Node, hits: float) -> void:
+	var data: Variant = monster.get("enemy_data")
+	if data is EnemyData:
+		var mine: EnemyData = (data as EnemyData).duplicate()
+		if mine.projectile_damage > 0:
+			mine.projectile_damage = maxi(1, roundi(mine.projectile_damage * hits))
+		monster.set("enemy_data", mine)
+	for stat in ["attack_power", "melee_power"]:
+		if stat in monster:
+			monster.set(stat, maxi(1, roundi(float(monster.get(stat)) * hits)))
 
 
 func _on_monster_gone(monster: Node) -> void:
@@ -1004,6 +1203,9 @@ func _clear_monsters() -> void:
 			(m as Node).tree_exiting.disconnect(_on_monster_gone)
 			(m as Node).queue_free()
 	monsters.clear()
+	_keepers = []
+	if _lands != null and is_instance_valid(_lands):
+		_lands.call("end")
 	# And what they fired (0.119.2): a room's end, a fall or the bottom.
 	BulletZone.clear_enemy_shots(self)
 	_waves = []
@@ -1146,11 +1348,17 @@ func _end_run(won: bool) -> void:
 	var words: String = ("You reached the bottom!" if won else "You fell on floor %d, room %d" % [floor_index + 1, room]) \
 		+ "  -  %d slain  -  %d upgrades  -  %d gold" % [slain, picks, gold]
 	last_result = words
-	if won or best == "":
+	# THE DEEPEST IS THE BEST (0.124.0: there is no bottom now).
+	var depth: int = floor_index * 10 + room
+	if won or best == "" or depth > deepest:
 		best = words
+		deepest = maxi(deepest, depth)
 	_clear_monsters()
 	Boons.clear()
 	_drop_ward_ring()
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		zone.effect_strength = Field.FIELD_EFFECTS
 	offers = []
 	state = State.WAITING
 	room = 0

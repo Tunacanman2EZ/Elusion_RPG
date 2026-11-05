@@ -26,8 +26,10 @@ const ICONS := {
 	"challenge": "res://art/pack/icons/agilityiconcharacterstats.png",
 	"rest": "res://art/pack/icons/defenceiconcharacterstats.png",
 }
-# The rim: gold, the keeper's red, a shrine's violet, a challenge's blue.
-const RIMS := {"keeper": Color(1.0, 0.45, 0.3), "shrine": Color(0.82, 0.5, 1.0), "challenge": Color(0.45, 0.75, 1.0)}
+# The rim: gold, the keeper's red, a shrine's violet, a challenge's blue, an
+# Impossible room's blood red (0.124.0).
+const RIMS := {"keeper": Color(1.0, 0.45, 0.3), "shrine": Color(0.82, 0.5, 1.0), "challenge": Color(0.45, 0.75, 1.0),
+	"impossible": Color(1.0, 0.08, 0.12)}
 const SKULL := Rect2(123, 91, 9, 9)
 const GOLD := Color(1.0, 0.86, 0.45)
 const RED := Color(1.0, 0.45, 0.3)
@@ -181,7 +183,7 @@ func icon_for(kind: String) -> Texture2D:
 	"""The medallion's picture: the pack's icon or coin, the crypt's skull for
 	an elite or the keeper - none where a clone has no pack (it draws the ring
 	alone)."""
-	if kind == "elite" or kind == "keeper":
+	if kind == "elite" or kind == "keeper" or kind == "impossible":
 		var skull := AtlasTexture.new()
 		skull.atlas = load(WALLS_ART) as Texture2D
 		skull.region = SKULL

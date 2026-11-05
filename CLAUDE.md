@@ -4032,6 +4032,70 @@ Halls, the Deep Roots, the Dark Keeper calling help).
 `_test_the_descent_goes_deeper()` (testrunner_10); the older Descent checks
 carry the new numbers (`_descent_kill_all()` drops the waves still to come).
 
+### The lands shine: hazards, double keepers, Impossible rooms, the Deep (0.124.0)
+
+The owner: "double bosses impossible rooms we need effects added also lets
+make those elements shine here to", "everyone has to die at some point",
+"it has to be challenging we can add lasers", "fields should use the bosses
+elemental hazards in this minigame so the wind pushing the player tunnel
+vision etc", "basically prism attack is the same concept". Step 1 of the
+commit folder's DESCENT_PLAN_3.txt (step 2 the party and every class's
+bonuses, step 3 the horde). Pictured: descent_step1_0124.png.
+
+- **The keeper's hazards in its rooms** (src/world/descent/descentlands.gd,
+  the run's `_lands`, a Node2D "descentlands" beside the run, z -1): from
+  the second room of a floor (not a Rest, not the keeper's own) the
+  floor's keeper, HIDDEN - a CASTER, its own scene (`_make_caster()`): not
+  drawn, out of "enemies", "bosses" and "unpushable", process and physics
+  off, timers stopped, no collision, `stress_copy` and `descent_caster`
+  metas, never in `monsters` - throws turn about its signature volley
+  (`fire_volley()`, its `_pick_volley(phase)`) and its stalagmite shapes
+  (`_cast_stalagmites_from_cast()` with `player` set to you; only at a
+  CharacterBody2D) every `gap()` (`GAP_FIRST` 7.5 less `GAP_STEP` 0.6 a
+  floor, never under `GAP_LEAST` 3), the first `FIRST` (2.5) after the pack.
+  A volley is marked first (`_warns`, a ring of its element's colour
+  closing over `WARN` 0.7 s) where it starts - `_edge_spot()` for a fan or a
+  wall of orbs, open floor `RING_NEAR`-`RING_FAR` from you for a ring
+  (`RINGS`: prism, vortex) - and aimed again as it fires. The kits'
+  phase is `phase_for()`: 0 on floors 1-3, 1 on 4-6, 2 from 7. The PRISM
+  is the laser (the Shining Vault; the Light and Dark Keepers). `end()`
+  at every room cleared and in `_clear_monsters()`.
+- **The orbs' effects stronger**: the bullet zone's `effect_strength` is
+  `effect_for()` (0.7, +0.05 a floor, 1 at most; the fields' 0.5,
+  `Field.FIELD_EFFECTS`, put back at the run's end) - `_dress_land()`.
+- **Weather** (`set_weather()`, `weather_for()`): one CPUParticles2D
+  "weather" over `room_rect`, added, a speck drawn in code (`_speck()`:
+  dot, ring, streak) - snow, bubbles, gusts, motes, grit, embers (the
+  Crypt, its keeper's), wisps. `FLOOR_WASH` 0.16, and the floor's `"felt"`
+  line in room 1's banner.
+- **Double keepers** (`keepers_for()`): from floor 4 (`DOUBLE_FROM` 3) the
+  keeper and an ECHO - the last floor's keeper before floor 7, then one of
+  the others at random - at `KEEPER_ECHO_HEALTH` (0.6) of its floor's
+  health, its hits `_scale_hits()` to its own floor's `keeper_taken` over
+  this room's, times `ECHO_HIT` (0.6): its OWN copy of its EnemyData
+  (duplicated before `add_child()`) and attack/melee power - the shared
+  .tres is never touched. `_keepers`; `keepers_standing()` holds the room
+  and the calls until the last falls; the title says "and an echo".
+- **Impossible rooms**: "impossible" in `KINDS` at weight 0; from floor 3
+  (`IMPOSSIBLE_FROM` 2) `_open_doors()` makes the second door one at
+  `IMPOSSIBLE_CHANCE` (0.2), once a floor (`_impossible_floor`), its rim
+  blood red, the skull. Inside: `IMPOSSIBLE_PACK` (3) packs in up to
+  `IMPOSSIBLE_WAVES` (8) waves (`waves_in()`), an elite in every wave, a
+  keeper of another land in the middle (0.6 health, its hits held like an
+  echo's), hazards at phase 2 twice as often. Lived: `IMPOSSIBLE_GOLD` (5)
+  rooms' gold and an epic or better pick.
+- **The Deep**: no bottom. `floor_info()` takes FLOORS round again
+  (`deep_round()`), named "the Deep N: ..."; each round health x(1 +
+  `DEEP_HEALTH_STEP` 0.6), hits x(1 + `DEEP_TAKEN_STEP` 0.25), elites +
+  `DEEP_ELITES` (2), the pack's most + `DEEP_PACK` (4), every room two lands'
+  hazards (`hazard_keepers()`). A run ends only in a fall; `best` is the
+  deepest (`deepest`, floor x 10 + room).
+- **Measured** (container, headless, a 180-health warrior kept alive):
+  physics 1-2 ms a tick in a hazard room, 1.5-1.8 ms (worst 6.3) in an
+  Impossible room on floor 7 and in the Deep.
+
+`_test_the_lands_shine_in_the_descent()` (testrunner_10).
+
 ### The island is wiped: the volcano's heart (0.122.0)
 
 The owner, of 0.121.0's rain: "amaing we need the giant impact to wipe the

@@ -2648,3 +2648,181 @@ func _test_the_descent_goes_deeper() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the Descent goes deeper: done")
+
+
+# =============================================================================
+# THE LANDS SHINE: HAZARDS, DOUBLE KEEPERS, IMPOSSIBLE ROOMS, THE DEEP (0.124.0)
+# =============================================================================
+# Step 1 of DESCENT_PLAN_3.txt. The owner: "double bosses impossible rooms we
+# need effects added also lets make those elements shine", "everyone has to
+# die at some point", "fields should use the bosses elemental hazards in this
+# minigame so the wind pushing the player tunnel vision etc".
+func _test_the_lands_shine_in_the_descent() -> void:
+	section("THE LANDS SHINE (0.124.0): each floor's keeper's hazards in its rooms, weather, double keepers, Impossible rooms, the Deep")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const FieldScript := preload("res://src/world/field.gd")
+	# ---- the numbers ----
+	var gaps: Array = []
+	var phases: Array = []
+	for f in 8:
+		gaps.append(LandsScript.gap(f))
+		phases.append(LandsScript.phase_for(f))
+	var weathers: int = 0
+	for f in RunScript.FLOORS:
+		var land: int = int(f["land"])
+		weathers += 0 if LandsScript.weather_for(land if land != Element.Type.NONE else Element.Type.FIRE).is_empty() else 1
+	check("a hazard every %s seconds down the floors, the kits' phases %s, the orbs' effects from %.2f to %.2f, every floor its weather"
+		% [gaps, phases, LandsScript.effect_for(0), LandsScript.effect_for(7)],
+		is_equal_approx(float(gaps[0]), LandsScript.GAP_FIRST) and float(gaps[7]) >= LandsScript.GAP_LEAST
+		and float(gaps[6]) < float(gaps[0]) and phases == [0, 0, 0, 1, 1, 1, 2, 2]
+		and LandsScript.effect_for(0) > FieldScript.FIELD_EFFECTS and is_equal_approx(LandsScript.effect_for(7), 1.0)
+		and weathers == RunScript.FLOORS.size(), [gaps, phases])
+	# ---- a room of stand-ins ----
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	await get_tree().process_frame
+	var doors: Array = run.get("doors")
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var lands: Node2D = run.get("_lands")
+	var weather: Node = lands.get_node_or_null("weather") if lands != null else null
+	var first_calm: bool = lands != null and not bool(lands.call("active")) and weather is CPUParticles2D
+	var felt: String = str(run.call("_room_line"))
+	# Room 2 of the Frozen Halls: the Ice Keeper's hazards.
+	run.call("_clear_monsters")
+	run.set("floor_index", 1)
+	run.set("room", 1)
+	run.call("_go", "gold")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var casters: Array = lands.get("_casters")
+	var caster: Node2D = casters[0] if casters.size() == 1 else null
+	var hidden: bool = caster != null and str(caster.scene_file_path).ends_with("iceboss.tscn") and not caster.visible \
+		and not caster.is_in_group(&"enemies") and not caster.is_in_group(&"bosses") and not caster.is_physics_processing() \
+		and caster.has_meta(&"stress_copy") and not (run.get("monsters") as Array).has(caster)
+	check("the first room of a floor is calm, with the floor's weather and its line (%s); from the second, the floor's keeper throws its hazards - hidden, never a target, never counted"
+		% felt, first_calm and felt.begins_with("The fire burns you") and hidden, [first_calm, caster])
+	run.call("_process", LandsScript.FIRST)
+	var warned: Array = lands.get("_warns")
+	var marked: bool = warned.size() == 1 and str(warned[0][3]).begins_with("frost0") or warned.size() == 1 and str(warned[0][3]).begins_with("frost")
+	var before: int = int(lands.get("thrown"))
+	run.call("_process", LandsScript.WARN + 0.05)
+	check("  %.1f seconds in, its volley is marked where it starts (%s), and %.1f seconds later it is thrown"
+		% [LandsScript.FIRST, str(warned[0][3]) if not warned.is_empty() else "-", LandsScript.WARN],
+		marked and int(lands.get("thrown")) == before + 1 and (lands.get("_warns") as Array).is_empty(), warned)
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	await get_tree().process_frame
+	check("  and the hazards stop when the room is clear", not bool(lands.call("active")) and not is_instance_valid(caster))
+	# ---- double keepers ----
+	var probe: Node = RunScript.new()
+	var counts: Array = []
+	for f in 8:
+		probe.set("floor_index", f)
+		counts.append((probe.call("keepers_for") as Array).size())
+	probe.set("floor_index", 3)
+	var fourth: Array = probe.call("keepers_for")
+	probe.set("floor_index", 6)
+	var seventh: Array = probe.call("keepers_for")
+	probe.free()
+	check("double keepers from floor 4 (%s): the Wind Keeper and an echo of the Water Keeper, its hits held to its own floor; the Dark Keeper and another"
+		% [counts], counts == [1, 1, 1, 2, 2, 2, 2, 2] and str(fourth[0][0]) == "windboss" and str(fourth[1][0]) == "waterboss"
+		and is_equal_approx(float(fourth[1][2]), float(RunScript.FLOORS[2]["keeper_taken"]) / float(RunScript.FLOORS[3]["keeper_taken"]) * RunScript.ECHO_HIT)
+		and str(seventh[0][0]) == "bossenemy" and str(seventh[1][0]) != "bossenemy", [fourth, seventh])
+	run.call("_clear_monsters")
+	run.set("floor_index", 3)
+	run.set("room", RunScript.ROOMS)
+	run.call("_go", "keeper")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var keepers: Array = run.get("_keepers")
+	var echo: Node = keepers[1] if keepers.size() == 2 else null
+	var shared: EnemyData = (load("res://scene/enemy/waterboss.tscn") as PackedScene).instantiate().get("enemy_data") as EnemyData
+	var echo_data: EnemyData = echo.get("enemy_data") as EnemyData if echo != null else null
+	var own_copy: bool = echo_data != null and shared != null and echo_data != shared \
+		and echo_data.projectile_damage == maxi(1, roundi(shared.projectile_damage * float(fourth[1][2])))
+	(keepers[0] as Node).call("take_damage", 99999999)
+	run.call("_process", 0.016)
+	var still_fight: bool = int(run.get("state")) == RunScript.State.FIGHT and bool(run.call("keepers_standing"))
+	(keepers[1] as Node).call("take_damage", 99999999)
+	run.call("_process", 0.016)
+	await get_tree().process_frame
+	run.call("_process", 0.016)
+	check("  in the room: both come, the echo with its own copy of its numbers (%d, the Water Keeper's own %d untouched); the room is theirs until the last falls"
+		% [echo_data.projectile_damage if echo_data != null else -1, shared.projectile_damage if shared != null else -1],
+		keepers.size() == 2 and own_copy and still_fight and int(run.get("state")) == RunScript.State.PICK,
+		[keepers.size(), own_copy, still_fight, run.get("state")])
+	run.call("pick", 0)
+	# ---- an Impossible room ----
+	run.set("floor_index", 1)
+	run.set("_impossible_floor", -1)
+	var early: int = 0
+	for i in 40:
+		run.set("room", 1)
+		run.set("room_kind", "gold")
+		run.call("_open_doors")
+		early += 1 if str(doors[1].get("reward")) == "impossible" else 0
+	run.set("floor_index", 2)
+	var offered: int = 0
+	for i in 60:
+		run.set("room", 1)
+		run.set("room_kind", "gold")
+		run.call("_open_doors")
+		offered += 1 if str(doors[1].get("reward")) == "impossible" else 0
+	check("an Impossible door: never before floor 3, then once a floor (%d of 60 pairs of doors)" % offered,
+		early == 0 and offered == 1, [early, offered])
+	run.call("_clear_monsters")
+	run.set("room", 1)
+	run.call("_go", "impossible")
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	var size: int = int(run.call("pack_size"))
+	var waves: int = int(run.call("waves_in", size))
+	run.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var bosses: int = 0
+	for m in (run.get("monsters") as Array):
+		bosses += 1 if is_instance_valid(m) and (m as Node).is_in_group(&"bosses") else 0
+	var fast: bool = is_equal_approx(float(lands.get("every")), LandsScript.gap(2) * 0.5) and int(lands.get("phase")) == 2
+	var gold_was: int = int(run.get("gold"))
+	_descent_kill_all(run)
+	run.call("_process", 0.016)
+	var epic: bool = not (run.get("offers") as Array).is_empty()
+	for id in (run.get("offers") as Array):
+		epic = epic and Boons.RARITIES.find(Boons.rarity(str(id))) >= Boons.RARITIES.find("epic")
+	check("  inside: %d monsters (three packs) in %d waves, an elite in every one, a keeper of another land, hazards twice as often; lived, an epic pick and five rooms' gold"
+		% [size, waves], size == 3 * (RunScript.PACK_FIRST + 2 + RunScript.PACK_FLOOR * 2) and waves == ceili(size / 5.0)
+		and int(run.call("elites_for", "impossible")) >= waves and bosses == 1 and fast and epic
+		and int(run.get("gold")) - gold_was == RunScript.GOLD_BASE * 3 * RunScript.IMPOSSIBLE_GOLD,
+		[size, waves, bosses, fast, epic, int(run.get("gold")) - gold_was])
+	# ---- the Deep ----
+	var deep: Node = RunScript.new()
+	deep.set("floor_index", 6)
+	deep.set("room", 2)
+	var last_health: float = float(deep.call("health_scale"))
+	var last_taken: float = float(deep.call("taken_for", "gold"))
+	deep.set("floor_index", RunScript.FLOORS.size() + 6)
+	var name_now: String = str(deep.call("floor_info")["name"])
+	var round_health: float = float(deep.call("health_scale"))
+	var round_taken: float = float(deep.call("taken_for", "gold"))
+	var round_elites: int = int(deep.call("elites_for", "gold"))
+	var hazards: Array = deep.call("hazard_keepers")
+	deep.free()
+	check("the Deep: the Dark Below again as %s - health x%.1f, hits x%.2f, %d elites a room, two lands' hazards (%s)"
+		% [name_now, round_health / last_health, round_taken / last_taken, round_elites, hazards],
+		name_now == "the Deep 1: the Dark Below" and is_equal_approx(round_health / last_health, 1.0 + RunScript.DEEP_HEALTH_STEP)
+		and is_equal_approx(round_taken / last_taken, 1.0 + RunScript.DEEP_TAKEN_STEP) and round_elites == 4 + RunScript.DEEP_ELITES
+		and hazards.size() == 2 and str(hazards[0]) == "bossenemy")
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the lands shine: done")

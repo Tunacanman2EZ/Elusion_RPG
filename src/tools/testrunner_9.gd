@@ -4150,14 +4150,21 @@ func _test_the_descent() -> void:
 		run.call("_process", RunScript.FADE_SECONDS)
 	check("  after the last room (%d) both doors lead to the keeper; the Fire Keeper beaten, a pick, then both doors go down to floor 2, room 1" % RunScript.ROOMS,
 		the_keeper and down and int(run.get("floor_index")) == 1 and int(run.get("room")) == 1)
-	# THE BOTTOM: the seventh keeper wins (0.123.0; it was the third).
+	# NO BOTTOM (0.124.0): the seventh keeper beaten, the run goes on into the
+	# Deep; a run ends only in a fall, and the deepest is the best.
 	run.call("_clear_monsters")
 	run.set("floor_index", RunScript.FLOORS.size() - 1)
 	run.set("room_kind", "keeper")
 	run.call("_room_cleared")
-	check("  the seventh keeper beaten is the bottom: the run won, its upgrades gone, the doors open to go again",
-		int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You reached the bottom")
-		and not Boons.active and str(doors[0].get("reward")) == "begin" and bool(doors[0].get("open")))
+	var picking_on: bool = int(run.get("state")) == RunScript.State.PICK and Boons.active
+	run.call("pick", 0)
+	var down_deep: bool = str(doors[0].get("reward")) == "down"
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	for i in 3:
+		run.call("_process", RunScript.FADE_SECONDS)
+	check("  the seventh keeper beaten is not the bottom: a pick, then down into the Deep - %s" % str(run.call("floor_info")["name"]),
+		picking_on and down_deep and int(run.get("floor_index")) == RunScript.FLOORS.size() and int(run.call("deep_round")) == 1
+		and str(run.call("floor_info")["name"]) == "the Deep 1: the Crypt" and str(run.call("floor_info")["keeper"]) == "fireboss")
 	# A FALL.
 	(doors[0] as Node).emit_signal("walked_in", doors[0])
 	for i in 3:
@@ -5146,12 +5153,12 @@ func _test_the_descent_has_more_to_choose() -> void:
 	var doors: Array = run.get("doors")
 	var missing_icon: Array = []
 	for kind in RunScript.KINDS:
-		if kind != "elite" and not DoorScript.ICONS.has(kind):
+		if kind != "elite" and kind != "impossible" and not DoorScript.ICONS.has(kind):
 			missing_icon.append(kind)
 		elif DoorScript.ICONS.has(kind) and DirAccess.dir_exists_absolute("res://art/pack/icons") \
 				and not ResourceLoader.exists(str(DoorScript.ICONS[kind])):
 			missing_icon.append(kind)
-	check("seven doors a room can promise, each with its picture from the pack", RunScript.KINDS.size() == 7
+	check("eight doors a room can promise (an Impossible room's with the elite's skull, 0.124.0), each with its picture from the pack", RunScript.KINDS.size() == 8
 		and RunScript.KINDS.size() == RunScript.KIND_WEIGHTS.size() and missing_icon.is_empty(), missing_icon)
 	(doors[0] as Node).emit_signal("walked_in", doors[0])
 	for i in 3:
