@@ -4128,6 +4128,59 @@ second). Pictured: class_picks_0125.png.
 
 `_test_every_class_has_its_own_upgrades()` (testrunner_10).
 
+### The Descent together: a party's own Descent, one run (0.126.0)
+
+The owner: "lets set up party", "everyone has to die at some point even
+with a party of 4", "start building it". The second half of
+DESCENT_PLAN_3.txt's step 2. **Server first**: presence.py seats "descent"
+a room per party and says "dr" in its welcome (the API's CLAUDE.md, "The
+Descent together"); against an older server the Descent plays alone.
+
+- **descentparty.gd** (the run's `party`, made in its `_ready()`), built
+  like endlessparty.gd: `shares()` (the server's "dr", Presence
+  `descent_rooms()`), `active()` (and somebody else here), `leads()`,
+  `members()`, `all_out(key)` and `all_picked(key)` (a player not heard
+  from holds nothing up), `flush()` every `TICK_SECONDS` (0.2): the
+  leader's line ("r", descentrun.gd `line()`, twelve numbers - the run's
+  key, state, floor, room and kind, both doors and whether they are open,
+  `travel_seq`, the countdown in tenths, `players`, gold; WHILE TRAVELLING
+  the destination, so a game following arrives where the leader will
+  whatever the fades) and each game's own ("me", `my_line()`: key, down,
+  picked, the door walked into), "go" from a door before the run.
+- **The leader runs it**: `_bring()` marks every monster `PARTY_MARK`
+  ("party_copy") wherever the server seats the Descent - monstersync.gd
+  shares one (`(not stress_copy or party_copy)`), BaseEnemy's `net_props()`
+  carries "pc" (and "de" for an elite's size) so every mirror is worth
+  nothing too. Scaled by `players` (fixed at the start, `members()`):
+  `PARTY_CROWD`, `PARTY_HEALTH`, `PARTY_BOSS` (the Endless's table) and an
+  elite more a player.
+- **The others follow** (`following()`, `follow_line()`): no monsters of
+  their own (`_spawn_pack()` begins only their own hazards, at their own
+  player), the leader's floor, room and kind in `_arrive()`, their own
+  `_room_cleared()` (pick, pay, ward) when the leader's line leaves FIGHT, the
+  doors as the line says (`_line_doors()`). A game whose first line is past
+  room 1 joins DOWN.
+- **The countdown**: a door before the run - the leader's, or anybody's
+  "go" - is `party_go()`: State.COUNTDOWN (appended to the enum),
+  `COUNTDOWN_SECONDS` (5), then `start_run()`.
+- **Doors**: the first through one chooses (a follower's "me" door ->
+  `party_me()` -> `_go()`); the leader's doors (`_show_doors()`) stay shut
+  until `all_picked()` or `PICK_WAIT` (20).
+- **Down, not out**: in a party `knock_out()` sets `DescentBoons.out` (the
+  player a ghost, `OUT_ALPHA`, at the front; Player.take_damage() returns at
+  once, after god mode - nothing lands, nothing trains); `_stand_up()` at
+  every room clear, on half a ward; the leader ends the run when it and
+  everybody else are down.
+- **Handover**: the new leader's `take_over()` adopts the room's shared
+  monsters (the waves still to come are lost) and the doors' promises.
+
+`_test_the_descent_together()` (testrunner_10): two runs on stand-in links
+(`_descent_link_script()`) - the countdown from the follower's door, room 1
+together, the leader's scaled shared pack and none on the other, both
+picks awaited, the follower's door taken by both, down until both are and
+the end on both, standing again. DescentBoons is shared by both runs in one
+process, so a real two-game play is still the check of the whole.
+
 ### The island is wiped: the volcano's heart (0.122.0)
 
 The owner, of 0.121.0's rain: "amaing we need the giant impact to wipe the

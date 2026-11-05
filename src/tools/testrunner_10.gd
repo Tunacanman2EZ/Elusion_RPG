@@ -2928,3 +2928,145 @@ func _test_every_class_has_its_own_upgrades() -> void:
 	check("the run tells the upgrades who is playing - the class from its own script, the mythic weapon from what it wears",
 		as_mage, [Boons.class_now])
 	print("  every class its own: done")
+
+
+# =============================================================================
+# THE DESCENT TOGETHER (0.126.0)
+# =============================================================================
+# Step 2 of DESCENT_PLAN_3.txt, its second half. The owner: "lets set up
+# party", "everyone has to die at some point even with a party of 4".
+# Two games in one tree, each on a stand-in link that passes "en" as the
+# server does (JSON and back). DescentBoons is one set of statics for both,
+# so what is the player's own (picks, the ward, down) is shared here - the
+# checks are on what crosses between the runs.
+func _descent_link_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = _party_link_script().source_code + "\nfunc descent_rooms() -> bool:\n\treturn open\n"
+	script.reload()
+	return script
+
+
+func _test_the_descent_together() -> void:
+	section("THE DESCENT TOGETHER (0.126.0): the leader runs it, the party follows - a countdown, the same rooms, picks awaited, the door anyone takes, down until the room is clear")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	Boons.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var made_a: Array = _descent_room_for_test(body_script)
+	var made_b: Array = _descent_room_for_test(body_script)
+	var run_a: Node = made_a[1]
+	var run_b: Node = made_b[1]
+	var body_a: Node2D = made_a[2]
+	var body_b: Node2D = made_b[2]
+	await get_tree().process_frame
+	var Link: GDScript = _descent_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	add_child(la)
+	add_child(lb)
+	la.set("me", 1)
+	lb.set("me", 2)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	la.set("bodies", {2: body_b})
+	lb.set("bodies", {1: body_a})
+	for pair in [[run_a, la], [run_b, lb]]:
+		var party: Node = (pair[0] as Node).get("party")
+		party.set("link", pair[1])
+		(pair[1] as Node).run_received.connect(Callable(party, "_on_run"))
+	var party_a: Node = run_a.get("party")
+	var party_b: Node = run_b.get("party")
+	var roles: bool = bool(run_a.call("party_on")) and not bool(run_a.call("following")) and bool(run_b.call("following"))
+	# ---- the countdown, from the follower's door ----
+	var doors_b: Array = run_b.get("doors")
+	(doors_b[0] as Node).emit_signal("walked_in", doors_b[0])
+	var counting: bool = int(run_a.get("state")) == RunScript.State.COUNTDOWN and int(run_a.get("run_key")) > 0
+	party_a.call("flush")
+	var both_counting: bool = int(run_b.get("state")) == RunScript.State.COUNTDOWN and int(run_b.get("run_key")) == int(run_a.get("run_key"))
+	check("in a party's Descent the first in leads; the other walking through a door starts the countdown on both screens",
+		roles and counting and both_counting, [roles, counting, both_counting])
+	# ---- together into room 1 ----
+	run_a.call("_process", RunScript.COUNTDOWN_SECONDS + 0.1)
+	party_a.call("flush")
+	for i in 3:
+		run_a.call("_process", RunScript.FADE_SECONDS)
+		run_b.call("_process", RunScript.FADE_SECONDS)
+	run_a.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run_b.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	run_a.call("_process", RunScript.MARK_SECONDS + 0.05)
+	var pack_a: Array = run_a.get("monsters")
+	var shared: bool = not pack_a.is_empty()
+	for m in pack_a:
+		shared = shared and (m as Node).has_meta(RunScript.PARTY_MARK) and (m as Node).has_meta(&"stress_copy")
+	check("  the countdown over, both come into floor 1, room 1 - the leader's pack scaled for two (%d and %d elites), shared with the party; the other runs none of its own"
+		% [int(run_a.call("pack_size")), int(run_a.call("elites_for", "upgrade"))],
+		int(run_a.get("players")) == 2 and int(run_a.get("room")) == 1 and int(run_b.get("room")) == 1
+		and int(run_b.get("floor_index")) == 0 and int(run_b.get("state")) == RunScript.State.FIGHT
+		and int(run_a.call("pack_size")) == 8 and int(run_a.call("elites_for", "upgrade")) == 2 and shared
+		and (run_b.get("monsters") as Array).is_empty() and (run_b.get("_coming") as Array).is_empty()
+		and (run_b.get("_waves") as Array).is_empty(), [run_a.get("players"), run_b.get("room"), pack_a.size()])
+	# ---- the room clear; the doors wait for everybody's pick ----
+	_descent_kill_all(run_a)
+	run_a.call("_process", 0.016)
+	var leader_picking: bool = int(run_a.get("state")) == RunScript.State.PICK
+	party_a.call("flush")
+	var other_picking: bool = int(run_b.get("state")) == RunScript.State.PICK and not (run_b.get("offers") as Array).is_empty()
+	party_b.call("flush")
+	run_a.call("pick", 0)
+	party_a.call("flush")
+	var held: bool = int(run_a.get("state")) == RunScript.State.CLEAR and not bool(run_a.call("_doors_open"))
+	run_b.call("pick", 0)
+	party_b.call("flush")
+	run_a.call("_process", 0.016)
+	party_a.call("flush")
+	var doors_a: Array = run_a.get("doors")
+	var open_both: bool = bool(run_a.call("_doors_open")) and bool(run_b.call("_doors_open")) \
+		and str(doors_b[1].get("reward")) == str(doors_a[1].get("reward"))
+	check("  the leader's room clear is the other's too, each with their own pick; the doors stay shut until both have picked, then open alike",
+		leader_picking and other_picking and held and open_both, [leader_picking, other_picking, held, open_both])
+	# ---- the door anyone takes ----
+	if str(doors_a[1].get("reward")) == "rest":
+		doors_a[1].call("set_reward", "gold")
+		party_a.call("flush")
+	var promised: String = str(doors_a[1].get("reward"))
+	(doors_b[1] as Node).emit_signal("walked_in", doors_b[1])
+	party_b.call("flush")
+	party_a.call("flush")
+	for i in 3:
+		run_a.call("_process", RunScript.FADE_SECONDS)
+		run_b.call("_process", RunScript.FADE_SECONDS)
+	check("  the other walks through the right-hand door: everybody goes through it, into room 2 (%s)" % promised,
+		int(run_a.get("room")) == 2 and int(run_b.get("room")) == 2 and str(run_a.get("room_kind")) == promised
+		and str(run_b.get("room_kind")) == promised, [run_a.get("room"), run_b.get("room"), run_b.get("room_kind")])
+	# ---- down, until everybody is ----
+	run_a.call("_process", RunScript.FIGHT_DELAY + 0.1)
+	var downed: bool = bool(run_a.call("knock_out", body_a))
+	var down_not_out: bool = downed and Boons.out and bool(run_a.call("running")) and is_equal_approx(body_a.modulate.a, RunScript.OUT_ALPHA)
+	var nothing_lands: bool = _func_body(_code_src("res://src/characters/player.gd"), "func take_damage(").contains("if DescentBoons.out:")
+	run_a.call("_process", 0.016)
+	var still_on: bool = bool(run_a.call("running"))
+	party_b.call("flush")
+	run_a.call("_process", 0.016)
+	party_a.call("flush")
+	check("  down in a party is not the end: a ghost at the front whom nothing hits, while anybody stands - and when the other is down too, the run is over on both",
+		down_not_out and nothing_lands and still_on and not bool(run_a.call("running")) and not bool(run_b.call("running"))
+		and is_equal_approx(body_a.modulate.a, 1.0), [down_not_out, nothing_lands, still_on, run_a.get("state"), run_b.get("state")])
+	# ---- standing again ----
+	Boons.clear()
+	Boons.active = true
+	Boons.out = true
+	run_a.set("state", RunScript.State.FIGHT)
+	run_a.set("room_kind", "gold")
+	run_a.call("fill_ward")
+	run_a.call("_room_cleared")
+	check("  a fallen player stands when the room is clear, on half a ward", not Boons.out and Boons.ward == Boons.ward_most / 2
+		and Boons.ward_most > 0, [Boons.out, Boons.ward, Boons.ward_most])
+	(made_a[0] as Node).queue_free()
+	(made_b[0] as Node).queue_free()
+	la.queue_free()
+	lb.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the Descent together: done")

@@ -61,6 +61,16 @@
 #     elite in every wave, a keeper of another land in the middle, the
 #     hazards twice as often - for an epic or better pick and
 #     IMPOSSIBLE_GOLD rooms' gold.
+#   - (0.126.0) THE DESCENT TOGETHER (descentparty.gd, `party`): in a party's
+#     own Descent the leader's game runs the run and its monsters are the
+#     room's (PARTY_MARK), the others follow its line - the same rooms and
+#     doors, their own picks, ward, gold and hazards. A door before the run
+#     starts a COUNTDOWN; the first through a door between rooms chooses it
+#     for everybody; the doors open once everybody has picked (or after
+#     PICK_WAIT). A fall leaves you DOWN (Boons.out: nothing hits you, a
+#     ghost at the front) until the room is clear, when you stand with half
+#     a ward; the run ends when the whole party is down. Scaled for the
+#     party (PARTY_CROWD, PARTY_HEALTH, PARTY_BOSS, an elite more a player).
 #   - THE DEEP: past the Dark Keeper the run goes on - the seven floors
 #     again (floor_info() names them "the Deep"), every number up each time
 #     round (deep_round()), until you fall. The best run is the deepest.
@@ -121,6 +131,7 @@ extends Node
 const Boons := preload("res://src/world/descent/descentboons.gd")
 const Field := preload("res://src/world/field.gd")
 const LandsScript := preload("res://src/world/descent/descentlands.gd")
+const PartyScript := preload("res://src/world/descent/descentparty.gd")
 const STORY_KEY := "#warrior"
 const STORY := [
 	"The warrior was battle-tested his whole life. Monsters were always a threat.",
@@ -131,7 +142,7 @@ const STORY := [
 ]
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 
-enum State { WAITING, FIGHT, PICK, CLEAR, TRAVEL }
+enum State { WAITING, FIGHT, PICK, CLEAR, TRAVEL, COUNTDOWN }
 
 const MARK := &"stress_copy"
 const ROOMS := 4
@@ -277,6 +288,19 @@ const DEEP_HEALTH_STEP := 0.6
 const DEEP_TAKEN_STEP := 0.25
 const DEEP_ELITES := 2
 const DEEP_PACK := 4
+# THE DESCENT TOGETHER (0.126.0): the run's monsters shared with the party;
+# the countdown at the start; how long the doors wait for everybody's pick;
+# the scaling for 1 to 4 players (the Endless's table, to tune by playing);
+# a fallen player's look; the kinds as the line carries them.
+const PARTY_MARK := &"party_copy"
+const COUNTDOWN_SECONDS := 5.0
+const PICK_WAIT := 20.0
+const PARTY_CROWD := [1.0, 1.0, 1.5, 2.0, 2.5]
+const PARTY_HEALTH := [1.0, 1.0, 1.2, 1.4, 1.6]
+const PARTY_BOSS := [1.0, 1.0, 1.75, 2.5, 3.25]
+const OUT_ALPHA := 0.4
+const LINE_KINDS := ["", "upgrade", "gold", "elite", "shrine", "treasure", "challenge", "rest", "impossible",
+	"keeper", "down", "begin"]
 const WASH_Z := -9
 const WAVE_SECONDS := 9.0
 const MARK_SECONDS := 0.7
@@ -332,6 +356,15 @@ var _keepers: Array = []
 var _lands: Node2D = null
 var _impossible_floor: int = -1
 var deepest: int = -1
+var party: Node = null
+var run_key: int = 0
+var players: int = 1
+var travel_seq: int = 0
+var countdown_left: float = 0.0
+var my_door: int = 0
+var _door_kinds: Array = ["", ""]
+var _pick_wait: float = 0.0
+var _line: Array = []
 var _keeper_call: float = 0.0
 var _wash: ColorRect = null
 var monsters: Array = []
@@ -378,6 +411,10 @@ func _ready() -> void:
 			door.connect("walked_in", _on_walked_in)
 	_set_doors(true, "begin", "begin")
 	_tell_story.call_deferred()
+	party = PartyScript.new()
+	party.name = "descentparty"
+	party.set("run", self)
+	add_child(party)
 
 
 func tells_story() -> bool:
@@ -430,7 +467,7 @@ func keepers_for() -> Array:
 	room: its own, and from DOUBLE_FROM an echo - the last floor's keeper
 	before floor 7, then one of the others drawn at random."""
 	var info: Dictionary = floor_info()
-	var made: Array = [[str(info["keeper"]), float(info["health"]) * KEEPER_HEALTH * deep_health(), 1.0]]
+	var made: Array = [[str(info["keeper"]), float(info["health"]) * KEEPER_HEALTH * deep_health() * party_scale(PARTY_BOSS), 1.0]]
 	if floor_index < DOUBLE_FROM:
 		return made
 	var other: Dictionary
@@ -439,7 +476,7 @@ func keepers_for() -> Array:
 	else:
 		var rest: Array = FLOORS.filter(func(f: Dictionary) -> bool: return str(f["keeper"]) != str(info["keeper"]))
 		other = rest[_rng.randi_range(0, rest.size() - 1)]
-	made.append([str(other["keeper"]), float(other["health"]) * KEEPER_ECHO_HEALTH * deep_health(),
+	made.append([str(other["keeper"]), float(other["health"]) * KEEPER_ECHO_HEALTH * deep_health() * party_scale(PARTY_BOSS),
 		float(other["keeper_taken"]) / float(info["keeper_taken"]) * ECHO_HIT])
 	return made
 
@@ -473,7 +510,21 @@ func taken_for(kind: String) -> float:
 
 
 func running() -> bool:
-	return state != State.WAITING
+	return state != State.WAITING and state != State.COUNTDOWN
+
+
+func party_on() -> bool:
+	"""In a Descent with somebody else (descentparty.gd active())."""
+	return party != null and is_instance_valid(party) and bool(party.call("active"))
+
+
+func following() -> bool:
+	"""This game follows the room's leader: it runs no monsters of its own."""
+	return party_on() and not bool(party.call("leads"))
+
+
+func party_scale(table: Array) -> float:
+	return float(table[clampi(players, 0, table.size() - 1)])
 
 
 # =============================================================================
@@ -485,6 +536,9 @@ func start_run() -> void:
 	Boons.active = true
 	floor_index = 0
 	_impossible_floor = -1
+	if run_key == 0:
+		run_key = randi_range(1, 1 << 30)
+	players = int(party.call("members")) if party_on() else 1
 	room = 0
 	gold = 0
 	slain = 0
@@ -546,10 +600,26 @@ func _go(kind: String) -> void:
 	_travel_t = 0.0
 	_travelled = false
 	_set_doors(false, "", "")
+	my_door = 0
+	if not following():
+		travel_seq += 1
+	if party != null and is_instance_valid(party):
+		party.call("line_now")
 
 
 func _arrive(kind: String) -> void:
-	if kind == "down":
+	# FOLLOWING (0.126.0): the leader's floor, room and kind, whatever this
+	# game counted.
+	if following() and _line.size() >= 12:
+		var to_floor: int = int(_line[2])
+		if to_floor != floor_index:
+			Boons.new_floor()
+			rerolls_free = REROLL_FREE
+			rerolls_paid = 0
+		floor_index = to_floor
+		room = int(_line[3]) - 1
+		kind = kind_of(int(_line[4]))
+	elif kind == "down":
 		floor_index += 1
 		room = 0
 		kind = "upgrade"
@@ -636,11 +706,26 @@ func _process(delta: float) -> void:
 				state = State.FIGHT
 				if room_kind == "rest":
 					_open_doors()
+		State.COUNTDOWN:
+			countdown_left = maxf(0.0, countdown_left - delta)
+			if hud != null:
+				hud.call("toast", "Down together in %d" % ceili(countdown_left))
+			if countdown_left <= 0.0 and not following():
+				start_run()
+		State.CLEAR:
+			# THE DOORS WAIT FOR EVERYBODY'S PICK (0.126.0), or PICK_WAIT.
+			if party_on() and not following() and not _doors_open():
+				_pick_wait -= delta
+				if _pick_wait <= 0.0 or bool(party.call("all_picked", run_key)):
+					_set_doors(true, str(_door_kinds[0]), str(_door_kinds[1]))
 		State.FIGHT:
 			if _fight_in >= 0.0:
 				_fight_in -= delta
 				if _fight_in < 0.0:
 					_spawn_pack()
+			elif following():
+				if _lands != null and is_instance_valid(_lands):
+					_lands.call("step", delta)
 			else:
 				_step_waves(delta)
 				if _lands != null and is_instance_valid(_lands):
@@ -652,6 +737,9 @@ func _process(delta: float) -> void:
 				if living() == 0 and _coming.is_empty() and _waves.is_empty():
 					challenge_won = room_kind == "challenge" and challenge_left > 0.0
 					_room_cleared()
+	# THE WHOLE PARTY DOWN (0.126.0): the run is over.
+	if running() and party_on() and not following() and Boons.out and bool(party.call("all_out", run_key)):
+		_end_run(false)
 	if _ward_ring != null and is_instance_valid(_ward_ring):
 		_ward_ring.queue_redraw()
 
@@ -689,8 +777,12 @@ func _room_cleared() -> void:
 	# The hazards stop with the fight.
 	if _lands != null and is_instance_valid(_lands):
 		_lands.call("end")
+	# THE FALLEN STAND (0.126.0) - with half a ward, after the others' full.
+	var stood: bool = _stand_up()
 	# THE WARD FULL AGAIN for the next room (0.115.0).
 	fill_ward()
+	if stood:
+		Boons.ward = Boons.ward_most / 2
 	match room_kind:
 		"gold":
 			_pay(GOLD_BASE * (floor_index + 1))
@@ -793,10 +885,15 @@ func pick(index: int) -> bool:
 
 func _open_doors() -> void:
 	state = State.CLEAR
+	# FOLLOWING (0.126.0): the leader's doors, as its line says.
+	if following():
+		_line_doors()
+		return
+	_pick_wait = PICK_WAIT
 	if room_kind == "keeper":
-		_set_doors(true, "down", "down")
+		_show_doors("down", "down")
 	elif room >= ROOMS:
-		_set_doors(true, "keeper", "keeper")
+		_show_doors("keeper", "keeper")
 	else:
 		var first: String = _roll_kind("")
 		var second: String = _roll_kind(first)
@@ -806,7 +903,23 @@ func _open_doors() -> void:
 				and _rng.randf() < IMPOSSIBLE_CHANCE:
 			second = "impossible"
 			_impossible_floor = floor_index
-		_set_doors(true, first, second)
+		_show_doors(first, second)
+
+
+func _show_doors(left: String, right: String) -> void:
+	"""The doors this room promises - open now, or in a party once everybody
+	has picked (_process(), PICK_WAIT)."""
+	_door_kinds = [left, right]
+	_set_doors(not party_on() or bool(party.call("all_picked", run_key)), left, right)
+	if party != null and is_instance_valid(party):
+		party.call("line_now")
+
+
+func _doors_open() -> bool:
+	for door in doors:
+		if is_instance_valid(door) and bool(door.get("open")):
+			return true
+	return false
 
 
 func _roll_kind(not_this: String) -> String:
@@ -836,9 +949,19 @@ func _set_doors(open: bool, left: String, right: String) -> void:
 func _on_walked_in(door: Node2D) -> void:
 	match state:
 		State.WAITING:
-			start_run()
+			# TOGETHER (0.126.0): the countdown, on every screen.
+			if not party_on():
+				start_run()
+			elif following():
+				party.call("ask_go")
+			else:
+				party_go()
 		State.CLEAR:
-			_go(str(door.get("reward")))
+			if following():
+				my_door = 1 + doors.find(door)
+				party.call("me_now")
+			else:
+				_go(str(door.get("reward")))
 
 
 # =============================================================================
@@ -847,6 +970,8 @@ func _on_walked_in(door: Node2D) -> void:
 
 func pack_size() -> int:
 	var size: int = mini(PACK_MOST + DEEP_PACK * deep_round(), PACK_FIRST + room + PACK_FLOOR * floor_index)
+	# A PARTY'S CROWD (0.126.0).
+	size = roundi(float(size) * party_scale(PARTY_CROWD))
 	if room_kind == "impossible":
 		return size * IMPOSSIBLE_PACK
 	# A Treasure is lightly guarded: half (rounded up).
@@ -869,7 +994,7 @@ func elites_for(kind: String) -> int:
 	if kind in ["keeper", "treasure", "rest"]:
 		return 0
 	var count: int = ELITES_FIRST + floori(float(mini(floor_index, FLOORS.size() - 1)) / float(ELITES_FLOORS)) \
-		+ DEEP_ELITES * deep_round()
+		+ DEEP_ELITES * deep_round() + maxi(0, players - 1)
 	if kind == "elite":
 		count += ELITE_ROOM_MORE
 	if kind == "impossible":
@@ -893,11 +1018,17 @@ func keeper_call_elites() -> int:
 
 
 func health_scale() -> float:
-	return float(floor_info()["health"]) * (1.0 + ROOM_HEALTH_STEP * (room - 1)) * deep_health()
+	return float(floor_info()["health"]) * (1.0 + ROOM_HEALTH_STEP * (room - 1)) * deep_health() \
+		* party_scale(PARTY_HEALTH)
 
 
 func _spawn_pack() -> void:
 	var info: Dictionary = floor_info()
+	# FOLLOWING (0.126.0): the leader's monsters come through monstersync;
+	# this game's own hazards, at its own player.
+	if following():
+		_begin_hazards()
+		return
 	if room_kind == "keeper":
 		# DOUBLE KEEPERS (0.124.0): its own in the middle, an echo beside it.
 		_keepers = []
@@ -938,8 +1069,12 @@ func _spawn_pack() -> void:
 			float(other["health"]) * IMPOSSIBLE_KEEPER_HEALTH * deep_health(),
 			float(other["keeper_taken"]) / float(info["taken"]) * ECHO_HIT)
 	_next_wave()
-	# THE KEEPER'S HAZARDS (0.124.0): from the second room of a floor.
-	if room >= 2 and room_kind != "rest":
+	_begin_hazards()
+
+
+func _begin_hazards() -> void:
+	"""THE KEEPER'S HAZARDS (0.124.0): from the second room of a floor."""
+	if room >= 2 and room_kind != "rest" and room_kind != "keeper":
 		_lands_node().call("begin", hazard_keepers(), floor_index, room_kind == "impossible")
 
 
@@ -1147,6 +1282,10 @@ func _bring(enemy_id: String, at: Vector2, health: float, hits: float = 1.0) -> 
 		return null
 	var monster := packed.instantiate() as Node2D
 	monster.set_meta(MARK, true)
+	# SHARED WITH THE PARTY (0.126.0) wherever the server seats the Descent a
+	# room per party - so a friend walking in sees the room as it stands.
+	if party != null and is_instance_valid(party) and bool(party.call("shares")):
+		monster.set_meta(PARTY_MARK, true)
 	# ITS OWN HITS, SCALED (0.124.0: an echo keeper's, an Impossible room's):
 	# its own copy of its numbers, before _ready() reads them.
 	if not is_equal_approx(hits, 1.0):
@@ -1358,9 +1497,168 @@ func knock_out(player: Node) -> bool:
 	body.reset_physics_interpolation()
 	if body.has_method("snap_camera"):
 		body.call("snap_camera")
+	# DOWN, NOT OUT (0.126.0): in a party the run goes on while anybody stands.
+	if running() and party_on():
+		Boons.out = true
+		body.modulate.a = OUT_ALPHA
+		if hud != null:
+			hud.call("announce", "You are down", "You get up when the room is clear")
+		party.call("me_now")
+		return true
 	if running():
 		_end_run(false)
 	return true
+
+
+func _stand_up() -> bool:
+	"""A fallen player stands when the room is clear (0.126.0)."""
+	if not Boons.out:
+		return false
+	Boons.out = false
+	var player: Node2D = _player()
+	if player != null:
+		player.modulate.a = 1.0
+	if hud != null:
+		hud.call("toast", "Back on your feet")
+	return true
+
+
+# =============================================================================
+# THE DESCENT TOGETHER (0.126.0, descentparty.gd)
+# =============================================================================
+
+static func code_of(kind: String) -> int:
+	return maxi(0, LINE_KINDS.find(kind))
+
+
+static func kind_of(code: int) -> String:
+	return str(LINE_KINDS[code]) if code >= 0 and code < LINE_KINDS.size() else ""
+
+
+func line() -> Array:
+	"""(Leader.) The run as the party follows it: [key, state, floor, room,
+	kind, left door, right door, doors open, travels, countdown tenths,
+	players, gold] - whole numbers."""
+	var left: String = str(doors[0].get("reward")) if doors.size() > 0 and is_instance_valid(doors[0]) else ""
+	var right: String = str(doors[1].get("reward")) if doors.size() > 1 and is_instance_valid(doors[1]) else ""
+	# ON THE WAY, WHERE TO: a game following arrives where this one will,
+	# however the fades fall.
+	var at: Array = [floor_index, room, room_kind]
+	if state == State.TRAVEL and not _travelled:
+		if _travel_to == "down":
+			at = [floor_index + 1, 1, "upgrade"]
+		else:
+			at = [floor_index, room + 1, "keeper" if room + 1 > ROOMS else _travel_to]
+	return [run_key, state, int(at[0]), int(at[1]), code_of(str(at[2])), code_of(left), code_of(right),
+		1 if _doors_open() else 0, travel_seq, roundi(countdown_left * 10.0), players, gold]
+
+
+func my_line() -> Array:
+	"""This game's own: [key, down, picked, the door it walked into]."""
+	return [run_key, 1 if Boons.out else 0, 0 if state == State.PICK else 1, my_door]
+
+
+func party_go() -> void:
+	"""(Leader.) Somebody walked through a door before the run: the countdown."""
+	if state != State.WAITING:
+		return
+	run_key = randi_range(1, 1 << 30)
+	state = State.COUNTDOWN
+	countdown_left = COUNTDOWN_SECONDS
+	if hud != null:
+		hud.call("announce", "Together!", "The party goes down in %d" % int(COUNTDOWN_SECONDS))
+	party.call("line_now")
+
+
+func party_me(_from_id: int, me: Array) -> void:
+	"""(Leader.) Another player's line: the door they walked into."""
+	if me.size() < 4 or int(me[0]) != run_key or state != State.CLEAR or not _doors_open():
+		return
+	var which: int = int(me[3])
+	if which >= 1 and which <= doors.size() and is_instance_valid(doors[which - 1]):
+		_go(str(doors[which - 1].get("reward")))
+
+
+func follow_line(wire: Array) -> void:
+	"""(Following.) The leader's line: start, travel, clear and end with it."""
+	if wire.size() < 12:
+		return
+	var key: int = int(wire[0])
+	var their_state: int = int(wire[1])
+	_line = wire
+	players = int(wire[10])
+	if their_state == State.WAITING:
+		if running():
+			_end_run(false)
+		state = State.WAITING
+		run_key = 0
+		_set_doors(true, "begin", "begin")
+		return
+	if their_state == State.COUNTDOWN:
+		if state == State.WAITING:
+			state = State.COUNTDOWN
+			if hud != null:
+				hud.call("announce", "Together!", "The party goes down")
+		run_key = key
+		countdown_left = float(wire[9]) / 10.0
+		return
+	# A RUN ON: joined now if this game has not been in it - down, watching,
+	# if it is already past its first room.
+	if key != run_key or not running():
+		var fresh: bool = int(wire[2]) == 0 and int(wire[3]) <= 1
+		Boons.clear()
+		Boons.active = true
+		run_key = key
+		gold = 0
+		slain = 0
+		picks = 0
+		rerolls_free = REROLL_FREE
+		rerolls_paid = 0
+		travel_seq = -1
+		fill_ward()
+		if not fresh:
+			Boons.out = true
+			var me: Node2D = _player()
+			if me != null:
+				me.modulate.a = OUT_ALPHA
+	if int(wire[8]) != travel_seq:
+		travel_seq = int(wire[8])
+		_go(kind_of(int(wire[4])))
+		return
+	# THE LEADER'S ROOM IS CLEAR: this game's own pick, pay and ward (a
+	# Challenge won is one the leader offers a pick for).
+	if state == State.FIGHT and _fight_in < 0.0 and (their_state == State.PICK or their_state == State.CLEAR):
+		challenge_won = room_kind == "challenge" and their_state == State.PICK
+		_room_cleared()
+	if state == State.CLEAR:
+		_line_doors()
+
+
+func _line_doors() -> void:
+	if _line.size() < 12:
+		return
+	_set_doors(int(_line[7]) == 1, kind_of(int(_line[5])), kind_of(int(_line[6])))
+
+
+func take_over() -> void:
+	"""(Now leading.) The old leader left: its monsters, mirrored here, are
+	this game's now (monstersync hands them over) - the run carries on from
+	this game's own frame."""
+	if not running():
+		return
+	var container: Node = get_parent().get_node_or_null("ysortworld/enemies") if get_parent() != null else null
+	if container != null:
+		for m in container.get_children():
+			if m is Node2D and m.has_meta(PARTY_MARK) and not monsters.has(m):
+				monsters.append(m)
+				if room_kind == "keeper" and (m as Node).is_in_group(&"bosses"):
+					_keepers.append(m)
+	_waves = []
+	_coming = []
+	if state == State.CLEAR and not _doors_open():
+		_door_kinds = [kind_of(int(_line[5])) if _line.size() >= 12 else "upgrade",
+			kind_of(int(_line[6])) if _line.size() >= 12 else "gold"]
+		_pick_wait = 0.0
 
 
 func _end_run(won: bool) -> void:
@@ -1375,6 +1673,10 @@ func _end_run(won: bool) -> void:
 	_clear_monsters()
 	Boons.clear()
 	_drop_ward_ring()
+	run_key = 0
+	var standing: Node2D = _player()
+	if standing != null:
+		standing.modulate.a = 1.0
 	var zone: BulletZone = BulletZone.find(self)
 	if zone != null:
 		zone.effect_strength = Field.FIELD_EFFECTS

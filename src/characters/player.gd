@@ -1878,6 +1878,10 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# statement of which rank that is.
 	if GameState.god_mode and Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		return
+	# DOWN IN A DESCENT PARTY (0.126.0, descentboons.gd `out`): a fallen
+	# player watches until the room is clear - nothing lands, nothing trains.
+	if DescentBoons.out:
+		return
 
 	_set_active()
 

@@ -211,6 +211,9 @@ var _server_runs: bool = false
 # THE HEALER'S RUN TOGETHER (0.105.0): the server seats the run a room per
 # party ("hr" in its welcome), so the run may say it is there.
 var _server_healer_rooms: bool = false
+# THE DESCENT TOGETHER (0.126.0): the server seats the Descent a room per
+# party ("dr" in its welcome), so a party may run it together.
+var _server_descent_rooms: bool = false
 # While the Healer's Run is played with the party: what this player's state
 # says instead of the world's - {"a", "x", "y", "m"} - and none of the
 # world's monster messages are heard (healerrunscreen.gd sets and clears it).
@@ -315,6 +318,12 @@ func healer_rooms() -> bool:
 	"""True while the link is open to a server that seats the Healer's Run a
 	room per party (0.105.0)."""
 	return runs() and _server_healer_rooms
+
+
+func descent_rooms() -> bool:
+	"""True while the link is open to a server that seats the Descent a room
+	per party (0.126.0)."""
+	return runs() and _server_descent_rooms
 
 
 func send_run(data: Dictionary, to: int = -1) -> void:
@@ -524,6 +533,7 @@ func _pump(delta: float, player: Node) -> void:
 		_server_health = false
 		_server_runs = false
 		_server_healer_rooms = false
+		_server_descent_rooms = false
 		_lead_books = true
 		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
@@ -728,6 +738,7 @@ func handle_message(message: Dictionary) -> void:
 			_server_health = int(message.get("sh", 0)) >= SERVER_HEALTH
 			_server_runs = int(message.get("en", 0)) >= RUN_VERSION
 			_server_healer_rooms = int(message.get("hr", 0)) >= 1
+			_server_descent_rooms = int(message.get("dr", 0)) >= 1
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":

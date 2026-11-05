@@ -403,8 +403,10 @@ func _all_enemies() -> Array:
 		# NOT THE OWNER'S STRESS COPIES (stresscrowd.gd): this game's alone -
 		# never numbered, so no other game and not the server's books hear of
 		# them.
+		# A DESCENT PARTY'S (0.126.0, descentrun.gd PARTY_MARK) are the run's -
+		# worth nothing like a stress copy, but shared with the party.
 		if is_instance_valid(node) and node is BaseEnemy and not node.is_queued_for_deletion() \
-				and not node.has_meta(&"stress_copy"):
+				and (not node.has_meta(&"stress_copy") or node.has_meta(&"party_copy")):
 			found.append(node)
 	return found
 

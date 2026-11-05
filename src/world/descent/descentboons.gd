@@ -193,6 +193,9 @@ static var levels: Dictionary = {}
 # warrior's, so a warrior with the Double Axe until told otherwise.
 static var class_now: String = "warrior"
 static var weapon_now: String = "axe"
+# DOWN IN A PARTY (0.126.0): this game's player fell while the party fights
+# on - nothing hits them (Player.take_damage()) until the room is clear.
+static var out: bool = false
 # THE WARD now and at most, and the floor's share of every hit (0.115.0).
 static var ward: int = 0
 static var ward_most: int = 0
@@ -232,6 +235,7 @@ static func clear() -> void:
 	fury = 0
 	class_now = "warrior"
 	weapon_now = "axe"
+	out = false
 
 
 static func new_floor() -> void:
@@ -411,8 +415,8 @@ static func warding_light(amount: int) -> void:
 static func offers_from(rng: RandomNumberGenerator, from: Array, count: int) -> Array:
 	"""`count` of `from`, different, drawn by their rarity's weight."""
 	var open: Array = from.duplicate()
-	var out: Array = []
-	while out.size() < count and not open.is_empty():
+	var drawn: Array = []
+	while drawn.size() < count and not open.is_empty():
 		var total: int = 0
 		for id in open:
 			total += int(RARITY_WEIGHTS[rarity(id)])
@@ -420,10 +424,10 @@ static func offers_from(rng: RandomNumberGenerator, from: Array, count: int) -> 
 		for id in open:
 			roll -= int(RARITY_WEIGHTS[rarity(id)])
 			if roll <= 0:
-				out.append(id)
+				drawn.append(id)
 				open.erase(id)
 				break
-	return out
+	return drawn
 
 
 static func rarity(id: String) -> String:

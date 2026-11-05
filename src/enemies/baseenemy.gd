@@ -3679,6 +3679,13 @@ func net_props() -> Dictionary:
 	if has_meta(&"run_extra"):
 		props["rx"] = 1
 		props["nr"] = notice_range
+	# A DESCENT PARTY'S (0.126.0): every copy worth nothing (the stress mark:
+	# no kill report), shared, noticing the room; an elite drawn as one.
+	if has_meta(&"party_copy"):
+		props["pc"] = 1
+		props["nr"] = notice_range
+		if has_meta(&"descent_elite"):
+			props["de"] = 1
 	return props
 
 
@@ -3695,6 +3702,13 @@ func net_apply_props(props: Dictionary) -> void:
 	if int(props.get("rx", 0)) == 1:
 		set_meta(&"run_extra", true)
 		notice_range = float(props.get("nr", notice_range))
+	if int(props.get("pc", 0)) == 1:
+		set_meta(&"party_copy", true)
+		set_meta(&"stress_copy", true)
+		notice_range = float(props.get("nr", notice_range))
+		if int(props.get("de", 0)) == 1:
+			set_meta(&"descent_elite", true)
+			scale = Vector2(1.25, 1.25)
 
 
 func net_take_remote_hit(amount: int, element: int = Element.Type.NONE) -> void:
