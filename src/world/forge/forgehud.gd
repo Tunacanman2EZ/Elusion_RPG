@@ -20,6 +20,14 @@ const HEAT_BAR := Vector2(220, 12)
 const HEAT := Color(1.0, 0.55, 0.15)
 const HEAT_WARNING := Color(1.0, 0.25, 0.1)
 const COLD := Color(0.55, 0.9, 1.0)
+const FLASH_SECONDS := 0.9
+# THE VOLCANO'S HEART (0.122.0), drawn on the screen so it is seen at any
+# zoom: the meteor's stone HEART_SCALE times over, falling from the top of
+# the screen to the right (HEART_FROM, a share of its width and px over its
+# top edge) onto the anvil as the camera sees it.
+const HEART_ART := "res://art/maincharacter/meteor.png"
+const HEART_SCALE := 7.0
+const HEART_FROM := Vector2(0.84, -70.0)
 
 var run: Node = null
 var plate: PanelContainer = null
@@ -29,6 +37,11 @@ var heat_row: HBoxContainer = null
 var heat_name: Label = null
 var heat_bar: Control = null
 var gear: Label = null
+# THE ISLAND IS WIPED (0.122.0): a white flash over the screen, fading.
+var white: ColorRect = null
+var _flash_left: float = 0.0
+var heart: Control = null
+var _heart_art: Texture2D = null
 var banner: Label = null
 var banner_line: Label = null
 var toast_label: Label = null
@@ -43,6 +56,15 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	# The heart first, so every word is drawn over it.
+	heart = Control.new()
+	heart.name = "heart"
+	heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	heart.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	heart.set_anchors_preset(Control.PRESET_FULL_RECT)
+	heart.draw.connect(_draw_heart)
+	add_child(heart)
+	_heart_art = load(HEART_ART) as Texture2D
 	plate = PanelContainer.new()
 	plate.name = "plate"
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -94,6 +116,13 @@ func _ready() -> void:
 	result = _label("result", 18, GOLD)
 	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(result)
+	white = ColorRect.new()
+	white.name = "flash"
+	white.color = Color(1.0, 0.97, 0.88, 0.0)
+	white.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	white.set_anchors_preset(Control.PRESET_FULL_RECT)
+	white.visible = false
+	add_child(white)
 	paint()
 
 
@@ -108,7 +137,48 @@ func _label(id: String, size: int, colour: Color) -> Label:
 	return l
 
 
+func flash() -> void:
+	_flash_left = FLASH_SECONDS
+
+
+func heart_falling() -> bool:
+	return run != null and str(run.get("finale")) == "falling"
+
+
+func heart_at(done: float) -> Vector2:
+	"""Where the heart is on the screen, `done` of the way down: from high and
+	to the right, onto the anvil where the camera has it - slow, then fast."""
+	var land: Vector2 = Run.CENTRE + Run.FINALE_LAND
+	var view := Vector2(1280, 720)
+	if is_inside_tree():
+		land = get_viewport().get_canvas_transform() * land
+		view = get_viewport().get_visible_rect().size
+	var from := Vector2(view.x * HEART_FROM.x, HEART_FROM.y)
+	return from.lerp(land, pow(done, 1.4))
+
+
+func _draw_heart() -> void:
+	if not heart_falling():
+		return
+	var done: float = float(run.call("finale_done"))
+	var at: Vector2 = heart_at(done)
+	var back: Vector2 = (heart_at(0.0) - at).normalized()
+	for k in 16:
+		var u: float = float(k) / 16.0
+		heart.draw_circle(at + back * (30.0 + 46.0 * k), 84.0 - k * 4.6, Color(1.0, 0.35 + u * 0.45, 0.08, 0.85 - u * 0.8))
+	if _heart_art != null:
+		heart.draw_set_transform(at, float(run.get("volcano_seconds")) * 2.0, Vector2.ONE * HEART_SCALE)
+		heart.draw_texture(_heart_art, -_heart_art.get_size() / 2.0, Color(1.4, 1.1, 0.9))
+		heart.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _process(delta: float) -> void:
+	_flash_left = maxf(0.0, _flash_left - delta)
+	if heart != null:
+		heart.queue_redraw()
+	if white != null:
+		white.visible = _flash_left > 0.0
+		white.color.a = 0.85 * pow(_flash_left / FLASH_SECONDS, 1.5)
 	_banner_left = maxf(0.0, _banner_left - delta)
 	_toast_left = maxf(0.0, _toast_left - delta)
 	paint()

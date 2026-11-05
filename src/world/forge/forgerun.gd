@@ -69,6 +69,19 @@
 # (RUMBLE_*) and jolts at each impact near you (IMPACT_SHAKE). Wading time is
 # how you step out of the light to dodge.
 #
+# THE ISLAND IS WIPED (0.122.0). The owner, of the rain: "amaing we need the
+# giant impact to wipe the field at the end the meteors were awesome", "you
+# know the field wipe on mages minigame" - the Stand's star. FINALE_AT into
+# the volcano it throws its heart: FINALE_FALL before, a shadow spreads out
+# from the anvil over the whole island (Marks, finale_shadow()), a giant rock
+# comes down out of the sky onto the anvil - drawn on the screen itself by
+# forgehud.gd (heart_at()), so it is seen at any zoom - the rain and the fire
+# sprites stop (RAIN_STOPS), and the ground shakes harder; on landing a fire blast on the anvil and on every fire sprite
+# (gone with it, paying nothing), a white flash (forgehud.gd flash()) and the
+# hardest jolt (FINALE_SHAKE); FINALE_HOLD later the run is over for everyone
+# still standing - knock_out(), "The volcano took the island at ...". The
+# rain's ramp still takes the unlucky sooner; the heart takes the rest.
+#
 # THE FIRE SPRITES step out of the lava's edges (edge_spot(): the rim of an
 # open slice, the light's rim of a flooded one, the sides where the two meet,
 # by length) - so each flood brings them closer to the anvil - more often and
@@ -225,6 +238,22 @@ const RUMBLE_MOST := 3.0
 const IMPACT_NEAR := 220.0
 const IMPACT_SHAKE := Vector2(7.0, 0.45)
 
+# ---- THE ISLAND IS WIPED (0.122.0) --------------------------------------------
+const FINALE_AT := 45.0
+const FINALE_FALL := 3.0
+const FINALE_HOLD := 1.6
+const RAIN_STOPS := 1.0
+# Where the heart lands, over the anvil (forgehud.gd draws its fall).
+const FINALE_LAND := Vector2(0.0, -20.0)
+# Its shadow on the island, growing from FINALE_SHADOW_FROM, and the afterglow.
+const FINALE_SHADOW_FROM := 80.0
+const FINALE_SHADOW := 900.0
+const FINALE_AFTERGLOW := 1.6
+const FINALE_RUMBLE := 6.0
+const FINALE_SHAKE := Vector2(14.0, 1.2)
+const FINALE_BLAST := 180.0
+const SKY_Z := 30
+
 # ---- ICE ESSENCE --------------------------------------------------------------
 const ESSENCE_ART := "res://art/pack/materials/iceessence.png"
 const ESSENCE_FIRST := 10.0
@@ -298,6 +327,11 @@ var rocks_fallen: int = 0
 var _erupt_clock: float = 0.0
 var _rumble_clock: float = 0.0
 var _jolt_left: float = 0.0
+# THE ISLAND IS WIPED: "" until the heart is thrown, "falling", "landed".
+var finale: String = ""
+var finale_afterglow: float = 0.0
+var _wiped: bool = false
+var _sky: Node2D = null
 
 
 func _ready() -> void:
@@ -313,9 +347,12 @@ func _ready() -> void:
 	_marks = Marks.new()
 	_marks.run = self
 	_sparks = Sparks.new()
+	_sky = Wipe.new()
+	_sky.set("run", self)
 	if area != null:
 		area.add_child.call_deferred(_marks)
 		area.add_child.call_deferred(_sparks)
+		area.add_child.call_deferred(_sky)
 	hud = (load("res://src/world/forge/forgehud.gd") as GDScript).new()
 	hud.set("run", self)
 	add_child(hud)
@@ -586,6 +623,9 @@ func start_run() -> void:
 	_rumble_clock = 0.0
 	_jolt_left = 0.0
 	_clear_rocks()
+	finale = ""
+	finale_afterglow = 0.0
+	_wiped = false
 	if hud != null:
 		hud.call("announce", "Hold the forge", "Hold %s at the anvil to forge armour - it buys time in the lava"
 			% ControlsPanel.action_key("interact"))
@@ -961,13 +1001,22 @@ func rock_spot(aimed: bool) -> Vector2:
 
 
 func _step_eruption(delta: float) -> void:
+	finale_afterglow = maxf(0.0, finale_afterglow - delta)
 	if volcano():
 		volcano_seconds += delta
 		_erupt_clock -= delta
 		if _erupt_clock <= 0.0:
 			_erupt_clock = erupt_gap()
-			for i in volley_size():
-				throw_rock(rock_spot(_rng.randf() < ERUPT_AIMED))
+			if volcano_seconds < FINALE_AT - RAIN_STOPS:
+				for i in volley_size():
+					throw_rock(rock_spot(_rng.randf() < ERUPT_AIMED))
+		if finale == "" and volcano_seconds >= FINALE_AT - FINALE_FALL:
+			_call_finale()
+		if finale == "falling" and volcano_seconds >= FINALE_AT:
+			_finale_lands()
+		if finale == "landed" and volcano_seconds >= FINALE_AT + FINALE_HOLD:
+			_finale_ends()
+			return
 	var landed: Array = []
 	for rock in rocks:
 		rock["left"] = float(rock["left"]) - delta
@@ -995,6 +1044,58 @@ func throw_rock(at: Vector2) -> void:
 	rocks.append(rock)
 
 
+func finale_done() -> float:
+	"""How far down the heart is: 0 thrown, 1 landed."""
+	return clampf((volcano_seconds - (FINALE_AT - FINALE_FALL)) / FINALE_FALL, 0.0, 1.0)
+
+
+func finale_shadow() -> float:
+	"""The heart's shadow on the island now: from the anvil out over it all."""
+	var done: float = finale_done()
+	return lerpf(FINALE_SHADOW_FROM, FINALE_SHADOW, done * done)
+
+
+func _call_finale() -> void:
+	"""THE HEART THROWN: its shadow spreads, and FINALE_FALL later it lands."""
+	finale = "falling"
+	if hud != null:
+		hud.call("announce", "The volcano throws its heart!", "Nowhere on the island is safe")
+
+
+func _finale_lands() -> void:
+	"""Every fire sprite gone in a blast, the anvil's own blast, a flash, the
+	hardest jolt."""
+	finale = "landed"
+	finale_afterglow = FINALE_AFTERGLOW
+	_clear_rocks()
+	var area: Node = get_parent()
+	if area != null and is_inside_tree():
+		Blast.spawn(area, CENTRE, &"dynamite", FINALE_BLAST, false)
+		Blast.spawn(area, CENTRE, &"meteor", FINALE_BLAST * 0.6, false)
+		for m in monsters:
+			if is_instance_valid(m) and m is Node2D:
+				Blast.spawn(area, (m as Node2D).global_position, &"dynamite", 28.0, false)
+		Audio.play("meteor_impact")
+		Audio.play("explosion")
+	_clear_monsters()
+	var player: Node2D = _player()
+	if player != null and player.has_method("shake_camera"):
+		player.call("shake_camera", FINALE_SHAKE.x, FINALE_SHAKE.y)
+		_jolt_left = FINALE_SHAKE.y
+	if hud != null:
+		hud.call("announce", "The island is wiped!", "The volcano took everything")
+		if hud.has_method("flash"):
+			hud.call("flash")
+
+
+func _finale_ends() -> void:
+	"""The run is over for everyone still standing."""
+	_wiped = true
+	var player: Node2D = _player()
+	if player == null or not bool(knock_out(player)):
+		end_run()
+
+
 func _rock_lands(at: Vector2) -> void:
 	rocks_fallen += 1
 	var area: Node = get_parent()
@@ -1019,6 +1120,8 @@ func rumbling() -> bool:
 
 
 func rumble_px() -> float:
+	if finale == "falling":
+		return lerpf(RUMBLE_MOST, FINALE_RUMBLE, finale_done())
 	return minf(RUMBLE_MOST, RUMBLE_PX + RUMBLE_GROW * volcano_seconds) if volcano() else RUMBLE_PX * 0.5
 
 
@@ -1044,6 +1147,8 @@ func _clear_rocks() -> void:
 
 
 func _step_spawns(delta: float) -> void:
+	if finale != "":
+		return
 	_spawn_clock -= delta
 	if _spawn_clock > 0.0:
 		return
@@ -1270,6 +1375,8 @@ static func clock_text(seconds: float) -> String:
 func end_run() -> void:
 	var held: float = elapsed
 	var words: String = "The forge held %s  -  %d of %d slices flooded  -  %d slain" % [clock_text(held), floods, SLICES, slain]
+	if _wiped:
+		words = "The volcano took the island at %s  -  %d slain" % [clock_text(held), slain]
 	if essences > 0:
 		words += "  -  %d ice essence" % essences
 	if pieces > 0:
@@ -1289,6 +1396,8 @@ func end_run() -> void:
 	wade_left = 0.0
 	_hammering = false
 	volcano_seconds = 0.0
+	finale = ""
+	_wiped = false
 	_flood_floor = []
 	_flood_lava = []
 	_reset_map()
@@ -1349,6 +1458,25 @@ class Marks extends Node2D:
 		var share: float = float(run.call("forging_share"))
 		if share > 0.0:
 			draw_arc(CENTRE, 30.0, -PI / 2.0, -PI / 2.0 + TAU * share, 48, Color(1.0, 0.8, 0.35, 0.9), 3.0)
+		# THE ISLAND IS WIPED (0.122.0): the heart's shadow spreading over the
+		# island, then the blast's afterglow - the Stand's star's way.
+		var heart: String = str(run.get("finale"))
+		if heart == "falling":
+			var done: float = float(run.call("finale_done"))
+			draw_set_transform(CENTRE, 0.0, Vector2(1.0, 0.75))
+			var r: float = float(run.call("finale_shadow"))
+			draw_circle(Vector2.ZERO, r, Color(0.0, 0.0, 0.0, 0.15 + 0.25 * done))
+			draw_circle(Vector2.ZERO, r * 0.6, Color(0.0, 0.0, 0.0, 0.1 + 0.2 * done))
+			draw_arc(Vector2.ZERO, r, 0.0, TAU, 128, Color(1.0, 0.45, 0.15, 0.5 + 0.4 * done), 6.0)
+			draw_arc(Vector2.ZERO, r * 0.95, 0.0, TAU, 128, Color(1.0, 0.75, 0.3, 0.3 + 0.3 * done), 3.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var after: float = float(run.get("finale_afterglow")) / FINALE_AFTERGLOW
+		if after > 0.0:
+			draw_set_transform(CENTRE, 0.0, Vector2(1.0, 0.75))
+			draw_circle(Vector2.ZERO, FINALE_SHADOW, Color(1.0, 0.45, 0.1, 0.25 * after))
+			draw_circle(Vector2.ZERO, FINALE_SHADOW * 0.6, Color(1.0, 0.6, 0.2, 0.3 * after))
+			draw_circle(Vector2.ZERO, 120.0, Color(0.15, 0.08, 0.06, 0.85 * after))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		# THE ERUPTION (0.121.0): where each rock will land, brighter as it
 		# comes.
 		for rock in run.get("rocks"):
@@ -1376,6 +1504,40 @@ class Marks extends Node2D:
 			var a: float = mid + half - 2.0 * half * i / 24.0
 			points.append(CENTRE + Vector2(sin(a), -cos(a)) * outer)
 		draw_colored_polygon(points, Color(1.0, 0.35, 0.1, 0.08 + 0.14 * pulse))
+
+
+class Wipe extends Node2D:
+	## The heart's landing in the world (0.122.0), over everything: white
+	## rings racing out across the island as the afterglow fades.
+	var run: Node = null
+	var _shown: bool = false
+
+	func _init() -> void:
+		name = "forgewipe"
+		z_as_relative = false
+		z_index = SKY_Z
+
+	func _process(_delta: float) -> void:
+		if run == null or not is_instance_valid(run):
+			return
+		if float(run.get("finale_afterglow")) > 0.0:
+			queue_redraw()
+			_shown = true
+		elif _shown:
+			queue_redraw()
+			_shown = false
+
+	func _draw() -> void:
+		if run == null or not is_instance_valid(run):
+			return
+		var after: float = float(run.get("finale_afterglow")) / FINALE_AFTERGLOW
+		if after <= 0.0:
+			return
+		var grown: float = 1.0 - after
+		draw_set_transform(CENTRE, 0.0, Vector2(1.0, 0.75))
+		draw_arc(Vector2.ZERO, FINALE_SHADOW * (0.3 + 0.9 * grown), 0.0, TAU, 128, Color(1.0, 0.95, 0.8, 0.9 * after), 10.0)
+		draw_arc(Vector2.ZERO, FINALE_SHADOW * (0.4 + 1.0 * grown), 0.0, TAU, 128, Color(1.0, 0.7, 0.4, 0.5 * after), 5.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 class Sparks extends Node2D:

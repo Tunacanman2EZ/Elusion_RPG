@@ -2377,6 +2377,54 @@ func _test_the_forge_gear_and_eruption() -> void:
 	check("  a fall ends it: no rock left in the air, the armour gone for the next run, the result counts it",
 		caught and (run.get("rocks") as Array).is_empty() and int(run.get("pieces")) == 0
 		and is_instance_valid(flying) and flying.is_queued_for_deletion())
+	# ---- THE ISLAND IS WIPED (0.122.0): the owner, "we need the giant impact
+	# to wipe the field at the end", "you know the field wipe on mages minigame".
+	run.call("start_run")
+	run.set("_spawn_clock", 9999.0)
+	run.set("_essence_clock", 9999.0)
+	run.set("floods", Run.SLICES)
+	var stand_in := Node2D.new()
+	stand_in.name = "standinsprite"
+	island.add_child(stand_in)
+	stand_in.global_position = c + Vector2(150, 0)
+	stand_in.reset_physics_interpolation()
+	stand_in.tree_exiting.connect(Callable(run, "_on_monster_gone").bind(stand_in))
+	(run.get("monsters") as Array).append(stand_in)
+	run.set("volcano_seconds", Run.FINALE_AT - Run.FINALE_FALL - 0.01)
+	run.set("_erupt_clock", 9999.0)
+	run.call("_process", 0.05)
+	var first_shadow: float = float(run.call("finale_shadow"))
+	var high: Vector2 = hud.call("heart_at", 0.0)
+	var low: Vector2 = hud.call("heart_at", 1.0)
+	run.set("volcano_seconds", Run.FINALE_AT - Run.FINALE_FALL * 0.3)
+	var later_shadow: float = float(run.call("finale_shadow"))
+	check("%d s into the volcano it throws its heart: \"The volcano throws its heart!\", a giant rock falling on the screen from over its top edge onto the anvil, its shadow growing out from the anvil, the ground shaking harder" % int(Run.FINALE_AT - Run.FINALE_FALL),
+		str(run.get("finale")) == "falling" and str(hud.get("banner").text) == "The volcano throws its heart!"
+		and bool(hud.call("heart_falling")) and hud.get("heart") is Control and high.y < 0.0 and high.y < low.y - 200.0
+		and first_shadow < 120.0 and later_shadow > first_shadow * 3.0 and float(run.call("rumble_px")) >= Run.RUMBLE_MOST
+		and (run.get("_sky") as Node2D).z_index == Run.SKY_Z, [run.get("finale"), first_shadow, later_shadow, high, low])
+	run.set("_spawn_clock", 0.0)
+	var alive_before: int = (run.get("monsters") as Array).size()
+	run.call("_process", 0.01)
+	check("  no fire sprite steps out once the heart is thrown", (run.get("monsters") as Array).size() == alive_before)
+	run.set("volcano_seconds", Run.FINALE_AT - 0.5)
+	run.set("_erupt_clock", 0.0)
+	run.call("_process", 0.01)
+	var no_rain: bool = (run.get("rocks") as Array).is_empty()
+	(body.get("shakes") as Array).clear()
+	run.call("_process", 0.6)
+	var jolts: Array = body.get("shakes")
+	check("  the rain stops %s s before; the heart lands on the anvil - every fire sprite gone in a blast, a white flash, the hardest jolt (%d px)" % [Run.RAIN_STOPS, int(Run.FINALE_SHAKE.x)],
+		no_rain and str(run.get("finale")) == "landed" and (run.get("monsters") as Array).is_empty()
+		and stand_in.is_queued_for_deletion() and float(hud.get("_flash_left")) > 0.0
+		and str(hud.get("banner").text) == "The island is wiped!"
+		and not jolts.is_empty() and is_equal_approx(float(jolts[0][0]), Run.FINALE_SHAKE.x)
+		and float(run.get("finale_afterglow")) > 0.0, [run.get("finale"), jolts])
+	body.set("hp", 150)
+	run.call("_process", Run.FINALE_HOLD + 0.01)
+	check("  %s s later the run is over for everyone still standing: \"The volcano took the island at ...\"" % Run.FINALE_HOLD,
+		int(run.get("state")) == Run.State.WAITING and str(run.get("last_result")).begins_with("The volcano took the island at")
+		and int(body.get("hp")) == 1 and str(run.get("finale")) == "" and not bool(run.get("_wiped")), run.get("last_result"))
 	check("the HUD's gear line: the key to hold before the first piece, nothing between runs; \"The volcano erupts\" over the heat bar",
 		hint.begins_with("Hold ") and hint.ends_with("at the anvil to forge armour") and str(hud.call("gear_text")) == ""
 		and _func_body(_code_src("res://src/world/forge/forgehud.gd"), "func paint(").contains("The volcano erupts"), hint)

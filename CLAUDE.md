@@ -3929,6 +3929,37 @@ events ... lets fix pets and mythics". forgerun.gd's header has all of it.
 `_test_the_forge_gear_and_eruption()` (testrunner_10); `_test_the_forge()`'s
 lava and volcano checks changed with the rules.
 
+### The island is wiped: the volcano's heart (0.122.0)
+
+The owner, of 0.121.0's rain: "amaing we need the giant impact to wipe the
+field at the end the meteors were awesome", and "you know the field wipe on
+mages minigame" - the Stand's star. The volcano now has an end of its own;
+the rain's ramp still takes the unlucky sooner. forgerun.gd's header, THE
+ISLAND IS WIPED.
+
+- **`FINALE_AT` (45 s) into the volcano** - `FINALE_FALL` (3 s) before it -
+  `_call_finale()`: "The volcano throws its heart!", `finale` "falling". The
+  rain and the fire sprites stop (`RAIN_STOPS` before; `_step_spawns()`
+  returns once `finale` is set); the rumble climbs to `FINALE_RUMBLE`.
+- **Its shadow** grows out from the anvil (`finale_shadow()`, from
+  `FINALE_SHADOW_FROM` to `FINALE_SHADOW` as `finale_done()` squared) - the
+  island is wider than any view, so a shadow spread from its edge would only
+  have darkened the screen.
+- **The heart is drawn on the screen**, not in the world (forgehud.gd
+  `heart`, `heart_at()`): the meteor's stone `HEART_SCALE` (7) times over and
+  a trail of fire, from over the screen's top edge (`HEART_FROM`) onto the
+  anvil where the camera has it. In the world it was out of view at the
+  game's zoom for all but its last second.
+- **Landing** (`_finale_lands()`): blasts on the anvil and on every fire
+  sprite, which go with it paying nothing (`_clear_monsters()`), a white flash
+  (`flash()`), the hardest jolt (`FINALE_SHAKE`), "The island is wiped!", and
+  white rings racing out over an orange afterglow (`Wipe`, `Marks`).
+- **`FINALE_HOLD` (1.6 s) later** `_finale_ends()`: `knock_out()` for the
+  player still standing (god mode or not), the result "The volcano took the
+  island at ...". `VOLCANO_BELIEVED` (60 s, the server's) still covers it.
+
+`_test_the_forge_gear_and_eruption()` (testrunner_10), THE ISLAND IS WIPED.
+
 ### One look for the whole game: the hotbar's frames (the same 0.120.0)
 
 The owner, of the hero screen: "we need to clean this up add the styles and
