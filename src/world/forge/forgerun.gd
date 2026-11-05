@@ -907,6 +907,7 @@ func end_run() -> void:
 	last_result = words
 	best = maxf(best, held)
 	_clear_monsters()
+	BulletZone.clear_enemy_shots(self)
 	_drop_essence()
 	state = State.WAITING
 	heat = 0.0

@@ -3805,6 +3805,46 @@ Google never turning green. Two old checks moved with it: the Google button
 is two under Enter Elusion ("or" between), and the sign-out reason's colour
 is read in `_show_notice()`.
 
+### A run's end takes what the monsters fired (0.119.2)
+
+The owner: "issue when minigame ends bullets fly randomly". A run's end
+freed its monsters at once and left everything they had in the air flying
+on from nobody - measured in the Forge, 20 orbs and 5 shots at the end,
+still about a quarter second later, and able to land on a player just woken
+on 1 health. `BulletZone.clear_enemy_shots(from)` takes the zone's orbs
+(`field.clear()`) and lobs (BulletLob children), and every node in the
+projectiles and ground effects holding a monster's `HitSource` tag (an
+arrow, a fire orb, a vine, a burning pool); a player's or a pet's shot has
+no tag and stays. Called beside freeing the monsters: the Forge's
+`end_run()`, the Endless's `_end_run()` (which now frees the elites and
+bosses at once too, `_free_extras()` - the swarm still stands
+`CLEAR_AFTER`) and `_clear_arena()`, and the Descent's `_clear_monsters()`
+(every room's end as well). The Healer's Run already cleared its own field.
+**A new minigame's end calls it too.** `_test_a_runs_end_takes_its_shots()`
+(testrunner_10).
+
+### The Dynamite held, and a tenth of the mana in the Forge (the same 0.119.2)
+
+The owner: "need major reduction on dynamite cost on mp and click to hold i
+think limiting the attack was a bad idea click to hold spam fire would be
+nice for this mini game".
+
+- **Held, it keeps throwing, everywhere** (tank.gd `touch_attack_repeats()`,
+  true with the Dynamite out; `touch_attack_ready()`, the cooldown over and
+  the mana for a throw, so a held button on an empty bar is quiet). 0.117.0
+  left the tank out because attack is its aura's switch - that still never
+  repeats. The pace is the cooldown's and each throw costs what it did, so
+  nothing else changes.
+- **In the Forge a throw costs `FORGE_DYNAMITE_SHARE` (a tenth)**, rounded
+  up: 9 mana at level 22 where it is 82 - less than the bar refills between
+  throws at the usual pace, so held it does not run dry. `in_the_forge()` asks
+  for the run's group ("forge_run"), the whole island. The Forge pays nothing,
+  so the cheaper throw is only felt there; the server's books bound the
+  Dynamite by its cooldown, not its mana.
+
+`_test_the_dynamite_held_and_cheap_in_the_forge()` (testrunner_10); the touch
+pad's check (testrunner_3) holds the Dynamite repeating and the aura not.
+
 ### The Descent: the warrior's roguelike run down a crypt (0.112.0)
 
 The owner: "im thinking about that roguelike" (a minigame in Elusion),

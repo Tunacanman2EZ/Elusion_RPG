@@ -779,18 +779,28 @@ func _end_run() -> void:
 			GameConstants.commas(int(swarm.get("slain")))]
 	if _hud != null:
 		_hud.call("show_result", _last_result, clock_text(best))
+	# The shooters and what they fired go now (0.119.2, "when minigame ends
+	# bullets fly randomly"): the swarm stays as it was for CLEAR_AFTER, but
+	# an elite left standing went on firing at nobody.
+	_free_extras()
+	BulletZone.clear_enemy_shots(self)
 	_clear_left = CLEAR_AFTER
 	if was_party and leading():
 		party.call("line_now")
 
 
-func _clear_arena() -> void:
-	_clear_left = -1.0
-	swarm.call("clear")
+func _free_extras() -> void:
 	for monster in _extras:
 		if is_instance_valid(monster):
 			(monster as Node).queue_free()
 	_extras.clear()
+
+
+func _clear_arena() -> void:
+	_clear_left = -1.0
+	swarm.call("clear")
+	_free_extras()
+	BulletZone.clear_enemy_shots(self)
 	var door: Node = get_node_or_null(door_path)
 	if door != null and door.has_method("lock"):
 		door.call("lock", false)

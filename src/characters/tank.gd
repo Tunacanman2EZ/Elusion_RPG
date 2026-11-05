@@ -162,9 +162,21 @@ const DYNAMITE_RING_LINGER := 3.0
 # throws pay for it.
 const DYNAMITE_THROWS_PER_BAR := 5
 
+# IN THE FORGE, A TENTH (0.119.2). The owner, of the tank's own minigame:
+# "need major reduction on dynamite cost on mp", and "click to hold spam fire
+# would be nice for this mini game". 9 mana a throw at level 22 where it is 82
+# - less than the bar refills between throws, so held, it never runs dry. The
+# Forge pays nothing, so this breaks nothing anywhere else. Asked for by the
+# run's group (forgerun.gd, "forge_run"), so it holds for the whole island.
+const FORGE_DYNAMITE_SHARE := 0.1
+const FORGE_GROUP := &"forge_run"
+
 var dynamite_mana_cost: int:
 	get:
-		return dynamite_mana_cost_at(mana_base, mana_per_lvl, level)
+		var cost: int = dynamite_mana_cost_at(mana_base, mana_per_lvl, level)
+		if in_the_forge():
+			return maxi(1, ceili(cost * FORGE_DYNAMITE_SHARE))
+		return cost
 @export var dynamite_cooldown: float = 0.75
 # What a stick is worth, in ring ticks. The exporter writes it for the
 # server's books (gamedata.combat_bounds()).
@@ -491,6 +503,29 @@ func _handle_idle() -> void:
 # =============================================================================
 # ATTACK OVERRIDE — AURA TOGGLE
 # =============================================================================
+
+func in_the_forge() -> bool:
+	return is_inside_tree() and get_tree().get_first_node_in_group(FORGE_GROUP) != null
+
+
+# HELD, THE DYNAMITE KEEPS THROWING (0.119.2). The owner: "click to hold i
+# think limiting the attack was a bad idea". 0.117.0 left the tank out of the
+# held attack because attack is its aura's switch, and a held switch flicks
+# it on and off - but with the Dynamite out a second press is another throw,
+# as the warrior's is another swing. Everywhere, not only in the Forge: the
+# pace is still the cooldown's and each throw still costs its mana.
+func touch_attack_repeats() -> bool:
+	"""Held, the Dynamite throws stick after stick; the aura's switch never
+	repeats."""
+	return equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE
+
+
+func touch_attack_ready() -> bool:
+	"""The next throw once the last one's cooldown is over and there is the
+	mana for it - so a held button with an empty bar is quiet (the press that
+	started it still says "Not enough mana"), as the mage's is."""
+	return _dynamite_cooldown_left <= 0.0 and mana >= dynamite_mana_cost
+
 
 func attack_action() -> void:
 	# OVERRIDE: tank's spacebar attack TOGGLES the aura on or off.

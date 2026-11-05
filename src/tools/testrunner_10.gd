@@ -1866,3 +1866,103 @@ func _test_the_login_and_minigames_look() -> void:
 		pictured and tagged and card.size.y < 480.0 and card.forge_go.get_parent().get_parent() == card.forge_box)
 	card_hud.queue_free()
 	await get_tree().process_frame
+
+
+# 0.119.2. The owner: "when minigame ends bullets fly randomly". A run's end
+# freed its monsters at once and left every orb, lob and shot they had in the
+# air flying on from nobody - measured in the Forge, 20 orbs and 5 shots at
+# the end, still there a quarter second later.
+func _test_a_runs_end_takes_its_shots() -> void:
+	section("A RUN'S END - what the monsters fired goes with them")
+	const Source := preload("res://src/shared/hitsource.gd")
+	var area := Node2D.new()
+	add_child(area)
+	var shots := Node2D.new()
+	shots.add_to_group(&"projectiles")
+	area.add_child(shots)
+	var floor_fx := Node2D.new()
+	floor_fx.add_to_group(&"groundeffects")
+	area.add_child(floor_fx)
+	var zone: BulletZone = BulletZone.new()
+	area.add_child(zone)
+	await get_tree().process_frame
+	zone.fire_ring(Vector2(100, 100), 0.0, 12, 120.0, 5, 6)
+	var lob := BulletLob.new()
+	zone.add_child(lob)
+	var arrow := Node2D.new()
+	arrow.set_meta(Source.HIT_META, "firesprite:fireprojectile")
+	shots.add_child(arrow)
+	var pool := Node2D.new()
+	pool.set_meta(Source.HIT_META, "boss:burn")
+	floor_fx.add_child(pool)
+	var mine := Node2D.new()
+	shots.add_child(mine)
+	var orbs_before: int = zone.field.count
+	var taken: int = BulletZone.clear_enemy_shots(zone)
+	check("clear_enemy_shots() takes the zone's %d orbs and its lob, and a monster's shot and burning pool" % orbs_before,
+		orbs_before == 12 and zone.field.count == 0 and taken == 15
+		and arrow.is_queued_for_deletion() and pool.is_queued_for_deletion() and lob.get_parent() == null, taken)
+	check("  and leaves a player's shot (no monster's tag)", is_instance_valid(mine) and not mine.is_queued_for_deletion())
+	check("  and with no zone and no shots it takes nothing", BulletZone.clear_enemy_shots(null) == 0)
+	area.queue_free()
+	# Every minigame's end calls it, beside freeing its monsters.
+	var forge: String = _code_src("res://src/world/forge/forgerun.gd")
+	var endless: String = _code_src("res://src/world/endless/endlessrun.gd")
+	var descent: String = _code_src("res://src/world/descent/descentrun.gd")
+	check("the Forge's end, the Endless's end and its emptying, and the Descent's clearing all take the shots",
+		_func_body(forge, "func end_run(").contains("BulletZone.clear_enemy_shots(self)")
+		and _func_body(endless, "func _end_run(").contains("BulletZone.clear_enemy_shots(self)")
+		and _func_body(endless, "func _end_run(").contains("_free_extras()")
+		and _func_body(endless, "func _clear_arena(").contains("BulletZone.clear_enemy_shots(self)")
+		and _func_body(descent, "func _clear_monsters(").contains("BulletZone.clear_enemy_shots(self)"))
+	await get_tree().process_frame
+	print("  a run's end: the orbs, lobs and shots go with the monsters")
+
+
+# 0.119.2. The owner, of the Forge: "need major reduction on dynamite cost on
+# mp and click to hold i think limiting the attack was a bad idea click to hold
+# spam fire would be nice for this mini game".
+func _test_the_dynamite_held_and_cheap_in_the_forge() -> void:
+	section("THE DYNAMITE - held, it keeps throwing; in the Forge, a tenth of the mana")
+	var arena := Node2D.new()
+	add_child(arena)
+	var tank: Node = (load("res://src/characters/tank.gd") as GDScript).new()
+	tank._set_stat_curve()
+	tank.level = 22
+	tank.spawn_parent_override = arena
+	tank.equipped = {"weapon": "dynamite"}
+	tank.refresh_gear_stats()
+	tank.dynamite_bundle_chance = 0.0
+	tank.dynamite_barrage_chance = 0.0
+	arena.add_child(tank)
+	tank.set_process(false)
+	tank.set_physics_process(false)
+	tank.global_position = Vector2(-61000, -61000)
+	var usual: int = tank.dynamite_mana_cost
+	check("held, the Dynamite repeats: ready when the cooldown is over and the bar can pay",
+		tank.touch_attack_repeats() == true and usual == 82, usual)
+	tank.mana = 500
+	var ready_before: bool = tank.touch_attack_ready()
+	tank.throw_dynamite(tank.global_position + Vector2(60, 0))
+	var waits: bool = not tank.touch_attack_ready()
+	tank.set("_dynamite_cooldown_left", 0.0)
+	tank.mana = usual - 1
+	check("  not mid-cooldown, and not with too little mana - so a held button on an empty bar is quiet",
+		ready_before and waits and not tank.touch_attack_ready())
+	tank.equipped = {}
+	tank.refresh_gear_stats()
+	check("  and without the Dynamite, attack is the aura's switch and never repeats", tank.touch_attack_repeats() == false)
+	tank.equipped = {"weapon": "dynamite"}
+	tank.refresh_gear_stats()
+	var forge := Node.new()
+	forge.add_to_group(&"forge_run")
+	arena.add_child(forge)
+	var in_forge: int = tank.dynamite_mana_cost
+	check("in the Forge a throw costs a tenth - %d mana where it is %d - less than the bar refills between throws" % [in_forge, usual],
+		in_forge == ceili(usual * tank.FORGE_DYNAMITE_SHARE) and in_forge == 9 and tank.in_the_forge(), [in_forge, usual])
+	arena.remove_child(forge)
+	forge.free()
+	check("  and out of it, the usual price again", tank.dynamite_mana_cost == usual and not tank.in_the_forge())
+	arena.queue_free()
+	await get_tree().process_frame
+	print("  dynamite: held, it throws on; in the Forge a tenth of the mana")

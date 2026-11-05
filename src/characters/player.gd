@@ -1742,8 +1742,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func touch_attack_repeats() -> bool:
 	"""Whether the Attack button held keeps attacking: only where a second
-	press means another of the same. Not the tank's (attack switches its aura
-	off again) and not the healer's (attack held already streams)."""
+	press means another of the same. Not the tank's aura (attack switches it
+	off again; its Dynamite repeats) and not the healer's (attack held
+	already streams)."""
 	return false
 
 
@@ -1810,9 +1811,10 @@ func _poll_attack_pressed() -> bool:
 	# HELD, IT KEEPS GOING (0.117.0): with a mouse and keyboard too, as the
 	# touch pad's Attack always has - the warrior swing after swing, the
 	# mage cast after cast, each the moment the last is over
-	# (touch_attack_repeats(), touch_attack_ready()). Not the tank's (attack
-	# switches its aura off again), not the healer's (held already streams),
-	# not the Double Axe's (the next press calls it home).
+	# (touch_attack_repeats(), touch_attack_ready()). Not the tank's aura
+	# (attack switches it off again - its Dynamite does repeat, 0.119.2), not
+	# the healer's (held already streams), not the Double Axe's (the next
+	# press calls it home).
 	var held_on: bool = (Input.is_action_pressed("attack") or left_now) \
 		and touch_attack_repeats() and touch_attack_ready()
 	# FROZEN, NO ATTACK (0.93.3) - after the edges above are taken, so a

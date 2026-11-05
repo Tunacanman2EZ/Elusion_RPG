@@ -3758,11 +3758,13 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	TouchControls._latch_attack(warrior)
 	check("held, the warrior's Attack presses again each time the last swing is over - never mid-swing, so it walks no slower than clicking (%s)" % str(beats),
 		beats == [1, 0, 0, 0, 1, 0], beats)
-	check("  the warrior and the mage repeat; the tank (attack is its aura's switch) and the Double Axe (the next press calls it home) do not",
+	# The tank's Dynamite repeats since 0.119.2 (the owner: "click to hold i
+	# think limiting the attack was a bad idea"); its aura's switch still not.
+	check("  the warrior, the mage and the tank's Dynamite repeat; the tank's aura switch and the Double Axe (the next press calls it home) do not",
 		warrior.call("touch_attack_repeats") == true
 		and _func_body(_code_src("res://src/characters/warrior.gd"), "func touch_attack_repeats(").contains("SPINNING_AXE")
 		and _code_src("res://src/characters/mage.gd").contains("func touch_attack_repeats(")
-		and not _code_src("res://src/characters/tank.gd").contains("func touch_attack_repeats(")
+		and _func_body(_code_src("res://src/characters/tank.gd"), "func touch_attack_repeats(").contains("WeaponAttack.DYNAMITE")
 		and not _code_src("res://src/characters/healer.gd").contains("func touch_attack_repeats("))
 	check("  a mage presses again only with the mana for it: a refused press is still a frame it does not walk",
 		_func_body(_code_src("res://src/characters/mage.gd"), "func touch_attack_ready(").contains("mana >= spell_mana_cost"))

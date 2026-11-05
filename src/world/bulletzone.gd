@@ -126,6 +126,41 @@ static func find(from: Node) -> BulletZone:
 	return from.get_tree().get_first_node_in_group(GROUP) as BulletZone
 
 
+# WHAT THE MONSTERS FIRED GOES WITH THEM (0.119.2). The owner: "when minigame
+# ends bullets fly randomly". A run's end frees its monsters at once, and every
+# orb, lob and shot they had in the air flew on from nobody for up to a second
+# (measured in the Forge: 20 orbs and 5 shots at the end, none 0.75 s later) -
+# and could still land on a player just woken on 1 health. Every minigame's
+# end calls this beside freeing its monsters.
+static func clear_enemy_shots(from: Node) -> int:
+	"""Takes every enemy shot out of `from`'s area: the zone's orbs and lobs,
+	and anything a monster made that carries its HitSource tag (an arrow, a
+	fire orb, a vine, a burning pool) in the projectiles and ground effects.
+	A player's or a pet's shot carries no tag and stays. How many went."""
+	if from == null or not from.is_inside_tree():
+		return 0
+	var taken: int = 0
+	var zone: BulletZone = find(from)
+	if zone != null:
+		if zone.field != null:
+			taken += zone.field.count
+			zone.field.clear()
+		for child in zone.get_children():
+			if child is BulletLob:
+				zone.remove_child(child)
+				child.queue_free()
+				taken += 1
+	for group in [&"projectiles", &"groundeffects"]:
+		var holder: Node = from.get_tree().get_first_node_in_group(group)
+		if holder == null:
+			continue
+		for shot in holder.get_children():
+			if shot.has_meta(HitSource.HIT_META) and not shot.is_queued_for_deletion():
+				shot.queue_free()
+				taken += 1
+	return taken
+
+
 static func shot_colour(element: int) -> Color:
 	"""An orb wears its element's colour (Element.colour_for), lifted a little
 	toward white so the darkest of them - dark's deep violet - still reads on

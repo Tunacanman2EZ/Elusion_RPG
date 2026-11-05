@@ -811,6 +811,8 @@ func _clear_monsters() -> void:
 			(m as Node).tree_exiting.disconnect(_on_monster_gone)
 			(m as Node).queue_free()
 	monsters.clear()
+	# And what they fired (0.119.2): a room's end, a fall or the bottom.
+	BulletZone.clear_enemy_shots(self)
 	_waves = []
 	_coming = []
 	_paint_marks()
