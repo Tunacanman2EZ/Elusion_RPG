@@ -309,6 +309,30 @@ const PARTY_BOSS := [1.0, 1.0, 1.75, 2.5, 3.25]
 # every floor to 4. At 1.75 for four the warrior's comes back to about a
 # solo player's, and the tank still holds.
 const PARTY_HIT := [1.0, 1.0, 1.25, 1.5, 1.75]
+# HARDER (0.129.0) - the owner: "i still think its too easy ... far too easy
+# solo with warrior": every floor's monsters hit FLOOR_HARDER as hard as
+# FLOORS' "taken" says, its keeper KEEPER_HARDER as its "keeper_taken"
+# (taken_for()).
+const FLOOR_HARDER := 1.5
+const KEEPER_HARDER := 1.25
+# PIERCING (0.129.0, descentboons.gd absorb()): the share of a hit past the
+# ward - PIERCE_FIRST on the first floor, PIERCE_STEP more a floor, at most
+# PIERCE_MOST; in the keeper's room, all of it.
+const PIERCE_FIRST := 0.3
+const PIERCE_STEP := 0.05
+const PIERCE_MOST := 0.8
+# A STACKED ELEMENT BURSTS (0.129.0, _burst()): its share of your health,
+# past armour and ward, the effect it leaves, and what it says over you.
+const BURSTS := {
+	Element.Type.FIRE: [0.1, &"burn", "Ignited!"],
+	Element.Type.ICE: [0.06, &"frozen", "Frozen solid!"],
+	Element.Type.WATER: [0.06, &"soaked", "Drenched!"],
+	Element.Type.WIND: [0.08, &"shove", "Blown away!"],
+	Element.Type.LIGHT: [0.06, &"dazzle", "Blinded!"],
+	Element.Type.EARTH: [0.1, &"root", "Rooted!"],
+	Element.Type.DARK: [0.08, &"wither", "Withered!"]}
+# The ring cracks red this long when a hit goes through it.
+const CRACK_MSEC := 260
 const OUT_ALPHA := 0.4
 # A ROOM'S WEATHER (0.127.0, room_lands()): from this floor (an index) a
 # second land may mix in, this often and this much more each floor down;
@@ -378,6 +402,8 @@ var deepest: int = -1
 var party: Node = null
 var run_key: int = 0
 var players: int = 1
+# How many elements have burst on this game's player this run (0.129.0).
+var bursts_seen: int = 0
 var travel_seq: int = 0
 var countdown_left: float = 0.0
 var my_door: int = 0
@@ -514,6 +540,13 @@ func hazard_keepers() -> Array:
 	return ids
 
 
+func pierce_for(kind: String) -> float:
+	"""The share of a hit past the ward in a room of this kind (0.129.0)."""
+	if kind == "keeper":
+		return 1.0
+	return minf(PIERCE_MOST, PIERCE_FIRST + PIERCE_STEP * float(floor_index))
+
+
 func taken_for(kind: String) -> float:
 	"""How hard this floor's monsters hit in a room of this kind (Boons'
 	`floor_taken`). A KEEPER HITS AT FULL (0.123.0) - the owner: "fire boss in
@@ -525,8 +558,8 @@ func taken_for(kind: String) -> float:
 	at its floor's "keeper_taken", which lifts the weak ones to the ladder."""
 	var deeper: float = (1.0 + DEEP_TAKEN_STEP * float(deep_round())) * party_scale(PARTY_HIT)
 	if kind == "keeper":
-		return float(floor_info().get("keeper_taken", 1.0)) * deeper
-	return float(floor_info().get("taken", 1.0)) * deeper
+		return float(floor_info().get("keeper_taken", 1.0)) * deeper * KEEPER_HARDER
+	return float(floor_info().get("taken", 1.0)) * deeper * FLOOR_HARDER
 
 
 func running() -> bool:
@@ -587,8 +620,9 @@ func _place_ward_ring() -> void:
 			_ward_ring.queue_free()
 		_ward_ring = Node2D.new()
 		_ward_ring.name = "wardring"
+		_ward_ring.material = RangeRing.unshaded()
 		_ward_ring.z_index = -1
-		_ward_ring.draw.connect(_draw_ward_ring)
+		_ward_ring.draw.connect(_draw_ward_ring.bind(_ward_ring))
 		player.add_child(_ward_ring)
 		_ward_ring.position = WARD_RING_AT
 		_ward_ring.reset_physics_interpolation()
@@ -601,15 +635,58 @@ func _drop_ward_ring() -> void:
 	_ward_ring = null
 
 
-func _draw_ward_ring() -> void:
-	"""A gold ring round your feet, as bright as the ward is full."""
-	if Boons.ward <= 0 or Boons.ward_most <= 0:
+func _draw_ward_ring(ring: Node2D) -> void:
+	"""A gold ring round your feet, as bright as the ward is full - cracked
+	red as a hit goes through it (0.129.0) - and under it a pip for each
+	stack of an element on you, in its colour."""
+	var cracked: bool = Time.get_ticks_msec() - Boons.pierced_at < CRACK_MSEC
+	ring.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.5))
+	if Boons.ward > 0 and Boons.ward_most > 0:
+		var full: float = float(Boons.ward) / float(Boons.ward_most)
+		ring.draw_circle(Vector2.ZERO, WARD_RING_RADIUS, Color(1.0, 0.82, 0.3, 0.08 + 0.12 * full))
+		ring.draw_arc(Vector2.ZERO, WARD_RING_RADIUS, -PI / 2.0, -PI / 2.0 + TAU * full, 32,
+			Color(1.6, 1.25, 0.5, 0.45 + 0.5 * full), 1.5)
+	if cracked:
+		ring.draw_arc(Vector2.ZERO, WARD_RING_RADIUS + 1.0, 0.0, TAU, 32, Color(1.8, 0.25, 0.2, 0.9), 2.0)
+		for k in 5:
+			var a: float = float(k) * TAU / 5.0 + 0.4
+			var p0 := Vector2.from_angle(a) * (WARD_RING_RADIUS - 5.0)
+			var p1 := Vector2.from_angle(a + 0.25) * (WARD_RING_RADIUS + 1.0)
+			var p2 := Vector2.from_angle(a - 0.1) * (WARD_RING_RADIUS + 6.0)
+			ring.draw_polyline(PackedVector2Array([p0, p1, p2]), Color(1.8, 0.3, 0.25, 0.95), 1.5)
+	ring.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var row: int = 0
+	for element in Boons.STACKING:
+		var n: int = int(Boons.stacks.get(element, 0))
+		if n <= 0:
+			continue
+		var colour: Color = Element.colour_for(element)
+		for i in n:
+			var at := Vector2((float(i) - float(Boons.STACK_MOST - 1) / 2.0) * 9.0, 12.0 + 9.0 * float(row))
+			ring.draw_circle(at, 4.0, Color(0.0, 0.0, 0.0, 0.55))
+			ring.draw_circle(at, 3.2, Color(colour * 1.5, 1.0))
+			ring.draw_arc(at, 3.6, 0.0, TAU, 12, Color(1.0, 1.0, 1.0, 0.85), 1.0)
+		row += 1
+
+
+func _burst(element: int) -> void:
+	"""A stacked element bursts on this game's player (0.129.0): its share of
+	the health, past armour and ward, the effect it leaves, a flash."""
+	var player: Node2D = _player()
+	if player == null or not BURSTS.has(element) or not player.has_method("take_damage"):
 		return
-	var full: float = float(Boons.ward) / float(Boons.ward_most)
-	_ward_ring.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.5))
-	_ward_ring.draw_circle(Vector2.ZERO, WARD_RING_RADIUS, Color(1.0, 0.82, 0.3, 0.08 + 0.12 * full))
-	_ward_ring.draw_arc(Vector2.ZERO, WARD_RING_RADIUS, -PI / 2.0, -PI / 2.0 + TAU * full, 32,
-		Color(1.6, 1.25, 0.5, 0.45 + 0.5 * full), 1.5)
+	var info: Array = BURSTS[element]
+	var amount: int = maxi(1, roundi(float(int(player.get("max_hp"))) * float(info[0])))
+	Boons.exact_once = true
+	player.call("take_damage", amount, element)
+	Boons.exact_once = false
+	Boons.stacks.erase(element)
+	var from: Vector2 = player.global_position + Vector2.from_angle(randf() * TAU) * 20.0
+	StatusEffects.apply_to(player, info[1], amount, from, false, 1.0)
+	if player.has_method("show_notice"):
+		player.call("show_notice", str(info[2]))
+	_lands_node().call("burst_at", player.global_position, element)
+	bursts_seen += 1
 
 
 func _go(kind: String) -> void:
@@ -649,6 +726,8 @@ func _arrive(kind: String) -> void:
 	room += 1
 	room_kind = "keeper" if room > ROOMS else kind
 	Boons.floor_taken = taken_for(room_kind)
+	Boons.pierce_base = pierce_for(room_kind)
+	Boons.clear_stacks()
 	Boons.room_kills = 0
 	challenge_left = 0.0
 	challenge_won = false
@@ -758,6 +837,11 @@ func _process(delta: float) -> void:
 				if living() == 0 and _coming.is_empty() and _waves.is_empty():
 					challenge_won = room_kind == "challenge" and challenge_left > 0.0
 					_room_cleared()
+	# STACKS FADE, AND BURST (0.129.0).
+	if state == State.FIGHT:
+		Boons.fade_stacks(delta)
+		for element in Boons.take_bursts():
+			_burst(int(element))
 	# THE WHOLE PARTY DOWN (0.126.0): the run is over.
 	if running() and party_on() and not following() and Boons.out and bool(party.call("all_out", run_key)):
 		_end_run(false)

@@ -162,6 +162,24 @@ const BERSERK_DEALT := 1.4
 const BERSERK_TAKEN := 1.2
 # The ward: this share of your most health.
 const WARD_SHARE := 0.4
+# PIERCING (0.129.0) - the owner: "bulward is whats making it so easy so
+# maybe we need piercing shots". The share of every hit that skips the ward
+# (the run sets `pierce_base` each room, descentrun.gd pierce_for()); an
+# elite's or a keeper's hit skips it all (by its HitSource), and so does a
+# hit the floor itself lands (`exact_once`, descentlands.gd).
+# AND ELEMENTS STACK (0.129.0) - the owner: "more elemental damage more
+# stacking more difficulty". Every hit of a land's element adds a stack of
+# it, at most STACK_MOST; each makes that element hit STACK_STEP harder; one
+# goes every STACK_FADE without another. At STACK_MOST it BURSTS (the run's
+# _burst()), and its stacks are spent.
+const STACK_MOST := 5
+const STACK_STEP := 0.1
+const STACK_FADE := 3.0
+# At most one stack of an element this often, however many hit: in a crowd
+# every hit stacking burst one every second (the bench, zz/descparty4.gd).
+const STACK_GAP := 0.75
+const STACKING := [Element.Type.FIRE, Element.Type.ICE, Element.Type.WATER, Element.Type.WIND,
+	Element.Type.LIGHT, Element.Type.EARTH, Element.Type.DARK]
 # A level of Bloodletter bleeds half a swing more; Long Wave a quarter bigger.
 const BLEED_STEP := 0.5
 const WAVE_STEP := 0.25
@@ -208,6 +226,19 @@ static var shrine_taken: float = 1.0
 static var _thorns_at: int = -100000
 # Axe Fury's kills so far.
 static var fury: int = 0
+# PIERCING (0.129.0): this room's share past the ward, the next hit's whole
+# (the floor's own), and when a hit last went through (the ring cracks).
+static var pierce_base: float = 0.0
+static var exact_once: bool = false
+static var pierced_at: int = -100000
+# STACKS (0.129.0): element -> stacks, element -> seconds to the next to go,
+# and the elements that have burst for the run to play out.
+static var stacks: Dictionary = {}
+static var _stack_left: Dictionary = {}
+static var _stack_at: Dictionary = {}
+# The fight's own clock (fade_stacks() moves it), for STACK_GAP.
+static var _stack_clock: float = 0.0
+static var bursts: Array = []
 
 
 static func level(id: String) -> int:
@@ -236,6 +267,13 @@ static func clear() -> void:
 	class_now = "warrior"
 	weapon_now = "axe"
 	out = false
+	pierce_base = 0.0
+	exact_once = false
+	pierced_at = -100000
+	stacks = {}
+	_stack_left = {}
+	_stack_at = {}
+	bursts = []
 
 
 static func new_floor() -> void:
@@ -257,13 +295,84 @@ static func fill_ward(most_health: int, over: float = 1.0) -> void:
 	ward = ward_most
 
 
-static func absorb(amount: int) -> int:
-	"""How much of a hit the ward takes - the rest is the health's."""
+static func absorb(amount: int, source: String = "", whole: bool = false) -> int:
+	"""How much of a hit the ward takes - the rest is the health's. PIERCING
+	(0.129.0): pierce_share() of it skips the ward, all of it when `whole`."""
 	if not active or ward <= 0 or amount <= 0:
 		return 0
-	var took: int = mini(ward, amount)
+	var through: int = amount if whole else roundi(float(amount) * pierce_share(source))
+	var took: int = mini(ward, amount - through)
 	ward -= took
+	if through > 0:
+		pierced_at = Time.get_ticks_msec()
 	return took
+
+
+static func pierce_share(source: String) -> float:
+	"""The share of a hit from `source` (HitSource's "monster:attack") that
+	skips the ward: all of an elite's or a keeper's, else the room's."""
+	if not active:
+		return 0.0
+	var who: String = source.get_slice(":", 0)
+	if who.contains("elite") or who.contains("boss"):
+		return 1.0
+	return clampf(pierce_base, 0.0, 1.0)
+
+
+static func take_exact() -> bool:
+	"""(Player.take_damage().) Whether this hit is the floor's own - landed as
+	it is, past armour and the ward - and the mark spent."""
+	var was: bool = exact_once
+	exact_once = false
+	return was and active
+
+
+static func note_element(element: int) -> void:
+	"""A hit of `element` landed: one stack more, and a burst at STACK_MOST."""
+	if not active or not STACKING.has(element):
+		return
+	if _stack_clock - float(_stack_at.get(element, -1000.0)) < STACK_GAP:
+		return
+	_stack_at[element] = _stack_clock
+	stacks[element] = int(stacks.get(element, 0)) + 1
+	_stack_left[element] = STACK_FADE
+	if int(stacks[element]) >= STACK_MOST:
+		stacks.erase(element)
+		_stack_left.erase(element)
+		bursts.append(element)
+
+
+static func stack_scale(element: int) -> float:
+	"""How much harder `element` hits for its stacks."""
+	if not active:
+		return 1.0
+	return 1.0 + STACK_STEP * float(int(stacks.get(element, 0)))
+
+
+static func fade_stacks(delta: float) -> void:
+	"""One goes from each element every STACK_FADE without another hit."""
+	_stack_clock += delta
+	for element in stacks.keys():
+		_stack_left[element] = float(_stack_left.get(element, STACK_FADE)) - delta
+		if float(_stack_left[element]) <= 0.0:
+			stacks[element] = int(stacks[element]) - 1
+			_stack_left[element] = STACK_FADE
+			if int(stacks[element]) <= 0:
+				stacks.erase(element)
+				_stack_left.erase(element)
+
+
+static func clear_stacks() -> void:
+	stacks = {}
+	_stack_left = {}
+	_stack_at = {}
+	bursts = []
+
+
+static func take_bursts() -> Array:
+	var out_now: Array = bursts
+	bursts = []
+	return out_now
 
 
 static func damage_factor() -> float:

@@ -2,6 +2,7 @@ extends Node2D
 
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const RangeRingScript := preload("res://src/shared/rangering.gd")
+const Boons := preload("res://src/world/descent/descentboons.gd")
 # descentlands.gd - THE LANDS SHINE IN THE DESCENT (0.124.0, step 1 of the
 # commit folder's DESCENT_PLAN_3.txt). A child of the run (descentrun.gd
 # _lands), over the room's floor.
@@ -51,7 +52,8 @@ const RangeRingScript := preload("res://src/shared/rangering.gd")
 #   wisp    (dark)   drifts after you - touched, withered (hits doubled)
 #   gas     (poison) from floor 3: a green cloud seeps up and drifts -
 #                    inside it, poison every GAS_TICK
-# Each hits for env_hit() (more each floor), and at most every TOUCH_GAP.
+# Each hits for env_amount() (a share of your health, more each floor), and
+# at most every TOUCH_GAP.
 # Drawn in code: what lies on the floor by this node, what floats by `_air`
 # over the weather.
 #
@@ -86,24 +88,53 @@ const MIX_THIN := 0.6
 # THE FLOOR ITSELF (0.127.0): the first hazard this long after the pack, then
 # every env_gap(); how hard they hit; at most one hit this often; how near a
 # touch counts; poison gas from this floor (an index), this often a gap.
-const ENV_FIRST := 3.0
-const ENV_GAP_FIRST := 4.0
-const ENV_GAP_STEP := 0.3
-const ENV_GAP_LEAST := 1.6
-const ENV_HIT_FIRST := 8
-const ENV_HIT_STEP := 4
+# LOUDER (0.129.0) - the owner: "i didnt really see lasers or much going on
+# we need to amplify effects and eviromental damages". Sooner, more often,
+# more at once (env_count()), bigger; and each hit is a share of your health
+# (env_share(): ENV_SHARE_FIRST, ENV_SHARE_STEP more a floor, at most
+# ENV_SHARE_MOST), landed as it is - past armour and the ward
+# (descentboons.gd exact_once) - so it hurts whatever you wear.
+const ENV_FIRST := 2.0
+const ENV_GAP_FIRST := 3.0
+const ENV_GAP_STEP := 0.25
+const ENV_GAP_LEAST := 1.2
+const ENV_SHARE_FIRST := 0.06
+const ENV_SHARE_STEP := 0.01
+const ENV_SHARE_MOST := 0.2
 const TOUCH_GAP := 0.6
 const TOUCH_SLACK := 8.0
 const GAS_FROM := 2
 const GAS_CHANCE := 0.35
 const GAS_TICK := 0.5
+# A breath of gas at this share of a hazard's hit.
+const GAS_TIMES := 0.35
 const AIR_Z := 7
+# LASERS (0.129.0) - the owner: "we can add lasers", "i didnt really see
+# lasers". A beam across the room through a spot near you, in a land's
+# colour: a thin flickering line for LASER_WARN, then LASER_FIRE of beam,
+# LASER_HALF each side of its line, hitting for LASER_HIT of a hazard with
+# the land's effect. Each gap at laser_chance(); from LASER_SPIN_FROM it
+# turns as it burns (LASER_SPIN a second, LASER_FIRE_SPIN long), from
+# LASER_TWO_FROM two cross.
+const LASER_WARN := 1.0
+const LASER_FIRE := 0.5
+const LASER_FIRE_SPIN := 1.3
+const LASER_HALF := 7.0
+const LASER_HIT := 1.5
+const LASER_CHANCE_FIRST := 0.45
+const LASER_CHANCE_STEP := 0.08
+const LASER_SPIN_FROM := 3
+const LASER_SPIN := 0.55
+const LASER_TWO_FROM := 4
+# Each land's effect, for a laser.
+const EFFECT_FOR := {Element.Type.FIRE: &"burn", Element.Type.ICE: &"chill", Element.Type.WATER: &"soaked",
+	Element.Type.WIND: &"shove", Element.Type.LIGHT: &"dazzle", Element.Type.EARTH: &"root", Element.Type.DARK: &"wither"}
 # AND THEY REACT (0.128.0): a puddle and ice, how long and how wide; how far a
 # flare's light runs through puddles; how far a hail freezes one; how far a
 # gust blows what is in its lane; an explosion's reach past the cloud.
 const PUDDLE_LIFE := 4.0
 const PUDDLE_WARN := 0.5
-const PUDDLE_R := 18.0
+const PUDDLE_R := 24.0
 const ICE_LIFE := 5.0
 const SHOCK_REACH := 1.5
 const FREEZE_REACH := 24.0
@@ -433,13 +464,24 @@ static func env_gap(floor_index: int) -> float:
 	return maxf(ENV_GAP_LEAST, ENV_GAP_FIRST - ENV_GAP_STEP * float(floor_index))
 
 
-static func env_hit(floor_index: int) -> int:
-	return ENV_HIT_FIRST + ENV_HIT_STEP * floor_index
+static func env_share(floor_index: int) -> float:
+	"""A hazard's share of your most health on this floor (0.129.0)."""
+	return minf(ENV_SHARE_MOST, ENV_SHARE_FIRST + ENV_SHARE_STEP * float(floor_index))
+
+
+static func env_amount(floor_index: int, most_health: int, times: float = 1.0) -> int:
+	"""What a hazard `times` as hard takes from `most_health`."""
+	return maxi(1, roundi(float(most_health) * env_share(floor_index) * times))
 
 
 static func env_count(floor_index: int) -> int:
-	"""How many hazards each gap: one, one more every three floors."""
-	return 1 + floori(float(floor_index) / 3.0)
+	"""How many hazards each gap: one, one more every two floors (two from
+	floor 3)."""
+	return 1 + floori(float(floor_index) / 2.0)
+
+
+static func laser_chance(floor_index: int) -> float:
+	return minf(1.0, LASER_CHANCE_FIRST + LASER_CHANCE_STEP * float(floor_index))
 
 
 func begin_env(lands: Array, floor_index: int, faster: bool = false) -> void:
@@ -459,6 +501,9 @@ func begin_env(lands: Array, floor_index: int, faster: bool = false) -> void:
 		# Sparks, flares, wisps and blasts glow: not darkened with the room
 		# (0.128.0 - an explosion in the Dark Below read as a grey disc).
 		_air.material = RangeRingScript.unshaded()
+		# And what lies on the floor glows too (0.129.0): "i didnt really see
+		# ... much going on".
+		material = RangeRingScript.unshaded()
 		_air.draw.connect(_draw_air)
 		add_child(_air)
 
@@ -476,6 +521,12 @@ func _step_env(delta: float) -> void:
 				spawn_env(str(KIND_FOR[env_lands[randi() % env_lands.size()]]), me)
 			if env_floor >= GAS_FROM and randf() < GAS_CHANCE:
 				spawn_env("gas", me)
+			if randf() < laser_chance(env_floor):
+				var beam: Dictionary = spawn_env("laser", me)
+				if env_floor >= LASER_TWO_FROM:
+					var cross: Dictionary = spawn_env("laser", me)
+					cross["a"] = float(beam["a"]) + PI / 2.0
+					cross["p"] = beam["p"]
 	var still: Array = []
 	_born = []
 	for hz in hazards:
@@ -500,12 +551,12 @@ func spawn_env(kind: String, me: Node2D) -> Dictionary:
 		"spark":
 			hz["p"] = Vector2(randf_range(rect.position.x + 10.0, rect.end.x - 10.0), rect.position.y + 6.0)
 			hz["v"] = Vector2(randf_range(-25.0, 25.0), randf_range(35.0, 55.0))
-			hz["r"] = 7.0
+			hz["r"] = 10.0
 		"bubble":
 			hz["p"] = Vector2(randf_range(rect.position.x + 10.0, rect.end.x - 10.0), rect.end.y - 8.0)
 			hz["v"] = Vector2(0.0, -randf_range(22.0, 38.0))
 			hz["life"] = 10.0
-			hz["r"] = 9.0
+			hz["r"] = 13.0
 		"wisp":
 			hz["p"] = run.call("_edge_spot") if run != null and run.has_method("_edge_spot") else rect.position
 			hz["life"] = 9.0
@@ -514,21 +565,21 @@ func spawn_env(kind: String, me: Node2D) -> Dictionary:
 			hz["p"] = _near(at, 60.0, rect)
 			hz["w"] = 0.9
 			hz["life"] = 1.15
-			hz["r"] = 20.0
+			hz["r"] = 28.0
 		"flare":
 			hz["p"] = _near(at, 80.0, rect)
 			hz["w"] = 1.0
 			hz["life"] = 1.3
-			hz["r"] = 60.0
+			hz["r"] = 80.0
 		"rock":
 			hz["p"] = _near(at, 50.0, rect)
 			hz["w"] = 1.1
 			hz["life"] = 1.4
-			hz["r"] = 20.0
+			hz["r"] = 28.0
 		"gust":
 			hz["p"] = Vector2(rect.get_center().x, clampf(at.y + randf_range(-30.0, 30.0), rect.position.y + 20.0, rect.end.y - 20.0))
 			hz["dir"] = 1.0 if randf() < 0.5 else -1.0
-			hz["h"] = 40.0
+			hz["h"] = 56.0
 			hz["w"] = 1.0
 			hz["life"] = 1.35
 		"gas":
@@ -536,7 +587,16 @@ func spawn_env(kind: String, me: Node2D) -> Dictionary:
 			hz["v"] = Vector2.from_angle(randf() * TAU) * 8.0
 			hz["w"] = 1.2
 			hz["life"] = 7.2
-			hz["r"] = 46.0
+			hz["r"] = 58.0
+		"laser":
+			hz["p"] = _near(at, 40.0, rect)
+			var turns: Array = [0.0, PI / 2.0, PI / 4.0, -PI / 4.0]
+			hz["a"] = float(turns[randi() % turns.size()]) + randf_range(-0.2, 0.2)
+			hz["e"] = int(env_lands[randi() % env_lands.size()]) if not env_lands.is_empty() else Element.Type.LIGHT
+			hz["spin"] = (LASER_SPIN if randf() < 0.5 else -LASER_SPIN) if env_floor >= LASER_SPIN_FROM else 0.0
+			hz["w"] = LASER_WARN
+			hz["life"] = LASER_WARN + (LASER_FIRE_SPIN if env_floor >= LASER_SPIN_FROM else LASER_FIRE)
+			hz["r"] = LASER_HALF
 	hazards.append(hz)
 	env_made += 1
 	return hz
@@ -556,7 +616,6 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 	var kind: String = str(hz["k"])
 	if t >= float(hz["life"]) or bool(hz["done"]):
 		return false
-	var hit: int = env_hit(env_floor)
 	match kind:
 		"spark", "bubble":
 			var p: Vector2 = hz["p"]
@@ -564,9 +623,14 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 			if kind == "bubble":
 				p.x += sin(t * 3.0 + p.y * 0.05) * 12.0 * delta
 			hz["p"] = p
+			# Out of the room, gone (0.129.0): a spark fell on through the
+			# wall at the front, over it.
+			var held: Rect2 = run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)
+			if not held.grow(6.0).has_point(p):
+				return false
 			if me != null and _touches(me, p, float(hz["r"])):
 				var effect: StringName = StatusEffects.BURN if kind == "spark" else StatusEffects.SOAKED
-				_env_hit(me, hit, Element.Type.FIRE if kind == "spark" else Element.Type.WATER, effect, p)
+				_env_hit(me, 1.0, Element.Type.FIRE if kind == "spark" else Element.Type.WATER, effect, p)
 				hz["done"] = true
 				# A BUBBLE POPPED LEAVES A PUDDLE (0.128.0).
 				if kind == "bubble":
@@ -577,7 +641,7 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				p = p.move_toward(me.global_position, float(hz["speed"]) * delta)
 				hz["p"] = p
 				if _touches(me, p, float(hz["r"])):
-					_env_hit(me, hit, Element.Type.DARK, StatusEffects.WITHER, p)
+					_env_hit(me, 1.0, Element.Type.DARK, StatusEffects.WITHER, p)
 					hz["done"] = true
 		"hail", "rock", "flare":
 			if t >= float(hz["w"]) and not bool(hz.get("landed", false)):
@@ -587,11 +651,11 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				if me != null and _touches(me, p, float(hz["r"])):
 					match kind:
 						"hail":
-							_env_hit(me, hit, Element.Type.ICE, StatusEffects.CHILL, p)
+							_env_hit(me, 1.0, Element.Type.ICE, StatusEffects.CHILL, p)
 						"rock":
-							_env_hit(me, hit * 2, Element.Type.EARTH, StatusEffects.ROOT, p)
+							_env_hit(me, 1.5, Element.Type.EARTH, StatusEffects.ROOT, p)
 						"flare":
-							_env_hit(me, hit, Element.Type.LIGHT, StatusEffects.DAZZLE, p)
+							_env_hit(me, 1.0, Element.Type.LIGHT, StatusEffects.DAZZLE, p)
 		"gust":
 			if t >= float(hz["w"]) and not bool(hz.get("fired", false)):
 				hz["fired"] = true
@@ -601,22 +665,69 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				if absf(me.global_position.y - (hz["p"] as Vector2).y) <= lane:
 					hz["landed"] = true
 					var from: Vector2 = me.global_position - Vector2(30.0 * float(hz["dir"]), 0.0)
-					_env_hit(me, hit, Element.Type.WIND, StatusEffects.SHOVE, from)
+					_env_hit(me, 1.0, Element.Type.WIND, StatusEffects.SHOVE, from)
 		"gas":
 			hz["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2) * delta
 			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
 				hz["tick"] = float(hz["tick"]) - delta
 				if float(hz["tick"]) <= 0.0:
 					hz["tick"] = GAS_TICK
-					me.call("take_damage", maxi(1, roundi(float(hit) * 0.5)), Element.Type.POISON)
+					Boons.exact_once = true
+					me.call("take_damage", env_amount(env_floor, int(me.get("max_hp")), GAS_TIMES), Element.Type.POISON)
+					Boons.exact_once = false
 					env_hits += 1
 		"puddle", "ice":
 			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
 				if kind == "puddle":
-					_env_hit(me, maxi(1, hit / 2), Element.Type.WATER, StatusEffects.SOAKED, hz["p"])
+					_env_hit(me, 0.5, Element.Type.WATER, StatusEffects.SOAKED, hz["p"])
 				else:
-					_env_hit(me, maxi(1, hit / 2), Element.Type.ICE, StatusEffects.CHILL, hz["p"])
+					_env_hit(me, 0.5, Element.Type.ICE, StatusEffects.CHILL, hz["p"])
+		"laser":
+			if t >= float(hz["w"]):
+				if not bool(hz.get("fired", false)):
+					hz["fired"] = true
+					hz["just"] = true
+				hz["a"] = float(hz["a"]) + float(hz["spin"]) * delta
+				# One beam, one hit: a turning beam across a player stood still
+				# hit twice in its 1.3 s (the bench, zz/descparty4.gd).
+				if me != null and not bool(hz.get("landed", false)):
+					var ends: Array = beam_ends(hz)
+					var near: Vector2 = Geometry2D.get_closest_point_to_segment(me.global_position, ends[0], ends[1])
+					if me.global_position.distance_to(near) <= LASER_HALF + TOUCH_SLACK and _touch_left <= 0.0:
+						hz["landed"] = true
+						var e: int = int(hz["e"])
+						_env_hit(me, LASER_HIT, e, EFFECT_FOR.get(e, StatusEffects.DAZZLE), near)
 	return true
+
+
+func beam_ends(hz: Dictionary) -> Array:
+	"""A laser's two ends: its line through its spot, held to the room."""
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-4.0)
+	var dir := Vector2.from_angle(float(hz["a"]))
+	var p: Vector2 = hz["p"]
+	var lo: float = -INF
+	var hi: float = INF
+	for axis in 2:
+		var d: float = dir[axis]
+		if absf(d) < 0.0001:
+			continue
+		var t0: float = (rect.position[axis] - p[axis]) / d
+		var t1: float = (rect.end[axis] - p[axis]) / d
+		lo = maxf(lo, minf(t0, t1))
+		hi = minf(hi, maxf(t0, t1))
+	if lo > hi or lo == -INF:
+		return [p, p]
+	return [p + dir * lo, p + dir * hi]
+
+
+func burst_at(at: Vector2, element: int) -> void:
+	"""A stacked element's burst on the player (descentrun.gd _burst()): a
+	flash in its colour."""
+	var flash: Dictionary = _patch("burst", at)
+	flash["e"] = element
+	flash["life"] = 0.5
+	flash["r"] = 34.0
+	hazards.append(flash)
 
 
 func _patch(kind: String, at: Vector2) -> Dictionary:
@@ -637,7 +748,6 @@ func _patch(kind: String, at: Vector2) -> Dictionary:
 
 func _react(me: Node2D) -> void:
 	"""AND THEY REACT (0.128.0): what one hazard does to another this step."""
-	var hit: int = env_hit(env_floor)
 	for hz in hazards:
 		if bool(hz["done"]):
 			continue
@@ -659,7 +769,7 @@ func _react(me: Node2D) -> void:
 							_born.append(blast)
 							if me != null and _touches(me, other["p"], float(blast["r"])):
 								_touch_left = 0.0
-								_env_hit(me, hit * 2, Element.Type.FIRE, StatusEffects.BURN, other["p"])
+								_env_hit(me, 2.0, Element.Type.FIRE, StatusEffects.BURN, other["p"])
 					"hail":
 						# MELTED BEFORE IT LANDS.
 						if not bool(other.get("landed", false)) and near <= float(other["r"]):
@@ -684,7 +794,7 @@ func _react(me: Node2D) -> void:
 							reactions["shock"] = int(reactions.get("shock", 0)) + 1
 							if me != null and _touches(me, other["p"], float(other["r"])):
 								_touch_left = 0.0
-								_env_hit(me, roundi(float(hit) * 1.5), Element.Type.LIGHT, StatusEffects.DAZZLE, other["p"])
+								_env_hit(me, 1.5, Element.Type.LIGHT, StatusEffects.DAZZLE, other["p"])
 				"hail":
 					# FROZEN TO ICE.
 					for other in hazards:
@@ -708,12 +818,17 @@ func _touches(me: Node2D, at: Vector2, radius: float) -> bool:
 	return me.global_position.distance_to(at) <= radius + TOUCH_SLACK
 
 
-func _env_hit(me: Node2D, amount: int, element: int, effect: StringName, from: Vector2) -> void:
-	"""A hazard lands on this game's player - at most every TOUCH_GAP."""
+func _env_hit(me: Node2D, times: float, element: int, effect: StringName, from: Vector2) -> void:
+	"""A hazard `times` as hard lands on this game's player - at most every
+	TOUCH_GAP: a share of its most health (env_amount()), harder for its
+	stacks of the element, past armour and the ward (0.129.0)."""
 	if _touch_left > 0.0 or not me.has_method("take_damage"):
 		return
 	_touch_left = TOUCH_GAP
+	var amount: int = maxi(1, roundi(float(env_amount(env_floor, int(me.get("max_hp")), times)) * Boons.stack_scale(element)))
+	Boons.exact_once = true
 	me.call("take_damage", amount, element)
+	Boons.exact_once = false
 	StatusEffects.apply_to(me, effect, amount, from, false, 1.0)
 	env_hits += 1
 
@@ -780,14 +895,16 @@ func _draw_air() -> void:
 		var t: float = float(hz["t"])
 		match str(hz["k"]):
 			"spark":
-				_air.draw_circle(p, 6.0, Color(1.0, 0.5, 0.15, 0.25))
-				_air.draw_circle(p, 3.0, Color(1.0, 0.8, 0.4, 0.95))
+				var sr: float = float(hz["r"])
+				_air.draw_circle(p, sr * 1.1, Color(1.0, 0.45, 0.1, 0.22))
+				_air.draw_circle(p, sr * 0.6, Color(1.0, 0.6, 0.2, 0.6))
+				_air.draw_circle(p, sr * 0.3, Color(1.0, 0.95, 0.7, 1.0))
 			"bubble":
 				_air.draw_arc(p, float(hz["r"]), 0.0, TAU, 20, Color(0.6, 0.85, 1.0, 0.85), 1.5)
 				_air.draw_circle(p + Vector2(-3, -3), 1.5, Color(1, 1, 1, 0.8))
 			"wisp":
-				_air.draw_circle(p, 9.0, Color(0.55, 0.3, 0.95, 0.25))
-				_air.draw_circle(p, 4.0, Color(0.8, 0.6, 1.0, 0.9))
+				_air.draw_circle(p, 13.0, Color(0.55, 0.3, 0.95, 0.25))
+				_air.draw_circle(p, 6.0, Color(0.8, 0.6, 1.0, 0.9))
 			"blast":
 				# Over everything, as the flare's flash is (0.128.0).
 				var b: float = clampf(t / float(hz["life"]), 0.0, 1.0)
@@ -799,6 +916,36 @@ func _draw_air() -> void:
 					var ray := Vector2.from_angle(float(k) * TAU / 10.0 + 0.3)
 					_air.draw_line(ray * reach * (0.3 + 0.5 * b), ray * reach * (0.55 + 0.6 * b), Color(1.0, 0.8, 0.35, 1.0 - b), 2.0)
 				_air.draw_arc(Vector2.ZERO, reach * (0.6 + 0.6 * b), 0.0, TAU, 28, Color(1.0, 0.85, 0.4, 1.0 - b), 3.0)
+				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			"laser":
+				var colour: Color = Element.colour_for(int(hz["e"]))
+				var ends: Array = beam_ends(hz)
+				var warn: float = maxf(0.001, float(hz["w"]))
+				if t < warn:
+					var k: float = t / warn
+					var flick: float = 0.3 + 0.4 * k + 0.25 * absf(sin(t * 20.0)) * k
+					_air.draw_line(ends[0], ends[1], Color(colour * 1.3, flick), 1.0 + 2.0 * k)
+					for end in ends:
+						_air.draw_circle(end, 2.0 + 3.0 * k, Color(colour * 1.4, 0.9))
+				else:
+					var f: float = clampf((t - warn) / maxf(0.01, float(hz["life"]) - warn), 0.0, 1.0)
+					var fade: float = 1.0 if f < 0.8 else (1.0 - f) / 0.2
+					_air.draw_line(ends[0], ends[1], Color(colour, 0.3 * fade), LASER_HALF * 4.0)
+					_air.draw_line(ends[0], ends[1], Color(colour * 1.4, 0.85 * fade), LASER_HALF * 2.0)
+					_air.draw_line(ends[0], ends[1], Color(1.0, 1.0, 1.0, 0.95 * fade), 3.0)
+					for end in ends:
+						_air.draw_circle(end, 9.0, Color(colour * 1.5, 0.8 * fade))
+						_air.draw_circle(end, 4.0, Color(1.0, 1.0, 1.0, fade))
+			"burst":
+				var bb: float = clampf(t / float(hz["life"]), 0.0, 1.0)
+				var tint: Color = Element.colour_for(int(hz.get("e", 0)))
+				var reach: float = float(hz["r"])
+				_air.draw_set_transform(p, 0.0, Vector2(1.0, 0.6))
+				_air.draw_circle(Vector2.ZERO, reach * (0.4 + 0.6 * bb), Color(tint, 0.45 * (1.0 - bb)))
+				for k in 8:
+					var ray := Vector2.from_angle(float(k) * TAU / 8.0)
+					_air.draw_line(ray * reach * (0.3 + 0.6 * bb), ray * reach * (0.6 + 0.8 * bb), Color(tint * 1.5, 1.0 - bb), 2.5)
+				_air.draw_arc(Vector2.ZERO, reach * (0.5 + 0.8 * bb), 0.0, TAU, 32, Color(tint * 1.6, 1.0 - bb), 3.0)
 				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"steam":
 				var rise: float = clampf(t / float(hz["life"]), 0.0, 1.0)

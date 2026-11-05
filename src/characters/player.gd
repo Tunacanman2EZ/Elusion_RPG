@@ -1906,11 +1906,17 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# compensate: a geared player taking less is the entire point of armour.
 	#
 	# AND WHAT THE ARMOUR RESISTS (0.11.0), a third factor - damage_taken().
-	var reduced_amount: int = damage_taken(amount, element)
+	# THE DESCENT'S FLOOR HITS AS IT SAYS (0.129.0, descentboons.gd
+	# take_exact()): a hazard's share of your health, past armour and the ward.
+	var exact: bool = DescentBoons.take_exact()
+	var reduced_amount: int = amount if exact else damage_taken(amount, element)
 	# THE DESCENT'S WARD (0.115.0, descentboons.gd): a shield over the health,
-	# taken first. The number below still says the whole hit.
-	var warded: int = DescentBoons.absorb(reduced_amount)
+	# taken first - PIERCING (0.129.0) the share that skips it. The number
+	# below still says the whole hit.
+	var warded: int = DescentBoons.absorb(reduced_amount, source, exact)
 	reduced_amount -= warded
+	# AND ITS ELEMENTS STACK (0.129.0).
+	DescentBoons.note_element(element)
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))
@@ -3339,12 +3345,15 @@ func minigame_hit_scale(element: int) -> float:
 	# armour repels fire, so fire sprites and lava splash do less to him" - a
 	# tank's fire hits on the island land at its TANK_FIRE. 1 for anything
 	# else, and everywhere but the Forge.
+	# THE DESCENT'S STACKS (0.129.0, descentboons.gd stack_scale()): an
+	# element hits harder for each stack of it on you. 1 off a run.
+	var stacked: float = DescentBoons.stack_scale(element)
 	if element != Element.Type.FIRE or not is_inside_tree():
-		return 1.0
+		return stacked
 	var run: Node = get_tree().get_first_node_in_group(&"forge_run")
 	if run == null or not run.has_method("hit_scale"):
-		return 1.0
-	return float(run.call("hit_scale", self, element))
+		return stacked
+	return float(run.call("hit_scale", self, element)) * stacked
 
 
 func equipped_resistance(element: int) -> int:

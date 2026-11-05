@@ -4851,7 +4851,7 @@ func _test_the_descent_is_kinder() -> void:
 	var hit_code: String = _code_src("res://src/characters/player.gd")
 	var hit_at: int = hit_code.find("func take_damage(")
 	var hit_body: String = hit_code.substr(hit_at, hit_code.find("\nfunc ", hit_at + 1) - hit_at)
-	var absorb_at: int = hit_body.find("DescentBoons.absorb(reduced_amount)")
+	var absorb_at: int = hit_body.find("DescentBoons.absorb(reduced_amount")
 	check("  in your hits: after armour and the land, before your health - and the number says the whole hit",
 		absorb_at > hit_body.find("damage_taken(amount, element)") and absorb_at < hit_body.find("hp = clamp(hp - reduced_amount")
 		and hit_body.contains("_spawn_floating_label(reduced_amount + warded"))
@@ -4932,7 +4932,7 @@ func _test_the_descent_is_kinder() -> void:
 	check("the bottom floor's last room: twenty and four elites in four waves; the first six, an elite with them, are marked on the floor before they step out, the floor's hits at 1.2",
 		int(run.call("pack_size")) == 20 and int(run.call("elites_for", "gold")) == 4 and marked.size() == 6
 		and marked_elites == 1 and before_out == 0 and marks != null
-		and int(run.call("waves_left")) == 3 and is_equal_approx(Boons.floor_taken, 1.2),
+		and int(run.call("waves_left")) == 3 and is_equal_approx(Boons.floor_taken, 1.2 * RunScript.FLOOR_HARDER),
 		[marked.size(), marked_elites, before_out, run.call("waves_left")])
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	var out: Array = run.get("monsters")
@@ -4955,6 +4955,8 @@ func _test_the_descent_is_kinder() -> void:
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
 	run.call("_process", RunScript.WAVE_SECONDS + 0.1)
 	run.call("_process", RunScript.MARK_SECONDS + 0.05)
+	# (0.129.0: a hit pierces some of the ward - none here, for the arithmetic.)
+	Boons.pierce_base = 0.0
 	Boons.absorb(100)
 	var drained: int = Boons.ward
 	var not_yet: bool = int(run.get("state")) == RunScript.State.FIGHT
@@ -4981,7 +4983,8 @@ func _test_the_descent_is_kinder() -> void:
 	run.call("_go", "keeper")
 	for i in 3:
 		run.call("_process", RunScript.FADE_SECONDS)
-	var from_table: Array = RunScript.FLOORS.map(func(f: Dictionary) -> float: return float(f["keeper_taken"]))
+	var from_table: Array = RunScript.FLOORS.map(func(f: Dictionary) -> float: return float(f["keeper_taken"]) * RunScript.KEEPER_HARDER)
+	takens = takens.map(func(x: float) -> float: return x * RunScript.FLOOR_HARDER)
 	check("  but a keeper's room hits at its floor's keeper_taken, the Fire Keeper's at full or more, set as its room is entered (0.123.0: the Fire Keeper did 0 to a warrior) %s" % [keeper_takens],
 		keeper_takens == from_table and float(keeper_takens[0]) >= 1.0 and pack_takens == takens
 		and str(run.get("room_kind")) == "keeper" and is_equal_approx(Boons.floor_taken, float(keeper_takens[0])),
@@ -5196,7 +5199,8 @@ func _test_the_descent_has_more_to_choose() -> void:
 	for id in shrine_offers:
 		all_rare = all_rare and Boons.rarity(str(id)) != "common"
 	check("a Shrine: a rare or better pick - and the floor's monsters hit 15% harder after",
-		all_rare and is_equal_approx(Boons.shrine_taken, 1.15) and is_equal_approx(Boons.taken_factor(), 0.5 * 1.15), shrine_offers)
+		all_rare and is_equal_approx(Boons.shrine_taken, 1.15)
+		and is_equal_approx(Boons.taken_factor(), float(RunScript.FLOORS[0]["taken"]) * RunScript.FLOOR_HARDER * 1.15), shrine_offers)
 	run.call("pick", 0)
 	# A Challenge, beaten.
 	_descent_enter(run, "challenge")

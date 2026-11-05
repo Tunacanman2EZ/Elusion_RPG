@@ -4204,6 +4204,82 @@ game heals its own; in one process the bench does it for the other three).
 `_test_the_descent_together()` (testrunner_10) holds the table for two;
 sabotaged by taking the factor out.
 
+### The Descent bites: piercing, stacks, lasers, a louder floor (0.129.0)
+
+The owner, after the party measure: "i still think its too easy more
+elemental damage more stacking more difficulty far too easy solo with
+warrior", "bulward is whats making it so easy so maybe we need piercing
+shots", "i didnt really see lasers or much going on we need to amplify
+effects and eviromental damages". Pictured: descent_bites_0129.png.
+
+- **Piercing** (descentboons.gd `absorb(amount, source, whole)`,
+  `pierce_share()`; descentrun.gd `pierce_for()`, set as a room is entered):
+  `PIERCE_FIRST` (0.3) of every hit skips the ward on floor 1,
+  `PIERCE_STEP` (0.05) more a floor, at most `PIERCE_MOST` (0.8); all of it
+  in the keeper's room, and all of an elite's or a keeper's hit (by its
+  HitSource: a monster whose name has "elite" or "boss" - hitsource.gd `of()`
+  adds "elite" to a monster with the `descent_elite` meta), and all of the
+  floor's own (`exact_once`). Bulwark's +15% a level (up to 85% of health,
+  refilled each room) was what carried a run. The ring cracks red for
+  `CRACK_MSEC` when a hit goes through (`pierced_at`).
+- **The floor's own hits are exact** (`Boons.exact_once`, set by
+  descentlands.gd `_env_hit()`, the gas and a burst, spent by
+  Player.take_damage() `take_exact()`): `env_amount()`, a share of your most
+  health - `ENV_SHARE_FIRST` (6%), `ENV_SHARE_STEP` (1%) a floor, at most
+  `ENV_SHARE_MOST` (20%) - past armour, the defence tier, every hit's half
+  and the ward. A floor-1 spark was 8 x 0.5 (floor) x 0.5 (every hit), then
+  armour: 1 or 2 against a warrior's 582. Times: rock 1.5, puddle and ice
+  0.5, a breath of gas `GAS_TIMES` (0.35), an explosion 2, a shock 1.5.
+- **Elements stack** (descentboons.gd `note_element()`, from
+  Player.take_damage() after the ward; `stack_scale()` through
+  `minigame_hit_scale()`): every hit of a land's element (`STACKING`; not
+  poison, not plain) adds a stack, at most one an element every `STACK_GAP`
+  (0.75 s of fight - `_stack_clock`, moved by `fade_stacks()`; every hit
+  stacking burst one a second in a crowd); each makes that element hit
+  `STACK_STEP` (10%) harder; one goes every `STACK_FADE` (3 s) without
+  another; at `STACK_MOST` (5) it bursts (descentrun.gd `_burst()`,
+  `BURSTS`): fire 10% and burn "Ignited!", ice 6% and frozen, water 6% and
+  soaked, wind 8% and shove, light 6% and dazzle, earth 10% and root, dark
+  8% and wither - exact, said over you, a flash in its colour
+  (descentlands.gd `burst_at()`). Pips under the ward ring, a row an element
+  in its colour. Stacks clear as a room is entered. Each game its own.
+- **Lasers** (descentlands.gd, kind "laser"): each gap at `laser_chance()`
+  (45% on floor 1, 8% more a floor, every gap from floor 8): a beam through
+  a spot near you at 0, 90 or 45 degrees, wall to wall (`beam_ends()`), in
+  one of the room's lands' colours, a thin flickering line for `LASER_WARN`
+  (1 s), then `LASER_FIRE` (0.5 s) of beam - from `LASER_SPIN_FROM` (floor
+  4) turning `LASER_SPIN` a second for `LASER_FIRE_SPIN` (1.3 s), from
+  `LASER_TWO_FROM` (floor 5) two crossing. One hit a beam, `LASER_HIT` (1.5)
+  of a hazard, with its land's effect (`EFFECT_FOR`).
+- **Louder**: hazards from `ENV_FIRST` (2 s) into a room, every
+  `ENV_GAP_FIRST` (3 s) less 0.25 a floor (at least 1.2), `env_count()` one
+  more every two floors (two from floor 3); every radius about 1.4 times
+  (spark 10, bubble 13, hail and rock 28, flare 80, gust lane 56, gas 58,
+  puddle 24); the floor's hazards draw unshaded too (they glow in the
+  dark); a spark or bubble leaving the room is gone (they fell on over the
+  front wall).
+- **Harder floors** (descentrun.gd `taken_for()`): `FLOOR_HARDER` (1.5)
+  times FLOORS' "taken", `KEEPER_HARDER` (1.25) times "keeper_taken" - the
+  tables stay as they were, the factors on top.
+- **Measured** (zz/descparty4.gd, a level 22 warrior in ember who never
+  dodges, alone): floor 1 rooms took 3.8, 6.6, 9.0 and 5.8 a second
+  before, 5.0, 18.0, 33.3 and 24.6 after, the keeper 55 -> 94; floor 4
+  rooms 3.5, 8.7 and 14.9 a second before; about 12, 80 and 86 after (two
+  runs). Most of it is what a player who never moves walks into - every
+  laser comes through a spot near you after a second's warning. The
+  first try stacked every hit (a burst every second): floor 1 43 to 65 a
+  second - hence STACK_GAP. And a turning beam hit a player stood in it
+  twice - hence one hit a beam.
+
+`_test_the_descent_bites()` (testrunner_10): piercing (the room's share, an
+elite's, a keeper's, the floor's), the elite's source, the share by floor,
+the harder factors, stacks (the gap, the scale, the burst, poison and plain,
+the fade), a player's damage_taken() with stacks, take_damage()'s order, a
+burst on a room's stand-in, a laser (wall to wall, the warning, the hit,
+60 px off nothing, the turn, the chance). Sabotaged: piercing off and
+stacks at 1 - three red. `_test_armour_resistance()` and the Descent tests
+that pinned the old "taken" and the ward's arithmetic now read the factors.
+
 ### Every class in the Descent, each its own upgrades (0.125.0)
 
 The owner: "any class can join but we have to set up bonuses for all 4

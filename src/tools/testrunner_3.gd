@@ -1772,9 +1772,10 @@ func _test_armour_resistance() -> void:
 	check("  and the smallest hit still lands", body.damage_taken(1, Element.Type.FIRE) == 1)
 	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
 	var body_at: int = src.find("func take_damage(")
+	# (0.129.0: but a Descent floor's own hit lands as it says - exact.)
 	check("take_damage() lands what damage_taken() says",
-		_first_code_index(src, "var reduced_amount: int = damage_taken(amount, element)", body_at) != -1
-		and _first_code_index(src, "var reduced_amount: int = damage_taken(amount, element)", body_at)
+		_first_code_index(src, "var reduced_amount: int = amount if exact else damage_taken(amount, element)", body_at) != -1
+		and _first_code_index(src, "var reduced_amount: int = amount if exact else damage_taken(amount, element)", body_at)
 			< _first_code_index(src, "hp = clamp(hp - reduced_amount", body_at))
 
 	var set_ids: Dictionary = {}

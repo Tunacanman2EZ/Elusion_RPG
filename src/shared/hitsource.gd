@@ -68,7 +68,12 @@ static func monster_of(node: Node) -> String:
 
 
 static func of(node: Node, kind: String) -> String:
-	return "%s:%s" % [monster_of(node), clean(kind, "hit")]
+	# A DESCENT ELITE SAYS SO (0.129.0): its hits pierce the ward
+	# (descentboons.gd pierce_share()), and the meter can tell it apart.
+	var who: String = monster_of(node)
+	if node != null and is_instance_valid(node) and node.has_meta(&"descent_elite") and not who.contains("elite"):
+		who = clean(who + "elite", "unknown")
+	return "%s:%s" % [who, clean(kind, "hit")]
 
 
 static func shot_kind(shot: Node) -> String:

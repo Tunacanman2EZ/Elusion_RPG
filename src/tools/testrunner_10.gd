@@ -2623,7 +2623,7 @@ func _test_the_descent_goes_deeper() -> void:
 	var wash: ColorRect = room.get_node_or_null("floorwash") as ColorRect
 	var ice: Color = Element.colour_for(Element.Type.ICE)
 	var washed: bool = wash != null and wash.color.is_equal_approx(Color(ice.r, ice.g, ice.b, RunScript.FLOOR_WASH)) \
-		and is_equal_approx(Boons.floor_taken, float(RunScript.FLOORS[1]["keeper_taken"]))
+		and is_equal_approx(Boons.floor_taken, float(RunScript.FLOORS[1]["keeper_taken"]) * RunScript.KEEPER_HARDER)
 	run.call("_process", RunScript.KEEPER_CALL_FIRST)
 	var called: Array = run.get("_coming")
 	var called_elites: int = called.filter(func(e: Array) -> bool: return bool(e[3])).size()
@@ -3017,9 +3017,9 @@ func _test_the_descent_together() -> void:
 	check("  and both are hit harder for two - x%.2f (PARTY_HIT; x%.2f for four, x1 alone), the keeper too, the follower's the same"
 		% [RunScript.PARTY_HIT[2], RunScript.PARTY_HIT[4]],
 		RunScript.PARTY_HIT[1] == 1.0 and RunScript.PARTY_HIT[4] > RunScript.PARTY_HIT[2]
-		and is_equal_approx(float(run_a.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.PARTY_HIT[2])
-		and is_equal_approx(float(run_b.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.PARTY_HIT[2])
-		and is_equal_approx(float(run_a.call("taken_for", "keeper")), float(first["keeper_taken"]) * RunScript.PARTY_HIT[2]),
+		and is_equal_approx(float(run_a.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.FLOOR_HARDER * RunScript.PARTY_HIT[2])
+		and is_equal_approx(float(run_b.call("taken_for", "upgrade")), float(first["taken"]) * RunScript.FLOOR_HARDER * RunScript.PARTY_HIT[2])
+		and is_equal_approx(float(run_a.call("taken_for", "keeper")), float(first["keeper_taken"]) * RunScript.KEEPER_HARDER * RunScript.PARTY_HIT[2]),
 		[run_a.call("taken_for", "upgrade"), run_b.call("taken_for", "upgrade"), run_b.get("players")])
 	# ---- the room clear; the doors wait for everybody's pick ----
 	_descent_kill_all(run_a)
@@ -3105,10 +3105,12 @@ func _test_the_floor_itself_fights() -> void:
 	var every_land: bool = true
 	for land in RunScript.ALL_LANDS:
 		every_land = every_land and LandsScript.KIND_FOR.has(land) and not LandsScript.weather_for(land).is_empty()
-	check("every land its own hazard (%s), one every %.1f s on floor 1 down to %.1f, hitting for %d up to %d, %s at a time"
-		% [LandsScript.KIND_FOR.values(), LandsScript.env_gap(0), LandsScript.env_gap(7), LandsScript.env_hit(0), LandsScript.env_hit(6), counts],
+	check("every land its own hazard (%s), one every %.1f s on floor 1 down to %.1f, hitting for %.0f%% of your health up to %.0f%%, %s at a time"
+		% [LandsScript.KIND_FOR.values(), LandsScript.env_gap(0), LandsScript.env_gap(7), 100.0 * LandsScript.env_share(0),
+		100.0 * LandsScript.env_share(6), counts],
 		every_land and is_equal_approx(LandsScript.env_gap(0), LandsScript.ENV_GAP_FIRST) and LandsScript.env_gap(10) >= LandsScript.ENV_GAP_LEAST
-		and LandsScript.env_hit(6) > LandsScript.env_hit(0) and counts == [1, 1, 1, 2, 2, 2, 3])
+		and LandsScript.env_share(6) > LandsScript.env_share(0) and counts == [1, 1, 2, 2, 3, 3, 4]
+		and LandsScript.env_amount(0, 500) == roundi(500.0 * LandsScript.ENV_SHARE_FIRST))
 	# ---- a room of stand-ins, its player keeping what hit it ----
 	var body_script := GDScript.new()
 	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
@@ -3230,7 +3232,7 @@ func _test_the_mixes_react() -> void:
 	await get_tree().process_frame
 	var lands: Node2D = run.call("_lands_node")
 	lands.call("begin_env", RunScript.ALL_LANDS, 2)
-	var hit: int = LandsScript.env_hit(2)
+	var hit: int = LandsScript.env_amount(2, 400)
 	var at: Vector2 = body.global_position
 	# ---- a bubble popped leaves a puddle, and standing in it soaks ----
 	_mix_fresh(lands)
@@ -3242,7 +3244,7 @@ func _test_the_mixes_react() -> void:
 	lands.set("_touch_left", 0.0)
 	lands.call("step", LandsScript.PUDDLE_WARN + 0.05)
 	check("a bubble popped on you leaves a puddle (%s), and standing in it soaks you for half (%s)" % [after_pop, _mix_last(body)],
-		after_pop == ["puddle"] and pop_hit == [hit, Element.Type.WATER] and _mix_last(body) == [maxi(1, hit / 2), Element.Type.WATER])
+		after_pop == ["puddle"] and pop_hit == [hit, Element.Type.WATER] and _mix_last(body) == [LandsScript.env_amount(2, 400, 0.5), Element.Type.WATER])
 	# ---- a spark in a gas cloud: it explodes ----
 	_mix_fresh(lands)
 	var gas: Dictionary = lands.call("spawn_env", "gas", body)
@@ -3252,7 +3254,7 @@ func _test_the_mixes_react() -> void:
 	spark["p"] = at + Vector2(0, -40)
 	lands.call("step", 0.016)
 	check("  a spark in a gas cloud blows it up (%s): fire for twice the hit on you beside it (%s)" % [_mix_kinds(lands), _mix_last(body)],
-		_mix_kinds(lands) == ["blast"] and _mix_last(body) == [hit * 2, Element.Type.FIRE])
+		_mix_kinds(lands) == ["blast"] and _mix_last(body) == [LandsScript.env_amount(2, 400, 2.0), Element.Type.FIRE])
 	# ---- a spark through falling hail: melted to a puddle ----
 	_mix_fresh(lands)
 	var hits_before: int = (body.get("hits") as Array).size()
@@ -3278,11 +3280,11 @@ func _test_the_mixes_react() -> void:
 	under["t"] = 1.0
 	(lands.get("hazards") as Array).append(under)
 	var flare: Dictionary = lands.call("spawn_env", "flare", body)
-	flare["p"] = at + Vector2(80, 0)
+	flare["p"] = at + Vector2(100, 0)
 	flare["t"] = float(flare["w"]) - 0.01
 	lands.call("step", 0.016)
-	check("  a flare flashing 80 px off shocks the puddle you stand in (%s): light, half again the hit" % [_mix_last(body)],
-		_mix_last(body) == [roundi(float(hit) * 1.5), Element.Type.LIGHT] and under.has("shock"))
+	check("  a flare flashing 100 px off shocks the puddle you stand in (%s): light, half again the hit" % [_mix_last(body)],
+		_mix_last(body) == [LandsScript.env_amount(2, 400, 1.5), Element.Type.LIGHT] and under.has("shock"))
 	# ---- hail on a puddle: ice ----
 	_mix_fresh(lands)
 	var pool: Dictionary = lands.call("_patch", "puddle", Vector2(480, 150))
@@ -3299,7 +3301,7 @@ func _test_the_mixes_react() -> void:
 	lands.set("_touch_left", 0.0)
 	lands.call("step", 0.016)
 	check("  hail landing on a puddle freezes it (%s), and the ice chills you on it (%s)" % [frozen, _mix_last(body)],
-		frozen == ["hail", "ice"] and _mix_last(body) == [maxi(1, hit / 2), Element.Type.ICE])
+		frozen == ["hail", "ice"] and _mix_last(body) == [LandsScript.env_amount(2, 400, 0.5), Element.Type.ICE])
 	# ---- a gust blows what floats along its lane ----
 	_mix_fresh(lands)
 	var gust: Dictionary = lands.call("spawn_env", "gust", body)
@@ -3327,3 +3329,156 @@ func _test_the_mixes_react() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the mixes react: done")
+
+
+func _test_the_descent_bites() -> void:
+	section("THE DESCENT BITES (0.129.0): hits pierce the ward, elements stack and burst, lasers cross the rooms, the floors hit harder")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const Source := preload("res://src/shared/hitsource.gd")
+	Boons.clear()
+	Boons.active = true
+	# ---- piercing ----
+	Boons.pierce_base = 0.3
+	Boons.ward = 100
+	var plain: int = Boons.absorb(100, "skeleton:arrow")
+	var ward_left: int = Boons.ward
+	var elite: int = Boons.absorb(40, "skeletonelite:arrow")
+	var keeper: int = Boons.absorb(40, "fireboss:orb")
+	var floors: int = Boons.absorb(40, "", true)
+	check("a hit pierces the ward by the room's share (70 of 100 soaked); an elite's, a keeper's and the floor's own skip it all",
+		plain == 70 and ward_left == 30 and elite == 0 and keeper == 0 and floors == 0 and Boons.ward == 30,
+		[plain, ward_left, elite, keeper, floors])
+	var marked := Node2D.new()
+	marked.set_meta(&"descent_elite", true)
+	marked.name = "icefiresprite"
+	check("  a Descent elite's hits say so (%s), so they pierce" % Source.of(marked, "shot"),
+		Source.of(marked, "shot").get_slice(":", 0).contains("elite") and Boons.pierce_share(Source.of(marked, "shot")) == 1.0)
+	marked.free()
+	var run: Node = RunScript.new()
+	var shares: Array = []
+	for f in [0, 6, 20]:
+		run.set("floor_index", f)
+		shares.append(snappedf(float(run.call("pierce_for", "upgrade")), 0.01))
+	check("  the share: %s on floors 1, 7 and deep in the Deep, and all of it in the keeper's room" % [shares],
+		shares == [RunScript.PIERCE_FIRST, snappedf(RunScript.PIERCE_FIRST + 6.0 * RunScript.PIERCE_STEP, 0.01), RunScript.PIERCE_MOST]
+		and float(run.call("pierce_for", "keeper")) == 1.0)
+	# ---- harder ----
+	run.set("floor_index", 0)
+	check("every floor hits x%.2f its old \"taken\" and its keeper x%.2f (floor 1: %.2f, the Fire Keeper %.2f)"
+		% [RunScript.FLOOR_HARDER, RunScript.KEEPER_HARDER, float(run.call("taken_for", "upgrade")), float(run.call("taken_for", "keeper"))],
+		is_equal_approx(float(run.call("taken_for", "upgrade")), float(RunScript.FLOORS[0]["taken"]) * RunScript.FLOOR_HARDER)
+		and is_equal_approx(float(run.call("taken_for", "keeper")), float(RunScript.FLOORS[0]["keeper_taken"]) * RunScript.KEEPER_HARDER)
+		and RunScript.FLOOR_HARDER > 1.0 and RunScript.KEEPER_HARDER > 1.0)
+	run.free()
+	# ---- stacks ----
+	Boons.clear_stacks()
+	Boons.note_element(Element.Type.FIRE)
+	Boons.note_element(Element.Type.FIRE)
+	var one_a_gap: bool = int(Boons.stacks.get(Element.Type.FIRE, 0)) == 1
+	for i in Boons.STACK_MOST - 2:
+		Boons._stack_at.clear()
+		Boons.note_element(Element.Type.FIRE)
+	var four: float = Boons.stack_scale(Element.Type.FIRE)
+	Boons._stack_at.clear()
+	Boons.note_element(Element.Type.FIRE)
+	var burst: Array = Boons.take_bursts()
+	Boons.note_element(Element.Type.POISON)
+	Boons.note_element(Element.Type.NONE)
+	Boons.note_element(Element.Type.ICE)
+	Boons._stack_at.clear()
+	Boons.note_element(Element.Type.ICE)
+	Boons.fade_stacks(Boons.STACK_FADE + 0.05)
+	check("elements stack, one an element every %.2f s: four fire hits make fire hit x%.1f, the fifth bursts and spends them; poison and a plain hit never stack; one goes every %.0f s"
+		% [Boons.STACK_GAP, four, Boons.STACK_FADE],
+		one_a_gap and
+		is_equal_approx(four, 1.0 + 4.0 * Boons.STACK_STEP) and burst == [Element.Type.FIRE] and not Boons.stacks.has(Element.Type.FIRE)
+		and not Boons.stacks.has(Element.Type.POISON) and not Boons.stacks.has(Element.Type.NONE)
+		and int(Boons.stacks.get(Element.Type.ICE, 0)) == 1, Boons.stacks)
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.call("_set_stat_curve")
+	warrior.set("level", 10)
+	warrior.set("equipped", {})
+	Boons.clear_stacks()
+	var bare: int = int(warrior.call("damage_taken", 1000, Element.Type.FIRE))
+	for i in 3:
+		Boons._stack_at.clear()
+		Boons.note_element(Element.Type.FIRE)
+	var stacked: int = int(warrior.call("damage_taken", 1000, Element.Type.FIRE))
+	var other: int = int(warrior.call("damage_taken", 1000, Element.Type.ICE))
+	check("  a player with three fire stacks takes %d of a fire hit for %d bare - and an ice hit as ever (%d)" % [stacked, bare, other],
+		absf(float(stacked) - float(bare) * 1.3) <= 1.0 and other == bare)
+	warrior.free()
+	var src: String = _code_src("res://src/characters/player.gd")
+	var hit: String = _func_body(src, "func take_damage(")
+	check("  take_damage(): the floor's own hit exact, the ward pierced by the hit's source, then the stack - before the health moves",
+		hit.find("DescentBoons.take_exact()") != -1 and hit.find("DescentBoons.take_exact()") < hit.find("DescentBoons.absorb(reduced_amount, source, exact)")
+		and hit.find("DescentBoons.absorb(reduced_amount, source, exact)") < hit.find("DescentBoons.note_element(element)")
+		and hit.find("DescentBoons.note_element(element)") < hit.find("hp = clamp(hp - reduced_amount"))
+	# ---- a burst, on a room's stand-in ----
+	Boons.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nvar said: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\nfunc show_notice(text: String) -> void:\n\tsaid.append(text)\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var desc: Node = made[1]
+	var body: Node2D = made[2]
+	await get_tree().process_frame
+	Boons.active = true
+	desc.call("_burst", Element.Type.FIRE)
+	var lands: Node2D = desc.call("_lands_node")
+	var flashed: bool = false
+	for hz in lands.get("hazards"):
+		flashed = flashed or str(hz["k"]) == "burst"
+	check("a fire burst: %s of your health as fire, past everything, \"Ignited!\" over you and a flash" % [_mix_last(body)],
+		_mix_last(body) == [roundi(400.0 * float(RunScript.BURSTS[Element.Type.FIRE][0])), Element.Type.FIRE]
+		and (body.get("said") as Array).has("Ignited!") and flashed and not Boons.exact_once and int(desc.get("bursts_seen")) == 1)
+	# ---- lasers ----
+	lands.call("begin_env", RunScript.ALL_LANDS, 4)
+	lands.set("_env_left", 999.0)
+	lands.set("hazards", [])
+	lands.set("_touch_left", 0.0)
+	var beam: Dictionary = lands.call("spawn_env", "laser", body)
+	beam["p"] = body.global_position
+	beam["a"] = 0.0
+	beam["spin"] = 0.0
+	beam["e"] = Element.Type.LIGHT
+	var ends: Array = lands.call("beam_ends", beam)
+	var rect: Rect2 = desc.get("room_rect")
+	var count_was: int = (body.get("hits") as Array).size()
+	lands.call("step", 0.5)
+	var warned_only: bool = (body.get("hits") as Array).size() == count_was
+	beam["t"] = float(beam["w"])
+	lands.call("step", 0.016)
+	check("a laser runs wall to wall (%.0f to %.0f), warns first, then burns you on its line for %s of your health as its land"
+		% [(ends[0] as Vector2).x, (ends[1] as Vector2).x, str(_mix_last(body))],
+		absf((ends[0] as Vector2).x - rect.position.x) < 6.0 and absf((ends[1] as Vector2).x - rect.end.x) < 6.0
+		and warned_only and _mix_last(body) == [LandsScript.env_amount(4, 400, LandsScript.LASER_HIT), Element.Type.LIGHT]
+		and not Boons.exact_once)
+	lands.set("hazards", [])
+	lands.set("_touch_left", 0.0)
+	var miss: Dictionary = lands.call("spawn_env", "laser", body)
+	miss["p"] = body.global_position + Vector2(0, -60)
+	miss["a"] = 0.0
+	miss["spin"] = 0.0
+	miss["t"] = float(miss["w"])
+	count_was = (body.get("hits") as Array).size()
+	lands.call("step", 0.016)
+	var turning: Dictionary = lands.call("spawn_env", "laser", body)
+	turning["p"] = body.global_position + Vector2(0, -80)
+	turning["a"] = 0.0
+	var spins: bool = absf(float(turning["spin"])) > 0.0
+	var a0: float = float(turning["a"])
+	turning["t"] = float(turning["w"])
+	lands.call("step", 0.2)
+	check("  60 px off its line, nothing; from floor %d it turns as it burns, and comes at %.0f%% a gap on floor 1, every gap by floor %d"
+		% [LandsScript.LASER_SPIN_FROM + 1, 100.0 * LandsScript.laser_chance(0), 8],
+		(body.get("hits") as Array).size() == count_was and spins and absf(float(turning["a"]) - a0) > 0.05
+		and LandsScript.laser_chance(7) == 1.0 and LandsScript.laser_chance(0) < 1.0)
+	lands.call("end")
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the descent bites: done")
