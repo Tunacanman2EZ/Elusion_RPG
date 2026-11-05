@@ -612,7 +612,8 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	# The owner panel's "Always roll the 1%" (Player.rare_forced()) is the
 	# barrage, and its "Always roll the 10%" (common_forced()) the bundle - the
 	# rare one first, with both on, as the dice take it first.
-	var count: int = sticks_for(randf(), dynamite_barrage_chance, dynamite_bundle_chance)
+	var count: int = sticks_for(randf(), DescentBoons.barrage_chance(dynamite_barrage_chance),
+		DescentBoons.bundle_chance(dynamite_bundle_chance))
 	if rare_forced():
 		count = DYNAMITE_BARRAGE_STICKS
 	elif common_forced():
@@ -737,7 +738,7 @@ func _deal_aura_damage() -> void:
 	# event that happens to touch several things — the whole ring pulses with
 	# one value, and rolling per body would make a crowd look like static.
 	var scaled_aura_damage: int = roundi(
-		(aura_damage + weapon_damage_roll()) * get_damage_multiplier())
+		(aura_damage + weapon_damage_roll()) * get_damage_multiplier() * DescentBoons.aura_scale())
 
 	# NO XP HERE - see the class comment. Attack trains at the kill, on the
 	# server; this loop only hurts things.
@@ -807,6 +808,9 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# frame on screen (player.gd _play_hit_flash(), hitflash.gd), and the tank's
 	# hitflash frames stay on the sheet for older games that relay them.
 	var was_alive: bool = hp > 0
+	# BASTION (a Descent run's, 0.124.0): less while the aura burns.
+	if aura_active and amount > 0:
+		amount = maxi(1, roundi(float(amount) * DescentBoons.bastion_scale(true)))
 	super.take_damage(amount, element)
 
 	# deactivate aura if tank just died so it doesn't keep ticking damage

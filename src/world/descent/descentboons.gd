@@ -71,6 +71,15 @@
 #   Magnet      the spinning axe pulls monsters in (magnet())
 #   Ricochet    the thrown axe flies on to the next monster (ricochet())
 #
+# EVERY CLASS ITS OWN (0.124.0, DESCENT_PLAN_3.txt step 2 - the owner: "any
+# class can join but we have to set up bonuses for all 4 chars"): every
+# upgrade with a "class" is offered to that class alone, and a mythic only
+# with its "weapon" on (fits(), `class_now`, `weapon_now`). The mage's Arcane
+# Edge, Spike Storm, Deep Crits and the Meteorite's Meteor Shower, Comet and
+# Long Burn; the tank's Searing Aura, Bastion and the Dynamite's Cluster,
+# Barrage and Short Fuse; the healer's Quick Hands, Twin Orbs and Warding
+# Light (no mythic: the healer has no mythic weapon yet).
+#
 # And AXE FURY: every kill fills `fury`; at FURY_NEEDS, Q throws a giant
 # spinning axe round the room (descentrun.gd unleash_fury()).
 #
@@ -86,24 +95,43 @@ const BOONS := {
 	"swift": {"name": "Swift", "does": "+8% walking speed", "most": MOST, "rarity": "common"},
 	"fortune": {"name": "Fortune", "does": "+25% gold from rooms", "most": MOST, "rarity": "common"},
 	"bulwark": {"name": "Bulwark", "does": "Your ward is 15% more of your health", "most": 3, "rarity": "common"},
-	"bloodletter": {"name": "Bloodletter", "does": "Your swings make them bleed", "most": 3, "rarity": "rare"},
-	"longwave": {"name": "Long Wave", "does": "Your wave is a quarter bigger", "most": 3, "rarity": "rare"},
+	"bloodletter": {"name": "Bloodletter", "does": "Your swings make them bleed", "most": 3, "rarity": "rare", "class": "warrior"},
+	"longwave": {"name": "Long Wave", "does": "Your wave is a quarter bigger", "most": 3, "rarity": "rare", "class": "warrior"},
 	"thorns": {"name": "Thorns", "does": "A hit on you cuts every monster near you", "most": 3, "rarity": "rare"},
 	"execute": {"name": "Execute", "does": "A monster under 15% health dies to any hit", "most": 1, "rarity": "rare"},
 	"momentum": {"name": "Momentum", "does": "Each kill in a room: +4% damage and speed, up to 10", "most": 1, "rarity": "rare"},
 	"berserk": {"name": "Berserk", "does": "+40% damage, but take 20% more", "most": 1, "rarity": "epic"},
-	"whirlwind": {"name": "Whirlwind", "does": "Your swing cuts all the way round you", "most": 1, "rarity": "epic"},
-	"quickfinish": {"name": "Quick Finisher", "does": "The gold finisher every 2nd swing", "most": 1, "rarity": "epic"},
+	"whirlwind": {"name": "Whirlwind", "does": "Your swing cuts all the way round you", "most": 1, "rarity": "epic", "class": "warrior"},
+	"quickfinish": {"name": "Quick Finisher", "does": "The gold finisher every 2nd swing", "most": 1, "rarity": "epic", "class": "warrior"},
 	"secondwind": {"name": "Second Wind", "does": "Once a floor, a fall leaves you standing, ward full", "most": 1, "rarity": "epic"},
-	"twinaxes": {"name": "Twin Axes", "does": "Your Double Axe is thrown with a twin", "most": 1, "rarity": "mythic"},
-	"storm": {"name": "Storm", "does": "Your spinning axe cuts a quarter wider", "most": 3, "rarity": "mythic"},
-	"harvester": {"name": "Harvester", "does": "Your axe cuts half again harder coming home", "most": 3, "rarity": "mythic"},
-	"magnet": {"name": "Magnet", "does": "Your spinning axe pulls monsters into it", "most": 1, "rarity": "mythic"},
-	"ricochet": {"name": "Ricochet", "does": "Your thrown axe flies on to the next monster", "most": 1, "rarity": "mythic"},
+	"twinaxes": {"name": "Twin Axes", "does": "Your Double Axe is thrown with a twin", "most": 1, "rarity": "mythic", "class": "warrior", "weapon": "axe"},
+	"storm": {"name": "Storm", "does": "Your spinning axe cuts a quarter wider", "most": 3, "rarity": "mythic", "class": "warrior", "weapon": "axe"},
+	"harvester": {"name": "Harvester", "does": "Your axe cuts half again harder coming home", "most": 3, "rarity": "mythic", "class": "warrior", "weapon": "axe"},
+	"magnet": {"name": "Magnet", "does": "Your spinning axe pulls monsters into it", "most": 1, "rarity": "mythic", "class": "warrior", "weapon": "axe"},
+	"ricochet": {"name": "Ricochet", "does": "Your thrown axe flies on to the next monster", "most": 1, "rarity": "mythic", "class": "warrior", "weapon": "axe"},
+	# EVERY CLASS ITS OWN (0.124.0, step 2 of DESCENT_PLAN_3.txt): the mage's,
+	# the tank's and the healer's, and the Meteorite's and Dynamite's mythics.
+	"arcaneedge": {"name": "Arcane Edge", "does": "+10% chance your spikes hit critical", "most": 3, "rarity": "rare", "class": "mage"},
+	"spikestorm": {"name": "Spike Storm", "does": "Your triple drop comes a cast sooner", "most": 2, "rarity": "rare", "class": "mage"},
+	"deepcrits": {"name": "Deep Crits", "does": "Your critical spikes hit three times, not twice", "most": 1, "rarity": "epic", "class": "mage"},
+	"shower": {"name": "Meteor Shower", "does": "Every meteor brings two more beside it", "most": 1, "rarity": "mythic", "class": "mage", "weapon": "meteor"},
+	"comet": {"name": "Comet", "does": "Your meteors fall in half the time", "most": 1, "rarity": "mythic", "class": "mage", "weapon": "meteor"},
+	"longburn": {"name": "Long Burn", "does": "Your meteor's crater burns half again as long", "most": 2, "rarity": "mythic", "class": "mage", "weapon": "meteor"},
+	"searing": {"name": "Searing Aura", "does": "Your aura burns 25% harder", "most": 3, "rarity": "rare", "class": "tank"},
+	"bastion": {"name": "Bastion", "does": "Take 20% less while your aura burns", "most": 1, "rarity": "epic", "class": "tank"},
+	"cluster": {"name": "Cluster", "does": "Half your throws are a bundle of three", "most": 1, "rarity": "mythic", "class": "tank", "weapon": "dynamite"},
+	"barrage": {"name": "Barrage", "does": "One throw in seven is a barrage of five", "most": 1, "rarity": "mythic", "class": "tank", "weapon": "dynamite"},
+	"shortfuse": {"name": "Short Fuse", "does": "Your dynamite goes off in half the time", "most": 1, "rarity": "mythic", "class": "tank", "weapon": "dynamite"},
+	"quickhands": {"name": "Quick Hands", "does": "+12% shots a second", "most": 3, "rarity": "rare", "class": "healer"},
+	"twinorbs": {"name": "Twin Orbs", "does": "Your fan of orbs comes a shot sooner", "most": 2, "rarity": "rare", "class": "healer"},
+	"wardinglight": {"name": "Warding Light", "does": "Your healing aura fills your ward as it heals you", "most": 1, "rarity": "epic", "class": "healer"},
 }
 const ORDER := ["might", "iron", "swift", "fortune", "bulwark", "bloodletter", "longwave", "thorns", "execute",
 	"momentum", "berserk", "whirlwind", "quickfinish", "secondwind",
-	"twinaxes", "storm", "harvester", "magnet", "ricochet"]
+	"twinaxes", "storm", "harvester", "magnet", "ricochet",
+	"arcaneedge", "spikestorm", "deepcrits", "shower", "comet", "longburn",
+	"searing", "bastion", "cluster", "barrage", "shortfuse",
+	"quickhands", "twinorbs", "wardinglight"]
 const RARITIES := ["common", "rare", "epic", "mythic"]
 const RARITY_WEIGHTS := {"common": 60, "rare": 30, "epic": 10, "mythic": 12}
 const RARITY_COLOURS := {"common": Color(0.92, 0.88, 0.78), "rare": Color(0.45, 0.75, 1.0),
@@ -138,9 +166,33 @@ const WARD_SHARE := 0.4
 const BLEED_STEP := 0.5
 const WAVE_STEP := 0.25
 const QUICK_FINISHER := 2
+# EVERY CLASS ITS OWN (0.124.0): the mage's crit a level, Deep Crits; the
+# Meteorite's Comet and Long Burn; the tank's aura a level, Bastion; the
+# Dynamite's Cluster, Barrage and Short Fuse; the healer's shots a level and
+# the fewest shots between fans.
+const CRIT_STEP := 0.1
+const DEEP_CRIT := 3.0
+const COMET_FALL := 0.5
+const LONGBURN_STEP := 0.5
+const SEARING_STEP := 0.25
+const BASTION_TAKEN := 0.8
+const CLUSTER_CHANCE := 0.5
+const BARRAGE_CHANCE := 1.0 / 7.0
+const SHORT_FUSE := 0.5
+const QUICK_HANDS_STEP := 0.12
+const FAN_LEAST := 2
+# Weapon attack -> the mythic weapon's name in BOONS' "weapon".
+const WEAPONS := {ItemData.WeaponAttack.SPINNING_AXE: "axe", ItemData.WeaponAttack.METEOR: "meteor",
+	ItemData.WeaponAttack.DYNAMITE: "dynamite"}
 
 static var active: bool = false
 static var levels: Dictionary = {}
+# WHO IS PLAYING (0.124.0): the class (an upgrade with a "class" is only
+# theirs) and the mythic weapon worn (a mythic's "weapon"). The run sets both
+# before each pick (descentrun.gd _note_class()); the Descent began as the
+# warrior's, so a warrior with the Double Axe until told otherwise.
+static var class_now: String = "warrior"
+static var weapon_now: String = "axe"
 # THE WARD now and at most, and the floor's share of every hit (0.115.0).
 static var ward: int = 0
 static var ward_most: int = 0
@@ -178,6 +230,8 @@ static func clear() -> void:
 	shrine_taken = 1.0
 	_thorns_at = -100000
 	fury = 0
+	class_now = "warrior"
+	weapon_now = "axe"
 
 
 static func new_floor() -> void:
@@ -260,7 +314,7 @@ static func offers(rng: RandomNumberGenerator, count: int = 3, at_least: String 
 	var open: Array = []
 	for id in ORDER:
 		if level(id) < int(BOONS[id]["most"]) and RARITIES.find(rarity(id)) >= floor_rank \
-				and (axe or rarity(id) != "mythic"):
+				and (axe or rarity(id) != "mythic") and fits(id):
 			open.append(id)
 	var every: Array = open.duplicate()
 	var fresh: Array = open.filter(func(id: String) -> bool: return not not_these.has(id))
@@ -279,6 +333,79 @@ static func offers(rng: RandomNumberGenerator, count: int = 3, at_least: String 
 			rest.insert(rng.randi_range(0, rest.size()), first)
 			return rest
 	return offers_from(rng, open, count)
+
+
+static func fits(id: String) -> bool:
+	"""This upgrade is for whoever is playing: anyone's, or their class's -
+	a mythic only with its weapon on."""
+	var boon: Dictionary = BOONS[id]
+	if boon.has("class") and str(boon["class"]) != class_now:
+		return false
+	return rarity(id) != "mythic" or str(boon.get("weapon", "")) == weapon_now
+
+
+static func weapon_for(attack: int) -> String:
+	return str(WEAPONS.get(attack, ""))
+
+
+# ---- every class's own (0.124.0) ----
+
+static func crit_more() -> float:
+	return CRIT_STEP * level("arcaneedge") if active else 0.0
+
+
+static func triple_every(usual: int) -> int:
+	return maxi(1, usual - level("spikestorm")) if active else usual
+
+
+static func crit_mult(usual: float) -> float:
+	return DEEP_CRIT if active and level("deepcrits") > 0 else usual
+
+
+static func meteor_shower() -> bool:
+	return active and level("shower") > 0
+
+
+static func meteor_fall_scale() -> float:
+	return COMET_FALL if active and level("comet") > 0 else 1.0
+
+
+static func crater_scale() -> float:
+	return 1.0 + LONGBURN_STEP * level("longburn") if active else 1.0
+
+
+static func aura_scale() -> float:
+	return 1.0 + SEARING_STEP * level("searing") if active else 1.0
+
+
+static func bastion_scale(aura_on: bool) -> float:
+	return BASTION_TAKEN if active and aura_on and level("bastion") > 0 else 1.0
+
+
+static func bundle_chance(usual: float) -> float:
+	return maxf(usual, CLUSTER_CHANCE) if active and level("cluster") > 0 else usual
+
+
+static func barrage_chance(usual: float) -> float:
+	return maxf(usual, BARRAGE_CHANCE) if active and level("barrage") > 0 else usual
+
+
+static func fuse_scale() -> float:
+	return SHORT_FUSE if active and level("shortfuse") > 0 else 1.0
+
+
+static func shot_rate() -> float:
+	return 1.0 + QUICK_HANDS_STEP * level("quickhands") if active else 1.0
+
+
+static func fan_every(usual: int) -> int:
+	return maxi(FAN_LEAST, usual - level("twinorbs")) if active else usual
+
+
+static func warding_light(amount: int) -> void:
+	"""Warding Light: a heal from your own aura fills your ward as much."""
+	if active and level("wardinglight") > 0 and amount > 0:
+		ward = mini(ward_most, ward + amount)
 
 
 static func offers_from(rng: RandomNumberGenerator, from: Array, count: int) -> Array:

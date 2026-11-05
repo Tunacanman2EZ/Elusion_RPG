@@ -4190,13 +4190,15 @@ func _test_the_descent() -> void:
 	card.call("paint")
 	var hidden: bool = not card.descent_box.visible
 	card.set("shows_descent", func() -> bool: return true)
-	# THE WARRIOR'S ("this will be the warriors decent"): a mage may not go.
+	# EVERY CLASS (0.124.0; it was "the warriors decent"): a mage goes too.
 	card.set("class_now", func() -> String: return "mage")
 	card.call("open")
 	card.call("paint")
-	var mage_held: bool = card.descent_go.disabled and str(card.descent_status.text) == card.FOR_WARRIORS
+	var mage_held: bool = not card.descent_go.disabled
 	card.call("_on_descent_go")
-	mage_held = mage_held and went.is_empty()
+	mage_held = mage_held and went.size() == 1 and went[0] == ["descent", "descent_entrance"]
+	went.clear()
+	card.call("open")
 	card.set("class_now", func() -> String: return "warrior")
 	card.call("paint")
 	var shown: bool = card.descent_box.visible and card.descent_go.text == "Go" and not card.descent_go.disabled
@@ -4205,7 +4207,7 @@ func _test_the_descent() -> void:
 	card.call("paint")
 	var leave_text: String = card.descent_go.text
 	card.call("_on_descent_go")
-	check("on the Minigames card for the owner alone, the warrior's: a mage is told so and stays; a warrior's Go goes down (%s), and inside it is Leave, to town" % str(went),
+	check("on the Minigames card for the owner alone, any class (0.124.0): a mage's Go goes down, a warrior's too (%s), and inside it is Leave, to town" % str(went),
 		hidden and mage_held and shown and leave_text == "Leave" and went.size() == 2 and went[0] == ["descent", "descent_entrance"]
 		and went[1] == ["elusion", ""])
 	card_hud.queue_free()

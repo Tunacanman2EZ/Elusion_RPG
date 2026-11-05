@@ -2826,3 +2826,105 @@ func _test_the_lands_shine_in_the_descent() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the lands shine: done")
+
+
+# =============================================================================
+# EVERY CLASS ITS OWN UPGRADES (0.124.0)
+# =============================================================================
+# Step 2 of DESCENT_PLAN_3.txt, its first half. The owner: "any class can join
+# but we have to set up bonuses for all 4 chars".
+func _test_every_class_has_its_own_upgrades() -> void:
+	section("EVERY CLASS ITS OWN UPGRADES (0.124.0): any class in the Descent, each offered its own and its mythic weapon's")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	Boons.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 124
+	var seen: Dictionary = {}
+	var wrong: Array = []
+	for who in [["warrior", "axe"], ["mage", "meteor"], ["tank", "dynamite"], ["healer", ""]]:
+		Boons.class_now = str(who[0])
+		Boons.weapon_now = str(who[1])
+		var got: Dictionary = {}
+		for i in 300:
+			for id in Boons.offers(rng, 3, "", str(who[1]) != "", i % 3 == 0):
+				got[id] = true
+				var boon: Dictionary = Boons.BOONS[id]
+				if boon.has("class") and str(boon["class"]) != str(who[0]):
+					wrong.append([who[0], id])
+				if str(boon.get("rarity", "")) == "mythic" and str(boon.get("weapon", "")) != str(who[1]):
+					wrong.append([who[0], id])
+		seen[who[0]] = got
+	var own: Dictionary = {}
+	for id in Boons.ORDER:
+		var cls: String = str(Boons.BOONS[id].get("class", ""))
+		if cls != "":
+			own[cls] = int(own.get(cls, 0)) + 1
+	var all_offered: bool = true
+	for id in Boons.ORDER:
+		var cls: String = str(Boons.BOONS[id].get("class", ""))
+		var whose: Array = ["warrior", "mage", "tank", "healer"] if cls == "" else [cls]
+		for c in whose:
+			all_offered = all_offered and (seen[c] as Dictionary).has(id)
+	check("each class is offered anyone's upgrades and its own alone - a mythic only with its weapon on (own: %s)" % own,
+		wrong.is_empty() and all_offered and int(own.get("mage", 0)) == 6 and int(own.get("tank", 0)) == 5
+		and int(own.get("healer", 0)) == 3 and int(own.get("warrior", 0)) == 9, wrong)
+	# ---- what they do ----
+	Boons.active = true
+	Boons.levels = {"arcaneedge": 3, "spikestorm": 2, "deepcrits": 1, "comet": 1, "longburn": 2, "searing": 3,
+		"bastion": 1, "cluster": 1, "barrage": 1, "shortfuse": 1, "quickhands": 3, "twinorbs": 2, "wardinglight": 1}
+	Boons.ward_most = 100
+	Boons.ward = 50
+	Boons.warding_light(30)
+	var warded: int = Boons.ward
+	Boons.warding_light(500)
+	var meteor: Node = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	var stick: Node = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
+	var fell: float = float(meteor.get("fall_seconds"))
+	var fused: float = float(stick.get("fuse"))
+	meteor.free()
+	stick.free()
+	check("Arcane Edge %.1f more crit, Spike Storm every cast triple, Deep Crits x3, Comet falls in %.2f s, Long Burn x%.1f, Searing x%.2f, Bastion x%.1f, Cluster %.1f, Barrage %.2f, Short Fuse %.1f s, Quick Hands x%.2f, Twin Orbs every %d, Warding Light %d then full"
+		% [Boons.crit_more(), fell, Boons.crater_scale(), Boons.aura_scale(), Boons.bastion_scale(true),
+			Boons.bundle_chance(0.1), Boons.barrage_chance(0.01), fused, Boons.shot_rate(), Boons.fan_every(5), warded],
+		is_equal_approx(Boons.crit_more(), 0.3) and Boons.triple_every(3) == 1 and is_equal_approx(Boons.crit_mult(2.0), 3.0)
+		and is_equal_approx(fell, 0.55 * 0.5) and is_equal_approx(Boons.crater_scale(), 2.0) and is_equal_approx(Boons.aura_scale(), 1.75)
+		and is_equal_approx(Boons.bastion_scale(true), 0.8) and is_equal_approx(Boons.bastion_scale(false), 1.0)
+		and is_equal_approx(Boons.bundle_chance(0.1), 0.5) and Boons.barrage_chance(0.01) > 0.14
+		and is_equal_approx(fused, 0.6) and is_equal_approx(Boons.shot_rate(), 1.36) and Boons.fan_every(5) == 3
+		and warded == 80 and Boons.ward == 100)
+	Boons.clear()
+	var calm: Node = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	var off_run: bool = is_equal_approx(float(calm.get("fall_seconds")), 0.55) and Boons.triple_every(3) == 3 \
+		and Boons.fan_every(5) == 5 and is_equal_approx(Boons.shot_rate(), 1.0) and Boons.class_now == "warrior"
+	calm.free()
+	check("  and none of it off a run (a cleared run is the warrior's, with the axe)", off_run)
+	# ---- wired into each class ----
+	var hooks: Array = [["res://src/characters/mage.gd", "func rolls_critical(", "DescentBoons.crit_more()"],
+		["res://src/characters/mage.gd", "func _spawn_stalagmite(", "DescentBoons.triple_every(TRIPLE_EVERY)"],
+		["res://src/characters/mage.gd", "func _spawn_stalagmite(", "DescentBoons.crit_mult(CRIT_MULT)"],
+		["res://src/characters/mage.gd", "func call_meteor(", "DescentBoons.meteor_shower()"],
+		["res://src/projectiles/burningcrater.gd", "func _build(", "DescentBoons.crater_scale()"],
+		["res://src/characters/tank.gd", "func _deal_aura_damage(", "DescentBoons.aura_scale()"],
+		["res://src/characters/tank.gd", "func take_damage(", "DescentBoons.bastion_scale(true)"],
+		["res://src/characters/tank.gd", "func throw_dynamite(", "DescentBoons.bundle_chance("],
+		["res://src/characters/healer.gd", "func attack_period(", "DescentBoons.shot_rate()"],
+		["res://src/characters/healer.gd", "func rolls_double_hit(", "DescentBoons.fan_every(FAN_EVERY)"],
+		["res://src/projectiles/healaura.gd", "func tick(", "DescentBoons.warding_light(amount)"]]
+	var unwired: Array = []
+	for hook in hooks:
+		if not _func_body(_code_src(str(hook[0])), str(hook[1])).contains(str(hook[2])):
+			unwired.append(hook[2])
+	check("  each wired into its class's own attack (%d places)" % hooks.size(), unwired.is_empty(), unwired)
+	# ---- who is playing ----
+	var run: Node = RunScript.new()
+	var mage: Node = (load("res://src/characters/mage.gd") as GDScript).new()
+	run.set("player_override", mage)
+	var mythic: bool = bool(run.call("_note_class"))
+	var as_mage: bool = Boons.class_now == "mage" and Boons.weapon_now == "" and not mythic
+	run.free()
+	mage.free()
+	Boons.clear()
+	check("the run tells the upgrades who is playing - the class from its own script, the mythic weapon from what it wears",
+		as_mage, [Boons.class_now])
+	print("  every class its own: done")

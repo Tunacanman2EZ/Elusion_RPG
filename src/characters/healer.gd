@@ -345,7 +345,8 @@ func attack_period() -> float:
 	# player comparing it to a 100-damage sword without the division would
 	# reasonably conclude the healer had been abandoned.
 	# hasten() applies agility, so this is the rate actually delivered.
-	return hasten(shot_cooldown)
+	# QUICK HANDS (a Descent run's, 0.124.0).
+	return hasten(shot_cooldown) / DescentBoons.shot_rate()
 
 
 func attack_action() -> void:
@@ -393,7 +394,7 @@ func rolls_double_hit() -> bool:
 
 static func fans_on(shot: int) -> bool:
 	"""Whether shot number `shot` (the first is 1) throws the fan."""
-	return shot > 0 and shot % FAN_EVERY == 0
+	return shot > 0 and shot % DescentBoons.fan_every(FAN_EVERY) == 0
 
 
 static func fan_directions(direction: Vector2) -> Array[Vector2]:

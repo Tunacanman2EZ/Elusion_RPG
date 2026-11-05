@@ -384,6 +384,9 @@ func tells_story() -> bool:
 	"""The warrior's story is told in the real crypt only, once a character."""
 	if player_override != null or not is_inside_tree() or get_tree().current_scene != get_parent():
 		return false
+	# A WARRIOR'S STORY (0.124.0: every class may come down now).
+	if str(CharacterData.active_class_id()) not in ["warrior", ""]:
+		return false
 	return not Field.story_seen(Field.story_key() + STORY_KEY)
 
 
@@ -738,7 +741,7 @@ func _pay(amount: int) -> void:
 
 func _offer(at_least: String = "") -> void:
 	_offer_at_least = at_least
-	offers = Boons.offers(_rng, 3, at_least, wears_axe(), room_kind == "keeper")
+	offers = Boons.offers(_rng, 3, at_least, _note_class(), room_kind == "keeper")
 	if offers.is_empty():
 		_open_doors()
 		return
@@ -769,7 +772,7 @@ func reroll() -> bool:
 		rerolls_paid += 1
 		if hud != null:
 			hud.call("toast", "-%d gold" % cost)
-	offers = Boons.offers(_rng, 3, _offer_at_least, wears_axe(), room_kind == "keeper", offers)
+	offers = Boons.offers(_rng, 3, _offer_at_least, _note_class(), room_kind == "keeper", offers)
 	if hud != null:
 		hud.call("show_pick", offers)
 	return true
@@ -1216,6 +1219,22 @@ func _clear_monsters() -> void:
 # =============================================================================
 # THE DOUBLE AXE AND AXE FURY (0.115.0)
 # =============================================================================
+
+func _note_class() -> bool:
+	"""EVERY CLASS ITS OWN (0.124.0): who is playing and which mythic weapon
+	they wear, for the upgrades on offer (descentboons.gd fits()); true when
+	they wear one, so its mythics may come."""
+	var player: Node2D = _player()
+	# The class is the player's own script (warrior.gd, mage.gd, ...).
+	var cls: String = ""
+	if player != null and player.get_script() != null:
+		cls = (player.get_script() as Script).resource_path.get_file().get_basename()
+	Boons.class_now = cls if cls in ["warrior", "mage", "tank", "healer"] else "warrior"
+	var attack: int = int(player.call("equipped_weapon_attack")) if player != null and player.has_method("equipped_weapon_attack") \
+		else ItemData.WeaponAttack.NONE
+	Boons.weapon_now = Boons.weapon_for(attack)
+	return Boons.weapon_now != ""
+
 
 func wears_axe() -> bool:
 	"""The player has the Double Axe on: its mythic upgrades and Fury are theirs."""

@@ -218,6 +218,7 @@ func _run_all() -> void:
 	await _test_the_descent_reroll()
 	await _test_the_descent_goes_deeper()
 	await _test_the_lands_shine_in_the_descent()
+	await _test_every_class_has_its_own_upgrades()
 	await _test_a_quicker_pace()
 	await _test_the_big_field_draws_only_near_the_view()
 	await _test_the_swarm_steps_the_same_for_less()

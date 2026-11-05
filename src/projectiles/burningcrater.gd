@@ -38,6 +38,7 @@ extends Area2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 
 
 # How long it burns, how often it bites, and how much of the meteor's hit a
@@ -125,6 +126,10 @@ static func spawn_smoulder(parent: Node, at: Vector2, from_hit: int, reach: floa
 
 func _build() -> void:
 	name = "smoulder" if smoulder else "burningcrater"
+	# LONG BURN (a Descent run's, 0.124.0): the meteor's crater, not the
+	# dynamite's smoulder, nor another game's picture.
+	if not smoulder and not cosmetic:
+		lasts *= DescentBoons.crater_scale()
 	collision_layer = LAYER
 	collision_mask = ENEMY_MASK
 	monitorable = false

@@ -62,6 +62,7 @@ extends Area2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 
 
 # How long the fall takes, from entering the screen to hitting the ground.
@@ -131,6 +132,9 @@ const PULL_EVERY := 1.0 / 60.0
 # hit still travels as a hit; this is only what the owner asked to see: "i
 # could not see their attacks but they could see mine".
 var cosmetic: bool = false
+# How long it falls: FALL_SECONDS, halved by a Descent run's Comet (0.124.0) -
+# read as it is made, so a run's end leaves one already falling as it was.
+var fall_seconds: float = FALL_SECONDS * DescentBoons.meteor_fall_scale()
 var explosion_damage: int = 0
 var caster: Node = null
 # Whether this one pulls (PULL_CHANCE, rolled by mage.gd). Read when the vortex
@@ -278,12 +282,12 @@ func advance(delta: float) -> void:
 		return
 
 	if not landed:
-		_fall(clampf(falling / FALL_SECONDS, 0.0, 1.0), delta)
-		if falling >= FALL_SECONDS:
+		_fall(clampf(falling / fall_seconds, 0.0, 1.0), delta)
+		if falling >= fall_seconds:
 			_impact()
 		return
 
-	_cool(falling - FALL_SECONDS)
+	_cool(falling - fall_seconds)
 
 
 func _fall(t: float, delta: float) -> void:

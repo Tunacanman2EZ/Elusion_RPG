@@ -74,6 +74,7 @@ extends Node2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 
 
 const SHEET := "res://art/maincharacter/healaura.png"
@@ -504,6 +505,9 @@ func tick() -> void:
 		var amount: int = heal_each(int(me.get("max_hp")))
 		me.call("heal", amount)
 		healed += amount
+		# WARDING LIGHT (a Descent run's, 0.124.0): your ward fills as much.
+		if not cosmetic:
+			DescentBoons.warding_light(amount)
 	if cosmetic or damage <= 0 or not is_inside_tree():
 		return
 	for monster in get_tree().get_nodes_in_group(&"enemies"):

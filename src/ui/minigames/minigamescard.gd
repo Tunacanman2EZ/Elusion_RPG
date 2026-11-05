@@ -86,8 +86,10 @@ const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
 const STAND_BLURB := "Rain meteors on the horde at the gate."
 const DESCENT_BLURB := "Down a crypt room by room - doors, upgrades, keepers."
+# EVERY CLASS (0.124.0, the owner: "any class can join but we have to set up
+# bonuses for all 4 chars"): it was the warrior's alone (DESCENT_CLASS); the
+# warrior's story is still told to a warrior only (descentrun.gd).
 const DESCENT_CLASS := "warrior"
-const FOR_WARRIORS := "For warriors - play your warrior"
 const DESCENT := "descent"
 const DESCENT_ENTRANCE := "descent_entrance"
 const FORGE_BLURB := "Hold the anvil while the lava floods the island."
@@ -245,7 +247,7 @@ func _init() -> void:
 	stand_go = _go_button("standgo", _on_stand_go)
 	(stand[4] as HBoxContainer).add_child(stand_go)
 	var descent: Array = _tile(column, "descent", "The Descent", DESCENT_BLURB,
-		[TAG_TESTING, ["WARRIOR", Color(0.5, 0.2, 0.18), "The warrior's"]])
+		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go - each with its own upgrades"]])
 	descent_box = descent[0]
 	descent_status = descent[3]
 	descent_go = _go_button("descentgo", _on_descent_go)
@@ -761,16 +763,14 @@ func _on_stand_go() -> void:
 func _paint_descent() -> void:
 	descent_box.visible = bool(shows_descent.call())
 	var inside: bool = str(area_now.call()) == DESCENT
-	var warrior: bool = str(class_now.call()) == DESCENT_CLASS
 	if inside:
 		descent_status.text = "You are in the Descent."
 	else:
-		descent_status.text = "Ready - your warrior goes down" if warrior else FOR_WARRIORS
-	descent_status.add_theme_color_override("font_color", COLOUR_READY if warrior and not inside else COLOUR_HINT)
+		descent_status.text = "Ready - down you go, as you are"
+	descent_status.add_theme_color_override("font_color", COLOUR_HINT if inside else COLOUR_READY)
 	descent_go.text = "Leave" if inside else "Go"
-	descent_go.disabled = not inside and not warrior
-	descent_go.tooltip_text = "Back up to town" if inside else ("Down into the Descent - as you are, gear and all"
-		if warrior else "The Descent is the warrior's")
+	descent_go.disabled = false
+	descent_go.tooltip_text = "Back up to town" if inside else "Down into the Descent - as you are, gear and all"
 
 
 func _on_descent_go() -> void:
@@ -780,11 +780,9 @@ func _on_descent_go() -> void:
 	if str(area_now.call()) == DESCENT:
 		close()
 		travel.call(TOWN, "")
-	elif str(class_now.call()) == DESCENT_CLASS:
+	else:
 		close()
 		travel.call(DESCENT, DESCENT_ENTRANCE)
-	else:
-		paint()
 
 
 func _shows_descent() -> bool:

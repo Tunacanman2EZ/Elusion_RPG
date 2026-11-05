@@ -359,7 +359,7 @@ func _spawn_stalagmite() -> Array[Node]:
 	stalagmite_casts += 1
 	# THE CRITICAL SPIKE: rolled once a cast, and it drops the three as well.
 	var critical: bool = rolls_critical()
-	var count: int = TRIPLE_SPIKES if critical or stalagmite_casts % TRIPLE_EVERY == 0 else 1
+	var count: int = TRIPLE_SPIKES if critical or stalagmite_casts % DescentBoons.triple_every(TRIPLE_EVERY) == 0 else 1
 	# This side of a wall aimed past (0.69.1) - a spike called down in the
 	# next room through a crypt door was the owner's "through doors/walls".
 	var aimed: Vector2 = reach_short_of_wall(aim_point())
@@ -373,7 +373,7 @@ func _spawn_stalagmite() -> Array[Node]:
 	# takes the same number. roundi rather than int, because truncating toward
 	# zero cost a fraction of a point on every single cast.
 	var damage: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier()
-		* (CRIT_MULT if critical else 1.0))
+		* (DescentBoons.crit_mult(CRIT_MULT) if critical else 1.0))
 	# What this cast's spikes have hit between them - one spike a monster - and
 	# how often their ice shards have (frostring.gd: SHARD_HITS_EACH a monster).
 	# This mage's cast only: another player's hits are theirs.
@@ -390,7 +390,7 @@ func _spawn_stalagmite() -> Array[Node]:
 func rolls_critical() -> bool:
 	"""THE CRITICAL SPIKE's roll: CRIT_CHANCE, or always with the owner panel's
 	"Always roll the 10%" switch on."""
-	return common_forced() or randf() < crit_chance
+	return common_forced() or randf() < crit_chance + DescentBoons.crit_more()
 
 
 func spike_marks(aimed: Vector2, count: int) -> Array:
@@ -507,6 +507,12 @@ func call_meteor(target: Vector2) -> Array[Meteor]:
 		var away := Vector2.from_angle(randf() * TAU) * randf_range(METEOR_SPREAD_MIN, METEOR_SPREAD_MAX)
 		# Beside the first, and this side of any wall between them (0.69.1).
 		dropped.append(_drop_meteor(Targets.short_of_wall(self, target, target + away), METEOR_SECOND_DELAY))
+	# METEOR SHOWER (a Descent run's, 0.124.0): two more beside it, one after
+	# the other.
+	if DescentBoons.meteor_shower():
+		for k in 2:
+			var aside := Vector2.from_angle(randf() * TAU) * randf_range(METEOR_SPREAD_MIN, METEOR_SPREAD_MAX)
+			dropped.append(_drop_meteor(Targets.short_of_wall(self, target, target + aside), METEOR_SECOND_DELAY * float(k + 1)))
 	return dropped
 
 

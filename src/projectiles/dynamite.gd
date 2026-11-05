@@ -51,6 +51,7 @@ extends Area2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 
 
 enum State { FLYING, FUSE }
@@ -110,6 +111,11 @@ var _age: float = 0.0
 
 @onready var stick: AnimatedSprite2D = $stick
 @onready var shadow: Sprite2D = $shadow
+
+
+# The fuse: FUSE_SECONDS, halved by a Descent run's Short Fuse (0.124.0) -
+# read as it is made.
+var fuse: float = FUSE_SECONDS * DescentBoons.fuse_scale()
 
 
 func _init() -> void:
@@ -181,12 +187,12 @@ func advance(delta: float) -> void:
 
 	var lit_for: float = t - FLIGHT_SECONDS
 	# Faster and faster in the last third: the warning that it is about to go.
-	var left: float = FUSE_SECONDS - lit_for
-	if left < FUSE_SECONDS * 0.35:
-		var blink: bool = int(lit_for * (8.0 + 30.0 * (1.0 - left / FUSE_SECONDS))) % 2 == 0
+	var left: float = fuse - lit_for
+	if left < fuse * 0.35:
+		var blink: bool = int(lit_for * (8.0 + 30.0 * (1.0 - left / fuse))) % 2 == 0
 		stick.modulate = Color(1.8, 1.3, 1.3) if blink else Color.WHITE
 	queue_redraw()
-	if lit_for >= FUSE_SECONDS:
+	if lit_for >= fuse:
 		explode()
 
 
@@ -251,5 +257,5 @@ func _draw() -> void:
 	if state != State.FUSE or exploded:
 		return
 	var lit_for: float = _age - delay - FLIGHT_SECONDS
-	var a: float = lerpf(0.25, 0.7, clampf(lit_for / FUSE_SECONDS, 0.0, 1.0))
+	var a: float = lerpf(0.25, 0.7, clampf(lit_for / fuse, 0.0, 1.0))
 	draw_arc(Vector2.ZERO, HIT_RADIUS, 0.0, TAU, 64, Color(1.0, 0.2, 0.1, a), 1.0, false)

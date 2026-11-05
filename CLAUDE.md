@@ -4096,6 +4096,38 @@ bonuses, step 3 the horde). Pictured: descent_step1_0124.png.
 
 `_test_the_lands_shine_in_the_descent()` (testrunner_10).
 
+### Every class in the Descent, each its own upgrades (0.125.0)
+
+The owner: "any class can join but we have to set up bonuses for all 4
+chars". The first half of DESCENT_PLAN_3.txt's step 2 (the party is the
+second). Pictured: class_picks_0125.png.
+
+- **Any class goes down**: minigamescard.gd's Descent row has no class gate
+  (the "ANY CLASS" tag; `DESCENT_CLASS` kept as the row's portrait's class);
+  the warrior's story is told to a warrior only (descentrun.gd
+  `tells_story()`).
+- **Each class's own** (descentboons.gd, `"class"` and a mythic's
+  `"weapon"` in `BOONS`; `fits()`, `class_now`, `weapon_now`, reset by
+  `clear()` to the warrior with the axe): the warrior's nine as before; the
+  MAGE's Arcane Edge (+`CRIT_STEP` crit a level, mage.gd `rolls_critical()`),
+  Spike Storm (`triple_every()`), Deep Crits (`crit_mult()`, x3), and the
+  Meteorite's Meteor Shower (two more, `call_meteor()`), Comet (meteor.gd
+  `fall_seconds` halved) and Long Burn (burningcrater.gd `_build()`, the
+  crater not the smoulder); the TANK's Searing Aura (`aura_scale()` in
+  `_deal_aura_damage()`), Bastion (tank.gd `take_damage()` x0.8 while the
+  aura burns) and the Dynamite's Cluster (`bundle_chance()`), Barrage
+  (`barrage_chance()`) and Short Fuse (dynamite.gd `fuse` halved); the
+  HEALER's Quick Hands (`shot_rate()` in `attack_period()`), Twin Orbs
+  (`fan_every()`) and Warding Light (healaura.gd `tick()`: your ward fills
+  as your aura heals you - never your health, which the server checks). The
+  healer has no mythic weapon, so no mythics. Each preloads DescentBoons,
+  and every number is 1 off a run.
+- **Who is playing** (descentrun.gd `_note_class()`, before each pick and
+  reroll): the class is the player's own script's name, the weapon its
+  `equipped_weapon_attack()` (`weapon_for()`); mythics come only with one.
+
+`_test_every_class_has_its_own_upgrades()` (testrunner_10).
+
 ### The island is wiped: the volcano's heart (0.122.0)
 
 The owner, of 0.121.0's rain: "amaing we need the giant impact to wipe the
