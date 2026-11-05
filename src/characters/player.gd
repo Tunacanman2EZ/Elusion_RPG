@@ -3324,9 +3324,23 @@ func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
 		float(GameConstants.RESIST_CAP))
 	var resisted: float = resist_percent / 100.0
 	# EVERY HIT AT HALF (0.93.6, PlayerStats.HIT_TAKEN): the owner's "take
-	# more hits".
-	var landing: float = float(amount) * Lands.hit_scale(element) * effects_damage_scale() * PlayerStats.HIT_TAKEN
+	# more hits". And THE FORGE'S FIRE (0.121.0, minigame_hit_scale()).
+	var landing: float = float(amount) * Lands.hit_scale(element) * effects_damage_scale() * PlayerStats.HIT_TAKEN \
+		* minigame_hit_scale(element)
 	return maxi(1, int(landing * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
+
+
+func minigame_hit_scale(element: int) -> float:
+	# THE FORGE'S FIRE (0.121.0, forgerun.gd hit_scale()): the owner, "His
+	# armour repels fire, so fire sprites and lava splash do less to him" - a
+	# tank's fire hits on the island land at its TANK_FIRE. 1 for anything
+	# else, and everywhere but the Forge.
+	if element != Element.Type.FIRE or not is_inside_tree():
+		return 1.0
+	var run: Node = get_tree().get_first_node_in_group(&"forge_run")
+	if run == null or not run.has_method("hit_scale"):
+		return 1.0
+	return float(run.call("hit_scale", self, element))
 
 
 func equipped_resistance(element: int) -> int:

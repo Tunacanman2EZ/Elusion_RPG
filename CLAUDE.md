@@ -3884,6 +3884,51 @@ the chest and its arrow, a sprite's marks and its report (watched fail with
 the report taken out), the time sent, the card's Go, wait, best and Leave.
 The old Forge card check now answers Go's request.
 
+### The Forge's gear, its eruption, and rarer pets (0.121.0)
+
+The owner's rules for the tank's world: "He wades lava longest. Every class
+burns in lava, but each forged piece buys the tank about twice as much wading
+time as anyone else", "He forges fastest. Anyone can work the anvil, but the
+tank's swings count fully and other classes' count for less", "Fire bites him
+less" (and "His light is the safe circle" - SAFE_TANK, there since 0.119.0;
+the party half waits for party play). Then: "lets add the gear to make the
+minigame funner no point in the fire damage at the end we need the screen to
+start shaking and we can use the giant meteor impact to simulate the volcano
+erupting", and of a pet out of the Forge, "one could farm lusions in these
+events ... lets fix pets and mythics". forgerun.gd's header has all of it.
+
+- **The hammer** (`_step_anvil()`): standing still (`STILL_SPEED`) within
+  `FORGE_REACH` of the anvil holding the interact key (`hammer_override` is the
+  suite's hand) forges the next of `PIECES` in `piece_seconds()` - 6 s for the
+  tank, 12 for anyone else - a spark every `HAMMER_EVERY` (`Sparks`), a ring
+  filling round the anvil (`Marks`). In-run only; cleared by `end_run()`.
+- **Wading** (`_step_wading()`): each piece is `wade_each()` seconds in the
+  lava - `WADE_TANK` 8, `WADE_OTHER` 4 - draining while you stand in it,
+  back `WADE_REFILL` a second on the floor. Spent, **every class burns**,
+  the tank too (he never did before); his aura's walkways still make floor.
+- **Fire bites him less**: `hit_scale()`, asked by
+  `Player.minigame_hit_scale()` inside `damage_taken()` - a tank's fire hits
+  on the island land at `TANK_FIRE` (0.6); 1 for anything else, anywhere else.
+- **The volcano erupts** (`_step_eruption()`): the old burn on everyone is
+  gone. Rocks - the mage's meteor scene, cosmetic, `ERUPT_SCALE` (1.8) times
+  as big, its delay set so it lands on time - each on a glowing circle
+  (`Marks`) `ERUPT_WARN` (1.2 s) before it lands; `ERUPT_RADIUS` (79) is the
+  meteor's own `HIT_RADIUS` at that scale, so what glows is what hits. A hit
+  is `erupt_hit()` of your health as fire (0.5, +0.02 a rock fallen, then the
+  game's half and your armour); half aimed at you (`ERUPT_AIMED`); the gap
+  shrinks to `ERUPT_FASTEST` and a volley grows a rock every
+  `ERUPT_MORE_EVERY` (15 s) - everyone falls. A fire blast where each lands.
+- **The screen shakes**: `Player.shake_camera()` - a rumble every
+  `RUMBLE_EVERY` from the last flood (`rumbling()`, `rumble_px()` growing to
+  `RUMBLE_MOST`), and a jolt for an impact within `IMPACT_NEAR`.
+- **The HUD's gear line** (forgehud.gd `gear_text()`): the key to hold, the
+  piece being forged, or the armour and the wading time left.
+- **Rarer pets and mythics** are the server's (the API's CLAUDE.md, the
+  Forge's section): ten times rarer in the Forge, one pet a Go.
+
+`_test_the_forge_gear_and_eruption()` (testrunner_10); `_test_the_forge()`'s
+lava and volcano checks changed with the rules.
+
 ### One look for the whole game: the hotbar's frames (the same 0.120.0)
 
 The owner, of the hero screen: "we need to clean this up add the styles and

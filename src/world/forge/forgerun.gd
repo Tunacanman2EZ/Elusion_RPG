@@ -27,19 +27,47 @@
 #              the next slice glows and the falls pour twice as fast; full,
 #              the slice floods (FLOOD_SECONDS, rim to the light), and heat
 #              starts again. ORDER is opposite slices in turn. Once all
-#              SLICES are gone, THE VOLCANO: everyone burns, harder each
-#              tick (FINAL_BURN), until they fall.
+#              SLICES are gone, THE VOLCANO ERUPTS (below): rocks on
+#              glowing circles, faster and more, until they fall.
 #
 # THE LIGHT THE LAVA NEVER ENTERS: SAFE_TANK (294 px - the tank's own light,
 # playerlight.tscn's 256 px glow at texture_scale 2.3, round the anvil) when
 # the player is a tank, SAFE_OTHER (210 px, the anvil's own glow) otherwise.
 # The anvil's glow is sized to it.
 #
-# FIRE: anyone but the tank catches fire in the lava - LAVA_BURN of their
-# health a tick through Player.take_damage() as fire, and the effects' burn,
-# drawn as flames on them (Flames). The tank does not: his gear turns red
-# (TANK_RED, more in the lava and as the heat climbs). In THE VOLCANO the tank
-# burns too.
+# FIRE (0.121.0: every class): out of wading time (THE ANVIL'S GEAR, below),
+# anyone in the lava catches fire - LAVA_BURN of their health a tick through
+# Player.take_damage() as fire, and the effects' burn, drawn as flames on them
+# (Flames). The tank burns too now, but fire bites him less: in the Forge his
+# fire hits land at TANK_FIRE (hit_scale(), asked by Player.damage_taken()) -
+# the owner: "His armour repels fire, so fire sprites and lava splash do less
+# to him". His gear still turns red (TANK_RED, more in the lava and as the
+# heat climbs).
+#
+# THE ANVIL'S GEAR (0.121.0). The owner's rules: "He wades lava longest. Every
+# class burns in lava, but each forged piece buys the tank about twice as much
+# wading time as anyone else", "He forges fastest. Anyone can work the anvil,
+# but the tank's swings count fully and other classes' count for less", then
+# "lets add the gear to make the minigame funner". Stand still at the anvil
+# (FORGE_REACH) holding the interact key and the hammer swings (a spark every
+# HAMMER_EVERY): piece_seconds() - PIECE_TANK for the tank, PIECE_OTHER for
+# anyone else - forges the next of PIECES, in-run only. Each piece is
+# WADE_TANK (tank) or WADE_OTHER seconds in the lava before the fire starts:
+# wade_left drains while you stand in it and comes back WADE_REFILL a second
+# on the floor. The hammer cannot fight - the sprites keep coming.
+#
+# THE VOLCANO ERUPTS (0.121.0). The owner: "no point in the fire damage at
+# the end we need the screen to start shaking and we can use the giant meteor
+# impact to simulate the volcano erupting". With every slice gone the light is
+# the only floor; the volcano throws rocks - the mage's meteor, ERUPT_SCALE
+# times as big, a picture that hits nothing itself - each onto a glowing
+# circle ERUPT_WARN before it lands. Landing within ERUPT_RADIUS is
+# erupt_hit() of your health as fire, more with every rock fallen; half are
+# thrown at where you stand (ERUPT_AIMED); a volley grows by a rock every
+# ERUPT_MORE_EVERY seconds and the gap shortens to ERUPT_FASTEST, so
+# everyone falls in the end. The screen rumbles from the last flood
+# (RUMBLE_*) and jolts at each impact near you (IMPACT_SHAKE). Wading time is
+# how you step out of the light to dodge.
 #
 # THE FIRE SPRITES step out of the lava's edges (edge_spot(): the rim of an
 # open slice, the light's rim of a flooded one, the sides where the two meet,
@@ -64,8 +92,9 @@
 # Player.take_damage() asks knock_out() first - you wake beside the anvil on
 # 1 health, every effect cleared, and the run is over: "The forge held 4:12".
 #
-# WHAT IT PAYS, IN STEP 1: nothing. Forging, the legacy armour, a party of
-# four and the high-score board are the next steps.
+# WHAT IT PAYS: since 0.120.0, every fire sprite's loot into your chest (the
+# server's pets and mythics ten times rarer here since 0.121.0). The legacy
+# armour, a party of four and the high-score board are the next steps.
 extends Node
 
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
@@ -113,8 +142,6 @@ const FALLS_WARNING := 2.0
 # ---- FIRE ---------------------------------------------------------------------
 const BURN_TICK := 0.5
 const LAVA_BURN := 0.12
-const FINAL_BURN := 0.06
-const FINAL_BURN_STEP := 0.01
 const TANK_RED := Color(1.0, 0.5, 0.42)
 
 # ---- THE FIRE SPRITES ---------------------------------------------------------
@@ -158,6 +185,46 @@ const WALK_REPAINT := 0.1
 const AURA_HALF := Vector2(73.8, 42.3)
 const AURA_OFFSET := Vector2(-0.9, -13.5)
 
+# ---- THE ANVIL'S GEAR (0.121.0) ----------------------------------------------
+const FORGE_REACH := 56.0
+const PIECES := ["helm", "chestplate", "gauntlets", "greaves", "boots"]
+const PIECE_TANK := 6.0
+const PIECE_OTHER := 12.0
+const HAMMER_EVERY := 0.4
+# Faster than this (px/s) is walking, not hammering.
+const STILL_SPEED := 12.0
+const WADE_TANK := 8.0
+const WADE_OTHER := 4.0
+const WADE_REFILL := 2.0
+# The tank's fire hits in the Forge.
+const TANK_FIRE := 0.6
+
+# ---- THE VOLCANO ERUPTS (0.121.0) ---------------------------------------------
+const MeteorScene := preload("res://scene/projectiles/meteor.tscn")
+const ERUPT_FIRST := 1.0
+const ERUPT_GAP := 1.6
+const ERUPT_QUICKER := 0.94
+const ERUPT_FASTEST := 0.35
+const ERUPT_WARN := 1.2
+# The danger circle is the giant meteor's own hit: meteor.gd's HIT_RADIUS (44)
+# at ERUPT_SCALE - its ring of fire is drawn that size, so what glows is what
+# hits.
+const ERUPT_SCALE := 1.8
+const ERUPT_RADIUS := 79.0
+const ERUPT_HIT := 0.5
+const ERUPT_HIT_STEP := 0.02
+const ERUPT_AIMED := 0.5
+const ERUPT_AIM_SPREAD := 40.0
+const ERUPT_MORE_EVERY := 15.0
+# Rocks fall on the light and this far past it, over the lava.
+const ERUPT_PAST := 60.0
+const RUMBLE_EVERY := 0.2
+const RUMBLE_PX := 1.0
+const RUMBLE_GROW := 0.05
+const RUMBLE_MOST := 3.0
+const IMPACT_NEAR := 220.0
+const IMPACT_SHAKE := Vector2(7.0, 0.45)
+
 # ---- ICE ESSENCE --------------------------------------------------------------
 const ESSENCE_ART := "res://art/pack/materials/iceessence.png"
 const ESSENCE_FIRST := 10.0
@@ -198,7 +265,6 @@ var _rng := RandomNumberGenerator.new()
 var _hold: float = 0.0
 var _count: float = 0.0
 var _burn_clock: float = 0.0
-var _final_ticks: int = 0
 var _spawn_clock: float = 0.0
 var _essence: Node2D = null
 var _essence_clock: float = 0.0
@@ -214,6 +280,24 @@ var _falls_speed: float = -1.0
 # Walkway cells (16 px floor cells) and the run time each melts at.
 var _cooled: Dictionary = {}
 var _walk_clock: float = 0.0
+# THE ANVIL'S GEAR: pieces forged this run, the hammer's progress on the next
+# (seconds), and the wading time left.
+var pieces: int = 0
+var forging: float = 0.0
+var wade_left: float = 0.0
+# -1 reads the interact key; 0 or 1 is a test's hand on it.
+var hammer_override: int = -1
+var _hammering: bool = false
+var _hammer_clock: float = 0.0
+var _sparks: Node2D = null
+# THE ERUPTION: how long the volcano has thrown, the rocks in the air
+# ({"at", "left", "meteor"}), the next volley's clock, rocks landed.
+var volcano_seconds: float = 0.0
+var rocks: Array = []
+var rocks_fallen: int = 0
+var _erupt_clock: float = 0.0
+var _rumble_clock: float = 0.0
+var _jolt_left: float = 0.0
 
 
 func _ready() -> void:
@@ -228,8 +312,10 @@ func _ready() -> void:
 			_ground_saved[cell] = [_ground.get_cell_source_id(cell), _ground.get_cell_atlas_coords(cell)]
 	_marks = Marks.new()
 	_marks.run = self
+	_sparks = Sparks.new()
 	if area != null:
 		area.add_child.call_deferred(_marks)
+		area.add_child.call_deferred(_sparks)
 	hud = (load("res://src/world/forge/forgehud.gd") as GDScript).new()
 	hud.set("run", self)
 	add_child(hud)
@@ -379,7 +465,7 @@ func warning() -> bool:
 
 
 func volcano() -> bool:
-	"""Every slice gone: everyone burns."""
+	"""Every slice gone: the volcano erupts."""
 	return running() and floods >= SLICES and flooding < 0
 
 
@@ -453,9 +539,13 @@ func _process(delta: float) -> void:
 			_step_heat(delta)
 			_step_flood(delta)
 			_step_walkways(delta)
+			_step_anvil(delta)
+			_step_wading(delta)
 			_step_fire(delta)
 			_step_spawns(delta)
 			_step_essence(delta)
+			_step_eruption(delta)
+			_step_rumble(delta)
 	_paint_falls()
 	_paint_tank()
 	_process_chest()
@@ -484,11 +574,21 @@ func start_run() -> void:
 	slain = 0
 	essences = 0
 	_burn_clock = BURN_TICK
-	_final_ticks = 0
 	_spawn_clock = 1.0
 	_essence_clock = ESSENCE_FIRST
+	pieces = 0
+	forging = 0.0
+	wade_left = 0.0
+	_hammering = false
+	volcano_seconds = 0.0
+	rocks_fallen = 0
+	_erupt_clock = ERUPT_FIRST
+	_rumble_clock = 0.0
+	_jolt_left = 0.0
+	_clear_rocks()
 	if hud != null:
-		hud.call("announce", "Hold the forge", "Fire sprites step out of the lava - the heat floods a slice when full")
+		hud.call("announce", "Hold the forge", "Hold %s at the anvil to forge armour - it buys time in the lava"
+			% ControlsPanel.action_key("interact"))
 
 
 func _step_heat(delta: float) -> void:
@@ -559,7 +659,7 @@ func _step_flood(delta: float) -> void:
 				and _essence.global_position.distance_to(CENTRE) > safe:
 			_drop_essence()
 		if hud != null and floods >= SLICES:
-			hud.call("announce", "The volcano wakes", "Every slice is gone - the heat takes everyone now")
+			hud.call("announce", "The volcano erupts", "Watch the glowing circles - the rocks fall faster and faster")
 
 
 func _repaint(entries: Array, from_d: float = -INF, to_d: float = INF) -> void:
@@ -681,11 +781,9 @@ func _step_fire(delta: float) -> void:
 	if player == null or player.get("is_dying") == true:
 		return
 	var most: float = float(player.get("max_hp")) if player.get("max_hp") != null else 100.0
-	if volcano():
-		var share: float = FINAL_BURN + FINAL_BURN_STEP * _final_ticks
-		_final_ticks += 1
-		_burn(player, maxi(1, roundi(most * share)))
-	elif in_lava(player.global_position) and not is_tank():
+	# Every class, once its wading time is spent (0.121.0); the volcano's end
+	# is its rocks now (THE VOLCANO ERUPTS), not a burn on everyone.
+	if in_lava(player.global_position) and wade_left <= 0.0:
 		_burn(player, maxi(1, roundi(most * LAVA_BURN)))
 
 
@@ -738,6 +836,212 @@ func _paint_falls() -> void:
 # =============================================================================
 # THE FIRE SPRITES
 # =============================================================================
+
+# =============================================================================
+# THE ANVIL'S GEAR (0.121.0)
+# =============================================================================
+
+func piece_seconds() -> float:
+	"""How long the hammer takes over a piece: the tank's swings count fully."""
+	return PIECE_TANK if is_tank() else PIECE_OTHER
+
+
+func wade_each() -> float:
+	"""The wading time one piece buys: the tank's, about twice anyone else's."""
+	return WADE_TANK if is_tank() else WADE_OTHER
+
+
+func wade_most() -> float:
+	return wade_each() * pieces
+
+
+func forging_share() -> float:
+	"""How far the hammer is through the next piece, 0 to 1."""
+	return clampf(forging / piece_seconds(), 0.0, 1.0)
+
+
+func hammering() -> bool:
+	return _hammering
+
+
+func next_piece() -> String:
+	return str(PIECES[pieces]) if pieces < PIECES.size() else ""
+
+
+func _hand_on_the_hammer() -> bool:
+	if hammer_override >= 0:
+		return hammer_override == 1
+	return Input.is_action_pressed("interact")
+
+
+func _step_anvil(delta: float) -> void:
+	"""Standing still at the anvil holding the interact key: the hammer."""
+	var player: Node2D = _player()
+	var was: bool = _hammering
+	_hammering = false
+	if player == null or player.get("is_dying") == true or pieces >= PIECES.size():
+		return
+	if player.global_position.distance_to(CENTRE) > FORGE_REACH or not _hand_on_the_hammer():
+		return
+	var moving: Variant = player.get("velocity")
+	if moving is Vector2 and (moving as Vector2).length() > STILL_SPEED:
+		return
+	_hammering = true
+	if not was:
+		_hammer_clock = 0.0
+	_hammer_clock -= delta
+	if _hammer_clock <= 0.0:
+		_hammer_clock = HAMMER_EVERY
+		if _sparks != null and is_instance_valid(_sparks):
+			_sparks.call("strike", CENTRE + Vector2(0, -6), _rng)
+		if is_inside_tree():
+			Audio.play_at("attack_hit", CENTRE)
+	forging += delta
+	if forging >= piece_seconds():
+		forging = 0.0
+		var made: String = next_piece()
+		pieces += 1
+		wade_left = wade_most()
+		if is_inside_tree():
+			Audio.play("skill_up")
+		if hud != null:
+			hud.call("toast", "Forged: the %s  -  %d of %d, %d s in the lava" % [made, pieces, PIECES.size(), roundi(wade_most())])
+
+
+func _step_wading(delta: float) -> void:
+	"""Wading time drains in the lava and comes back on the floor."""
+	var player: Node2D = _player()
+	if player == null:
+		return
+	if in_lava(player.global_position):
+		wade_left = maxf(0.0, wade_left - delta)
+	else:
+		wade_left = minf(wade_most(), wade_left + WADE_REFILL * delta)
+
+
+func hit_scale(player: Node, element: int) -> float:
+	"""Player.damage_taken() asks: the tank's fire hits on the island land at
+	TANK_FIRE - "His armour repels fire". 1 for anything else."""
+	if element != Element.Type.FIRE or not is_tank() or not (player is Node2D) or player != _player():
+		return 1.0
+	if (player as Node2D).global_position.distance_to(CENTRE) > RADIUS + BAND + 200.0:
+		return 1.0
+	return TANK_FIRE
+
+
+# =============================================================================
+# THE VOLCANO ERUPTS (0.121.0)
+# =============================================================================
+
+func erupt_gap() -> float:
+	return maxf(ERUPT_FASTEST, ERUPT_GAP * pow(ERUPT_QUICKER, rocks_fallen))
+
+
+func volley_size() -> int:
+	return 1 + int(volcano_seconds / ERUPT_MORE_EVERY)
+
+
+func erupt_hit() -> float:
+	"""A rock's share of your health (before your armour and the game's half),
+	more with every rock fallen."""
+	return ERUPT_HIT + ERUPT_HIT_STEP * rocks_fallen
+
+
+func rock_spot(aimed: bool) -> Vector2:
+	"""Where a rock comes down: by the player (aimed), or anywhere on the
+	light and a little past it."""
+	var player: Node2D = _player()
+	if aimed and player != null:
+		var near: Vector2 = player.global_position + Vector2(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)) * ERUPT_AIM_SPREAD
+		var off: Vector2 = near - CENTRE
+		if off.length() > safe + ERUPT_PAST:
+			near = CENTRE + off.normalized() * (safe + ERUPT_PAST)
+		return near
+	return CENTRE + Vector2.from_angle(_rng.randf() * TAU) * sqrt(_rng.randf()) * (safe + ERUPT_PAST)
+
+
+func _step_eruption(delta: float) -> void:
+	if volcano():
+		volcano_seconds += delta
+		_erupt_clock -= delta
+		if _erupt_clock <= 0.0:
+			_erupt_clock = erupt_gap()
+			for i in volley_size():
+				throw_rock(rock_spot(_rng.randf() < ERUPT_AIMED))
+	var landed: Array = []
+	for rock in rocks:
+		rock["left"] = float(rock["left"]) - delta
+		if float(rock["left"]) <= 0.0:
+			landed.append(rock)
+	for rock in landed:
+		rocks.erase(rock)
+		_rock_lands(rock["at"])
+
+
+func throw_rock(at: Vector2) -> void:
+	"""A rock on its way: a glowing circle now (Marks), the giant meteor's fall
+	timed to land on it ERUPT_WARN from now."""
+	var rock: Dictionary = {"at": at, "left": ERUPT_WARN, "meteor": null}
+	var area: Node = get_parent()
+	if area != null and is_inside_tree():
+		var meteor: Node2D = MeteorScene.instantiate() as Node2D
+		meteor.set("cosmetic", true)
+		meteor.set("delay", maxf(0.0, ERUPT_WARN - Meteor.FALL_SECONDS))
+		meteor.scale = Vector2.ONE * ERUPT_SCALE
+		area.add_child(meteor)
+		meteor.global_position = at
+		meteor.reset_physics_interpolation()
+		rock["meteor"] = meteor
+	rocks.append(rock)
+
+
+func _rock_lands(at: Vector2) -> void:
+	rocks_fallen += 1
+	var area: Node = get_parent()
+	if area != null and is_inside_tree():
+		Blast.spawn(area, at, &"dynamite", ERUPT_RADIUS, false)
+	var player: Node2D = _player()
+	if player == null:
+		return
+	var near: float = player.global_position.distance_to(at)
+	if near <= IMPACT_NEAR and player.has_method("shake_camera"):
+		var strength: float = IMPACT_SHAKE.x * (1.0 - 0.6 * near / IMPACT_NEAR)
+		player.call("shake_camera", strength, IMPACT_SHAKE.y)
+		_jolt_left = IMPACT_SHAKE.y
+	if near <= ERUPT_RADIUS and player.get("is_dying") != true and player.has_method("take_damage"):
+		var most: float = float(player.get("max_hp")) if player.get("max_hp") != null else 100.0
+		player.call("take_damage", maxi(1, roundi(most * erupt_hit())), Element.Type.FIRE)
+
+
+func rumbling() -> bool:
+	"""The ground shakes from the last flood on."""
+	return running() and (volcano() or (floods == SLICES - 1 and flooding >= 0))
+
+
+func rumble_px() -> float:
+	return minf(RUMBLE_MOST, RUMBLE_PX + RUMBLE_GROW * volcano_seconds) if volcano() else RUMBLE_PX * 0.5
+
+
+func _step_rumble(delta: float) -> void:
+	_jolt_left = maxf(0.0, _jolt_left - delta)
+	if not rumbling() or _jolt_left > 0.0:
+		return
+	_rumble_clock -= delta
+	if _rumble_clock > 0.0:
+		return
+	_rumble_clock = RUMBLE_EVERY
+	var player: Node2D = _player()
+	if player != null and player.has_method("shake_camera"):
+		player.call("shake_camera", rumble_px(), RUMBLE_EVERY + 0.05)
+
+
+func _clear_rocks() -> void:
+	for rock in rocks:
+		var meteor: Variant = rock.get("meteor")
+		if meteor is Node and is_instance_valid(meteor):
+			(meteor as Node).queue_free()
+	rocks = []
+
 
 func _step_spawns(delta: float) -> void:
 	_spawn_clock -= delta
@@ -968,15 +1272,23 @@ func end_run() -> void:
 	var words: String = "The forge held %s  -  %d of %d slices flooded  -  %d slain" % [clock_text(held), floods, SLICES, slain]
 	if essences > 0:
 		words += "  -  %d ice essence" % essences
+	if pieces > 0:
+		words += "  -  %d of %d armour forged" % [pieces, PIECES.size()]
 	last_result = words
 	best = maxf(best, held)
 	_send_time(held)
 	_clear_monsters()
 	BulletZone.clear_enemy_shots(self)
 	_drop_essence()
+	_clear_rocks()
 	state = State.WAITING
 	heat = 0.0
 	floods = 0
+	pieces = 0
+	forging = 0.0
+	wade_left = 0.0
+	_hammering = false
+	volcano_seconds = 0.0
 	_flood_floor = []
 	_flood_lava = []
 	_reset_map()
@@ -1032,6 +1344,19 @@ class Marks extends Node2D:
 			return
 		var light: float = float(run.get("safe"))
 		draw_arc(CENTRE, light, 0.0, TAU, 96, Color(1.0, 0.82, 0.5, 0.35), 2.0)
+		# THE HAMMER (0.121.0): a ring round the anvil filling as a piece is
+		# forged.
+		var share: float = float(run.call("forging_share"))
+		if share > 0.0:
+			draw_arc(CENTRE, 30.0, -PI / 2.0, -PI / 2.0 + TAU * share, 48, Color(1.0, 0.8, 0.35, 0.9), 3.0)
+		# THE ERUPTION (0.121.0): where each rock will land, brighter as it
+		# comes.
+		for rock in run.get("rocks"):
+			var come: float = 1.0 - clampf(float(rock["left"]) / ERUPT_WARN, 0.0, 1.0)
+			var at: Vector2 = rock["at"]
+			draw_circle(at, ERUPT_RADIUS, Color(1.0, 0.3, 0.05, 0.12 + 0.28 * come))
+			draw_arc(at, ERUPT_RADIUS, 0.0, TAU, 40, Color(1.0, 0.65, 0.2, 0.55 + 0.4 * come), 2.0)
+			draw_arc(at, ERUPT_RADIUS * (1.0 - come), 0.0, TAU, 40, Color(1.0, 0.9, 0.5, 0.7), 1.5)
 		if not bool(run.call("warning")):
 			return
 		var k: int = int(run.get("flooding"))
@@ -1051,6 +1376,41 @@ class Marks extends Node2D:
 			var a: float = mid + half - 2.0 * half * i / 24.0
 			points.append(CENTRE + Vector2(sin(a), -cos(a)) * outer)
 		draw_colored_polygon(points, Color(1.0, 0.35, 0.1, 0.08 + 0.14 * pulse))
+
+
+class Sparks extends Node2D:
+	## The hammer's sparks over the anvil (0.121.0): a handful of hot squares
+	## thrown up at each swing, falling and fading.
+	var bits: Array = []
+
+	func _init() -> void:
+		name = "forgesparks"
+		z_as_relative = false
+		z_index = 5
+
+	func strike(at: Vector2, rng: RandomNumberGenerator) -> void:
+		for i in 7:
+			bits.append({"at": at, "v": Vector2(rng.randf_range(-70.0, 70.0), rng.randf_range(-130.0, -50.0)),
+				"life": rng.randf_range(0.3, 0.55)})
+
+	func _process(delta: float) -> void:
+		if bits.is_empty():
+			return
+		var kept: Array = []
+		for bit in bits:
+			bit["life"] = float(bit["life"]) - delta
+			if float(bit["life"]) <= 0.0:
+				continue
+			bit["v"] = (bit["v"] as Vector2) + Vector2(0, 260.0) * delta
+			bit["at"] = (bit["at"] as Vector2) + (bit["v"] as Vector2) * delta
+			kept.append(bit)
+		bits = kept
+		queue_redraw()
+
+	func _draw() -> void:
+		for bit in bits:
+			var hot: float = clampf(float(bit["life"]) / 0.4, 0.0, 1.0)
+			draw_rect(Rect2((bit["at"] as Vector2).round(), Vector2(2, 2)), Color(1.0, 0.75 + 0.25 * hot, 0.3 + 0.5 * hot, hot))
 
 
 class Essence extends Node2D:

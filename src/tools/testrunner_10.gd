@@ -1493,9 +1493,13 @@ var hp: int = 200
 var max_hp: int = 200
 var is_dying: bool = false
 var aura_active: bool = false
+var velocity: Vector2 = Vector2.ZERO
 var taken: Array = []
+var shakes: Array = []
 func take_damage(amount: int, element: int) -> void:
 	taken.append([amount, element])
+func shake_camera(strength: float, seconds: float) -> void:
+	shakes.append([strength, seconds])
 """
 	script.reload()
 	return script
@@ -1662,10 +1666,10 @@ func _test_the_forge() -> void:
 		and int(hits[0][1]) == Element.Type.FIRE and body.get_node_or_null("forgeflames") != null
 	run.set("class_override", "tank")
 	run.call("_process", Run.BURN_TICK + 0.01)
-	var tank_spared: bool = (body.get("taken") as Array).size() == 1 and float(run.call("redness")) > 0.4 \
+	var tank_burns: bool = (body.get("taken") as Array).size() == 2 and float(run.call("redness")) > 0.4 \
 		and sprite.modulate != Color.WHITE
-	check("in the lava a warrior catches fire (%s a tick, flames on them); the tank does not - his gear turns red" % [hits],
-		burnt and tank_spared)
+	check("in the lava with no armour a warrior catches fire (%s a tick, flames on them) - and since 0.121.0 the tank too, his gear red" % [hits],
+		burnt and tank_burns)
 	# The tank's walkways (the owner: "what if the tanks aura can push back lava
 	# only where he is standing to create safe walkways for the team").
 	var under: Vector2 = body.global_position + Run.AURA_OFFSET
@@ -1698,15 +1702,16 @@ func _test_the_forge() -> void:
 	run.call("_process", 0.01)
 	check("ice essence lies out in an open slice, never the one about to flood; walked over, it cools the heat",
 		placed and int(run.get("essences")) == 1 and float(run.get("heat")) < 0.5 - Run.ESSENCE_COOL + 0.05)
-	# The volcano: everyone burns, the tank too, harder each tick.
+	# The volcano (0.121.0): it erupts - nobody in the light burns; its rocks
+	# are _test_the_forge_gear_and_eruption()'s.
 	body.global_position = c + Vector2(0, 30)
 	run.set("floods", Run.SLICES)
 	var before: int = (body.get("taken") as Array).size()
 	run.call("_process", Run.BURN_TICK + 0.01)
 	run.call("_process", Run.BURN_TICK + 0.01)
 	var late: Array = (body.get("taken") as Array).slice(before)
-	check("once every slice is gone the volcano burns everyone, the tank too, harder each tick %s" % [late],
-		bool(run.call("volcano")) and late.size() == 2 and int(late[1][0]) > int(late[0][0]))
+	check("once every slice is gone the volcano erupts: no burn on anyone in the light, and its first rocks are in the air",
+		bool(run.call("volcano")) and late.is_empty() and not (run.get("rocks") as Array).is_empty(), [late, (run.get("rocks") as Array).size()])
 	# A fall.
 	body.global_position = Vector2(-5000, -5000)
 	var elsewhere: bool = not bool(run.call("knock_out", body))
@@ -2216,3 +2221,166 @@ func _test_one_look_for_the_game() -> void:
 	for i in 4:
 		CharacterData.character_slots[i] = kept[i]
 	print("  one look: the themes, the bar, the death screen, the hero cards")
+
+
+# =============================================================================
+# THE FORGE'S GEAR AND ITS ERUPTION (0.121.0)
+# =============================================================================
+# The owner's rules: "He wades lava longest. Every class burns in lava, but
+# each forged piece buys the tank about twice as much wading time as anyone
+# else", "He forges fastest. Anyone can work the anvil, but the tank's swings
+# count fully", "Fire bites him less", then "lets add the gear to make the
+# minigame funner no point in the fire damage at the end we need the screen to
+# start shaking and we can use the giant meteor impact to simulate the volcano
+# erupting".
+
+func _test_the_forge_gear_and_eruption() -> void:
+	section("THE FORGE'S GEAR AND ERUPTION (0.121.0): armour hammered at the anvil buys time in the lava, the tank's fire bites less, the volcano throws rocks")
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	var c: Vector2 = Run.CENTRE
+	var island := Node2D.new()
+	add_child(island)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	island.add_child(world)
+	for holder in ["props", "enemies", "interactables"]:
+		var n := Node2D.new()
+		n.name = holder
+		world.add_child(n)
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	island.add_child(body)
+	body.global_position = c + Vector2(0, 20)
+	var run: Node = Run.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", "warrior")
+	island.add_child(run)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	run.call("start_run")
+	run.set("_spawn_clock", 9999.0)
+	run.set("_essence_clock", 9999.0)
+	var hud: Node = run.get("hud")
+	var hint: String = str(hud.call("gear_text"))
+	# ---- THE HAMMER ----------------------------------------------------------------
+	run.set("hammer_override", 1)
+	run.call("_process", 0.5)
+	var swinging: bool = bool(run.call("hammering")) and float(run.call("forging_share")) > 0.0 \
+		and str(hud.call("gear_text")).begins_with("Forging the helm")
+	for i in 22:
+		run.call("_process", 0.5)
+	var not_yet: bool = int(run.get("pieces")) == 0
+	run.call("_process", 0.51)
+	check("standing still at the anvil holding the interact key the hammer swings (a ring fills, \"Forging the helm\"); a warrior's piece takes %d s" % int(Run.PIECE_OTHER),
+		swinging and not_yet and int(run.get("pieces")) == 1 and is_equal_approx(float(run.get("wade_left")), Run.WADE_OTHER)
+		and str(hud.call("gear_text")).begins_with("Forging the chestplate"), [run.get("pieces"), run.get("forging"), hud.call("gear_text")])
+	run.set("hammer_override", 0)
+	run.call("_process", 1.0)
+	var no_hand: bool = not bool(run.call("hammering")) and is_equal_approx(float(run.get("forging")), 0.0) \
+		and str(hud.call("gear_text")).begins_with("Armour 1 of %d  -  4.0 s in the lava" % Run.PIECES.size())
+	run.set("hammer_override", 1)
+	body.set("velocity", Vector2(120, 0))
+	run.call("_process", 1.0)
+	var walking: bool = not bool(run.call("hammering"))
+	body.set("velocity", Vector2.ZERO)
+	body.global_position = c + Vector2(0, Run.FORGE_REACH + 20.0)
+	run.call("_process", 1.0)
+	var away: bool = not bool(run.call("hammering"))
+	check("  nothing without the key held, while walking, or away from the anvil", no_hand and walking and away)
+	body.global_position = c + Vector2(0, 20)
+	run.set("class_override", "tank")
+	run.set("forging", 0.0)
+	for i in 12:
+		run.call("_process", 0.5)
+	run.call("_process", 0.01)
+	check("  the tank's swings count fully: his piece takes %d s, and buys %d s in the lava a piece to anyone else's %d" % [int(Run.PIECE_TANK), int(Run.WADE_TANK), int(Run.WADE_OTHER)],
+		int(run.get("pieces")) == 2 and is_equal_approx(float(run.call("wade_most")), 2.0 * Run.WADE_TANK)
+		and Run.WADE_TANK >= 2.0 * Run.WADE_OTHER and Run.PIECE_OTHER >= 2.0 * Run.PIECE_TANK, [run.get("pieces"), run.call("wade_most")])
+	run.set("hammer_override", 0)
+	# ---- WADING ----------------------------------------------------------------------
+	run.set("class_override", "warrior")
+	run.set("pieces", 1)
+	run.set("wade_left", Run.WADE_OTHER)
+	var lava_spot: Vector2 = c + Vector2(0, -(Run.RADIUS + 60.0))
+	body.global_position = lava_spot
+	(body.get("taken") as Array).clear()
+	for i in 7:
+		run.call("_process", 0.5)
+	var dry: bool = (body.get("taken") as Array).is_empty() and bool(run.call("in_lava", lava_spot))
+	for i in 3:
+		run.call("_process", 0.5)
+	var burnt: bool = not (body.get("taken") as Array).is_empty() and is_equal_approx(float(run.get("wade_left")), 0.0)
+	body.global_position = c + Vector2(0, 20)
+	run.call("_process", 1.0)
+	var refilled: float = float(run.get("wade_left"))
+	check("a piece is %d s in the lava before the fire starts - every class burns once it is spent - and the time comes back on the floor (%s a second)" % [int(Run.WADE_OTHER), Run.WADE_REFILL],
+		dry and burnt and is_equal_approx(refilled, minf(Run.WADE_OTHER, Run.WADE_REFILL)), [dry, burnt, refilled])
+	# ---- FIRE BITES HIM LESS -------------------------------------------------------
+	run.set("class_override", "tank")
+	var tank_fire: float = float(run.call("hit_scale", body, Element.Type.FIRE))
+	var tank_plain: float = float(run.call("hit_scale", body, Element.Type.NONE))
+	body.global_position = Vector2(-90000, -90000)
+	var tank_away: float = float(run.call("hit_scale", body, Element.Type.FIRE))
+	body.global_position = c + Vector2(0, 20)
+	run.set("class_override", "warrior")
+	var warrior_fire: float = float(run.call("hit_scale", body, Element.Type.FIRE))
+	check("the tank's fire hits on the island land at %d%% - sprites, lava, rocks; not off the island, not other hits, not other classes; Player.damage_taken() asks it" % roundi(Run.TANK_FIRE * 100.0),
+		is_equal_approx(tank_fire, Run.TANK_FIRE) and tank_plain == 1.0 and tank_away == 1.0 and warrior_fire == 1.0
+		and _func_body(_code_src("res://src/characters/player.gd"), "func damage_taken(").contains("minigame_hit_scale(element)"),
+		[tank_fire, tank_plain, tank_away, warrior_fire])
+	# ---- THE VOLCANO ERUPTS --------------------------------------------------------
+	run.set("pieces", 0)
+	run.set("wade_left", 0.0)
+	run.set("floods", Run.SLICES)
+	(body.get("taken") as Array).clear()
+	(body.get("shakes") as Array).clear()
+	run.call("_process", Run.ERUPT_FIRST + 0.01)
+	var thrown: Array = run.get("rocks")
+	var meteor: Node2D = thrown[0]["meteor"] as Node2D if not thrown.is_empty() else null
+	check("with every slice gone the volcano throws its first rock: a glowing circle, and the mage's meteor %s times as big falling onto it - a picture that hits nothing itself" % Run.ERUPT_SCALE,
+		bool(run.call("volcano")) and thrown.size() == 1 and meteor != null and meteor.get_parent() == island
+		and meteor.get("cosmetic") == true and meteor.scale.is_equal_approx(Vector2.ONE * Run.ERUPT_SCALE)
+		and absf(Meteor.HIT_RADIUS * Run.ERUPT_SCALE - Run.ERUPT_RADIUS) < 1.0
+		and absf(float(meteor.get("delay")) + Meteor.FALL_SECONDS - Run.ERUPT_WARN) < 0.001
+		and (body.get("taken") as Array).is_empty(), [thrown.size(), meteor])
+	run.set("rocks", [])
+	run.set("_erupt_clock", 9999.0)
+	(body.get("shakes") as Array).clear()
+	run.call("throw_rock", body.global_position + Vector2(Run.ERUPT_RADIUS - 10.0, 0))
+	run.call("throw_rock", body.global_position + Vector2(Run.ERUPT_RADIUS + 20.0, 0))
+	run.call("_process", Run.ERUPT_WARN + 0.01)
+	var hits: Array = body.get("taken")
+	var first_hit: int = int(hits[0][0]) if hits.size() == 1 else -1
+	check("  a rock landing within %d px hits for %d%% of your health as fire (one did, of two) and jolts the screen; one past it does not hit" % [int(Run.ERUPT_RADIUS), roundi(Run.ERUPT_HIT * 100.0)],
+		hits.size() == 1 and int(hits[0][1]) == Element.Type.FIRE and first_hit == roundi(200 * Run.ERUPT_HIT + 200 * Run.ERUPT_HIT_STEP)
+		and int(run.get("rocks_fallen")) == 2 and not (body.get("shakes") as Array).is_empty()
+		and float((body.get("shakes") as Array)[0][0]) > Run.RUMBLE_MOST, [hits, body.get("shakes")])
+	run.set("volcano_seconds", Run.ERUPT_MORE_EVERY * 2.0 + 1.0)
+	run.set("rocks_fallen", 200)
+	check("  faster and more: the gap shrinks to %s s, a volley grows a rock every %d s, each rock hits harder, and the screen rumbles harder (to %d px)" % [Run.ERUPT_FASTEST, int(Run.ERUPT_MORE_EVERY), int(Run.RUMBLE_MOST)],
+		is_equal_approx(float(run.call("erupt_gap")), Run.ERUPT_FASTEST) and int(run.call("volley_size")) == 3
+		and float(run.call("erupt_hit")) > Run.ERUPT_HIT and bool(run.call("rumbling"))
+		and float(run.call("rumble_px")) > Run.RUMBLE_PX)
+	(body.get("shakes") as Array).clear()
+	run.set("_jolt_left", 0.0)
+	run.call("_process", Run.RUMBLE_EVERY + 0.01)
+	var rumbled: bool = not (body.get("shakes") as Array).is_empty()
+	run.set("floods", Run.SLICES - 1)
+	run.set("flooding", -1)
+	check("  the ground rumbles while the volcano throws (and from the last flood), not before",
+		rumbled and not bool(run.call("rumbling")))
+	run.set("floods", Run.SLICES)
+	run.call("throw_rock", c)
+	var flying: Node = (run.get("rocks") as Array)[0]["meteor"]
+	var caught: bool = bool(run.call("knock_out", body))
+	check("  a fall ends it: no rock left in the air, the armour gone for the next run, the result counts it",
+		caught and (run.get("rocks") as Array).is_empty() and int(run.get("pieces")) == 0
+		and is_instance_valid(flying) and flying.is_queued_for_deletion())
+	check("the HUD's gear line: the key to hold before the first piece, nothing between runs; \"The volcano erupts\" over the heat bar",
+		hint.begins_with("Hold ") and hint.ends_with("at the anvil to forge armour") and str(hud.call("gear_text")) == ""
+		and _func_body(_code_src("res://src/world/forge/forgehud.gd"), "func paint(").contains("The volcano erupts"), hint)
+	island.queue_free()
+	await get_tree().process_frame
+	print("  the Forge's gear: the hammer, wading, the tank's fire, the eruption")
+

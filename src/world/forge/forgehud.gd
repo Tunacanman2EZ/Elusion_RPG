@@ -2,7 +2,9 @@
 # with the clock, the slices gone and the fire sprites slain, the heat bar
 # under it (orange, red while the next slice glows, "The volcano" once every
 # slice is gone), a banner for each beat of the run, a toast for the ice
-# essence, and how long the forge held. Built by forgerun.gd, in a
+# essence, and how long the forge held - and since 0.121.0 the gear line
+# (gear_text(): the hammer's progress at the anvil, the armour forged and the
+# wading time left, its bar pale blue). Built by forgerun.gd, in a
 # CanvasLayer of its own over the world and under the HUD's windows (as the
 # Endless's and the Descent's are).
 extends CanvasLayer
@@ -26,6 +28,7 @@ var detail: Label = null
 var heat_row: HBoxContainer = null
 var heat_name: Label = null
 var heat_bar: Control = null
+var gear: Label = null
 var banner: Label = null
 var banner_line: Label = null
 var toast_label: Label = null
@@ -76,6 +79,9 @@ func _ready() -> void:
 	heat_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	heat_bar.draw.connect(_draw_heat)
 	heat_row.add_child(heat_bar)
+	gear = _label("gear", 13, COLD)
+	gear.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(gear)
 	banner = _label("banner", 30, GOLD)
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(banner)
@@ -124,6 +130,22 @@ func detail_text() -> String:
 	return line
 
 
+func gear_text() -> String:
+	"""The hammer, the armour and the wading time (0.121.0)."""
+	if run == null or not bool(run.call("running")):
+		return ""
+	var pieces: int = int(run.get("pieces"))
+	var most: int = Run.PIECES.size()
+	if bool(run.call("hammering")):
+		return "Forging the %s  -  %d%%" % [str(run.call("next_piece")), roundi(100.0 * float(run.call("forging_share")))]
+	if pieces == 0:
+		return "Hold %s at the anvil to forge armour" % ControlsPanel.action_key("interact")
+	var line: String = "Armour %d of %d  -  %.1f s in the lava" % [pieces, most, float(run.get("wade_left"))]
+	if pieces < most:
+		line += "  -  forge more at the anvil"
+	return line
+
+
 func paint() -> void:
 	if run == null or title == null:
 		return
@@ -132,7 +154,9 @@ func paint() -> void:
 	title.text = "The Forge"
 	detail.text = detail_text()
 	heat_row.visible = running or float(run.call("hold_share")) > 0.0
-	heat_name.text = "The volcano" if bool(run.call("volcano")) else ("Heat" if running else "Lighting")
+	heat_name.text = "The volcano erupts" if bool(run.call("volcano")) else ("Heat" if running else "Lighting")
+	gear.text = gear_text()
+	gear.visible = gear.text != ""
 	heat_name.add_theme_color_override("font_color", HEAT_WARNING if bool(run.call("warning")) else HEAT)
 	heat_bar.queue_redraw()
 	plate.reset_size()
