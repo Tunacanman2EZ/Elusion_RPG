@@ -158,6 +158,15 @@ const DYING_SECONDS := 0.45
 const FLASH_SECONDS := 0.12
 # The stand-ins that take the hits, and how far from the player they reach.
 const PROXIES := 96
+# How far past this game's view a slime is still drawn (its picture stands up
+# to PICTURE_TOP over its feet, and it may step a stride between writes).
+const CULL_MARGIN := 64.0
+# FAR ONES MOVE IN TURNS (0.133.0): past FAR_REACH from every player a slime
+# moves one step in FAR_EVERY, that many strides at once - off every screen,
+# at the same pace, for a share of the work. Only with a camera (the game);
+# the suite's bare swarm steps every one, as before.
+const FAR_REACH := 420.0
+const FAR_EVERY := 3
 const PROXY_REACH := 420.0
 # AND WHERE ITS ATTACKS LAND (0.94.1): a second pool for the nodes in
 # FOCUS_GROUP, each reaching its swarm_reach() (FOCUS_REACH without one) plus
@@ -217,6 +226,10 @@ var elem := PackedByteArray()       # and its land, for a game walking in
 var others := PackedVector2Array()
 
 var alive: int = 0
+# How many were written to be drawn at the last write (only those on screen).
+var drawn: int = 0
+# Steps taken, for whose turn a far one's is (FAR ONES MOVE IN TURNS).
+var _step_n: int = 0
 var slain: int = 0
 # Of `slain`, the ones this game's own blows finished.
 var my_slain: int = 0
@@ -741,6 +754,8 @@ func _sway_msec() -> int:
 func _step(target: Vector2, chasing: bool) -> void:
 	"""One step of the whole crowd: count the grid, then move each one toward
 	the player and off where it is thick."""
+	_step_n += 1
+	var in_turns: bool = is_inside_tree() and get_viewport().get_camera_2d() != null
 	_grid.fill(0)
 	_sum_x.fill(0.0)
 	_sum_y.fill(0.0)
@@ -850,6 +865,13 @@ func _step(target: Vector2, chasing: bool) -> void:
 					dy = ody
 					mine = false
 		var d: float = sqrt(best) if best < INF else 0.0
+		# FAR ONES MOVE IN TURNS: still on the others' steps (bx, by are
+		# where they stand), FAR_EVERY strides on their own.
+		var turns: float = 1.0
+		if in_turns and d > FAR_REACH:
+			if (i + _step_n) % FAR_EVERY != 0:
+				continue
+			turns = float(FAR_EVERY)
 		var mx: float = 0.0
 		var my: float = 0.0
 		var c: int = _cell[i]
@@ -910,8 +932,8 @@ func _step(target: Vector2, chasing: bool) -> void:
 		my = lerpf(vy[i], my, steer)
 		vx[i] = mx
 		vy[i] = my
-		x = clampf(x + mx, left, right)
-		y = clampf(y + my, top, bottom)
+		x = clampf(x + mx * turns, left, right)
+		y = clampf(y + my * turns, top, bottom)
 		if y >= ky0 and y <= ky1 and x >= kx0 and x <= kx1:
 			for rect in _kept_rects:
 				# Its walls' width further out at the sides (HELD_OUT_SIDES).
@@ -1006,18 +1028,35 @@ func _write_buffer() -> void:
 	var line: float = front_line
 	var buf: PackedFloat32Array = _front_buffer if to_front else _buffer
 	var lift: float = _front_y if to_front else 0.0
-	var in_front: int = n if to_front else 0
+	var in_front: int = 0
 	var at: int = 0
+	# ONLY WHAT IS ON SCREEN (0.133.0): with a camera, a slime outside this
+	# game's view (and CULL_MARGIN round it) is not written or drawn - on a
+	# phone the crowd's buffer and its 3,000 pictures were most of a frame.
+	# No camera (the suite), every one, as before.
+	var cull: bool = false
+	var view := Rect2()
+	if is_inside_tree() and get_viewport().get_camera_2d() != null:
+		cull = true
+		view = (get_global_transform().affine_inverse() * get_viewport().get_canvas_transform().affine_inverse()
+			* get_viewport().get_visible_rect()).grow(CULL_MARGIN)
+	var vx0: float = view.position.x
+	var vy0: float = view.position.y
+	var vx1: float = view.end.x
+	var vy1: float = view.end.y
+	var written: int = 0
 	for k in n:
 		var i: int = order[k]
 		var y: float = py[i]
+		var x: float = px[i]
+		if cull and (x < vx0 or x > vx1 or y < vy0 or y > vy1):
+			continue
 		if to_front and not (y < line):
 			to_front = false
-			in_front = k
+			in_front = written
 			buf = _buffer
 			lift = 0.0
 			at = 0
-		var x: float = px[i]
 		buf[at + 3] = x
 		buf[at + 7] = y - lift
 		if state[i] == 1:
@@ -1031,12 +1070,16 @@ func _write_buffer() -> void:
 		buf[at + 14] = float(facing[i]) + phase[i] * 0.99
 		buf[at + 15] = hue[i]
 		at += 16
+		written += 1
+	if to_front:
+		in_front = written
+	drawn = written
 	var multi: MultiMesh = _mesh.multimesh
 	# The whole buffer, always: MultiMesh takes one of exactly its size. Past
 	# the order's end it holds old cells, and visible_instance_count draws
 	# none of them.
 	multi.buffer = _buffer
-	multi.visible_instance_count = n - in_front
+	multi.visible_instance_count = written - in_front
 	# The front layer only while it has, or had, slimes to draw: empty, it
 	# draws nothing whatever its buffer holds.
 	if _front != null and (in_front > 0 or _front.multimesh.visible_instance_count > 0):

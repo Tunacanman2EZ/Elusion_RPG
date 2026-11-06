@@ -1472,8 +1472,8 @@ func _test_the_damage_meter() -> void:
 	var perf: Node = gm.get("perf_button")
 	var switch: CheckButton = gm.get("meter_button") as CheckButton
 	check("the GM panel's Testing tab has a Damage meter switch, under Performance",
-		perf != null and switch != null and switch.get_parent() == perf.get_parent()
-		and switch.get_index() == perf.get_index() + 1 and switch.text == "Damage meter")
+		perf != null and switch != null and switch.get_parent().get_parent() == perf.get_parent().get_parent()
+		and switch.get_parent().get_index() == perf.get_parent().get_index() + 1 and switch.text == "Damage meter")
 	gm.queue_free()
 	Api.is_owner = was_owner
 	Api.role = was_role

@@ -529,6 +529,18 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "God mode"
 
+[node name="immunebutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.86, 0.78, 1)
+size_flags_horizontal = 3
+tooltip_text = "Owner only. No effect starts on you - chill, freeze, burn, soaked, shove, pull, root, dazzle, wither - and no element stacks in the Descent. Whatever is on you is cleared when you switch it on. Damage still lands (that is God mode). Survives walking between areas; always off again after a restart."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Immune to effects"
+
 [node name="perfbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
 layout_mode = 2

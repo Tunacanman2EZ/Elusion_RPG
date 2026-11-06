@@ -94,6 +94,7 @@ const TEXT_SIZE := 13
 const STALE_SECONDS := 10.0
 const LIVE_SECONDS := 30.0
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
+const StatusEffectsScript := preload("res://src/characters/statuseffects.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
 # answers: it worked, it did not, it needs you to do something first, and the
@@ -197,6 +198,7 @@ var gifts_button: Button = null
 @onready var online_list: VBoxContainer = get_node_or_null("%onlinelist")
 
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
+@onready var immune_button: CheckButton = get_node_or_null("%immunebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
 # THE KILL RECEIPTS (0.57.0): kills paid only on the server's own count.
@@ -424,6 +426,8 @@ func _ready() -> void:
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
 	_add_meter_button()
+	_dress_testing()
+	_build_active_strip()
 	if stress_pick != null and not stress_pick.item_selected.is_connected(_on_stress_selected):
 		stress_pick.clear()
 		for times in StressCrowd.MULTIPLIERS:
@@ -566,11 +570,198 @@ func close() -> void:
 	visible = false
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# Disarm on a timer rather than on the next click. A button left reading
 	# "Confirm ban?" is a trap for whoever looks at this panel next.
 	if _armed_action != "" and Time.get_ticks_msec() / 1000.0 > _armed_until:
 		_disarm()
+	# THE ACTIVE STRIP, a few times a second while open (A NEATER PANEL).
+	if visible:
+		_active_clock -= delta
+		if _active_clock <= 0.0:
+			_active_clock = ACTIVE_EVERY
+			paint_active()
+
+
+# =============================================================================
+# A NEATER PANEL (0.133.0)
+# =============================================================================
+# The owner: "can you make gm panel look better upgrade it". Step 1, agreed
+# from a plan: an ACTIVE strip under the title - what is switched on right
+# now, from any tab (God mode, Immune, the readout, the meter, the stress
+# test, the rolls), so nothing is left on by mistake; the Testing tab in
+# sections, its switches in a two-column grid each with a one-line hint; and
+# every result line stamped with its time. Built in code from the scene's own
+# nodes (moved, never renamed), so every %name and path still finds them.
+
+const ACTIVE_EVERY := 0.25
+const SWITCH_HINTS := {
+	"godmodebutton": "No damage taken - and no defence XP.",
+	"immunebutton": "No chill, burn, freeze or any effect.",
+	"perfbutton": "Frame, physics, monsters - top left.",
+	"meterbutton": "Live DPS and the fight log.",
+	"commonbutton": "Every mythic attack rolls its 10%.",
+	"rarebutton": "Every mythic attack rolls its 1%.",
+}
+# Shorter names in the grid, so two columns fit the panel's 370 (the hint
+# under each says the rest; the tooltip still says everything).
+const SWITCH_NAMES := {
+	"immunebutton": "Immune",
+	"perfbutton": "Readout",
+	"commonbutton": "Roll 10%",
+	"rarebutton": "Roll 1%",
+}
+const HINT_COLOUR := Color(0.6, 0.56, 0.48)
+const SECTION_COLOUR := Color(0.82, 0.7, 0.45)
+const CHIP_FILL := Color(0.24, 0.17, 0.06, 0.95)
+const CHIP_EDGE := Color(0.93, 0.73, 0.3)
+const STAMP_COLOUR := Color(0.55, 0.5, 0.42)
+
+var active_strip: HFlowContainer = null
+var _active_said: String = "-"
+var _active_clock: float = 0.0
+
+
+func _section_head(text: String) -> Label:
+	var head := Label.new()
+	head.name = text.to_lower().replace(" ", "") + "head"
+	head.text = text
+	head.add_theme_color_override("font_color", SECTION_COLOUR)
+	head.add_theme_font_size_override("font_size", 11)
+	return head
+
+
+func _dress_testing() -> void:
+	"""The Testing tab in sections: the switches in a two-column grid, each
+	with its hint under it, and the stress test under its own head."""
+	var testing: Node = get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	if testing == null or testing.get_node_or_null("switchgrid") != null:
+		return
+	var switches: Array = []
+	for id in SWITCH_HINTS:
+		var found: Node = testing.find_child(str(id), true, false)
+		if found is CheckButton:
+			switches.append(found)
+	if switches.is_empty():
+		return
+	var row: Node = testing.get_node_or_null("godmoderow")
+	var at: int = row.get_index() if row != null else (switches[0] as Node).get_index()
+	var head: Label = _section_head("SWITCHES")
+	testing.add_child(head)
+	testing.move_child(head, at)
+	var grid := GridContainer.new()
+	grid.name = "switchgrid"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 5)
+	testing.add_child(grid)
+	testing.move_child(grid, at + 1)
+	for button in switches:
+		var cell := VBoxContainer.new()
+		cell.name = str(button.name) + "cell"
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_theme_constant_override("separation", 0)
+		grid.add_child(cell)
+		(button as Node).reparent(cell, false)
+		(button as Node).owner = self
+		(button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		(button as Control).add_theme_font_size_override("font_size", 12)
+		if SWITCH_NAMES.has(str(button.name)):
+			(button as Button).text = str(SWITCH_NAMES[str(button.name)])
+		var hint := Label.new()
+		hint.name = "hint"
+		hint.text = str(SWITCH_HINTS[str(button.name)])
+		hint.add_theme_font_size_override("font_size", 10)
+		hint.add_theme_color_override("font_color", HINT_COLOUR)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.custom_minimum_size = Vector2(110, 0)
+		cell.add_child(hint)
+	if row != null and row.get_child_count() == 0:
+		row.free()
+	var stress: Node = testing.get_node_or_null("stressrow")
+	if stress != null:
+		var said: Label = stress.get_node_or_null("label") as Label
+		if said != null:
+			said.text = "Big Field monsters"
+		var stress_head: Label = _section_head("STRESS TEST")
+		testing.add_child(stress_head)
+		testing.move_child(stress_head, stress.get_index())
+
+
+func _build_active_strip() -> void:
+	"""What is on right now, under the title, from any tab."""
+	if active_strip != null:
+		return
+	var header: Node = get_node_or_null("frame/margin/rows/headerpanel")
+	if header == null:
+		return
+	active_strip = HFlowContainer.new()
+	active_strip.name = "activestrip"
+	active_strip.add_theme_constant_override("h_separation", 4)
+	active_strip.add_theme_constant_override("v_separation", 4)
+	header.get_parent().add_child(active_strip)
+	header.get_parent().move_child(active_strip, header.get_index() + 1)
+	paint_active()
+
+
+func active_now() -> Array:
+	"""The names of what is switched on, in the strip's order."""
+	var on: Array = []
+	if GameState.god_mode:
+		on.append("God mode")
+	if GameState.immune_effects:
+		on.append("Immune")
+	if PerfOverlay.is_shown():
+		on.append("Readout")
+	if meter_button != null and meter_button.button_pressed:
+		on.append("Meter")
+	if StressCrowd.multiplier > 1:
+		on.append("Stress %dx" % StressCrowd.multiplier)
+	if GameState.force_common_rolls:
+		on.append("10% rolls")
+	if GameState.force_rare_rolls:
+		on.append("1% rolls")
+	return on
+
+
+func paint_active() -> void:
+	if active_strip == null:
+		return
+	var on: Array = active_now()
+	var said: String = ",".join(on)
+	if said == _active_said:
+		return
+	_active_said = said
+	for chip in active_strip.get_children():
+		chip.free()
+	active_strip.visible = not on.is_empty()
+	if on.is_empty():
+		return
+	var lead := Label.new()
+	lead.name = "on"
+	lead.text = "ON:"
+	lead.add_theme_font_size_override("font_size", 11)
+	lead.add_theme_color_override("font_color", SECTION_COLOUR)
+	active_strip.add_child(lead)
+	for what in on:
+		var chip := PanelContainer.new()
+		chip.name = "chip"
+		var style := StyleBoxFlat.new()
+		style.bg_color = CHIP_FILL
+		style.border_color = CHIP_EDGE
+		style.set_border_width_all(1)
+		style.set_corner_radius_all(6)
+		style.content_margin_left = 6
+		style.content_margin_right = 6
+		style.content_margin_top = 1
+		style.content_margin_bottom = 1
+		chip.add_theme_stylebox_override("panel", style)
+		var words := Label.new()
+		words.text = str(what)
+		words.add_theme_font_size_override("font_size", 11)
+		words.add_theme_color_override("font_color", CHIP_EDGE)
+		chip.add_child(words)
+		active_strip.add_child(chip)
 
 
 # =============================================================================
@@ -927,6 +1118,7 @@ func _on_visibility_changed() -> void:
 # rest of the debug keys, and Api.GOD_MODE_MIN_ROLE became "owner" with it.
 
 func _sync_god_mode_button() -> void:
+	_sync_immune_button()
 	if god_mode_button == null:
 		return
 	# NO SIGNAL. Writing button_pressed fires toggled, which would call the
@@ -957,6 +1149,36 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 		_set_testing_status("[GM] god mode OFF.")
 
 	print("[GM] god mode %s (%s)" % ["ON" if pressed else "OFF", Api.username])
+
+
+# IMMUNE TO EFFECTS (0.133.0), beside God mode: GameState.immune_effects, which
+# StatusEffects.immune() reads with the rank. On, whatever is on you now is
+# cleared too.
+
+func _sync_immune_button() -> void:
+	if immune_button == null:
+		return
+	if not immune_button.toggled.is_connected(_on_immune_toggled):
+		immune_button.toggled.connect(_on_immune_toggled)
+	immune_button.set_pressed_no_signal(GameState.immune_effects)
+	immune_button.disabled = not Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
+func _on_immune_toggled(pressed: bool) -> void:
+	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
+		_sync_immune_button()
+		_set_testing_status("[GM] immune to effects needs %s or above."
+			% Api.rank_name(Api.GOD_MODE_MIN_ROLE))
+		return
+	GameState.immune_effects = pressed
+	if pressed and is_inside_tree():
+		var me: Node = get_tree().get_first_node_in_group("player")
+		var fx: Node = StatusEffectsScript.of(me) if me != null else null
+		if fx != null and fx.has_method("clear_all"):
+			fx.call("clear_all")
+	_set_testing_status("[GM] immune to effects ON - no chill, freeze, burn, soak, shove, root, dazzle or wither; damage still lands."
+		if pressed else "[GM] immune to effects OFF.")
+	print("[GM] immune to effects %s (%s)" % ["ON" if pressed else "OFF", Api.username])
 
 
 # =============================================================================
@@ -2213,14 +2435,20 @@ func _say(line: String, colour: Color = SAY_NOTE) -> void:
 		# A fresh result is followed; an account view turns this off while it
 		# writes, so it can be read from the top.
 		results.scroll_following = true
-	_write(line, colour)
+	_write(line, colour, true)
 
 
-func _write(line: String, colour: Color) -> void:
+func _write(line: String, colour: Color, stamped: bool = false) -> void:
 	# add_text, never append_text: a username or an error from the server is
 	# data, and BBCode in it would be markup.
 	if results == null:
 		return
+	# STAMPED (0.133.0): each result says when, in a quiet colour - not the
+	# lines of an account view, which are one answer.
+	if stamped:
+		results.push_color(STAMP_COLOUR)
+		results.add_text(LocalTime.clock(int(Time.get_unix_time_from_system())) + "  ")
+		results.pop()
 	results.push_color(colour)
 	results.add_text(_tag.sub(line, ""))
 	results.pop()

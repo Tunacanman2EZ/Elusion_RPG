@@ -518,6 +518,63 @@ said "boss gave you 2 × Large Health Potion." within a poll, the owner restored
 the "before a gift" snapshot, caster's game went to the login screen, and
 signing back in showed the bag without them.
 
+### Immune to effects: the switch beside God mode (0.133.0)
+
+The owner: "i need a immune to effects option in gm panel". `%immunebutton`
+in God mode's row on the Testing tab writes `GameState.immune_effects`
+(transient, as `god_mode` is). `StatusEffects.immune()` - the flag and
+`Api.GOD_MODE_MIN_ROLE`, the rank asked every time - makes `apply()` and
+`pull()` start nothing on this game's player (chill, freeze, burn, soaked,
+shove, root, dazzle, wither, pull), and `take_damage()` counts no Descent
+element stack (`DescentBoons.note_element()` skipped, so no bursts). Switched
+on, it clears what is on you (`clear_all()`). Damage still lands - that is
+God mode. `_test_immune_to_effects()` (testrunner_10).
+
+### A neater GM panel, step 1 (the same 0.133.0)
+
+The owner: "can you make gm panel look better upgrade it", from an agreed
+plan (side tabs, sections, a two-column switch grid with hints, an "active"
+strip, a better results log; step 1 is the Testing tab, the strip and the
+log, pictured in gm_before_after_0133.png). Built in code from the scene's
+own nodes, so every %name and path still finds them:
+- **The ON strip** (`active_strip`, an HFlowContainer under the title):
+  `active_now()` - God mode, Immune, Readout, Meter, Stress Nx, 10% / 1%
+  rolls - as gold chips, repainted by `_process()` every `ACTIVE_EVERY`
+  (0.25 s) while open and only when it changes; hidden with nothing on.
+- **The Testing tab in sections** (`_dress_testing()`): a SWITCHES head and
+  `switchgrid` (two columns), each switch moved into a cell with a hint under
+  it (`SWITCH_HINTS`), shorter names in the grid (`SWITCH_NAMES`: Immune,
+  Readout, Roll 10%, Roll 1%) so two columns fit the panel's 370; a STRESS
+  TEST head over its row ("Big Field monsters").
+- **Results stamped**: `_say()` writes the time before each result
+  (`_write(..., true)`); an account view's lines are one answer, unstamped.
+Next steps, if he likes it: tabs down the side, the other tabs in sections.
+
+### The Endless's swarm runs lighter (the same 0.133.0)
+
+The owner's phone (browser), stage 14, 2,930 slimes: 6-7 fps - physics 20 ms
+a tick, scripts and drawing 111 ms a frame, about ten times the container.
+With a camera (the game; the suite has none, so its swarm is as before):
+- **Only what is on screen is drawn** (swarm.gd `_write_buffer()`): a slime
+  outside this game's view and `CULL_MARGIN` (64) is not written; `drawn`
+  says how many were.
+- **Far ones move in turns** (`_step()`): past `FAR_REACH` (420) from every
+  player a slime moves one step in `FAR_EVERY` (3), that many times its
+  velocity at once (it is off every screen).
+Measured in the container at 2,930: a step 4.1-5.0 -> 2.3-2.4 ms, the write
+1.2 -> 0.8 ms.
+- **Phones hold the crowd** (endlessrun.gd `crowd_now()`): the owner, "even
+  if it was 1000 and 4 players were playing with elites and bosses i think
+  that would still be better then vampire survivors". On a phone
+  (`on_phone()`: web_android, web_ios, android, ios; `pretend_phone` for the
+  suite) the crowd fills to `PHONE_CROWD` (1,000); in a party, the whole
+  party's when anybody says they are on one - each game's "me" carries a
+  third number, 1 on a phone (endlessparty.gd `any_phone()`; the server
+  already passes up to eight). Every game makes the same slimes, so they
+  cannot differ. Elites and bosses are not held.
+`_test_the_swarm_runs_lighter()` (testrunner_10). Still the owner's call:
+fewer physics ticks on phones (the tick was 20 ms there).
+
 ### God mode is the owner's switch, and the ordering is the whole feature
 
 The God mode switch on the owner panel's Testing tab turns damage off so the

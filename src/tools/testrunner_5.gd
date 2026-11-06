@@ -4755,7 +4755,7 @@ func _test_the_gm_panel_is_a_window() -> void:
 		var say_at: int = _first_code_index(script_src, "func _say(", 0)
 		var say_end: int = _first_code_index(script_src, "\nfunc ", say_at + 1)
 		check("and it is written in every build, not just a debug one",
-			_within(_first_code_index(script_src, "\n\t_write(line, colour)", say_at), say_end) != -1)
+			_within(_first_code_index(script_src, "\n\t_write(line, colour, true)", say_at), say_end) != -1)
 
 		# THE QUICK ANSWERS TOO. The Testing tab and the teleport row had labels
 		# of their own that grew the tab past its window whenever they spoke;

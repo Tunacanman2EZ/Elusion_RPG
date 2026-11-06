@@ -375,6 +375,38 @@ static func crowd_for(stage_number: int, count: int) -> int:
 	return mini(SwarmScript.MOST, roundi(float(stage_crowd(stage_number)) * party_crowd(count)))
 
 
+# PHONES HOLD THE CROWD (0.133.0) - the owner, of a phone at stage 14's 2,930
+# slimes and 6-7 fps: "even if it was 1000 and 4 players were playing with
+# elites and bosses i think that would still be better then vampire
+# survivors". On a phone the crowd is held at PHONE_CROWD; in a party the
+# whole party's, when anybody in it is on one (endlessparty.gd any_phone()) -
+# every game makes the same slimes, so they cannot differ. Elites and bosses
+# are not held.
+const PHONE_CROWD := 1000
+# The suite's phone (and a way to try it on a computer).
+static var pretend_phone: bool = false
+
+
+static func on_phone() -> bool:
+	return pretend_phone or OS.has_feature("web_android") or OS.has_feature("web_ios") \
+		or OS.has_feature("android") or OS.has_feature("ios")
+
+
+func held_for_phones() -> bool:
+	if on_phone():
+		return true
+	return party != null and is_instance_valid(party) and shared() and bool(party.call("any_phone"))
+
+
+func crowd_now() -> int:
+	"""The crowd this stage fills toward: crowd_for(), held at PHONE_CROWD
+	when this game or anybody in its party is on a phone."""
+	var most: int = crowd_for(stage, players)
+	if held_for_phones():
+		most = mini(most, PHONE_CROWD)
+	return most
+
+
 static func clock_text(seconds: float) -> String:
 	var s: int = int(seconds)
 	return "%02d:%02d" % [s / 60, s % 60]
@@ -454,7 +486,7 @@ func _process(delta: float) -> void:
 		return
 	# THE CROWD FILLS AT A RATE, not all at once - a thousand at a stage's
 	# turn would arrive as a wall.
-	var short: int = crowd_for(stage, players) - int(swarm.get("alive"))
+	var short: int = crowd_now() - int(swarm.get("alive"))
 	if short > 0:
 		_spawn_owed += (SPAWN_RATE + SPAWN_RATE_STEP * float(stage)) * party_crowd(players) * delta
 		var now_count: int = mini(short, int(_spawn_owed))

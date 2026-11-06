@@ -125,6 +125,14 @@ var ui_absorbed_right_click: bool = false
 # to do it without dying a hundred times.
 var god_mode: bool = false
 
+# IMMUNE TO EFFECTS (0.133.0) - the owner: "i need a immune to effects option
+# in gm panel". The GM panel's switch beside God mode: no chill, freeze, burn,
+# soak, shove, pull, root, dazzle or wither starts on this game's player, and
+# no element stacks (the Descent's). Damage still lands - that is God mode.
+# Rank re-checked with every effect (StatusEffects.immune()); transient, as
+# god_mode is.
+var immune_effects: bool = false
+
 # THE RARE ROLL, EVERY TIME (0.18.1). The owner, of the mythics' 1% rolls -
 # the Meteorite's pull, the Double Axe's blood, Dynamite's five sticks -
 # after an evening of not seeing two of them: "yes that sounds amazing", to a

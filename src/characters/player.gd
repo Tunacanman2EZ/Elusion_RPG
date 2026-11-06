@@ -1915,8 +1915,10 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# below still says the whole hit.
 	var warded: int = DescentBoons.absorb(reduced_amount, source, exact)
 	reduced_amount -= warded
-	# AND ITS ELEMENTS STACK (0.129.0).
-	DescentBoons.note_element(element)
+	# AND ITS ELEMENTS STACK (0.129.0) - not on the GM panel's Immune to
+	# effects (0.133.0).
+	if not StatusEffects.immune():
+		DescentBoons.note_element(element)
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))

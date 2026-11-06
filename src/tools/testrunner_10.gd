@@ -2704,6 +2704,174 @@ func _test_the_shopkeeper_talks() -> void:
 	print("  the shopkeeper talks")
 
 
+# =============================================================================
+# IMMUNE TO EFFECTS (0.133.0)
+# =============================================================================
+# The owner: "i need a immune to effects option in gm panel".
+
+func _test_immune_to_effects() -> void:
+	section("IMMUNE TO EFFECTS (0.133.0): the GM panel's switch beside God mode - no effect starts, no element stacks; damage still lands")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	var was_role: String = Api.role
+	var was_immune: bool = GameState.immune_effects
+	var host := Node2D.new()
+	add_child(host)
+	var fx: Node = FX.attach(host)
+	await get_tree().process_frame
+	Api.role = "owner"
+	GameState.immune_effects = false
+	var chilled: bool = FX.apply_to(host, FX.CHILL)
+	fx.call("clear_all")
+	GameState.immune_effects = true
+	var kinds_refused: bool = true
+	for kind in [FX.CHILL, FX.BURN, FX.SOAKED, FX.SHOVE, FX.ROOT, FX.DAZZLE, FX.WITHER]:
+		if FX.apply_to(host, kind, 10, Vector2(5, 5)):
+			kinds_refused = false
+	fx.call("pull", Vector2(50, 0), 1.0, 40.0)
+	check("off, an effect starts; on, none does - chill, burn, soaked, shove, root, dazzle, wither, and no pull",
+		chilled and kinds_refused and (fx.call("active") as Array).is_empty(), fx.call("active"))
+	Api.role = "player"
+	var player_chilled: bool = FX.apply_to(host, FX.CHILL)
+	check("  the owner's alone: the rank is asked with every effect, not only at the switch",
+		player_chilled and not FX.immune())
+	fx.call("clear_all")
+	Api.role = "owner"
+	var stacks_before: Dictionary = (Boons.stacks as Dictionary).duplicate()
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	check("  and no element stacks in the Descent: player.gd counts a hit's element only when not immune",
+		_func_body(player_src, "func take_damage(").contains("if not StatusEffects.immune():\n\t\tDescentBoons.note_element(element)"))
+	Boons.stacks = stacks_before
+	# ---- the switch -----------------------------------------------------------------
+	GameState.immune_effects = false
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var god: Node = gm.get_node_or_null("%godmodebutton")
+	var immune: CheckButton = gm.get_node_or_null("%immunebutton") as CheckButton
+	check("the switch sits beside God mode on the Testing tab",
+		immune != null and god != null and immune.get_parent().get_parent() == god.get_parent().get_parent()
+		and str(immune.get_parent().get_parent().name) == "switchgrid"
+		and immune.get_parent().get_index() == god.get_parent().get_index() + 1)
+	if immune != null:
+		gm.call("_sync_god_mode_button")
+		host.add_to_group("player")
+		FX.apply_to(host, FX.BURN, 10)
+		Api.role = "owner"
+		immune.button_pressed = true
+		var on_clears: bool = GameState.immune_effects and (fx.call("active") as Array).is_empty()
+		immune.button_pressed = false
+		var off_again: bool = not GameState.immune_effects
+		Api.role = "player"
+		gm.call("_on_immune_toggled", true)
+		check("  on, it clears what is on you; off again; and pressed by anybody below the owner it does nothing",
+			on_clears and off_again and not GameState.immune_effects and not immune.button_pressed)
+	gm.queue_free()
+	host.queue_free()
+	Api.role = was_role
+	GameState.immune_effects = was_immune
+	await get_tree().process_frame
+	print("  immune to effects")
+
+
+# =============================================================================
+# THE SWARM RUNS LIGHTER (0.133.0)
+# =============================================================================
+# The owner's phone, stage 14 of the Endless, 2,930 slimes: 6-7 fps. With a
+# camera (the game) only the slimes on screen are written and drawn, and a
+# slime past FAR_REACH from every player moves one step in FAR_EVERY, that
+# many strides at once.
+
+func _test_the_swarm_runs_lighter() -> void:
+	section("THE SWARM RUNS LIGHTER (0.133.0): only what is on screen is drawn; far ones move in turns")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	var world := Node2D.new()
+	add_child(world)
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("arena", Rect2(0, 0, 3000, 1400))
+	world.add_child(swarm)
+	await get_tree().process_frame
+	swarm.set_process(false)
+	swarm.set_physics_process(false)
+	swarm.call("spawn", 2, Vector2(-9999, -9999))
+	var px: PackedFloat32Array = swarm.get("px")
+	var py: PackedFloat32Array = swarm.get("py")
+	px[0] = 300.0
+	py[0] = 300.0
+	px[1] = 2600.0
+	py[1] = 300.0
+	swarm.set("px", px)
+	swarm.set("py", py)
+	swarm.call("_write_buffer")
+	var bare: int = int(swarm.get("drawn"))
+	var cam := Camera2D.new()
+	cam.position = Vector2(300, 300)
+	world.add_child(cam)
+	cam.make_current()
+	await get_tree().process_frame
+	swarm.call("_write_buffer")
+	var with_cam: int = int(swarm.get("drawn"))
+	var shown: int = (swarm.get("_mesh") as MultiMeshInstance2D).multimesh.visible_instance_count
+	check("with no camera every slime is drawn; with one, only those on screen",
+		bare == 2 and with_cam == 1 and shown == 1, [bare, with_cam, shown])
+	var near_moves: int = 0
+	var far_moves: int = 0
+	var far_most: float = 0.0
+	for k in SwarmScript.FAR_EVERY * 2:
+		var was_near: Vector2 = Vector2((swarm.get("px") as PackedFloat32Array)[0], (swarm.get("py") as PackedFloat32Array)[0])
+		var was_far: Vector2 = Vector2((swarm.get("px") as PackedFloat32Array)[1], (swarm.get("py") as PackedFloat32Array)[1])
+		swarm.call("_step", Vector2(500, 300), true)
+		var now_near: Vector2 = Vector2((swarm.get("px") as PackedFloat32Array)[0], (swarm.get("py") as PackedFloat32Array)[0])
+		var now_far: Vector2 = Vector2((swarm.get("px") as PackedFloat32Array)[1], (swarm.get("py") as PackedFloat32Array)[1])
+		if now_near.distance_to(was_near) > 0.01:
+			near_moves += 1
+		if now_far.distance_to(was_far) > 0.01:
+			far_moves += 1
+			far_most = maxf(far_most, now_far.distance_to(was_far))
+	var stride: float = float(swarm.get("speed")) * SwarmScript.STEP
+	check("  a near slime moves every step; a far one one step in FAR_EVERY, that many strides at once",
+		near_moves == SwarmScript.FAR_EVERY * 2 and far_moves == 2 and far_most > stride * 1.2,
+		[near_moves, far_moves, far_most, stride])
+	cam.queue_free()
+	world.queue_free()
+	await get_tree().process_frame
+	# PHONES HOLD THE CROWD: a phone, or a party with one, fills to 1,000.
+	const RunScript := preload("res://src/world/endless/endlessrun.gd")
+	const PartyScript := preload("res://src/world/endless/endlessparty.gd")
+	var run: Node = RunScript.new()
+	run.set("stage", 30)
+	run.set("players", 1)
+	var was_phone: bool = RunScript.pretend_phone
+	RunScript.pretend_phone = false
+	var full: int = int(run.call("crowd_now"))
+	RunScript.pretend_phone = true
+	var held: int = int(run.call("crowd_now"))
+	RunScript.pretend_phone = false
+	var party: Node = PartyScript.new()
+	var link := Node.new()
+	var stub := GDScript.new()
+	stub.source_code = "extends Node\nfunc runs() -> bool:\n\treturn true\nfunc sharers() -> int:\n\treturn 1\nfunc leader_for(_a) -> int:\n\treturn 1\nfunc my_id() -> int:\n\treturn 1\nfunc remotes() -> Dictionary:\n\treturn {7: true}\n"
+	stub.reload()
+	link.set_script(stub)
+	party.set("link", link)
+	run.set("party", party)
+	party.set("_members", {7: [1, 0, 0]})
+	var party_pc: int = int(run.call("crowd_now"))
+	party.set("_members", {7: [1, 0, 1]})
+	var party_phone: int = int(run.call("crowd_now"))
+	party.set("_members", {7: [1, 0]})
+	var old_game: bool = bool(party.call("any_phone"))
+	check("a phone fills the Endless to 1,000; so does a party with one in it; a computer alone, the whole crowd",
+		full > RunScript.PHONE_CROWD and held == RunScript.PHONE_CROWD
+		and party_pc == RunScript.crowd_for(30, 1) and party_phone == RunScript.PHONE_CROWD and not old_game,
+		[full, held, party_pc, party_phone])
+	RunScript.pretend_phone = was_phone
+	run.free()
+	party.free()
+	link.free()
+	print("  the swarm runs lighter")
+
+
 
 # =============================================================================
 # THE DESCENT GOES DEEPER (0.123.0)

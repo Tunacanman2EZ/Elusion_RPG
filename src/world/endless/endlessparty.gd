@@ -109,6 +109,15 @@ func members() -> int:
 	return 1 + link.sharers() if active() else 1
 
 
+func any_phone() -> bool:
+	"""Whether anybody else in the arena says they are on a phone."""
+	var here: Dictionary = link.remotes() if link != null and link.has_method("remotes") else {}
+	for id in _members.keys():
+		if here.has(id) and (_members[id] as Array).size() >= 3 and int((_members[id] as Array)[2]) == 1:
+			return true
+	return false
+
+
 func others_in() -> int:
 	"""(Leader.) How many of the others say they are in the run."""
 	var n: int = 0
@@ -218,7 +227,9 @@ func flush() -> void:
 			first["r"] = line
 			_last_line = line
 			_line_left = LINE_EVERY
-	var me: Array = [1 if bool(run.get("my_in")) else 0, int(run.get("swarm").get("my_slain"))]
+	# The third: on a phone (PHONES HOLD THE CROWD, endlessrun.gd).
+	var me: Array = [1 if bool(run.get("my_in")) else 0, int(run.get("swarm").get("my_slain")),
+		1 if bool(run.call("on_phone")) else 0]
 	if me != _last_me or _me_left <= 0.0:
 		first["me"] = me
 		_last_me = me
@@ -339,7 +350,8 @@ func _on_run(from_id: int, data: Dictionary) -> void:
 			if hit is Array and (hit as Array).size() == 3:
 				swarm.call("hurt_remote", int(hit[0]), int(hit[1]), int(hit[2]))
 	if data.get("me") is Array and (data["me"] as Array).size() >= 2:
-		_members[from_id] = [int(data["me"][0]), int(data["me"][1])]
+		var said: Array = data["me"]
+		_members[from_id] = [int(said[0]), int(said[1]), int(said[2]) if said.size() >= 3 else 0]
 	if leading and active():
 		if int(data.get("go", 0)) == 1:
 			run.call("party_go")

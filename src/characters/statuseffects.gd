@@ -250,6 +250,12 @@ static func for_element(element: int) -> StringName:
 	return FOR_ELEMENT.get(element, &"")
 
 
+static func immune() -> bool:
+	"""The GM panel's Immune to effects (GameState.immune_effects), for the
+	owner alone - the rank asked every time, as god mode's is."""
+	return GameState.immune_effects and Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
 static func apply_to(body: Node, kind: StringName, amount: int = 0,
 		from: Vector2 = Vector2.INF, ground: bool = false, strength: float = 1.0) -> bool:
 	"""Puts `kind` on `body` if it carries effects; true when something
@@ -279,7 +285,7 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 	# SOFTER (0.86.0, the Field at 0.5): every effect lasts `strength` as long,
 	# a burn bites and a shove pushes `strength` as hard, and under 1 nothing
 	# takes the controls away - chill never freezes, earth never roots.
-	if _host_dying():
+	if _host_dying() or immune():
 		return false
 	if ground and not GROUND.has(kind):
 		return false
@@ -340,7 +346,7 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 func pull(toward: Vector2, seconds: float, speed: float) -> void:
 	"""Draws the body toward `toward` for `seconds` at `speed` (held under
 	PULL_SPEED_MAX, so walking always beats it)."""
-	if _host_dying():
+	if _host_dying() or immune():
 		return
 	pull_to = toward
 	pull_left = maxf(pull_left, seconds)
