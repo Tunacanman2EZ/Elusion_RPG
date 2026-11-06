@@ -224,6 +224,7 @@ func _run_all() -> void:
 	await _test_the_mixes_react()
 	await _test_the_descent_bites()
 	await _test_cut_the_cloth()
+	await _test_cut_the_cloth_rounds()
 	await _test_a_quicker_pace()
 	await _test_the_big_field_draws_only_near_the_view()
 	await _test_the_swarm_steps_the_same_for_less()

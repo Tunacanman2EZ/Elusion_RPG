@@ -4204,6 +4204,69 @@ game heals its own; in one process the bench does it for the other three).
 `_test_the_descent_together()` (testrunner_10) holds the table for two;
 sabotaged by taking the factor out.
 
+### Cut the Cloth, step 2: lands, saws, elites, the Plague Mother, pickups, gold (0.131.0)
+
+The owner, of step 1's video: "looks good add the other stuff now" - the
+list agreed before it was built. All in `clothrun.gd` (its header has the
+whole of it) and `clothscreen.gd`; the numbers are constants at the top.
+
+- **A land a round** (`land_of()`: light, wind, water, ice, earth, fire,
+  dark, round again), each its parchment (`LOOKS`, and `_draw_land_rim()`:
+  ice frost-bitten, fire burnt - the owner's "weathered, burnt parchment for
+  volcanic areas, frost-bitten edges for tundra regions") and ONE effect
+  (`LAND_RULES`, `_land_effects()`): light's flares dazzle slimes still
+  (`FLARE_*`, a helping one); wind's gusts shove them, streaks first
+  (`GUST_*`); water's wet patches halve the cut (`wet`, `WET_SLOW`); ice
+  slides the shot - once cutting, let go and it goes on (`_last_step`);
+  earth's rocks are cut-away cells (`rock`), counted as taken, and the slimes
+  bounce off them; fire's fuse burns back along a line the shot has stood
+  still on for `FUSE_AFTER` (`fuse`) and costs a life when it reaches the
+  shot; dark leaves only a pool of light round the shot (`_dark`, a big soft
+  hole moved with it) and the slimes' eyes.
+- **The shot moves over everything cut away**, by the shortest way
+  (`_astar`, an AStarGrid2D of the OWN cells, `_sync_astar()` on every
+  close): step 1 rode the edge alone, so once the cloth split into islands
+  it could not reach the others.
+- **Slimes move by their colour** (`MOVES`): water bounces, ice glides
+  faster, wind zigzags, earth hops, fire hunts the open line, light darts,
+  dark fades. Fire is the water slime in fire's colours
+  (`BaseEnemy.element_material`).
+- **Edge saws** (`saws_for()`: 1 from round 2, 2 from 5, 3 from 8, 4 from
+  14) ride the cut edge, started on the border's (never round a rock), and
+  cost a life touching the shot while it is not cutting.
+- **Elites** (`elites_for()`: from round 3, none on a boss's round), the
+  slime 1.25 times the size: the hunter turns toward the open line or the
+  shot; the splitter splits in two when a close takes `SPLIT_SHARE` of the
+  cloth; the gnawer chews cut-away cells back into cloth where it bounces
+  (`_gnaw()`: never the border, a rock, near the shot or mid-cut).
+- **The Plague Mother** every `BOSS_EVERY` (5) rounds: 2.1 times the size,
+  slow, spits a slime every `BROOD_SECONDS`; the round is cleared by sealing
+  her into a piece of no more than `SEAL_SHARE` (20%) of the cloth
+  (`boss_share`, the bar shows her piece).
+- **Endless after round 10** ("Endless N"): 4% faster a round to 2x.
+- **Pickups cut free** (`PICKUPS`): Swift (a faster cut), Ward (the next hit
+  taken for you), Slow (slimes and saws at half speed), Life (rarely, to
+  `LIVES_MOST` 5) - had when the cloth under one is cut away or the line
+  crosses it. A hit leaves `GRACE_SECONDS` before the next. Nothing lasts
+  past the run.
+- **Gold and three runs a day** (the API's `cloth` game, its CLAUDE.md):
+  the card's Go asks the server (POST /api/minigames/enter, game "cloth")
+  and opens the screen on the run and its table (`pays`); the gold counts on
+  screen (`gold_now()`, `gold_for_round()`: 100 ... 1,500 by round 10, 800
+  an Endless round, 1,600 its bosses); Leave or Again finishes it (POST
+  /api/minigames/finish with `rounds`). A run with no id is practice and
+  says so. Still the owner's alone (`shows_cloth`); to open it to everyone,
+  `_shows_cloth()` returns true and the TESTING tag goes.
+- **The screen**: the round and land with its rule, the bar (her piece on a
+  boss's round), the gold, up to five hearts, chips for Swift, Slow and Ward,
+  a banner for each round and what happens.
+
+`_test_cut_the_cloth_rounds()` (testrunner_10) holds the numbers, a saw on
+the edge, each elite's trick, sealing the Mother, every land's effect, a
+hop, every pickup and the Ward's grace, and the screen paying on the server
+(the API's MG-15 the server's half; with the time check taken out it went
+red twice).
+
 ### Cut the Cloth: the old map cut away from the slimes (0.130.0, step 1)
 
 The owner, 5 Nov, of the old Qix/Xonix game he missed: "a simple slice the
@@ -4263,12 +4326,7 @@ server.
   CLASS, Go from town (elsewhere "Play it from town."); its portrait is the
   healer's shot - `portrait_of()` takes a sprite's first animation when it
   has no facings.
-- **Next steps, agreed**: edge saws from round 2; elites (the large slimes:
-  hunter, splitter, gnawer); movements by element (water bounces, wind
-  zigzags, earth hops, fire hunts the trail); a boss every 5th round,
-  endless after 10; pickups cut free (Swift, Ward, Slow, Life), no
-  permanent upgrades; themed maps, one elemental effect each; rewards and a
-  daily limit through the server.
+- **Next steps, agreed**: built in 0.131.0 (the section above).
 
 `_test_cut_the_cloth()` (testrunner_10): the rounds' numbers, a fresh
 cloth, a cut that closes and takes the slime-free half (sabotaged: with the

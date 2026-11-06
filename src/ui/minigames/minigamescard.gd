@@ -52,8 +52,10 @@
 #
 # CUT THE CLOTH (0.130.0, clothrun.gd) is the sixth, the owner's alone while
 # it is built (`shows_cloth`): the old map's slime plague cut away piece by
-# piece, played over the screen from town like the Stand - Go, in town, opens
-# it; it pays nothing, so nothing is asked of the server. Any class.
+# piece, played over the screen from town like the Stand. Since 0.131.0 three
+# runs a day, as the Healer's Run: Go asks the server (POST /api/minigames/enter, game
+# "cloth") and opens the run with its id and what it pays; the listing says
+# how many runs are left today, or when the next one is. Any class.
 #
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
@@ -101,6 +103,7 @@ const FORGE_BLURB := "Hold the anvil while the lava floods the island."
 const FORGE := "forge"
 const FORGE_ENTRANCE := "forge_entrance"
 const CLOTH_BLURB := "Cut the old map away from the slimes, piece by piece."
+const CLOTH_GAME := "cloth"
 # THE TILES (0.119.1): each game's portrait (a scene whose sprite is the
 # picture), its rim, and its tags - [words, colour, what it means].
 const PORTRAITS := {
@@ -168,6 +171,14 @@ var forge_go: Button = null
 var cloth_box: PanelContainer = null
 var cloth_status: Label = null
 var cloth_go: Button = null
+# Cut the Cloth's runs left today and the wait when none are, as the server
+# said and when.
+var cloth_left: int = 3
+var cloth_wait: int = 0
+var _cloth_known: bool = false
+var _cloth_said_msec: int = 0
+var _cloth_busy: bool = false
+var _cloth_said: String = ""
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -273,7 +284,7 @@ func _init() -> void:
 	forge_go = _go_button("forgego", _on_forge_go)
 	(forge[4] as HBoxContainer).add_child(forge_go)
 	var cloth: Array = _tile(column, "cloth", "Cut the Cloth", CLOTH_BLURB,
-		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
+		[TAG_THREE, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
 	cloth_box = cloth[0]
 	cloth_status = cloth[3]
 	cloth_go = _go_button("clothgo", _on_cloth_go)
@@ -550,6 +561,13 @@ func take_listing(res: Dictionary) -> void:
 				_healer_said_msec = Time.get_ticks_msec()
 				_healer_known = true
 				note_wait(HEALER_GAME, 0 if healer_left > 0 else healer_wait)
+			if game is Dictionary and str(game.get("id", "")) == CLOTH_GAME:
+				cloth_left = maxi(0, int(game.get("plays_left", 3)))
+				cloth_wait = maxi(0, int(game.get("ready_in", 0)))
+				_cloth_said_msec = Time.get_ticks_msec()
+				_cloth_known = true
+				if bool(shows_cloth.call()):
+					note_wait(CLOTH_GAME, 0 if cloth_left > 0 else cloth_wait)
 			if game is Dictionary and str(game.get("id", "")) == FORGE:
 				forge_wait = maxi(0, int(game.get("ready_in", 0)))
 				forge_best = maxi(0, int(game.get("best", 0)))
@@ -908,27 +926,66 @@ func _shows_mage_stand() -> bool:
 func _paint_cloth() -> void:
 	cloth_box.visible = bool(shows_cloth.call())
 	var in_town: bool = str(area_now.call()) == TOWN
-	cloth_status.text = "Ready - as many rounds as you last" if in_town else FROM_TOWN
-	cloth_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
-	cloth_go.disabled = not in_town
+	var wait_left: int = maxi(0, cloth_wait - int((Time.get_ticks_msec() - _cloth_said_msec) / 1000)) \
+		if _cloth_known else 0
+	var none_left: bool = _cloth_known and cloth_left <= 0 and wait_left > 0
+	if _cloth_said != "":
+		cloth_status.text = _cloth_said
+	elif not in_town:
+		cloth_status.text = FROM_TOWN
+	elif none_left:
+		cloth_status.text = wait_text(wait_left)
+	elif _cloth_known:
+		cloth_status.text = "Ready - %d of 3 runs left today" % cloth_left
+	else:
+		cloth_status.text = "Ready"
+	var go_on: bool = in_town and not none_left and not _cloth_busy
+	cloth_status.add_theme_color_override("font_color", COLOUR_READY if go_on else (COLOUR_WAIT if none_left else COLOUR_HINT))
+	cloth_go.disabled = not go_on
 	cloth_go.tooltip_text = "Play Cut the Cloth - your character waits in town" if in_town \
 		else "Go back to town first"
 
 
 func _on_cloth_go() -> void:
-	if str(area_now.call()) != TOWN or not bool(shows_cloth.call()):
+	"""Go: the server asked for a run of the day first; let in, the screen
+	opens on it."""
+	if str(area_now.call()) != TOWN or not bool(shows_cloth.call()) or _cloth_busy:
 		paint()
 		return
-	close()
-	open_cloth.call()
+	_cloth_busy = true
+	_cloth_said = "Asking the server..."
+	paint()
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": CLOTH_GAME, "slot": int(CharacterData.active_character_index)}, 6.0)
+	_cloth_busy = false
+	_cloth_said = ""
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		cloth_left = maxi(0, int(data.get("plays_left", 0)))
+		if cloth_left <= 0:
+			forget_wait(CLOTH_GAME)
+		close()
+		open_cloth.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {})
+		return
+	if int(res.get("status", 0)) == 409:
+		cloth_left = 0
+		cloth_wait = maxi(0, int(data.get("ready_in", 0)))
+		_cloth_said_msec = Time.get_ticks_msec()
+		_cloth_known = true
+		note_wait(CLOTH_GAME, cloth_wait)
+	else:
+		_cloth_said = UNREACHABLE
+	paint()
 
 
 func _shows_cloth() -> bool:
 	return bool(Api.is_owner)
 
 
-func _open_cloth() -> void:
-	(load("res://src/world/cloth/clothscreen.gd") as GDScript).call("open", get_tree(), hud)
+func _open_cloth(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:
+	(load("res://src/world/cloth/clothscreen.gd") as GDScript).call("open", get_tree(), hud, run_id, what_it_pays)
 
 
 func _open_stand() -> void:

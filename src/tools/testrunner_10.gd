@@ -3488,14 +3488,15 @@ func _test_cut_the_cloth() -> void:
 	section("CUT THE CLOTH (0.130.0): cut the old map away from the slimes, a round at a time")
 	const ClothRun := preload("res://src/world/cloth/clothrun.gd")
 	const ClothScreen := preload("res://src/world/cloth/clothscreen.gd")
-	check("the rounds: clear at 75%%, a point more each round, never over 85%% (%s); 3 slimes, more as it goes, never over 7 (%s); a little faster each, never over 1.6x" % [
+	check("the rounds: clear at 75%%, a point more each round, never over 85%% (%s); 3 slimes, more as it goes, never over 7 (%s); 5%% faster a round to round 10, then 4%%, never over 2x" % [
 		[ClothRun.target_for(1), ClothRun.target_for(2), ClothRun.target_for(11), ClothRun.target_for(30)],
-		[ClothRun.slimes_for(1), ClothRun.slimes_for(3), ClothRun.slimes_for(8), ClothRun.slimes_for(40)]],
+		[ClothRun.slimes_for(1), ClothRun.slimes_for(3), ClothRun.slimes_for(8), ClothRun.slimes_for(41)]],
 		is_equal_approx(ClothRun.target_for(1), 0.75) and is_equal_approx(ClothRun.target_for(2), 0.76)
 		and is_equal_approx(ClothRun.target_for(11), 0.85) and is_equal_approx(ClothRun.target_for(30), 0.85)
 		and ClothRun.slimes_for(1) == 3 and ClothRun.slimes_for(3) == 4 and ClothRun.slimes_for(8) == 7
-		and ClothRun.slimes_for(40) == 7 and is_equal_approx(ClothRun.speed_for(1), 1.0)
-		and is_equal_approx(ClothRun.speed_for(40), 1.6))
+		and ClothRun.slimes_for(41) == 7 and is_equal_approx(ClothRun.speed_for(1), 1.0)
+		and is_equal_approx(ClothRun.speed_for(10), 1.45) and is_equal_approx(ClothRun.speed_for(11), 1.49)
+		and is_equal_approx(ClothRun.speed_for(60), 2.0))
 	var run: Node2D = ClothRun.new()
 	run.set("seed_value", 7)
 	add_child(run)
@@ -3603,6 +3604,7 @@ func _test_cut_the_cloth() -> void:
 		and run.cutter == from and run.state == ClothRun.State.PLAYING, [run.lives, told["hurt"]])
 	# ---- a slime touching the shot while it cuts, too; none left is the end ----
 	for k in 2:
+		run.grace_left = 0.0
 		run.cut_held = true
 		run.steer = Vector2.UP
 		run.foes[0]["p"] = run.px(Vector2i(130, 20))
@@ -3735,11 +3737,15 @@ func _test_cut_the_cloth() -> void:
 	for seam in ["shows_healer_run", "shows_mage_stand", "shows_descent", "shows_forge", "shows_cloth"]:
 		card.set(seam, func() -> bool: return true)
 	var area: Array = ["elusion"]
-	var opened: Array = [0]
+	var opened: Array = []
 	card.set("area_now", func() -> String: return area[0])
 	card.set("class_now", func() -> String: return "healer")
 	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": false})
-	card.set("open_cloth", func() -> void: opened[0] = int(opened[0]) + 1)
+	var asked: Array = []
+	card.set("enter_request", func(path: String, body: Dictionary, _t: float = 0.0) -> Dictionary:
+		asked.append([path, body])
+		return {"ok": true, "status": 200, "data": {"run": 77, "plays_left": 2, "pays": {"rounds": [5, 6]}}})
+	card.set("open_cloth", func(run_on_server: int, what: Dictionary) -> void: opened.append([run_on_server, what]))
 	card.call("open")
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -3747,11 +3753,13 @@ func _test_cut_the_cloth() -> void:
 	var town_ready: bool = card.cloth_box.visible and not card.cloth_go.disabled and portraits.size() == 1 \
 		and (portraits[0] as TextureRect).texture != null
 	var tall: float = card.size.y
-	card.call("_on_cloth_go")
-	var went: bool = opened[0] == 1 and not card.visible
+	await card.call("_on_cloth_go")
+	var went: bool = opened.size() == 1 and int(opened[0][0]) == 77 and (opened[0][1] as Dictionary).has("rounds") \
+		and asked.size() == 1 and str(asked[0][0]) == "/api/minigames/enter" and str((asked[0][1] as Dictionary).get("game")) == "cloth" \
+		and not card.visible
 	area[0] = "field"
 	card.call("paint")
-	check("the Minigames card has its tile (the owner's while it is built), the healer's shot its portrait: Go in town opens it; elsewhere \"%s\"; all six tiles %d px tall" % [card.cloth_status.text, roundi(tall)],
+	check("the Minigames card has its tile (the owner's while it is built), the healer's shot its portrait: Go in town asks the server for a run of the day and opens it on that run; elsewhere \"%s\"; all six tiles %d px tall" % [card.cloth_status.text, roundi(tall)],
 		town_ready and went and card.cloth_go.disabled and card.cloth_status.text == "Play it from town." and tall < 560.0)
 	card.set("shows_cloth", func() -> bool: return false)
 	card.call("paint")
@@ -3759,3 +3767,377 @@ func _test_cut_the_cloth() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  cut the cloth: done")
+
+
+func _cloth_cut_left_half(run: Node2D) -> void:
+	"""For the suite: every slime to the right, then a cut straight up at
+	column 78 - the left half goes."""
+	for f in run.foes:
+		if float(f["dead"]) < 0.0:
+			f["p"] = run.px(Vector2i(120, 20 + (run.foes.find(f) % 5) * 12))
+			f["v"] = Vector2.ZERO
+	run.saws = []
+	run.cutter = Vector2i(78, run.ROWS - 2)
+	run.cutter_px = run.px(run.cutter)
+	run.aim = null
+	run.steer = Vector2.UP
+	run.cut_held = true
+	var was_cutting: bool = false
+	for k in 400:
+		run.call("_move_shot", 0.05)
+		was_cutting = was_cutting or run.cutting
+		if was_cutting and not run.cutting:
+			break
+
+
+func _test_cut_the_cloth_rounds() -> void:
+	section("CUT THE CLOTH, STEP 2 (0.131.0): lands, slime moves, saws, elites, the Plague Mother, pickups, gold")
+	const ClothRun := preload("res://src/world/cloth/clothrun.gd")
+	const ClothScreen := preload("res://src/world/cloth/clothscreen.gd")
+	var lands: Array = []
+	for w in range(1, 9):
+		lands.append(ClothRun.land_of(w))
+	var saw_counts: Array = [ClothRun.saws_for(1), ClothRun.saws_for(2), ClothRun.saws_for(4), ClothRun.saws_for(5),
+		ClothRun.saws_for(8), ClothRun.saws_for(14)]
+	var elite_counts: Array = [ClothRun.elites_for(2), ClothRun.elites_for(3), ClothRun.elites_for(6),
+		ClothRun.elites_for(9), ClothRun.elites_for(16), ClothRun.elites_for(10)]
+	check("a land a round in the bands' order, round again (%s); saws %s; elites %s; a boss every 5th round, with 2 slimes and no elites" % [
+		lands, saw_counts, elite_counts],
+		lands == ["light", "wind", "water", "ice", "earth", "fire", "dark", "light"]
+		and saw_counts == [0, 1, 1, 2, 3, 4] and elite_counts == [0, 1, 2, 3, 4, 0]
+		and ClothRun.is_boss_round(5) and ClothRun.is_boss_round(10) and not ClothRun.is_boss_round(4)
+		and ClothRun.slimes_for(5) == ClothRun.BOSS_SLIMES and ClothRun.elites_for(5) == 0)
+	check("  gold a round: its own from the table (100 for the first, 1,500 for the tenth), Endless rounds 800 and its bosses 1,600 - and the server's table when it gave one",
+		ClothRun.gold_for_round(1) == 100 and ClothRun.gold_for_round(10) == 1500
+		and ClothRun.gold_for_round(11) == ClothRun.ENDLESS_GOLD and ClothRun.gold_for_round(15) == ClothRun.ENDLESS_BOSS_GOLD
+		and ClothRun.gold_for_round(2, {"rounds": [7, 8]}) == 8 and ClothRun.gold_for_round(3, {"rounds": [7, 8], "endless": 9}) == 9)
+	var run: Node2D = ClothRun.new()
+	run.set("seed_value", 3)
+	add_child(run)
+	run.set_physics_process(false)
+	var heard: Array = []
+	run.said.connect(func(text: String) -> void: heard.append(text))
+	run.best = 3
+	var three: int = int(run.call("gold_now"))
+	run.pays = {"rounds": [1, 2, 3]}
+	var paid_three: int = int(run.call("gold_now"))
+	run.pays = {}
+	run.round_now = 11
+	var endless_title: String = str(run.call("round_title"))
+	check("  a run's gold is its rounds cleared (%d, %d by the server's table); past round 10 it is \"%s\"" % [three, paid_three, endless_title],
+		three == 450 and paid_three == 6 and endless_title == "Endless 1")
+	# ---- the saws ----
+	run.begin(2)
+	run.set_physics_process(false)
+	var saw: Dictionary = run.saws[0] if not run.saws.is_empty() else {}
+	var rides: bool = not saw.is_empty() and run.is_edge(saw["c"])
+	for k in 60:
+		run.call("_saw_step", saw)
+		rides = rides and run.is_edge(saw["c"])
+	run.lives = 3
+	run.grace_left = 0.0
+	run.cutting = false
+	saw["px"] = run.cutter_px
+	run.call("_move_saws", 0.0)
+	var cut_on_edge: int = run.lives
+	run.grace_left = 0.0
+	run.cutting = true
+	saw["px"] = run.cutter_px
+	run.call("_move_saws", 0.0)
+	var while_cutting: int = run.lives
+	run.cutting = false
+	check("round 2 has an edge saw: it rides the cut edge (60 steps, every one on it); on the shot while it rides the edge it costs a life, while it cuts it cannot reach it",
+		run.saws.size() == 1 and rides and cut_on_edge == 2 and while_cutting == 2)
+	# ---- elites ----
+	run.begin(3)
+	run.set_physics_process(false)
+	var hunter: Dictionary = {}
+	for f in run.foes:
+		if str(f["size"]) == "elite":
+			hunter = f
+	var first_y: float = 0.0
+	if not hunter.is_empty():
+		hunter["p"] = run.px(Vector2i(78, 30))
+		hunter["v"] = Vector2.RIGHT * 40.0
+		run.cutter_px = run.px(Vector2i(78, 79))
+		for k in 10:
+			run.call("_move_slimes", 0.1)
+		first_y = (hunter["v"] as Vector2).normalized().y
+	check("round 3 has an elite, bigger, a hunter: it turns toward the shot (heading %.2f down)" % first_y,
+		not hunter.is_empty() and str(hunter["trick"]) == "hunter" and float(hunter["r"]) == ClothRun.ELITE_R and first_y > 0.3)
+	run.begin(4)
+	run.set_physics_process(false)
+	var splitter: Dictionary = {}
+	for f in run.foes:
+		if str(f["trick"]) == "splitter":
+			splitter = f
+	var before_split: int = run.slimes_left()
+	_cloth_cut_left_half(run)
+	var smalls_of_kind: int = 0
+	for f in run.foes:
+		if float(f["dead"]) < 0.0 and str(f["size"]) == "small" and not splitter.is_empty() and str(f["kind"]) == str(splitter["kind"]):
+			smalls_of_kind += 1
+	check("  round 4's elite is a splitter: a cut that takes enough of the cloth splits it in two (%d slimes, then %d)" % [before_split, run.slimes_left()],
+		not splitter.is_empty() and float(splitter["dead"]) >= 0.0 and run.slimes_left() == before_split + 1
+		and smalls_of_kind >= 2 and heard.has("The splitter split in two!"))
+	run.begin(8)
+	run.set_physics_process(false)
+	var gnawer: Dictionary = {}
+	for f in run.foes:
+		if str(f["trick"]) == "gnawer":
+			gnawer = f
+	for y in range(36, 47):
+		for x in range(36, 47):
+			run.grid[y * run.COLS + x] = run.OWN
+	run.call("_mark_edges")
+	run.call("_count")
+	var had: float = run.taken
+	run.cutting = false
+	run.cutter = Vector2i(120, run.ROWS - 2)
+	if not gnawer.is_empty():
+		gnawer["gnaw"] = 0.0
+		run.call("_gnaw", gnawer, Vector2i(36, 41))
+		gnawer["gnaw"] = 0.0
+		run.call("_gnaw", gnawer, Vector2i(1, 41))
+	var chewed_open: bool = run.grid[41 * run.COLS + 36] == run.OPEN and run.grid[41 * run.COLS + 1] == run.OWN
+	check("  round 8's second elite is a gnawer: it chews cut-away cloth back (%.2f%% then %.2f%%) - never the border" % [had * 100.0, run.taken * 100.0],
+		not gnawer.is_empty() and chewed_open and run.taken < had)
+	# ---- the Plague Mother ----
+	run.begin(5)
+	run.set_physics_process(false)
+	var mother: Dictionary = run.call("_mother")
+	var smalls_before: int = run.slimes_left()
+	if not mother.is_empty():
+		mother["brood"] = 0.0
+		run.call("_brood", mother, 0.01)
+	var spat: bool = run.slimes_left() == smalls_before + 1
+	for f in run.foes:
+		f["p"] = run.px(Vector2i(10, 20 + (run.foes.find(f) % 6) * 8))
+		f["v"] = Vector2.ZERO
+	for y in range(run.BORDER, run.ROWS - run.BORDER):
+		run.grid[y * run.COLS + 30] = run.OWN
+	run.line = []
+	run.cutting = false
+	run.call("_close")
+	check("round 5 is the Plague Mother's: huge, she spits slimes; sealed into %d%% of the cloth (no more than %d%%) the round is cleared" % [
+		roundi(run.boss_share * 100.0), roundi(ClothRun.SEAL_SHARE * 100.0)],
+		not mother.is_empty() and float(mother["r"]) == ClothRun.BOSS_R and spat and run.boss_share <= ClothRun.SEAL_SHARE
+		and run.state == ClothRun.State.CLEARED and heard.has("The Plague Mother is sealed!") and float(mother["dead"]) >= 0.0)
+	# ---- the lands ----
+	run.begin(4)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["p"] = run.px(Vector2i(130, 20))
+		f["v"] = Vector2.ZERO
+	run.saws = []
+	run.cutter = Vector2i(40, run.ROWS - 2)
+	run.cutter_px = run.px(run.cutter)
+	run.aim = null
+	run.steer = Vector2.UP
+	run.cut_held = true
+	for k in 6:
+		run.call("_move_shot", 0.05)
+	var cut_so_far: int = run.line.size()
+	run.cut_held = false
+	run.steer = Vector2.ZERO
+	for k in 6:
+		run.call("_move_shot", 0.05)
+	check("ice: let go mid-cut and the shot slides on (%d cells, then %d)" % [cut_so_far, run.line.size()],
+		run.land == "ice" and cut_so_far > 0 and run.line.size() > cut_so_far and run.cutting)
+	run.begin(6)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["p"] = run.px(Vector2i(130, 20))
+		f["v"] = Vector2.ZERO
+	run.saws = []
+	run.lives = 3
+	run.grace_left = 0.0
+	run.cutter = Vector2i(40, run.ROWS - 2)
+	run.cutter_px = run.px(run.cutter)
+	run.steer = Vector2.UP
+	run.cut_held = true
+	for k in 10:
+		run.call("_move_shot", 0.05)
+	run.cut_held = false
+	var fuse_seen: bool = false
+	for k in 40:
+		run.call("_move_shot", 0.1)
+		run.call("_land_effects", 0.1)
+		fuse_seen = fuse_seen or run.fuse >= 0.0
+		if run.lives < 3:
+			break
+	check("fire: a cut left standing still lights a fuse that burns back along it - when it reaches the shot, a life",
+		run.land == "fire" and fuse_seen and run.lives == 2 and heard.has("The fuse caught you!"))
+	run.begin(3)
+	run.set_physics_process(false)
+	var wet_cell := Vector2i(-1, -1)
+	for i in run.wet.size():
+		if run.wet[i] == 1:
+			wet_cell = Vector2i(i % run.COLS, floori(float(i) / float(run.COLS)))
+			break
+	var dry_speed: float = 0.0
+	var wet_speed: float = 0.0
+	if wet_cell.x >= 0:
+		run.cutting = true
+		run.cut_held = true
+		run.cutter = wet_cell
+		wet_speed = float(run.call("_shot_speed"))
+		run.cutter = Vector2i(1, 1)
+		dry_speed = float(run.call("_shot_speed"))
+		run.cutting = false
+		run.cut_held = false
+	check("water: wet patches on the cloth, where the cut goes at half speed (%.0f against %.0f)" % [wet_speed, dry_speed],
+		run.land == "water" and wet_cell.x >= 0 and is_equal_approx(wet_speed, ClothRun.CUT_SPEED * ClothRun.WET_SLOW)
+		and is_equal_approx(dry_speed, ClothRun.CUT_SPEED))
+	run.begin(2)
+	run.set_physics_process(false)
+	var blown: Dictionary = run.foes[0]
+	blown["p"] = run.px(Vector2i(60, 40))
+	blown["v"] = Vector2.ZERO
+	run.gust_dir = Vector2.RIGHT
+	run.gust_on = 1.0
+	run.call("_move_slimes", 0.5)
+	var pushed: float = (blown["p"] as Vector2).x - run.px(Vector2i(60, 40)).x
+	run.gust_on = 0.0
+	check("wind: a gust shoves the slimes along it (%.0f px in half a second)" % pushed,
+		run.land == "wind" and absf(pushed - ClothRun.GUST_PUSH * 0.5) < 1.0)
+	run.begin(1)
+	run.set_physics_process(false)
+	var dazzled: Dictionary = run.foes[0]
+	dazzled["p"] = run.px(Vector2i(60, 40))
+	dazzled["v"] = Vector2.RIGHT * 50.0
+	run.flares = [{"at": run.px(Vector2i(62, 40)), "warn": 0.01, "flash": 0.0}]
+	run.call("_land_effects", 0.05)
+	var at_daze: Vector2 = dazzled["p"]
+	run.call("_move_slimes", 0.3)
+	check("light: a flare dazzles the slimes in it still for a moment",
+		run.land == "light" and float(dazzled["dazed"]) > 0.0 and (dazzled["p"] as Vector2) == at_daze)
+	run.begin(12)
+	run.set_physics_process(false)
+	var rock_cells: int = 0
+	var rock_own: bool = true
+	for i in run.rock.size():
+		if run.rock[i] == 1:
+			rock_cells += 1
+			rock_own = rock_own and run.grid[i] == run.OWN
+	check("earth: rocks on the map (%d cells), already cut - the round starts %.1f%% taken" % [rock_cells, run.taken * 100.0],
+		run.land == "earth" and rock_cells > 40 and rock_own and run.taken > 0.0)
+	run.begin(7)
+	run.set_physics_process(false)
+	var dark_on: bool = (run.get("_dark") as Node2D).visible
+	run.begin(1)
+	run.set_physics_process(false)
+	check("  dark: only the shot's light to see by (and every other land in the light)",
+		dark_on and not (run.get("_dark") as Node2D).visible)
+	# ---- the slimes' moves ----
+	var hopper: Dictionary = run.call("_add_slime", "earth", run.px(Vector2i(60, 40)), Vector2.RIGHT, "small", "")
+	hopper["t"] = 0.05
+	var hop_from: Vector2 = hopper["p"]
+	run.call("_move_slimes", 0.05)
+	var still_while_crouched: bool = (hopper["p"] as Vector2) == hop_from
+	hopper["t"] = 0.6
+	run.call("_move_slimes", 0.05)
+	check("each colour moves its own way (%s): an earth slime crouches still, then hops on" % [ClothRun.MOVES],
+		ClothRun.MOVES["water"] == "bounce" and ClothRun.MOVES["wind"] == "zigzag" and ClothRun.MOVES["earth"] == "hop"
+		and ClothRun.MOVES["fire"] == "hunt" and still_while_crouched and (hopper["p"] as Vector2).x > hop_from.x)
+	# ---- pickups ----
+	run.begin(1)
+	run.set_physics_process(false)
+	run.ward = false
+	run.pickups = [{"kind": "ward", "c": Vector2i(20, 40), "left": 10.0}]
+	_cloth_cut_left_half(run)
+	var cut_free: bool = run.ward and run.pickups.is_empty()
+	run.lives = 3
+	run.grace_left = 0.0
+	run.call("_hit", null)
+	var warded: bool = run.lives == 3 and not run.ward and heard.has("The Ward held!")
+	run.call("_hit", null)
+	var graced: bool = run.lives == 3
+	run.grace_left = 0.0
+	run.call("_hit", null)
+	check("pickups: a Ward cut free is had; it takes the next hit, a moment's grace after, then a hit is a life again",
+		cut_free and warded and graced and run.lives == 2)
+	run.call("_take", {"kind": "slow", "c": Vector2i(30, 30), "left": 5.0})
+	var slow_speed: float = float(run.call("_slime_speed", run.foes[0]))
+	run.slow_left = 0.0
+	var full_speed: float = float(run.call("_slime_speed", run.foes[0]))
+	run.call("_take", {"kind": "swift", "c": Vector2i(30, 30), "left": 5.0})
+	run.cut_held = true
+	run.cutting = false
+	var swift_speed: float = float(run.call("_shot_speed"))
+	run.cut_held = false
+	run.lives = ClothRun.LIVES_MOST - 1
+	run.call("_take", {"kind": "life", "c": Vector2i(30, 30), "left": 5.0})
+	run.call("_take", {"kind": "life", "c": Vector2i(30, 30), "left": 5.0})
+	check("  Slow halves the slimes (%.0f of %.0f), Swift quickens the cut (%.0f), a Life is a life - never past %d" % [
+		slow_speed, full_speed, swift_speed, ClothRun.LIVES_MOST],
+		is_equal_approx(slow_speed, full_speed * ClothRun.SLOW_SPEED) and is_equal_approx(swift_speed, ClothRun.CUT_SPEED * ClothRun.SWIFT_SPEED)
+		and run.lives == ClothRun.LIVES_MOST)
+	run.swift_left = 0.0
+	run.begin(1)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["p"] = run.px(Vector2i(130, 20))
+		f["v"] = Vector2.ZERO
+	run.pickups = [{"kind": "swift", "c": Vector2i(40, run.ROWS - 6), "left": 10.0}]
+	run.cutter = Vector2i(40, run.ROWS - 2)
+	run.cutter_px = run.px(run.cutter)
+	run.steer = Vector2.UP
+	run.cut_held = true
+	for k in 8:
+		run.call("_move_shot", 0.05)
+	check("  and a pickup the cut runs over is had too", run.swift_left > 0.0 and run.pickups.is_empty())
+	# ---- what it costs ----
+	run.begin(9)
+	run.set_physics_process(false)
+	var t0: int = Time.get_ticks_usec()
+	_cloth_cut_left_half(run)
+	var close_ms: float = float(Time.get_ticks_usec() - t0) / 1000.0
+	run.aim = run.px(Vector2i(5, 5))
+	run.cut_held = false
+	t0 = Time.get_ticks_usec()
+	for k in 30:
+		run.aim = run.px(Vector2i(5 + k, 5 + (k % 7)))
+		run.call("_move_shot", 0.016)
+	var ride_ms: float = float(Time.get_ticks_usec() - t0) / 1000.0 / 30.0
+	print("  [CLOTH] a cut and its close %.1f ms; a frame of riding with the mouse moving %.2f ms" % [close_ms, ride_ms])
+	run.queue_free()
+	await get_tree().process_frame
+	# ---- the screen, paying ----
+	var screen: CanvasLayer = ClothScreen.open(get_tree(), null, 41, {"rounds": [10, 20]})
+	var sent: Array = []
+	screen.set("finish_request", func(path: String, body: Dictionary, _t: float = 0.0) -> Dictionary:
+		sent.append([path, body])
+		return {"ok": true, "status": 200, "data": {"gold": 10, "status": {"gold": 999}}})
+	await get_tree().process_frame
+	screen.call("begin")
+	var srun: Node2D = screen.get("run")
+	srun.best = 1
+	await get_tree().process_frame
+	var counted: int = int(srun.call("gold_now"))
+	screen.call("ask_to_leave")
+	screen.call("ask_to_leave")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("a run on the server counts its gold on screen (%d by its table) and Leave finishes it there with the rounds cleared (%s)" % [
+		counted, str(sent[0][1]) if not sent.is_empty() else "nothing sent"],
+		counted == 10 and sent.size() == 1 and str(sent[0][0]) == "/api/minigames/finish"
+		and int((sent[0][1] as Dictionary).get("run", 0)) == 41 and int((sent[0][1] as Dictionary).get("rounds", -1)) == 1
+		and not is_instance_valid(screen))
+	var screen2: CanvasLayer = ClothScreen.open(get_tree(), null, 42, {})
+	screen2.set("finish_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"gold": 0}})
+	screen2.set("enter_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		return {"ok": false, "status": 409, "data": {"message": "You have run Cut the Cloth 3 times today."}})
+	await get_tree().process_frame
+	screen2.call("begin")
+	(screen2.get("run") as Node2D).call("lose_life")
+	(screen2.get("run") as Node2D).call("lose_life")
+	(screen2.get("run") as Node2D).call("lose_life")
+	await get_tree().process_frame
+	await screen2.call("again")
+	check("  Again with no runs left today says so in the server's words, and Again goes grey",
+		(screen2.get("result_line") as Label).text.contains("3 times today") and (screen2.get("again_button") as Button).disabled)
+	screen2.call("close")
+	await get_tree().process_frame
+	print("  cut the cloth, step 2: done")

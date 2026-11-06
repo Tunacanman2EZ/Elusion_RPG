@@ -1,12 +1,23 @@
-# clothscreen.gd - CUT THE CLOTH on screen (0.130.0, step 1): the run's own
-# world (clothrun.gd) in a SubViewport, drawn over everything, and round it
-# the words - the round, how much is cut away against the round's mark, the
-# lives - a banner, and at the end how far you got with Again and Leave.
+# clothscreen.gd - CUT THE CLOTH on screen (0.130.0; 0.131.0): the run's own world
+# (clothrun.gd) in a SubViewport, drawn over everything, and round it the
+# words - the round and its land, how much is cut away against the round's
+# mark (or the Plague Mother's piece against her seal), the gold, the lives,
+# what is helping you now - a banner, and at the end how far you got with
+# Again and Leave.
 #
-# Opened from the Minigames card, in town only (minigamescard.gd), the
-# owner's alone while it is built: the character stays standing where it
-# was, still (open() stops it, close() lets it go). It pays nothing, so it
-# asks nothing of the server.
+# Opened from the Minigames card, in town only (minigamescard.gd): the
+# character stays standing where it was, still (open() stops it, close() lets
+# it go).
+#
+# GOLD AND THREE RUNS A DAY (0.131.0, the owner's "rewards and a daily limit
+# through the server"): the card's Go asks the server first (POST
+# /api/minigames/enter, game "cloth") and hands this its run's id and what it
+# pays (`pays`, the rounds' table); the gold counts up on screen
+# (run.gold_now()), and Leave - or Again - finishes the run on the server
+# (POST /api/minigames/finish with the rounds cleared), which pays it into
+# the character's purse, held to the time the run took. Again asks for the
+# day's next run. A run with no id (the owner's own test, or the suite) is
+# practice: it pays nothing, and says so.
 #
 # THE CONTROLS (the owner: "on pc it should react like the ring around
 # characters it just drags the belluet to the spot you mouse is", "on mobile
@@ -17,13 +28,14 @@
 #   - a phone: the stick steers (TouchControls.analog_move()); a finger held
 #     on SLICE cuts (`_slice_finger`, read here, so the stick's thumb and the
 #     cutting finger are two touches).
-# Let go mid-cut and the shot waits on its line. A life lost, the cut held
-# through it does not cut again until it is let go (`_wait_release`).
+# Let go mid-cut and the shot waits on its line (on ice it slides on). A life
+# lost, the cut held through it does not cut again until it is let go
+# (`_wait_release`).
 #
 # THE LOOK, the owner's "make it look way more current": the words drawn in
 # rounded dark pills over the picture (`_draw_hud()`, laid out for a
 # 1280 x 720 window and scaled to the picture), a gold bar with the round's
-# mark, drawn hearts. All drawn in code.
+# mark, drawn hearts, chips for what helps you. All drawn in code.
 #
 # Leave: the button, or Escape - twice while a run is on, once after it.
 # Keys are kept from the rest of the game while it is up.
@@ -34,6 +46,7 @@ extends CanvasLayer
 const RunScript := preload("res://src/world/cloth/clothrun.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const LAYER := 90
+const GAME := "cloth"
 const LEAVE_ARMED_SECONDS := 3.0
 const GOLD := Color(1.0, 0.82, 0.38)
 const CREAM := Color(1.0, 0.95, 0.85)
@@ -42,16 +55,18 @@ const RED := Color(0.92, 0.25, 0.28)
 const PILL := Color(0.06, 0.05, 0.08, 0.86)
 # The words are laid out for the picture at twice its size (1280 x 720).
 const HUD_BASE := Vector2(1280, 720)
-const LEAVE_BOX := Rect2(940, 12, 130, 40)
+const LEAVE_BOX := Rect2(1020, 12, 82, 40)
 const MOUSE_MOVED := 2.0
 const SLICE_SIZE := 132.0
-const BANNER_SECONDS := 1.6
+const BANNER_SECONDS := 1.8
+const CHIPS := {"swift": ["Swift", Color(0.45, 0.95, 0.5)], "slow": ["Slow", Color(0.45, 0.7, 1.0)],
+	"ward": ["Ward", Color(1.0, 0.82, 0.3)]}
 const HOW_TO := [
 	"Move the mouse - the shot rides the cut edge to it.",
 	"Hold the left button (or Space) to cut into the cloth.",
 	"Close the cut on an edge: every piece no slime is on is cut away.",
-	"A slime that touches your open cut costs a life.",
-	"Cut away enough of the cloth to clear the round.",
+	"A slime on your open cut costs a life - and saws ride the edge.",
+	"Each map has its own trick. Cut pickups free. Every 5th round, a boss.",
 ]
 const HOW_TO_TOUCH := {
 	0: "Move with the stick - the shot rides the cut edge.",
@@ -73,17 +88,26 @@ var leave_button: Button = null
 var results: PanelContainer = null
 var result_line: Label = null
 var best_line: Label = null
+var gold_line: Label = null
+var again_button: Button = null
 var start_panel: PanelContainer = null
 var start_button: Button = null
 var stick: Control = null
 var slice_pad: Control = null
 var hud: Node = null
 var seed_value: int = 0
-# The suite's doors: the mouse, whether its button is held, and the keys.
+# The run on the server (0: practice) and what it pays.
+var run_id: int = 0
+var pays: Dictionary = {}
+# The suite's doors: the mouse, whether its button is held, the keys, the
+# server, and the character's slot.
 var mouse_at: Callable = Callable(self, "_mouse_at")
 var mouse_held: Callable = Callable(self, "_mouse_held")
 var keys_way: Callable = Callable(self, "_keys_way")
 var space_held: Callable = Callable(self, "_space_held")
+var finish_request: Callable = Callable(Api, "post")
+var enter_request: Callable = Callable(Api, "post")
+var slot_now: Callable = Callable(self, "_slot")
 
 var _how_to_lines: Array = []
 var _worded: int = -1
@@ -97,12 +121,16 @@ var _flash_left: float = 0.0
 var _held: Node = null
 var _held_mode: int = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
+var _paid: bool = false
+var _busy: bool = false
 
 
-static func open(tree: SceneTree, on_hud: Node = null) -> CanvasLayer:
+static func open(tree: SceneTree, on_hud: Node = null, run_on_server: int = 0, what_it_pays: Dictionary = {}) -> CanvasLayer:
 	var screen: CanvasLayer = (load("res://src/world/cloth/clothscreen.gd") as GDScript).new()
 	screen.name = "clothscreen"
 	screen.set("hud", on_hud)
+	screen.set("run_id", run_on_server)
+	screen.set("pays", what_it_pays)
 	tree.root.add_child(screen)
 	return screen
 
@@ -187,12 +215,16 @@ func _build_words() -> void:
 	best_line = _words("", 15, HINT)
 	best_line.name = "bestline"
 	column.add_child(best_line)
+	gold_line = _words("", 18, GOLD)
+	gold_line.name = "goldline"
+	column.add_child(gold_line)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 16)
 	column.add_child(row)
-	for pair in [["again", "Again", again], ["out", "Leave", leave]]:
-		row.add_child(_button(str(pair[0]), str(pair[1]), pair[2] as Callable))
+	again_button = _button("again", "Again", again)
+	row.add_child(again_button)
+	row.add_child(_button("out", "Leave", leave))
 	start_panel = _panel("start")
 	var lines := VBoxContainer.new()
 	lines.add_theme_constant_override("separation", 7)
@@ -240,7 +272,8 @@ func _button(id: String, text: String, does: Callable) -> Button:
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(120, 36)
-	for look in [["normal", Color(GOLD, 0.16)], ["hover", Color(GOLD, 0.28)], ["pressed", Color(GOLD, 0.4)]]:
+	for look in [["normal", Color(GOLD, 0.16)], ["hover", Color(GOLD, 0.28)], ["pressed", Color(GOLD, 0.4)],
+			["disabled", Color(0.3, 0.3, 0.3, 0.2)]]:
 		var style := _pill_style(look[1] as Color)
 		style.border_color = Color(GOLD, 0.55)
 		b.add_theme_stylebox_override(str(look[0]), style)
@@ -288,11 +321,15 @@ func start() -> void:
 	run = RunScript.new()
 	run.name = "cloth"
 	run.set("seed_value", seed_value)
+	run.set("pays", pays)
 	run.connect("hurt", _on_hurt)
 	run.connect("round_cleared", _on_cleared)
+	run.connect("said", _say)
 	viewport.add_child(run)
 	run.set_physics_process(false)
 	results.visible = false
+	again_button.disabled = false
+	_paid = false
 	_leave_armed = 0.0
 	_banner = ""
 	start_panel.visible = true
@@ -331,7 +368,8 @@ func _on_hurt() -> void:
 
 
 func _on_cleared(which: int) -> void:
-	_say("Round %d cleared!" % which)
+	var gold: int = RunScript.gold_for_round(which, pays)
+	_say(("Round %d cleared!  +%s gold" % [which, thousands(gold)]) if run_id != 0 else ("Round %d cleared!" % which))
 
 
 # =============================================================================
@@ -389,6 +427,10 @@ func _keys_way() -> Vector2:
 
 func _space_held() -> bool:
 	return Input.is_physical_key_pressed(KEY_SPACE)
+
+
+func _slot() -> int:
+	return int(CharacterData.active_character_index)
 
 
 func _process(delta: float) -> void:
@@ -451,19 +493,33 @@ func _word_for_touch() -> void:
 # THE WORDS
 # =============================================================================
 
+static func thousands(n: int) -> String:
+	"""A whole number with commas: 20000 reads 20,000."""
+	var digits: String = str(absi(n))
+	var out: String = ""
+	while digits.length() > 3:
+		out = "," + digits.right(3) + out
+		digits = digits.left(digits.length() - 3)
+	return ("-" if n < 0 else "") + digits + out
+
+
 func paint() -> void:
 	if run == null or not is_instance_valid(run):
 		return
 	leave_button.text = "Sure?" if _leave_armed > 0.0 else "Leave"
 	if playing() and int(run.get("state")) == RunScript.State.PLAYING and int(run.get("round_now")) != _round_said:
 		_round_said = int(run.get("round_now"))
-		_say("Round %d" % _round_said)
+		_say("%s - %s" % [str(run.call("round_title")), str(run.call("land_name"))])
 	if int(run.get("state")) == RunScript.State.OVER and not results.visible:
 		var reached: int = int(run.get("round_now"))
-		result_line.text = "The slimes broke through on round %d" % reached
+		result_line.text = "The slimes broke through on %s" % str(run.call("round_title")).to_lower()
 		var cleared: int = int(run.get("best"))
 		best_line.text = "%d %s cleared   ·   best %d" % [cleared, "round" if cleared == 1 else "rounds",
 			int(RunScript.best_ever)]
+		gold_line.text = ("%s gold - yours when you leave" % thousands(int(run.call("gold_now")))) if run_id != 0 \
+			else "Practice - this run pays nothing"
+		if reached <= 0:
+			result_line.text = "The slimes broke through"
 		results.visible = true
 		_centre(results)
 	hud_draw.queue_redraw()
@@ -477,56 +533,96 @@ func _draw_hud() -> void:
 	hud_draw.draw_set_transform(Vector2.ZERO, 0.0, Vector2(k, k))
 	var font: Font = ThemeDB.fallback_font
 	var pill := _pill_style(PILL)
-	# left: the name, the round, the best
-	hud_draw.draw_style_box(pill, Rect2(16, 10, 360, 44))
-	hud_draw.draw_string(font, Vector2(32, 38), "CUT THE CLOTH", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, CREAM)
-	hud_draw.draw_string(font, Vector2(186, 38), "Round %d" % int(run.get("round_now")),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1.0, 1.0, 1.0, 0.7))
-	hud_draw.draw_string(font, Vector2(270, 38), "best %d" % maxi(int(RunScript.best_ever), int(run.get("best"))),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 1.0, 1.0, 0.45))
-	# middle: how much is cut away, against the round's mark
+	var which: int = int(run.get("round_now"))
+	# left: the round and its land, and the land's one rule
+	hud_draw.draw_style_box(pill, Rect2(16, 10, 394, 44))
+	hud_draw.draw_string(font, Vector2(32, 29), "%s  ·  %s" % [str(run.call("round_title")), str(run.call("land_name"))],
+		HORIZONTAL_ALIGNMENT_LEFT, 362, 15, CREAM)
+	hud_draw.draw_string(font, Vector2(32, 46), str(run.call("rule_line")), HORIZONTAL_ALIGNMENT_LEFT, 362, 12,
+		Color(1.0, 1.0, 1.0, 0.55))
+	# middle: how much is cut away against the round's mark - or her piece
+	var boss: bool = RunScript.is_boss_round(which)
 	var taken: float = float(run.get("taken"))
-	var target: float = RunScript.target_for(int(run.get("round_now")))
-	hud_draw.draw_style_box(pill, Rect2(420, 10, 480, 44))
-	var bar := Rect2(440, 34, 440, 10)
-	hud_draw.draw_string(font, Vector2(440, 28), "%d%% cut away" % floori(taken * 100.0),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CREAM)
-	hud_draw.draw_string(font, Vector2(440, 28), "clear at %d%%" % roundi(target * 100.0),
-		HORIZONTAL_ALIGNMENT_RIGHT, bar.size.x, 13, Color(1.0, 1.0, 1.0, 0.5))
+	var target: float = RunScript.target_for(which)
+	var done: float = taken
+	var left_words: String = "%d%% cut away" % floori(taken * 100.0)
+	var right_words: String = "clear at %d%%" % roundi(target * 100.0)
+	if boss:
+		var share: float = float(run.get("boss_share"))
+		done = 1.0 - share
+		target = 1.0 - RunScript.SEAL_SHARE
+		left_words = "Her piece: %d%% of the cloth" % roundi(share * 100.0)
+		right_words = "sealed at %d%%" % roundi(RunScript.SEAL_SHARE * 100.0)
+	hud_draw.draw_style_box(pill, Rect2(424, 10, 440, 44))
+	var bar := Rect2(442, 34, 404, 10)
+	hud_draw.draw_string(font, Vector2(442, 28), left_words, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CREAM)
+	hud_draw.draw_string(font, Vector2(442, 28), right_words, HORIZONTAL_ALIGNMENT_RIGHT, bar.size.x, 13, Color(1.0, 1.0, 1.0, 0.5))
 	var track := StyleBoxFlat.new()
 	track.bg_color = Color(1.0, 1.0, 1.0, 0.10)
 	track.set_corner_radius_all(5)
 	hud_draw.draw_style_box(track, bar)
-	if taken > 0.0:
+	if done > 0.0:
 		var fill := StyleBoxFlat.new()
-		fill.bg_color = GOLD if taken < target else Color(0.6, 0.95, 0.5)
+		fill.bg_color = (Color(0.86, 0.45, 0.95) if boss else GOLD) if done < target else Color(0.6, 0.95, 0.5)
 		fill.set_corner_radius_all(5)
-		hud_draw.draw_style_box(fill, Rect2(bar.position, Vector2(maxf(10.0, bar.size.x * clampf(taken, 0.0, 1.0)), bar.size.y)))
+		hud_draw.draw_style_box(fill, Rect2(bar.position, Vector2(maxf(10.0, bar.size.x * clampf(done, 0.0, 1.0)), bar.size.y)))
 	var mark_x: float = bar.position.x + bar.size.x * target
 	hud_draw.draw_line(Vector2(mark_x, bar.position.y - 3), Vector2(mark_x, bar.end.y + 3), Color(1.0, 1.0, 1.0, 0.85), 2.0)
-	# right: the lives
-	hud_draw.draw_style_box(pill, Rect2(1104, 10, 160, 44))
-	for n in RunScript.LIVES:
-		_heart(Vector2(1138 + n * 44, 32), n < int(run.get("lives")))
+	# the gold, and the lives
+	hud_draw.draw_style_box(pill, Rect2(878, 10, 132, 44))
+	if run_id != 0:
+		_draw_coin(Vector2(900, 32))
+		hud_draw.draw_string(font, Vector2(914, 38), thousands(int(run.call("gold_now"))), HORIZONTAL_ALIGNMENT_LEFT, 90, 16, GOLD)
+	else:
+		hud_draw.draw_string(font, Vector2(878, 38), "Practice", HORIZONTAL_ALIGNMENT_CENTER, 132, 14, Color(1.0, 1.0, 1.0, 0.5))
+	hud_draw.draw_style_box(pill, Rect2(1110, 10, 154, 44))
+	var lives: int = int(run.get("lives"))
+	var shown: int = maxi(RunScript.LIVES, lives)
+	var spacing: float = 140.0 / float(shown)
+	for n in shown:
+		_heart(Vector2(1110 + spacing * (float(n) + 0.5) + 7.0, 32), n < lives, 0.62 if shown > RunScript.LIVES else 0.75)
+	# what helps you now
+	var chips: Array = []
+	if float(run.get("swift_left")) > 0.0:
+		chips.append(["swift", float(run.get("swift_left"))])
+	if float(run.get("slow_left")) > 0.0:
+		chips.append(["slow", float(run.get("slow_left"))])
+	if bool(run.get("ward")):
+		chips.append(["ward", -1.0])
+	var x: float = (HUD_BASE.x - float(chips.size()) * 118.0) / 2.0
+	for chip in chips:
+		var info: Array = CHIPS[chip[0]]
+		var box := Rect2(Vector2(x, 666), Vector2(110, 32))
+		hud_draw.draw_style_box(_pill_style(Color(PILL, 0.9)), box)
+		hud_draw.draw_circle(box.position + Vector2(18, 16), 5.0, info[1] as Color)
+		var words: String = str(info[0]) if float(chip[1]) < 0.0 else "%s %ds" % [str(info[0]), ceili(float(chip[1]))]
+		hud_draw.draw_string(font, box.position + Vector2(30, 22), words, HORIZONTAL_ALIGNMENT_LEFT, 76, 14, CREAM)
+		x += 118.0
 	# the banner
 	if _banner_left > 0.0 and _banner != "":
 		var a: float = clampf(_banner_left / 0.4, 0.0, 1.0)
-		var wide: float = font.get_string_size(_banner, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x + 64.0
-		var box := Rect2(Vector2((HUD_BASE.x - wide) / 2.0, 300), Vector2(wide, 64))
-		hud_draw.draw_style_box(_pill_style(Color(PILL, 0.8 * a)), box)
-		hud_draw.draw_string(font, Vector2(box.position.x, box.position.y + 43), _banner, HORIZONTAL_ALIGNMENT_CENTER,
-			box.size.x, 30, Color(CREAM, a))
+		var wide: float = font.get_string_size(_banner, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x + 64.0
+		var at := Rect2(Vector2((HUD_BASE.x - wide) / 2.0, 300), Vector2(wide, 60))
+		hud_draw.draw_style_box(_pill_style(Color(PILL, 0.8 * a)), at)
+		hud_draw.draw_string(font, Vector2(at.position.x, at.position.y + 40), _banner, HORIZONTAL_ALIGNMENT_CENTER,
+			at.size.x, 28, Color(CREAM, a))
 	hud_draw.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _heart(at: Vector2, full: bool) -> void:
+func _draw_coin(at: Vector2) -> void:
+	hud_draw.draw_circle(at, 8.0, Color(0.75, 0.55, 0.15))
+	hud_draw.draw_circle(at, 6.0, GOLD)
+	hud_draw.draw_circle(at + Vector2(-2, -2), 1.5, Color(1.0, 1.0, 0.85, 0.8))
+
+
+func _heart(at: Vector2, full: bool, size_k: float) -> void:
 	var points := PackedVector2Array()
 	for n in 40:
 		var t: float = float(n) / 40.0 * TAU
-		points.append(at + Vector2(16.0 * pow(sin(t), 3), -(13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t))) * 0.75)
+		points.append(at + Vector2(16.0 * pow(sin(t), 3), -(13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t))) * size_k)
 	if full:
 		hud_draw.draw_colored_polygon(points, RED)
-		hud_draw.draw_circle(at + Vector2(-4, -4), 2.0, Color(1.0, 1.0, 1.0, 0.45))
+		hud_draw.draw_circle(at + Vector2(-4, -4) * size_k / 0.75, 2.0, Color(1.0, 1.0, 1.0, 0.45))
 	else:
 		points.append(points[0])
 		hud_draw.draw_polyline(points, Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
@@ -545,7 +641,7 @@ func _draw_slice_pad() -> void:
 
 
 # =============================================================================
-# LEAVING
+# LEAVING, AND AGAIN
 # =============================================================================
 
 func ask_to_leave() -> void:
@@ -558,11 +654,76 @@ func ask_to_leave() -> void:
 
 
 func leave() -> void:
+	"""Leave: the run's gold paid into the character's purse by the server,
+	then out. Not reached, the screen says so and stays - Leave again tries
+	again."""
+	if _busy:
+		return
+	if not await _pay():
+		return
+	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
+	if run_id != 0 and gold > 0 and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
+		hud.call("_push_message", "Cut the Cloth: %s gold, into your purse." % thousands(gold), GOLD, 0, true)
 	close()
 
 
 func again() -> void:
-	start()
+	"""Again: this run's gold paid, then the day's next run - when there is
+	one. Practice is practice again."""
+	if _busy:
+		return
+	if not await _pay():
+		return
+	if run_id == 0:
+		start()
+		return
+	_busy = true
+	result_line.text = "Asking for another run..."
+	var res: Dictionary = await enter_request.call("/api/minigames/enter", {"game": GAME, "slot": int(slot_now.call())}, 6.0)
+	_busy = false
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		run_id = int(data["run"])
+		if data.get("pays") is Dictionary:
+			pays = data["pays"]
+		start()
+		return
+	if int(res.get("status", 0)) == 409:
+		result_line.text = str(data.get("message", "No runs left today."))
+		again_button.disabled = true
+		return
+	result_line.text = "Could not reach the server - try again."
+
+
+func _pay() -> bool:
+	"""This run finished on the server and its gold paid - once. True when it
+	is (or it is practice)."""
+	if run_id == 0 or _paid:
+		return true
+	if run == null or not is_instance_valid(run):
+		return true
+	_busy = true
+	# Still while it is settled: what is sent is what was reached.
+	run.set_physics_process(false)
+	var body := {"run": run_id, "rounds": int(run.get("best")), "bosses": int(run.call("bosses_beaten"))}
+	var res: Dictionary = await finish_request.call("/api/minigames/finish", body, 8.0)
+	_busy = false
+	if not is_instance_valid(self):
+		return false
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) or int(res.get("status", 0)) == 409:
+		_paid = true
+		var status: Dictionary = data.get("status", {}) if data.get("status") is Dictionary else {}
+		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
+			_held.call("set_gold", int(status["gold"]))
+		return true
+	results.visible = true
+	_centre(results)
+	result_line.text = "Could not reach the server"
+	gold_line.text = "Your gold is waiting: Leave again to take it."
+	return false
 
 
 func close() -> void:
