@@ -64,12 +64,32 @@
 # run's numbers (healerrun.gd TUNE_*), kept on this computer; mouse only, as
 # every key is the run's. A tuned run pays nothing.
 #
+# THE GUARDIAN (0.132.0), the owner's story for the healer: "a guardian of
+# light; in search of her mythic weapon; the rumor has it that it is not
+# supposed to exist in this dimension but she looks endlessly her power of
+# light incinerates enemy and heals friends but everyone has their
+# limitations. The land stirs and enemies flood in hordes the guardian shows
+# no emotion; she only cares to carve a path with her laser". STORY plays in
+# the game's story screen (StoryScreen) the first time a character opens the
+# run, before the tutorial (field.gd story_seen(), key STORY_KEY) - only when
+# opened from the card over the HUD (`hud`), never on a suite's bare screen.
+# While it plays the run waits on its tutorial, and any key skips it.
+#
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
+const Field := preload("res://src/world/field.gd")
+const STORY_KEY := "#guardian"
+const STORY := [
+	"She is a guardian of light, in search of her mythic weapon.",
+	"Rumor has it the weapon is not supposed to exist in this dimension. Still, she searches - endlessly.",
+	"Her light incinerates her enemies and heals her friends. But everyone has their limitations.",
+	"The land stirs, and enemies flood in by the horde.",
+	"The guardian shows no emotion. She only cares to carve a path with her laser.",
+]
 const LAYER := 90
 const COLOUR := Color(1.0, 0.86, 0.45)
 const COLOUR_HINT := Color(0.82, 0.78, 0.7)
@@ -104,6 +124,8 @@ var seed_value: int = 0
 var run_id: int = 0
 var pays: Dictionary = {}
 var hud: Node = null
+# The guardian's story while it plays over the run (THE GUARDIAN).
+var story: CanvasLayer = null
 var gold_line: Label = null
 var meteor_line: Label = null
 var tutorial: PanelContainer = null
@@ -220,6 +242,7 @@ func _ready() -> void:
 	add_child(stick)
 	_build_words()
 	_hold_the_character()
+	tell_story()
 	start()
 
 
@@ -446,6 +469,11 @@ func _on_field_touched(event: InputEvent) -> void:
 	var touch := event as InputEventScreenTouch
 	if touch == null or not touch.pressed:
 		return
+	# A TAP SKIPS THE STORY, on a phone, as a key does.
+	if story_playing():
+		_skip_story()
+		get_viewport().set_input_as_handled()
+		return
 	if stick != null and stick.visible and stick_zone().has_point(touch.position):
 		return
 	if run == null or not is_instance_valid(run) or tutorial.visible or results.visible:
@@ -650,13 +678,36 @@ func start() -> void:
 	# on the landing behind it until Start.
 	party_line.visible = with_party
 	# Opened without a run of the day, it opens there too: Start asks for it.
-	if not _tutorial_seen or with_party or enter_at_start:
+	if not _tutorial_seen or with_party or enter_at_start or story_playing():
 		run.set_process(false)
 		tutorial.visible = true
 		tutorial.reset_size()
 		tutorial.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		tutorial.grow_vertical = Control.GROW_DIRECTION_BOTH
 		tutorial.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+
+
+func tells_story() -> bool:
+	"""The guardian's story: once a character, opened from the card (a HUD)."""
+	return hud != null and not Field.story_seen(Field.story_key() + STORY_KEY)
+
+
+func tell_story() -> void:
+	if not tells_story() or story_playing():
+		return
+	Field.mark_story_seen(Field.story_key() + STORY_KEY)
+	story = StoryScreen.new()
+	add_child(story)
+	story.play(STORY)
+
+
+func story_playing() -> bool:
+	return story != null and is_instance_valid(story) and not story.is_queued_for_deletion()
+
+
+func _skip_story() -> void:
+	if story_playing():
+		story.call("_finish")
 
 
 func _party_rooms() -> bool:
@@ -751,6 +802,8 @@ func _have_a_run() -> bool:
 
 
 func _go() -> void:
+	# Never a run under the story: Start, or the party's count, ends it.
+	_skip_story()
 	tutorial.visible = false
 	_tutorial_seen = true
 	if run != null and is_instance_valid(run):
@@ -1054,6 +1107,12 @@ func _input(event: InputEvent) -> void:
 	# buttons (the black behind everything stops them reaching the HUD).
 	if event is InputEventKey:
 		var key := event as InputEventKey
+		# WHILE THE STORY PLAYS any key skips it - Escape too, not Leave.
+		if story_playing():
+			if key.pressed and not key.echo:
+				_skip_story()
+			get_viewport().set_input_as_handled()
+			return
 		if key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
 			ask_to_leave()
 		elif key.pressed and not key.echo and key.keycode == KEY_SPACE:

@@ -2556,6 +2556,154 @@ func _test_the_stories_of_the_stand_and_the_forge() -> void:
 	print("  the stories: the sealing, the smith, the warrior")
 
 
+# =============================================================================
+# THE GUARDIAN (0.132.0)
+# =============================================================================
+# The owner, of the healer: "a guardian of light; in search of her mythic
+# weapon ... she only cares to carve a path with her laser".
+
+func _test_the_guardians_story() -> void:
+	section("THE GUARDIAN (0.132.0): the healer's story the first time a character opens the Healer's Run")
+	const HRScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
+	const FieldScript := preload("res://src/world/field.gd")
+	var key: String = FieldScript.story_key() + HRScreen.STORY_KEY
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	if cfg.has_section_key("story", key.replace("/", "|")):
+		cfg.erase_section_key("story", key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var bare: CanvasLayer = HRScreen.open(get_tree(), 3)
+	await get_tree().process_frame
+	check("a suite's bare screen (no HUD) tells no story",
+		not bool(bare.call("story_playing")) and not FieldScript.story_seen(key))
+	bare.call("close")
+	await get_tree().process_frame
+	var stand_hud := Node.new()
+	stand_hud.name = "guardianstoryhud"
+	get_tree().root.add_child(stand_hud)
+	var screen: CanvasLayer = HRScreen.open(get_tree(), 3, 0, {}, stand_hud)
+	await get_tree().process_frame
+	var told: Node = screen.get("story")
+	var run: Node = screen.get("run")
+	check("opened from the card the healer's story plays over the run - five lines, the owner's, in the story screen; the run waits on its tutorial; remembered",
+		told is StoryScreen and told.get_parent() == screen and (told.get("_blocks") as Array) == HRScreen.STORY
+		and HRScreen.STORY.size() == 5 and str(HRScreen.STORY[0]).contains("guardian of light")
+		and str(HRScreen.STORY[1]).contains("not supposed to exist in this dimension")
+		and str(HRScreen.STORY[4]).contains("carve a path with her laser")
+		and (screen.get("tutorial") as Control).visible and run != null and not run.is_processing()
+		and FieldScript.story_seen(key), told)
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	screen.call("_input", esc)
+	await get_tree().process_frame
+	check("  any key skips it - Escape too, which does not leave the run under it; the tutorial waits",
+		not bool(screen.call("story_playing")) and is_instance_valid(screen) and not screen.is_queued_for_deletion()
+		and (screen.get("tutorial") as Control).visible)
+	screen.call("close")
+	await get_tree().process_frame
+	var again: CanvasLayer = HRScreen.open(get_tree(), 3, 0, {}, stand_hud)
+	await get_tree().process_frame
+	check("  once a character: the next open tells it no more", not bool(again.call("story_playing")))
+	again.call("close")
+	stand_hud.queue_free()
+	await get_tree().process_frame
+	print("  the guardian's story")
+
+
+# =============================================================================
+# THE SHOPKEEPER TALKS (0.132.0)
+# =============================================================================
+# The owner: "lets make one for the shop saying 'are you lost? I make a living
+# buying and selling gear; Welcome to Elusionrpg! its rare travelers have
+# money but I make do.'", then "we can make multiple chat bubbles for when a
+# player walks in again".
+
+func _test_the_shopkeeper_talks() -> void:
+	section("THE SHOPKEEPER TALKS (0.132.0): a speech bubble a line at a time; the first meeting's greeting, then the rest in turn")
+	const Bubble := preload("res://src/shared/speechbubble.gd")
+	const Keeper := preload("res://src/world/shopkeeperanim.gd")
+	var greetings: Array = Keeper.GREETINGS
+	var n: int = greetings.size()
+	check("the first meeting is the owner's four lines; then each greeting in turn, round again after the last",
+		(greetings[0] as Array).size() == 4 and str(greetings[0][0]) == "Are you lost?"
+		and str(greetings[0][3]).contains("but I make do")
+		and Keeper.greeting_for(0) == greetings[0] and Keeper.greeting_for(1) == greetings[1]
+		and Keeper.greeting_for(n - 1) == greetings[n - 1] and Keeper.greeting_for(n) == greetings[1], n)
+	# ---- the bubble -----------------------------------------------------------------
+	var holder := Node2D.new()
+	add_child(holder)
+	var said: Array = []
+	var bubble: Node2D = Bubble.say(holder, ["Hello there.", "A second, longer line that has to wrap round onto another row."], Vector2(0, -27))
+	bubble.connect("finished", func() -> void: said.append(true))
+	var words: Label = bubble.get("label")
+	check("a bubble sits on who says it, its tail's tip where it was asked, over the room, typing its first line",
+		bubble.get_parent() == holder and bubble.position == Vector2(0, -27) and bubble.z_index == Bubble.Z
+		and not bubble.z_as_relative and words.text == "Hello there." and words.visible_characters == 0)
+	bubble.call("_process", 0.1)
+	var typing: int = words.visible_characters
+	bubble.call("_process", 5.0)
+	bubble.call("_process", 5.0)
+	var second: String = words.text
+	bubble.call("_process", 5.0)
+	var wrapped: bool = words.get_line_count() >= 2
+	var paper: Rect2 = bubble.call("box")
+	check("  it types, holds, then says the next line; the paper fits a wrapped line's rows",
+		typing > 0 and typing < 12 and second.begins_with("A second") and wrapped
+		and paper.size.y >= (bubble.get("words_size") as Vector2).y * Bubble.SCALE
+		and paper.end.y <= 0.0, [typing, second, paper])
+	bubble.call("_process", 5.0)
+	bubble.call("_process", 1.0)
+	check("  after the last line it fades, says it is finished, and goes",
+		said.size() == 1 and bubble.is_queued_for_deletion())
+	holder.queue_free()
+	# ---- the shopkeeper -------------------------------------------------------------
+	var key: String = Keeper.talk_key()
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	if cfg.has_section_key("talk", key.replace("/", "|")):
+		cfg.erase_section_key("talk", key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var area := Area2D.new()
+	var keeper := AnimatedSprite2D.new()
+	var frames := SpriteFrames.new()
+	frames.add_animation(Keeper.IDLE_ANIM)
+	frames.add_animation(Keeper.WAVE_ANIM)
+	keeper.sprite_frames = frames
+	area.add_child(keeper)
+	keeper.set_script(Keeper)
+	add_child(area)
+	await get_tree().process_frame
+	var visitor := CharacterBody2D.new()
+	visitor.add_to_group("player")
+	keeper.call("_on_body_entered", visitor)
+	var first: Node2D = keeper.get("bubble")
+	check("walking up to him: the first meeting's greeting over his head, counted for the character",
+		first != null and first.get_parent() == keeper and first.position == Keeper.BUBBLE_AT
+		and first.get("lines") == greetings[0] and Bubble.times_said(key) == 1)
+	keeper.call("_on_body_entered", visitor)
+	var same: bool = keeper.get("bubble") == first and Bubble.times_said(key) == 1
+	first.free()
+	keeper.call("greet")
+	var none_soon: bool = keeper.get("bubble") == null or not is_instance_valid(keeper.get("bubble"))
+	keeper.set("_last_greeting", -1000.0)
+	keeper.call("greet")
+	var next: Node2D = keeper.get("bubble")
+	check("  not again while he is talking, nor soon after; the next arrival is the next greeting",
+		same and none_soon and next != null and next.get("lines") == greetings[1] and Bubble.times_said(key) == 2)
+	var rock := Node2D.new()
+	next.free()
+	keeper.set("_last_greeting", -1000.0)
+	keeper.call("_on_body_entered", rock)
+	check("  a monster crossing the shop is not talked to",
+		keeper.get("bubble") == null or not is_instance_valid(keeper.get("bubble")))
+	rock.free()
+	visitor.free()
+	area.queue_free()
+	await get_tree().process_frame
+	print("  the shopkeeper talks")
+
+
 
 # =============================================================================
 # THE DESCENT GOES DEEPER (0.123.0)

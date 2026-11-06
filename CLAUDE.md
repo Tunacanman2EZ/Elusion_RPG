@@ -3966,6 +3966,35 @@ character, remembered with the opening story's `field.gd story_seen()` /
 
 `_test_the_stories_of_the_stand_and_the_forge()` (testrunner_10).
 
+**The guardian, the healer's story (0.132.0).** The owner: "a guardian of
+light; in search of her mythic weapon; the rumor has it that it is not
+supposed to exist in this dimension ... she only cares to carve a path with
+her laser". healerrunscreen.gd `STORY` (five lines), told by `tell_story()`
+from `_ready()` the first time a character opens the Healer's Run (key
+`#guardian`) - only with a HUD (`hud`, which the card always hands it), so a
+suite's bare screen never tells it. While it plays the run waits on its
+tutorial (`start()` asks `story_playing()`), any key or a tap skips it
+(Escape too, not Leave), and `_go()` ends it so no run starts under it. Not
+by class: everyone plays the Healer's Run as the healer, as the Stand and the
+Forge tell theirs to all. The Lore page's chapter XII "The Guardian" (Into
+the Deep and Your Part in It are XIII and XIV). `_test_the_guardians_story()`
+(testrunner_10).
+
+**The shopkeeper talks (the same 0.132.0).** The owner: "the thing im missing
+is background scenes so my alternative is to use chat bubbles", then the
+shopkeeper's lines, and "we can make multiple chat bubbles for when a player
+walks in again". `src/shared/speechbubble.gd` (no class_name; preload it):
+`say(over, lines, at)` puts a bubble on a character, its tail's tip at `at`,
+each line typed out, held, then the next, and the last fades and frees it -
+world pixels at `SCALE` 0.4, `Z` 60 over the room; the paper is sized from
+the label's own rows. `times_said()` / `note_said()` count greetings per
+character in the seen file (section "talk"). shopkeeperanim.gd `greet()`, on
+each arrival with the wave: `GREETINGS[0]` (the owner's four lines) the first
+time a character meets him, then the rest in turn, round again
+(`greeting_for()`); never while one is being said or within
+`REGREET_SECONDS` (45). Any character can talk the same way.
+`_test_the_shopkeeper_talks()` (testrunner_10).
+
 **And a keeper hits at full (the same 0.123.0).** The owner: "fire boss in
 warriors run was doing 0 damage to warrior". Measured on a 180-health warrior
 in the sandbox: on the first floor's half (FLOORS' `"taken"`), on top of

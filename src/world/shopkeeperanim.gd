@@ -42,7 +42,34 @@
 # It reuses the vendor's own Area2D rather than adding a second detector, so the
 # wave begins exactly when the player is close enough to trade — which is what
 # makes "come to my shop" read correctly instead of waving at an empty room.
+#
+# AND HE TALKS (0.132.0). The owner: "lets make one for the shop saying ...",
+# then "we can make multiple chat bubbles for when a player walks in again".
+# Each arrival he says one greeting in a speech bubble (speechbubble.gd) over
+# his head: the first time a character meets him, GREETINGS[0]; after that the
+# rest in turn, round again after the last - counted per character in the
+# seen file (speechbubble.gd times_said(), key TALK_KEY). Not while one is
+# still being said, nor within REGREET_SECONDS of the last, so stepping back
+# and forth at the counter is not a speech each time. Cosmetic, like the
+# wave: it never touches when the shop opens.
 extends AnimatedSprite2D
+
+const Bubble := preload("res://src/shared/speechbubble.gd")
+const TALK_KEY := "#shopkeeper"
+# The tail's tip: just over his head (the sheet is 64 px, drawn 7 px up).
+const BUBBLE_AT := Vector2(0, -27)
+const REGREET_SECONDS := 45.0
+const GREETINGS := [
+	["Are you lost?", "I make a living buying and selling gear.", "Welcome to Elusion RPG!",
+		"It's rare that travelers have money... but I make do."],
+	["Back again?", "Let's see what you've got."],
+	["Find anything good out there?", "Whatever it is, I'll make you an offer."],
+	["Careful past the portal.", "Dead travelers don't buy much."],
+	["Coin comes and goes. Mostly goes.", "But I make do."],
+]
+
+var bubble: Node2D = null
+var _last_greeting: float = -1000.0
 
 
 # Named with a direction suffix per the project's animation convention (the
@@ -89,6 +116,36 @@ func _on_body_entered(body: Node) -> void:
 	if _is_player(body) and sprite_frames != null \
 			and sprite_frames.has_animation(WAVE_ANIM):
 		play(WAVE_ANIM)
+	if _is_player(body):
+		greet()
+
+
+func greet() -> void:
+	"""One greeting in a bubble - the first meeting's, then the rest in turn."""
+	var now: float = Time.get_ticks_msec() / 1000.0
+	if bubble != null and is_instance_valid(bubble):
+		return
+	if now - _last_greeting < REGREET_SECONDS:
+		return
+	_last_greeting = now
+	var key: String = talk_key()
+	var times: int = Bubble.times_said(key)
+	Bubble.note_said(key)
+	bubble = Bubble.say(self, greeting_for(times), BUBBLE_AT)
+
+
+static func greeting_for(times: int) -> Array:
+	"""The first meeting's lines, then the others in turn, round again."""
+	if times <= 0 or GREETINGS.size() < 2:
+		return GREETINGS[0]
+	return GREETINGS[1 + (times - 1) % (GREETINGS.size() - 1)]
+
+
+static func talk_key() -> String:
+	# field.gd's per-character key, loaded when asked: this sprite sits in
+	# the town's scene and should not preload the area script.
+	var field: GDScript = load("res://src/world/field.gd") as GDScript
+	return str(field.call("story_key")) + TALK_KEY
 
 
 func _on_animation_finished() -> void:

@@ -237,6 +237,8 @@ func _run_all() -> void:
 	await _test_the_forge_pays()
 	await _test_the_forge_gear_and_eruption()
 	await _test_the_stories_of_the_stand_and_the_forge()
+	await _test_the_guardians_story()
+	await _test_the_shopkeeper_talks()
 	await _test_one_look_for_the_game()
 	await _test_the_gm_panel_tidied_and_live()
 	await _test_the_hud_bar_says_keys_and_what_is_open()
