@@ -4204,6 +4204,79 @@ game heals its own; in one process the bench does it for the other three).
 `_test_the_descent_together()` (testrunner_10) holds the table for two;
 sabotaged by taking the factor out.
 
+### Cut the Cloth: the old map cut away from the slimes (0.130.0, step 1)
+
+The owner, 5 Nov, of the old Qix/Xonix game he missed: "a simple slice the
+map game", "cut an area smaller and if a enemy touches your line while
+cutting you lose a life", "x amount of map gone is required to win", "no
+characters", "no fruit ninja stuff this game is awesome because its simple
+and a good time sink"; its story his own: "the town's first map maker drew
+the world on enchanted parchment; a long time ago the slime plague was
+stopped by cutting the land out from under it. The seal is failing and
+someone has to cut the cloth." Then "build it". The sixth minigame, the
+owner's alone while it is built (`shows_cloth`), played over the screen
+from town like the Mage's Stand; it pays nothing and asks nothing of the
+server.
+
+- **The run** (`src/world/cloth/clothrun.gd`, no class_name) is a grid of
+  COLS x ROWS (156 x 81) cells of 4 px: OPEN cloth, OWN cut away, LINE the
+  cut in progress, a BORDER of OWN round it. The shot rides the EDGE (OWN
+  cells touching cloth; `_mark_edges()`, `_edges`) at SAFE_SPEED; held, it
+  leaves the edge and burns a LINE at CUT_SPEED; back on OWN the cut closes
+  (`_close()`): the line and every piece of cloth no slime is on (a flood
+  from each slime) are cut away. Let go mid-cut and the shot waits on its
+  line. A slime on the open line, or on the shot while it cuts, costs a
+  life (`lose_life()`: the line back to cloth, the shot back at `cut_from`).
+  A slime that finds itself on cut-away cloth dissolves.
+- **Rounds**: `target_for()` (75%, a point more a round, at most 85%),
+  `slimes_for()` (3, more every couple of rounds, at most 7, cycling the
+  six element slimes), `speed_for()` (5% faster a round, at most 1.6x).
+  LIVES 3 for the run. `best` this run, `best_ever` this session.
+- **The look**, all drawn in code but the slimes and the shot (the owner
+  accepted the code-drawn cloth, "if its code lets do it ... make it look
+  way more current"): linen with a weave, an old map's faded ink and a
+  vignette; the dark under it with specks where it is cut, frayed hems
+  with loose threads and the cloth's shadow; the open cut as the healer's
+  dotted glowing trail ("i meant the trails"); the shot is the healer's
+  own (turretprojectile.gd's pieces, its wisps); a cut piece dissolves cell
+  by cell into green motes. The board is drawn again only when it changes,
+  and a dissolve redraws it in steps (`DISSOLVE_STEP` 0.1 s), not every
+  frame - a redraw is a pass over every cell.
+- **The screen** (`clothscreen.gd`): the run's own World2D in a 640 x 360
+  SubViewport, the character held still behind it, the words drawn in
+  rounded pills (`_draw_hud()`, laid out for 1280 x 720 and scaled): the
+  name, round and best; how much is cut against the round's mark; hearts.
+  A start panel with the story and how to play; at the end how far you got
+  with Again and Leave; Leave or Escape twice while a run is on.
+- **The controls** (the owner: "on pc it should react like the ring around
+  characters it just drags the belluet to the spot you mouse is", and a
+  joystick on a phone): the mouse leads the shot (`aim`; it rides the edge
+  to the edge cell nearest it, and cutting heads for it in a stair of cells)
+  and its left button cuts; the move keys steer (`steer`) and Space cuts - a
+  key takes over until the mouse moves again; on a phone the minigame stick
+  steers and a finger held on SLICE cuts (`_slice_finger`, read in
+  `_input`, so stick and SLICE are two touches). The click or Space that
+  started the run is not a cut (`_wait_release`), and nor is a cut held
+  through a lost life - let go and press again, or the shot, back on the
+  edge, burns straight back in.
+- **The card's tile** (minigamescard.gd `_paint_cloth()`): TESTING, ANY
+  CLASS, Go from town (elsewhere "Play it from town."); its portrait is the
+  healer's shot - `portrait_of()` takes a sprite's first animation when it
+  has no facings.
+- **Next steps, agreed**: edge saws from round 2; elites (the large slimes:
+  hunter, splitter, gnawer); movements by element (water bounces, wind
+  zigzags, earth hops, fire hunts the trail); a boss every 5th round,
+  endless after 10; pickups cut free (Swift, Ward, Slow, Life), no
+  permanent upgrades; themed maps, one elemental effect each; rewards and a
+  daily limit through the server.
+
+`_test_cut_the_cloth()` (testrunner_10): the rounds' numbers, a fresh
+cloth, a cut that closes and takes the slime-free half (sabotaged: with the
+flood ignoring slimes it took 100%), a slime on each side, waiting
+mid-cut, a life lost on the line and on the shot, the run over, the mouse
+riding the edge and cutting toward it, a round cleared and the next, the
+screen's start, keys, mouse, results, Again and Leave, and the card's tile.
+
 ### The Descent bites: piercing, stacks, lasers, a louder floor (0.129.0)
 
 The owner, after the party measure: "i still think its too easy more

@@ -50,6 +50,11 @@
 # travels there (its own area, as the Descent is); inside it, the row's button
 # is Leave, to town, asked twice while the chest holds loot.
 #
+# CUT THE CLOTH (0.130.0, clothrun.gd) is the sixth, the owner's alone while
+# it is built (`shows_cloth`): the old map's slime plague cut away piece by
+# piece, played over the screen from town like the Stand - Go, in town, opens
+# it; it pays nothing, so nothing is asked of the server. Any class.
+#
 # WITH THE PARTY (0.105.0): in a party, with a server that seats the run a
 # room per party (`healer_party`), Go opens the run's start panel without
 # asking (`open_lobby`): the run of the day is asked for when everyone is
@@ -95,6 +100,7 @@ const DESCENT_ENTRANCE := "descent_entrance"
 const FORGE_BLURB := "Hold the anvil while the lava floods the island."
 const FORGE := "forge"
 const FORGE_ENTRANCE := "forge_entrance"
+const CLOTH_BLURB := "Cut the old map away from the slimes, piece by piece."
 # THE TILES (0.119.1): each game's portrait (a scene whose sprite is the
 # picture), its rim, and its tags - [words, colour, what it means].
 const PORTRAITS := {
@@ -103,6 +109,7 @@ const PORTRAITS := {
 	"magestand": ["res://scene/characters/mage.tscn", Color(0.45, 0.65, 1.0)],
 	"descent": ["res://scene/characters/warrior.tscn", Color(0.95, 0.4, 0.35)],
 	"forge": ["res://scene/characters/tank.tscn", Color(1.0, 0.6, 0.25)],
+	"cloth": ["res://scene/projectiles/turretprojectile.tscn", Color(0.86, 0.77, 0.61)],
 }
 const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
 const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
@@ -134,6 +141,9 @@ var shows_descent: Callable = Callable(self, "_shows_descent")
 var class_now: Callable = Callable(CharacterData, "active_class_id")
 # The Forge's: who sees it (the owner, while it is built).
 var shows_forge: Callable = Callable(self, "_shows_forge")
+# Cut the Cloth's: who sees it (the owner, while it is built) and Go.
+var shows_cloth: Callable = Callable(self, "_shows_cloth")
+var open_cloth: Callable = Callable(self, "_open_cloth")
 
 var hud: Node = null
 var title: Label = null
@@ -155,6 +165,9 @@ var descent_go: Button = null
 var forge_box: PanelContainer = null
 var forge_status: Label = null
 var forge_go: Button = null
+var cloth_box: PanelContainer = null
+var cloth_status: Label = null
+var cloth_go: Button = null
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -259,6 +272,12 @@ func _init() -> void:
 	forge_status = forge[3]
 	forge_go = _go_button("forgego", _on_forge_go)
 	(forge[4] as HBoxContainer).add_child(forge_go)
+	var cloth: Array = _tile(column, "cloth", "Cut the Cloth", CLOTH_BLURB,
+		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
+	cloth_box = cloth[0]
+	cloth_status = cloth[3]
+	cloth_go = _go_button("clothgo", _on_cloth_go)
+	(cloth[4] as HBoxContainer).add_child(cloth_go)
 
 
 func _tile(column: Control, id: String, game_title: String, line: String, tags: Array) -> Array:
@@ -347,7 +366,8 @@ static var _portraits: Dictionary = {}
 
 static func portrait_of(scene_path: String) -> Texture2D:
 	"""The first frame of the scene's sprite facing down, cropped to the figure -
-	read off the scene's state, never instanced."""
+	read off the scene's state, never instanced. A sprite with no facings (the
+	healer's shot, Cut the Cloth's) gives its first animation's first frame."""
 	if _portraits.has(scene_path):
 		return _portraits[scene_path]
 	var picture: Texture2D = null
@@ -361,7 +381,10 @@ static func portrait_of(scene_path: String) -> Texture2D:
 				var frames: SpriteFrames = state.get_node_property_value(n, p) as SpriteFrames
 				if frames == null:
 					continue
-				for anim in ["idledown", "walkdown", "attackdown"]:
+				var anims: Array = ["idledown", "walkdown", "attackdown"]
+				if not anims.any(func(a: String) -> bool: return frames.has_animation(a)) and frames.get_animation_names().size() > 0:
+					anims = [str(frames.get_animation_names()[0])]
+				for anim in anims:
 					if frames.has_animation(anim) and frames.get_frame_count(anim) > 0:
 						var image: Image = frames.get_frame_texture(anim, 0).get_image()
 						if image != null and not image.is_empty():
@@ -575,6 +598,7 @@ func paint() -> void:
 	_paint_stand()
 	_paint_descent()
 	_paint_forge()
+	_paint_cloth()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -879,6 +903,32 @@ func _shows_forge() -> bool:
 
 func _shows_mage_stand() -> bool:
 	return bool(Api.is_owner)
+
+
+func _paint_cloth() -> void:
+	cloth_box.visible = bool(shows_cloth.call())
+	var in_town: bool = str(area_now.call()) == TOWN
+	cloth_status.text = "Ready - as many rounds as you last" if in_town else FROM_TOWN
+	cloth_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
+	cloth_go.disabled = not in_town
+	cloth_go.tooltip_text = "Play Cut the Cloth - your character waits in town" if in_town \
+		else "Go back to town first"
+
+
+func _on_cloth_go() -> void:
+	if str(area_now.call()) != TOWN or not bool(shows_cloth.call()):
+		paint()
+		return
+	close()
+	open_cloth.call()
+
+
+func _shows_cloth() -> bool:
+	return bool(Api.is_owner)
+
+
+func _open_cloth() -> void:
+	(load("res://src/world/cloth/clothscreen.gd") as GDScript).call("open", get_tree(), hud)
 
 
 func _open_stand() -> void:

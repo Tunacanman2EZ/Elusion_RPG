@@ -3482,3 +3482,280 @@ func _test_the_descent_bites() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the descent bites: done")
+
+
+func _test_cut_the_cloth() -> void:
+	section("CUT THE CLOTH (0.130.0): cut the old map away from the slimes, a round at a time")
+	const ClothRun := preload("res://src/world/cloth/clothrun.gd")
+	const ClothScreen := preload("res://src/world/cloth/clothscreen.gd")
+	check("the rounds: clear at 75%%, a point more each round, never over 85%% (%s); 3 slimes, more as it goes, never over 7 (%s); a little faster each, never over 1.6x" % [
+		[ClothRun.target_for(1), ClothRun.target_for(2), ClothRun.target_for(11), ClothRun.target_for(30)],
+		[ClothRun.slimes_for(1), ClothRun.slimes_for(3), ClothRun.slimes_for(8), ClothRun.slimes_for(40)]],
+		is_equal_approx(ClothRun.target_for(1), 0.75) and is_equal_approx(ClothRun.target_for(2), 0.76)
+		and is_equal_approx(ClothRun.target_for(11), 0.85) and is_equal_approx(ClothRun.target_for(30), 0.85)
+		and ClothRun.slimes_for(1) == 3 and ClothRun.slimes_for(3) == 4 and ClothRun.slimes_for(8) == 7
+		and ClothRun.slimes_for(40) == 7 and is_equal_approx(ClothRun.speed_for(1), 1.0)
+		and is_equal_approx(ClothRun.speed_for(40), 1.6))
+	var run: Node2D = ClothRun.new()
+	run.set("seed_value", 7)
+	add_child(run)
+	run.set_physics_process(false)
+	var cols: int = ClothRun.COLS
+	var rows: int = ClothRun.ROWS
+	var border_own: bool = true
+	var inside_open: bool = true
+	for y in rows:
+		for x in cols:
+			var s: int = run.grid[y * cols + x]
+			var rim: bool = x < ClothRun.BORDER or y < ClothRun.BORDER or x >= cols - ClothRun.BORDER or y >= rows - ClothRun.BORDER
+			border_own = border_own and (not rim or s == ClothRun.OWN)
+			inside_open = inside_open and (rim or s == ClothRun.OPEN)
+	check("a fresh cloth: its border cut away, the rest whole, nothing taken, the shot on the edge, 3 slimes, 3 lives",
+		border_own and inside_open and run.taken == 0.0 and run.is_edge(run.cutter) and run.slimes_left() == 3
+		and run.lives == 3 and run.state == ClothRun.State.PLAYING, [run.cutter, run.slimes_left()])
+	var told: Dictionary = {"hurt": 0, "cleared": [], "over": []}
+	run.hurt.connect(func() -> void: told["hurt"] = int(told["hurt"]) + 1)
+	run.round_cleared.connect(func(w: int) -> void: (told["cleared"] as Array).append(w))
+	run.run_over.connect(func(w: int) -> void: (told["over"] as Array).append(w))
+	# ---- a cut up the middle, every slime on the right: the left is cut away ----
+	var mid: int = 78
+	for f in run.foes:
+		f["p"] = run.px(Vector2i(120, 20 + run.foes.find(f) * 15))
+		f["v"] = Vector2.ZERO
+	run.cutter = Vector2i(mid, rows - 1 - ClothRun.BORDER + 1)
+	run.cutter_px = run.px(run.cutter)
+	run.aim = null
+	run.steer = Vector2.UP
+	run.cut_held = true
+	var t0: int = Time.get_ticks_usec()
+	var steps: int = 0
+	var was_cutting: bool = false
+	while steps < 400:
+		steps += 1
+		run.call("_move_shot", 0.05)
+		was_cutting = was_cutting or run.cutting
+		if was_cutting and not run.cutting:
+			break
+	var close_ms: float = float(Time.get_ticks_usec() - t0) / 1000.0
+	var left_gone: bool = true
+	var right_whole: bool = true
+	for y in range(ClothRun.BORDER, rows - ClothRun.BORDER):
+		for x in range(ClothRun.BORDER, cols - ClothRun.BORDER):
+			var s: int = run.grid[y * cols + x]
+			if x <= mid:
+				left_gone = left_gone and s == ClothRun.OWN
+			else:
+				right_whole = right_whole and s == ClothRun.OPEN
+	var share: float = float((mid - 1) * (rows - 4)) / float((cols - 4) * (rows - 4))
+	check("held cut, the shot burns a line up through the cloth; back on the edge it closes, and the half with no slime on it is cut away (%d%% taken, the line and the close in %.1f ms)" % [
+		roundi(run.taken * 100.0), close_ms],
+		was_cutting and not run.cutting and run.line.is_empty() and left_gone and right_whole
+		and absf(run.taken - share) < 0.01 and run.is_edge(run.cutter) and run.slimes_left() == 3 and run.dissolving.size() > 0,
+		[run.taken, share, run.cutter])
+	# ---- a slime on each side: only the line goes ----
+	run.begin(1)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["v"] = Vector2.ZERO
+	run.foes[0]["p"] = run.px(Vector2i(20, 40))
+	run.foes[1]["p"] = run.px(Vector2i(130, 40))
+	run.foes[2]["p"] = run.px(Vector2i(140, 60))
+	run.cutter = Vector2i(mid, rows - 2)
+	run.cutter_px = run.px(run.cutter)
+	steps = 0
+	was_cutting = false
+	while steps < 400:
+		steps += 1
+		run.call("_move_shot", 0.05)
+		was_cutting = was_cutting or run.cutting
+		if was_cutting and not run.cutting:
+			break
+	var line_share: float = float(rows - 4) / float((cols - 4) * (rows - 4))
+	check("  a slime on each side: nothing but the line itself is cut away (%.1f%%)" % (run.taken * 100.0),
+		was_cutting and absf(run.taken - line_share) < 0.002, [run.taken, line_share])
+	# ---- let go mid-cut: the shot waits on its line ----
+	run.begin(1)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["v"] = Vector2.ZERO
+		f["p"] = run.px(Vector2i(130, 20))
+	run.cutter = Vector2i(40, rows - 2)
+	run.cutter_px = run.px(run.cutter)
+	for k in 12:
+		run.call("_move_shot", 0.05)
+	var cut_so_far: int = run.line.size()
+	var stood: Vector2i = run.cutter
+	run.cut_held = false
+	for k in 12:
+		run.call("_move_shot", 0.05)
+	check("  let go mid-cut and the shot waits on its line (%d cells cut)" % cut_so_far,
+		cut_so_far >= 6 and run.cutting and run.cutter == stood and run.line.size() == cut_so_far)
+	# ---- a slime on the open line costs a life ----
+	var from: Vector2i = run.cut_from
+	run.foes[0]["p"] = run.px(run.line[2])
+	run.call("_move_slimes", 0.0)
+	var reverted: bool = true
+	for y in rows:
+		for x in cols:
+			reverted = reverted and run.grid[y * cols + x] != ClothRun.LINE
+	check("a slime touching the open cut costs a life: the line is gone (back to cloth), the shot back where it began, and the screen is told",
+		run.lives == 2 and int(told["hurt"]) == 1 and not run.cutting and run.line.is_empty() and reverted
+		and run.cutter == from and run.state == ClothRun.State.PLAYING, [run.lives, told["hurt"]])
+	# ---- a slime touching the shot while it cuts, too; none left is the end ----
+	for k in 2:
+		run.cut_held = true
+		run.steer = Vector2.UP
+		run.foes[0]["p"] = run.px(Vector2i(130, 20))
+		for n in 4:
+			run.call("_move_shot", 0.05)
+		run.foes[0]["p"] = run.cutter_px
+		run.call("_move_slimes", 0.0)
+	check("  a slime on the shot while it cuts costs one too; the last life lost ends the run on its round (%s)" % [told["over"]],
+		run.lives == 0 and run.state == ClothRun.State.OVER and told["over"] == [1] and int(told["hurt"]) == 3)
+	# ---- the mouse: the shot rides the edge to the edge cell nearest it ----
+	run.begin(1)
+	run.set_physics_process(false)
+	run.cut_held = false
+	run.steer = Vector2.ZERO
+	run.aim = ClothRun.ORIGIN + Vector2(4.5, 40.5) * ClothRun.CELL
+	for k in 60:
+		run.call("_move_shot", 0.05)
+	var lined: bool = false
+	for i in run.grid.size():
+		lined = lined or run.grid[i] == ClothRun.LINE
+	check("with the mouse and no cut held the shot rides the edge to the edge cell nearest it, cutting nothing (at %s)" % [run.cutter],
+		run.cutter == Vector2i(1, 40) and not lined and not run.cutting)
+	# the button held: it heads into the cloth for the mouse
+	run.aim = ClothRun.ORIGIN + Vector2(30.5, 40.5) * ClothRun.CELL
+	run.cut_held = true
+	for k in 20:
+		run.call("_move_shot", 0.05)
+	check("  the button held, it cuts into the cloth toward the mouse (%d cells, at %s)" % [run.line.size(), run.cutter],
+		run.cutting and run.line.size() >= 8 and run.cutter.y == 40 and run.cutter.x > 2)
+	# ---- a round cleared: the next has its own cloth and slimes ----
+	run.begin(1)
+	run.set_physics_process(false)
+	for f in run.foes:
+		f["v"] = Vector2.ZERO
+		f["p"] = run.px(Vector2i(10, 30))
+	for y in range(ClothRun.BORDER, rows - ClothRun.BORDER):
+		run.grid[y * cols + 30] = ClothRun.OWN
+	run.line = []
+	run.cutting = false
+	run.call("_close")
+	var cleared_at: float = run.taken
+	var at_cleared: int = run.state
+	run.call("_physics_process", ClothRun.CLEARED_SECONDS + 0.1)
+	check("cut past the mark (%d%%) the round is cleared and said; after a moment round 2 begins on a fresh cloth, faster, and the best is kept" % roundi(cleared_at * 100.0),
+		at_cleared == ClothRun.State.CLEARED and told["cleared"] == [1] and run.round_now == 2
+		and run.state == ClothRun.State.PLAYING and run.taken == 0.0 and run.slimes_left() == ClothRun.slimes_for(2)
+		and run.best == 1 and ClothRun.best_ever >= 1
+		and is_equal_approx((run.foes[0]["v"] as Vector2).length(), ClothRun.FOE_SPEED * ClothRun.speed_for(2)))
+	# a slime on cut-away cloth dissolves
+	run.foes[0]["p"] = run.px(Vector2i(0, 0))
+	run.call("_move_slimes", 0.0)
+	check("  a slime that finds itself on cut-away cloth dissolves", run.slimes_left() == ClothRun.slimes_for(2) - 1)
+	run.queue_free()
+	await get_tree().process_frame
+	# ---- the screen ----
+	var screen: CanvasLayer = ClothScreen.open(get_tree())
+	await get_tree().process_frame
+	var srun: Node2D = screen.get("run")
+	var drawn: Rect2 = screen.call("drawn_rect")
+	var middle: Vector2 = screen.call("world_from_screen", drawn.get_center())
+	check("the screen opens on its start panel, the run still behind it; a point on the picture is that point on the board (%s)" % [middle.round()],
+		(screen.get("start_panel") as Control).visible and not srun.is_physics_processing()
+		and middle.distance_to(ClothRun.VIEW / 2.0) < 1.0 and screen.layer == ClothScreen.LAYER)
+	var way: Array = [Vector2.ZERO]
+	var space: Array = [false]
+	var held: Array = [false]
+	var at: Array = [drawn.get_center()]
+	screen.set("keys_way", func() -> Vector2: return way[0])
+	screen.set("space_held", func() -> bool: return space[0])
+	screen.set("mouse_held", func() -> bool: return held[0])
+	screen.set("mouse_at", func() -> Vector2: return at[0])
+	space[0] = true
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	key.pressed = true
+	screen.call("_input", key)
+	await get_tree().process_frame
+	var started: bool = not (screen.get("start_panel") as Control).visible and srun.is_physics_processing()
+	var no_cut_yet: bool = not bool(srun.cut_held)
+	space[0] = false
+	await get_tree().process_frame
+	space[0] = true
+	way[0] = Vector2.UP
+	await get_tree().process_frame
+	check("Space starts it - and the Space that started it is not a cut; pressed again it cuts, the keys steering",
+		started and no_cut_yet and bool(srun.cut_held) and srun.steer == Vector2.UP and srun.aim == null)
+	space[0] = false
+	way[0] = Vector2.ZERO
+	var moved := InputEventMouseMotion.new()
+	moved.relative = Vector2(12, 0)
+	screen.call("_input", moved)
+	held[0] = true
+	at[0] = drawn.position + drawn.size * Vector2(0.25, 0.5)
+	await get_tree().process_frame
+	var aimed: Variant = srun.aim
+	check("  the mouse moved, it takes over: the shot follows it, its button cuts",
+		aimed != null and (aimed as Vector2).distance_to(ClothRun.VIEW * Vector2(0.25, 0.5)) < 1.0 and bool(srun.cut_held))
+	srun.call("lose_life")
+	await get_tree().process_frame
+	var held_through: bool = bool(srun.cut_held)
+	held[0] = false
+	await get_tree().process_frame
+	held[0] = true
+	await get_tree().process_frame
+	check("  a life lost, the button held through it does not cut again until it is let go and pressed",
+		not held_through and bool(srun.cut_held))
+	held[0] = false
+	srun.call("lose_life")
+	srun.call("lose_life")
+	await get_tree().process_frame
+	var results: Control = screen.get("results")
+	check("the last life lost: how far you got (\"%s\"), with Again and Leave" % (screen.get("result_line") as Label).text,
+		results.visible and (screen.get("result_line") as Label).text.contains("round 1")
+		and results.find_child("again", true, false) != null and results.find_child("out", true, false) != null)
+	screen.call("again")
+	await get_tree().process_frame
+	screen.call("begin")
+	await get_tree().process_frame
+	screen.call("ask_to_leave")
+	await get_tree().process_frame
+	var still: bool = is_instance_valid(screen) and screen.is_inside_tree()
+	screen.call("ask_to_leave")
+	await get_tree().process_frame
+	check("  Again starts a fresh run; Leave asks twice while it is on, then it is gone",
+		still and not is_instance_valid(screen))
+	# ---- the card ----
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	for seam in ["shows_healer_run", "shows_mage_stand", "shows_descent", "shows_forge", "shows_cloth"]:
+		card.set(seam, func() -> bool: return true)
+	var area: Array = ["elusion"]
+	var opened: Array = [0]
+	card.set("area_now", func() -> String: return area[0])
+	card.set("class_now", func() -> String: return "healer")
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": false})
+	card.set("open_cloth", func() -> void: opened[0] = int(opened[0]) + 1)
+	card.call("open")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var portraits: Array = card.cloth_box.find_children("*", "TextureRect", true, false)
+	var town_ready: bool = card.cloth_box.visible and not card.cloth_go.disabled and portraits.size() == 1 \
+		and (portraits[0] as TextureRect).texture != null
+	var tall: float = card.size.y
+	card.call("_on_cloth_go")
+	var went: bool = opened[0] == 1 and not card.visible
+	area[0] = "field"
+	card.call("paint")
+	check("the Minigames card has its tile (the owner's while it is built), the healer's shot its portrait: Go in town opens it; elsewhere \"%s\"; all six tiles %d px tall" % [card.cloth_status.text, roundi(tall)],
+		town_ready and went and card.cloth_go.disabled and card.cloth_status.text == "Play it from town." and tall < 560.0)
+	card.set("shows_cloth", func() -> bool: return false)
+	card.call("paint")
+	check("  and it is nobody else's yet", not card.cloth_box.visible)
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  cut the cloth: done")
