@@ -7292,6 +7292,94 @@ and 3 (the ending, tuning) are still to come.
 checks hold the room's ladder, arrival and teleporter. Pictured and filmed in
 the commit folder (crowned_room_0134.png, crowned_0134.mp4).
 
+### The spikes read the player late (0.134.1)
+
+The owner, fighting the remade Crowned: "those spikes from the ground are
+deadly accurate and they predict the player well i think we need to improve
+the logic on that first". `_lead_pattern()` slid every spike by this tick's
+velocity x its telegraph x `AIM_LEAD` (0.9), so a turn was known the instant
+it was made. Now (bossenemy.gd, all seven bosses):
+- **A reaction**: `_player_velocity()` is `seen_velocity()` - the heading the
+  boss has seen, eased toward the real one over `AIM_REACTION` (0.4 s) by
+  `watch_runners()` each physics tick for everybody in `fight_targets()`
+  (`_seen_heading`, by instance id; not on a `net_mirror`). A tenth of a
+  second after a turn it still reads the old way; about a second on it has
+  caught up. The ladder's lead (`LADDER_LEAD`) reads it too.
+- **Less lead**: `AIM_LEAD` 0.75 - a straight runner is still caught, a
+  little behind centre.
+- **A little doubt**: a moving player's whole pattern lands up to
+  `AIM_SCATTER` (16 px) off the guess, the shape kept.
+- A player who has stood still a moment gets no lead and no doubt; one who
+  has just stopped is still read as running (stopping short dodges too).
+`_test_spikes_read_the_player_late()` (testrunner_10). The three numbers are
+the ones to tune by playing.
+
+### The lasers bend, and each land fires its own (the same 0.134.1)
+
+The owner, of the lands' crossing lasers (descentlands.gd, the Descent and
+the Crowned): "the x lasers are cool but i need them to bend and carry
+effects with them", choosing "curve and whip"; then, of a sheet of designs
+(beam_designs.png in the commit folder), "amazing". The header's THEY BEND
+AND CARRY THEIR LAND has it all:
+- **An arc** (`beam_points()`, every `LASER_STEP`): through its spot, its
+  ends up to `LASER_BEND` (0.25) of its half-length off its straight line
+  (`beam_curve()`), swaying side to side every `LASER_WHIP_SECONDS` (2.2);
+  an X's two sway opposite ways (`ph` + PI). It hits where it is drawn
+  (`closest_on_beam()`); `beam_ends()` are where the arc meets the walls,
+  `chord_ends()` the straight line's.
+- **Its land rides along it while it warns** (`motes()`, `_draw_mote()`).
+- **Each land's own beam when it fires** (`_draw_design()`, code-drawn):
+  forked lightning (redrawn every `LIGHTNING_FLICKER`), a braided flame, a
+  cracked crystal, a rolling wave, gale threads, a fault line throwing up
+  rocks, a void tendril with eyes.
+- **It leaves its land where it burned** (`_leave_trail()`, `TRAIL_FOR`,
+  `trail_patch()`), within `LASER_TRAIL_REACH` (150) of its spot as it fades:
+  scorch (burns while stood in), ice, puddle, flare, rubble (roots once),
+  shade (withers once); wind blows what floats along it (`_blow_along()`)
+  and its hit carries you along it. Each grows in over `LASER_TRAIL_WARN`.
+  A scorch reacts as a spark does (steam over a puddle, gas explodes).
+- **An X flashes in both lands** where it crosses (`_cross_flash()`).
+`_test_the_lasers_bend()` (testrunner_10). Tracers (bright streaks along a
+faint line) were the other idea; the owner keeps them for a brick breaker
+minigame.
+
+### The Crowned, remade: step 2 - the rift, the lying room, phases 2 to 4 (the same 0.134.1)
+
+The owner, of the plan (step 2 of CROWNED_PLAN.txt): "sounds good". Below
+CROWNS_UNTIL (0.75) crownedfight.gd steps `crownedphases.gd` with the boss's
+share of health; each game runs its own, for its own player, as the floor's
+hazards are - nothing new on the wire. Its header has the numbers.
+- **The rift** (`crownedrift.gd`): in a CanvasLayer at layer -1 following
+  the camera, so it shows wherever the room draws nothing - past the walls,
+  and through the floor where the Tear opens it - out of the room's
+  CanvasModulate. A void with clouds in the lands' colours, stars, pulsing
+  tears, and four GLIMPSES fading in and out: the volcano (the town's lava
+  tile, the Forge's falls), the forge (underground floor lit orange, lava at
+  its foot), the crypt (underground floor in violet) - his tiles, clipped to
+  ellipses with `clip_children`.
+- **2, the Sealing (to 50%)**: the boss in fire; meteors where you stand
+  (descentlands.gd "meteor": METEOR_WARN circle, a fireball, METEOR_TIMES as
+  fire with a burn, a scorch left); the lava creeps in ring by ring
+  (`lava_depth_at()`: a ring every LAVA_RISE to LAVA_MOST 5, held, back, a
+  rest) - the room's floor cells taken (`_take()`, kept in `_taken`) over a
+  lava TileMapLayer, its front glowing a second before it comes; lava burns.
+- **3, the Trap (to 25%)**: the Endless's swarm in the room (HORDE_CROWD 300,
+  HORDE_PHONE 150 on a phone, recoloured to a new land every few seconds),
+  and an X of lasers every TRAP_LASER_GAP (descentlands.gd `cross_lasers()`).
+  Each game has its own horde.
+- **4, the Tear**: TEAR_COUNT pieces (64 px) crack every TEAR_GAP - one under
+  you - and fall into the rift for TEAR_OPEN; fall through and you are hurt
+  (TEAR_TIMES, dark) and climb out on the nearest solid floor
+  (`_climb_out()`). The boss flickers to another land every FLICKER_SECONDS.
+- **The lying room (2 to 4)**: descentlands.gd `false_share` (LIE_SHARE) of
+  hail, rock, flare and meteor are illusions - their circle shimmers, they
+  hit nobody and start no reaction; and every few seconds the walls shimmer
+  and fade or the floor washes in the wrong land (`flash_wash()`).
+- **The end**: `end()` puts the room back - the floor whole, no lava, tears,
+  horde or illusions.
+`_test_the_crowned_falls_apart()` (testrunner_10). Step 3 (the ending, the
+portal line, tuning) is next.
+
 ### The Crowned Beholder, by name (0.11.6)
 
 The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The

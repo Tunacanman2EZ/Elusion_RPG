@@ -20,8 +20,9 @@
 #     node is their host: room_rect, _player(), _edge_spot()): the crown's
 #     own, and the last crown's lingering, so two lands overlap and react;
 #   - a banner says it ("The Crown of Fire").
-# Below CROWNS_UNTIL the old Crowned fights on (its own dark kit) - phases 2
-# to 4 are the plan's step 2.
+# Below CROWNS_UNTIL its last three phases (0.134.1, crownedphases.gd): the
+# Sealing, the Trap and the Tear, in a room that lies. Past the walls, the
+# rift (crownedrift.gd), which the Tear opens the floor onto.
 #
 # ILLUSIONS: from DECOY_FIRST, every DECOY_EVERY seconds, DECOY_COUNT decoy
 # eyes (crowneddecoy.gd) stand round the boss for DECOY_SECONDS, wearing its
@@ -36,6 +37,8 @@ extends Node2D
 
 const LandsScript := preload("res://src/world/descent/descentlands.gd")
 const DecoyScript := preload("res://src/world/crowned/crowneddecoy.gd")
+const RiftScript := preload("res://src/world/crowned/crownedrift.gd")
+const PhasesScript := preload("res://src/world/crowned/crownedphases.gd")
 
 const CROWN_ORDER := [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
 	Element.Type.EARTH, Element.Type.FIRE, Element.Type.DARK]
@@ -77,6 +80,8 @@ var won: bool = false
 # The suite's player.
 var player_override: Node2D = null
 var lands: Node2D = null
+var phases: Node2D = null
+var rift: Node2D = null
 var _wash: ColorRect = null
 var _wash_want: Color = Color(0, 0, 0, 0)
 var _lights: Array = []
@@ -97,6 +102,15 @@ func _ready() -> void:
 	lands.z_index = -1
 	lands.set("run", self)
 	add_child(lands)
+	phases = PhasesScript.new()
+	phases.name = "crownphases"
+	phases.z_index = -1
+	phases.set("fight", self)
+	phases.set("lands", lands)
+	phases.set("room", room_rect)
+	phases.set("ground", get_parent().get_node_or_null("ground") if get_parent() != null else null)
+	add_child(phases)
+	_make_rift()
 
 
 # =============================================================================
@@ -118,8 +132,10 @@ func _process(delta: float) -> void:
 			var want: int = crown_at(fight_clock)
 			if want != crown:
 				set_crown(want)
-		elif crown >= 0:
-			leave_crowns()
+		else:
+			if crown >= 0:
+				leave_crowns()
+			phases.call("step", delta, share_left())
 		lands.call("step", delta)
 		_step_decoys(delta)
 	_ease(delta)
@@ -178,6 +194,7 @@ func finish(fell: bool) -> void:
 		boss.set("crown_land", -1)
 		_tint_boss(-1)
 	lands.call("end")
+	phases.call("end")
 	lands.call("set_weathers", [], room_rect)
 	_wash_want = Color(0, 0, 0, 0)
 	for k in _light_want.size():
@@ -224,6 +241,35 @@ func leave_crowns() -> void:
 	for k in _light_want.size():
 		_light_want[k] = LIGHT_DIM
 	say("The Crowned sheds its crowns")
+
+
+func mood(land: int) -> void:
+	"""The floor washed in `land`'s colour and its weather falling."""
+	lands.call("set_weathers", [land], room_rect)
+	var colour: Color = Element.colour_for(land)
+	_wash_want = Color(colour.r, colour.g, colour.b, WASH)
+
+
+func flash_wash(land: int) -> void:
+	"""The room lies: the floor washes in `land`'s colour a moment, then eases
+	back (_ease())."""
+	if _wash == null:
+		return
+	var colour: Color = Element.colour_for(land)
+	_wash.color = Color(colour.r, colour.g, colour.b, WASH * 1.8)
+
+
+func _make_rift() -> void:
+	"""The rift past the walls, behind the whole world (crownedrift.gd)."""
+	var layer := CanvasLayer.new()
+	layer.name = "riftlayer"
+	layer.layer = -1
+	layer.follow_viewport_enabled = true
+	rift = RiftScript.new()
+	rift.name = "rift"
+	rift.set("room", room_rect if room_rect.size != Vector2.ZERO else Rect2(0, 0, 1024, 768))
+	layer.add_child(rift)
+	add_child(layer)
 
 
 func _tint_boss(land: int) -> void:

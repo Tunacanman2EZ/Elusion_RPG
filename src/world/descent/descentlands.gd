@@ -126,6 +126,67 @@ const LASER_CHANCE_STEP := 0.08
 const LASER_SPIN_FROM := 3
 const LASER_SPIN := 0.55
 const LASER_TWO_FROM := 4
+# THEY BEND AND CARRY THEIR LAND (0.134.1) - the owner, of the crossing
+# lasers: "the x lasers are cool but i need them to bend and carry effects
+# with them", choosing "curve and whip":
+#   - A BEAM IS AN ARC (beam_points()): through its spot, leaving it along
+#     its angle, bent so its ends lie up to LASER_BEND of its half-length off
+#     its straight line (a long beam bends as far as a short one, for its
+#     size, and never curls) - and the bend sways from one side to the other
+#     and back every LASER_WHIP_SECONDS, while it warns and while it burns.
+#     The two of an X sway opposite ways. It meets the room's walls at both
+#     ends.
+#   - ITS LAND RIDES ALONG IT (motes()): while it warns, LASER_MOTES embers,
+#     frost, drops, gusts, sparks, grit or shadow run out along it from its
+#     spot, so you see which land is coming.
+#   - EACH LAND FIRES ITS OWN BEAM (_draw_design(); the owner chose these
+#     from a sheet of ideas, "amazing"): light forked lightning that crackles
+#     (redrawn every LIGHTNING_FLICKER), fire a braided flame with licks,
+#     ice a cracked crystal with shards, water a rolling wave with foam and
+#     bubbles, wind gale threads with curls and leaves, earth a fault line
+#     throwing up rocks, dark a void tendril that writhes, with eyes. All drawn
+#     in code along the same bent line; what it hits is the same.
+#   - AND IT LEAVES ITS LAND WHERE IT BURNED (_leave_trail()): as it fades,
+#     along its last shape within LASER_TRAIL_REACH of its spot, every
+#     LASER_TRAIL_STEP (light every other one) - fire a SCORCH (burns while
+#     you stand in it), ice ICE, water a PUDDLE, light a FLARE that flashes,
+#     earth RUBBLE (roots, once), dark a SHADE (withers, once). Each grows in
+#     over LASER_TRAIL_WARN, so you can step off. Wind leaves nothing: it
+#     blows what floats near it along the beam, and its hit carries you along
+#     it. They react as the rest do: a scorch is put out by a puddle (steam),
+#     explodes gas, melts hail; a flare runs through puddles.
+#   - WHERE AN X CROSSES (its spot) the two flash in both lands' colours as
+#     they fire, and their trails meet there - fire over water is steam.
+const LASER_BEND := 0.25
+const LASER_WHIP_SECONDS := 2.2
+const LASER_STEP := 12.0
+const LASER_MOTES := 16
+const LASER_MOTE_SPEED := 0.35
+const LASER_MOTE_SWAY := 13.0
+const LIGHTNING_FLICKER := 0.07
+# METEORS (0.134.1, the Crowned's second phase, crownedphases.gd): a fireball
+# where a player stands, a warning circle first (METEOR_WARN), METEOR_TIMES
+# of a hazard as fire with a burn, and a scorch left where it struck.
+const METEOR_WARN := 1.3
+const METEOR_R := 38.0
+const METEOR_TIMES := 1.6
+# FALSE WARNINGS (0.134.1, the Crowned's lying room): with false_share above
+# 0, that share of what warns before it falls (FAKEABLE) is an illusion - its
+# circle shimmers, it hits nobody, starts no reaction, and breaks into violet
+# light where it lands. The tell is the shimmer.
+const FAKEABLE := ["hail", "rock", "flare", "meteor"]
+const LASER_TRAIL_REACH := 150.0
+const LASER_TRAIL_STEP := 50.0
+const LASER_TRAIL_R := 15.0
+const LASER_TRAIL_WARN := 0.4
+# The last of a beam's burn this long before it is gone is when it leaves its land.
+const LASER_TRAIL_BEFORE := 0.2
+const SCORCH_LIFE := 3.0
+const RUBBLE_LIFE := 4.0
+const SHADE_LIFE := 3.5
+# What each land's laser leaves where it burned ("" - nothing: wind blows).
+const TRAIL_FOR := {Element.Type.FIRE: "scorch", Element.Type.ICE: "ice", Element.Type.WATER: "puddle",
+	Element.Type.WIND: "", Element.Type.LIGHT: "flare", Element.Type.EARTH: "rubble", Element.Type.DARK: "shade"}
 # Each land's effect, for a laser.
 const EFFECT_FOR := {Element.Type.FIRE: &"burn", Element.Type.ICE: &"chill", Element.Type.WATER: &"soaked",
 	Element.Type.WIND: &"shove", Element.Type.LIGHT: &"dazzle", Element.Type.EARTH: &"root", Element.Type.DARK: &"wither"}
@@ -164,6 +225,8 @@ var env_hits: int = 0
 var _env_left: float = -1.0
 var _touch_left: float = 0.0
 var _air: Node2D = null
+# What share of FAKEABLE hazards are illusions (0: none - the Descent).
+var false_share: float = 0.0
 # What a hazard made this step (a puddle, a blast), joined after it.
 var _born: Array = []
 var reactions: Dictionary = {}
@@ -524,9 +587,7 @@ func _step_env(delta: float) -> void:
 			if randf() < laser_chance(env_floor):
 				var beam: Dictionary = spawn_env("laser", me)
 				if env_floor >= LASER_TWO_FROM:
-					var cross: Dictionary = spawn_env("laser", me)
-					cross["a"] = float(beam["a"]) + PI / 2.0
-					cross["p"] = beam["p"]
+					_cross(beam, spawn_env("laser", me))
 	var still: Array = []
 	_born = []
 	for hz in hazards:
@@ -539,6 +600,24 @@ func _step_env(delta: float) -> void:
 	queue_redraw()
 	if _air != null and is_instance_valid(_air):
 		_air.queue_redraw()
+
+
+func _cross(beam: Dictionary, cross: Dictionary) -> void:
+	"""Make `cross` the other half of `beam`'s X."""
+	cross["a"] = float(beam["a"]) + PI / 2.0
+	cross["p"] = beam["p"]
+	cross["ph"] = float(beam["ph"]) + PI
+	cross["x_with"] = int(beam["e"])
+
+
+func cross_lasers(me: Node2D, land: int, other_land: int) -> Array:
+	"""An X of lasers near this game's player, of `land` and `other_land`."""
+	var beam: Dictionary = spawn_env("laser", me)
+	beam["e"] = land
+	var cross: Dictionary = spawn_env("laser", me)
+	cross["e"] = other_land
+	_cross(beam, cross)
+	return [beam, cross]
 
 
 func spawn_env(kind: String, me: Node2D) -> Dictionary:
@@ -576,6 +655,11 @@ func spawn_env(kind: String, me: Node2D) -> Dictionary:
 			hz["w"] = 1.1
 			hz["life"] = 1.4
 			hz["r"] = 28.0
+		"meteor":
+			hz["p"] = _near(at, 24.0, rect)
+			hz["w"] = METEOR_WARN
+			hz["life"] = METEOR_WARN + 0.35
+			hz["r"] = METEOR_R
 		"gust":
 			hz["p"] = Vector2(rect.get_center().x, clampf(at.y + randf_range(-30.0, 30.0), rect.position.y + 20.0, rect.end.y - 20.0))
 			hz["dir"] = 1.0 if randf() < 0.5 else -1.0
@@ -597,6 +681,11 @@ func spawn_env(kind: String, me: Node2D) -> Dictionary:
 			hz["w"] = LASER_WARN
 			hz["life"] = LASER_WARN + (LASER_FIRE_SPIN if env_floor >= LASER_SPIN_FROM else LASER_FIRE)
 			hz["r"] = LASER_HALF
+			hz["bend"] = LASER_BEND
+			hz["ph"] = randf() * TAU
+			hz["seed"] = randi()
+	if kind in FAKEABLE and false_share > 0.0 and randf() < false_share:
+		hz["fake"] = true
 	hazards.append(hz)
 	env_made += 1
 	return hz
@@ -643,13 +732,24 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				if _touches(me, p, float(hz["r"])):
 					_env_hit(me, 1.0, Element.Type.DARK, StatusEffects.WITHER, p)
 					hz["done"] = true
-		"hail", "rock", "flare":
+		"hail", "rock", "flare", "meteor":
 			if t >= float(hz["w"]) and not bool(hz.get("landed", false)):
 				hz["landed"] = true
-				hz["just"] = true
 				var p: Vector2 = hz["p"]
+				if bool(hz.get("fake", false)):
+					# An illusion: it breaks where it lands, and that is all.
+					reactions["illusion"] = int(reactions.get("illusion", 0)) + 1
+					return true
+				hz["just"] = true
+				if kind == "meteor":
+					var scorch: Dictionary = trail_patch("scorch", p)
+					scorch["r"] = METEOR_R * 0.6
+					scorch["w"] = 0.0
+					_born.append(scorch)
 				if me != null and _touches(me, p, float(hz["r"])):
 					match kind:
+						"meteor":
+							_env_hit(me, METEOR_TIMES, Element.Type.FIRE, StatusEffects.BURN, p)
 						"hail":
 							_env_hit(me, 1.0, Element.Type.ICE, StatusEffects.CHILL, p)
 						"rock":
@@ -683,25 +783,252 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				else:
 					_env_hit(me, 0.5, Element.Type.ICE, StatusEffects.CHILL, hz["p"])
 		"laser":
+			var e: int = int(hz["e"])
+			if t >= float(hz["w"]):
+				hz["a"] = float(hz["a"]) + float(hz["spin"]) * delta
+			hz["pts"] = beam_points(hz)
 			if t >= float(hz["w"]):
 				if not bool(hz.get("fired", false)):
 					hz["fired"] = true
 					hz["just"] = true
-				hz["a"] = float(hz["a"]) + float(hz["spin"]) * delta
+					if hz.has("x_with"):
+						_cross_flash(hz)
+					if e == Element.Type.WIND:
+						_blow_along(hz)
 				# One beam, one hit: a turning beam across a player stood still
 				# hit twice in its 1.3 s (the bench, zz/descparty4.gd).
 				if me != null and not bool(hz.get("landed", false)):
-					var ends: Array = beam_ends(hz)
-					var near: Vector2 = Geometry2D.get_closest_point_to_segment(me.global_position, ends[0], ends[1])
+					var near: Vector2 = closest_on_beam(hz, me.global_position)
 					if me.global_position.distance_to(near) <= LASER_HALF + TOUCH_SLACK and _touch_left <= 0.0:
 						hz["landed"] = true
-						var e: int = int(hz["e"])
-						_env_hit(me, LASER_HIT, e, EFFECT_FOR.get(e, StatusEffects.DAZZLE), near)
+						# Wind's carries you ALONG the beam, not off it.
+						var from: Vector2 = near
+						if e == Element.Type.WIND:
+							from = me.global_position - beam_heading(hz, near) * 30.0
+						_env_hit(me, LASER_HIT, e, EFFECT_FOR.get(e, StatusEffects.DAZZLE), from)
+				if t >= float(hz["life"]) - LASER_TRAIL_BEFORE and not bool(hz.get("left", false)):
+					hz["left"] = true
+					_leave_trail(hz)
+		"scorch", "rubble", "shade":
+			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
+				match kind:
+					"scorch":
+						_env_hit(me, 0.5, Element.Type.FIRE, StatusEffects.BURN, hz["p"])
+					"rubble":
+						if not bool(hz.get("landed", false)) and _touch_left <= 0.0:
+							hz["landed"] = true
+							_env_hit(me, 0.5, Element.Type.EARTH, StatusEffects.ROOT, hz["p"])
+					"shade":
+						if not bool(hz.get("landed", false)) and _touch_left <= 0.0:
+							hz["landed"] = true
+							_env_hit(me, 0.5, Element.Type.DARK, StatusEffects.WITHER, hz["p"])
 	return true
 
 
+func _arc_point(p: Vector2, heading: float, curve: float, s: float) -> Vector2:
+	"""The point `s` along an arc leaving `p` at `heading`, curving by `curve`
+	(1 / its radius; 0 straight)."""
+	if absf(curve) < 0.000001:
+		return p + Vector2.from_angle(heading) * s
+	return p + Vector2(sin(heading + curve * s) - sin(heading), cos(heading) - cos(heading + curve * s)) / curve
+
+
+func beam_curve(hz: Dictionary) -> float:
+	"""How much the beam bends now (1 / the arc's radius): its ends up to
+	LASER_BEND of its half-length off its straight line, swaying from one
+	side to the other every LASER_WHIP_SECONDS."""
+	var chord: Array = chord_ends(hz)
+	var length: float = ((chord[1] as Vector2) - (chord[0] as Vector2)).length()
+	if length < 1.0:
+		return 0.0
+	var sway: float = sin(TAU * float(hz["t"]) / LASER_WHIP_SECONDS + float(hz.get("ph", 0.0)))
+	return 4.0 * float(hz.get("bend", 0.0)) / length * sway
+
+
+func beam_points(hz: Dictionary) -> PackedVector2Array:
+	"""A laser's line now, wall to wall: an arc through its spot, every
+	LASER_STEP, from one end to the other."""
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-4.0)
+	var p: Vector2 = hz["p"]
+	var heading: float = float(hz["a"])
+	var curve: float = beam_curve(hz)
+	var most: float = rect.size.length() * 1.5
+	var halves: Array = []
+	for way in [-1.0, 1.0]:
+		var half := PackedVector2Array()
+		var s: float = LASER_STEP
+		while s <= most:
+			var at: Vector2 = _arc_point(p, heading, curve, s * way)
+			if not rect.has_point(at):
+				# The last piece to the wall, so it meets it.
+				var last: Vector2 = half[half.size() - 1] if not half.is_empty() else p
+				half.append(_to_wall(last, at, rect))
+				break
+			half.append(at)
+			s += LASER_STEP
+		halves.append(half)
+	var points := PackedVector2Array()
+	var back: PackedVector2Array = halves[0]
+	for k in range(back.size() - 1, -1, -1):
+		points.append(back[k])
+	points.append(p)
+	points.append_array(halves[1])
+	return points
+
+
+func _to_wall(inside: Vector2, outside: Vector2, rect: Rect2) -> Vector2:
+	"""Where the piece from `inside` to `outside` meets `rect`'s edge."""
+	var lo: float = 0.0
+	var hi: float = 1.0
+	for k in 12:
+		var mid: float = (lo + hi) / 2.0
+		if rect.has_point(inside.lerp(outside, mid)):
+			lo = mid
+		else:
+			hi = mid
+	return inside.lerp(outside, lo)
+
+
+func _beam_line(hz: Dictionary) -> PackedVector2Array:
+	var pts: Variant = hz.get("pts")
+	return pts if pts is PackedVector2Array and (pts as PackedVector2Array).size() >= 2 else beam_points(hz)
+
+
+func closest_on_beam(hz: Dictionary, at: Vector2) -> Vector2:
+	"""The point of the beam, as it is now, nearest `at`."""
+	var line: PackedVector2Array = _beam_line(hz)
+	var best: Vector2 = line[0]
+	var best_d: float = INF
+	for k in line.size() - 1:
+		var q: Vector2 = Geometry2D.get_closest_point_to_segment(at, line[k], line[k + 1])
+		var d: float = q.distance_squared_to(at)
+		if d < best_d:
+			best_d = d
+			best = q
+	return best
+
+
+func beam_heading(hz: Dictionary, at: Vector2) -> Vector2:
+	"""Which way the beam runs at its point nearest `at`, away from its spot."""
+	var line: PackedVector2Array = _beam_line(hz)
+	var p: Vector2 = hz["p"]
+	var best: int = 0
+	var best_d: float = INF
+	for k in line.size() - 1:
+		var d: float = line[k].distance_squared_to(at)
+		if d < best_d:
+			best_d = d
+			best = k
+	var along: Vector2 = (line[best + 1] - line[best]).normalized()
+	if along.dot(at - p) < 0.0:
+		along = -along
+	return along if along != Vector2.ZERO else Vector2.from_angle(float(hz["a"]))
+
+
+func motes(hz: Dictionary) -> PackedVector2Array:
+	"""Where its land rides along the beam now: LASER_MOTES points, running
+	out from its spot to both walls, swirling from one side of it to the
+	other (up to LASER_MOTE_SWAY off its middle - on the beam they were lost
+	in its glow)."""
+	var line: PackedVector2Array = _beam_line(hz)
+	var found := PackedVector2Array()
+	if line.size() < 2:
+		return found
+	var middle: int = 0
+	var p: Vector2 = hz["p"]
+	for k in line.size():
+		if line[k] == p:
+			middle = k
+			break
+	for k in LASER_MOTES:
+		var u: float = fmod(float(k) / float(LASER_MOTES) * 2.0 + float(hz["t"]) * LASER_MOTE_SPEED, 1.0)
+		var to_end: bool = k % 2 == 0
+		var reach: int = (line.size() - 1 - middle) if to_end else middle
+		var index: float = float(middle) + (u * float(reach) if to_end else -u * float(reach))
+		var lo: int = clampi(int(floor(index)), 0, line.size() - 1)
+		var hi: int = mini(lo + 1, line.size() - 1)
+		var on: Vector2 = line[lo].lerp(line[hi], index - floor(index))
+		var along: Vector2 = (line[hi] - line[lo]).normalized() if hi != lo else Vector2.RIGHT
+		var side: float = sin(float(hz["t"]) * 5.0 + float(k) * 1.7) * LASER_MOTE_SWAY
+		found.append(on + along.orthogonal() * side)
+	return found
+
+
+func _leave_trail(hz: Dictionary) -> void:
+	"""As it fades: its land left along its last shape near its spot."""
+	var e: int = int(hz["e"])
+	var kind: String = str(TRAIL_FOR.get(e, ""))
+	if kind == "":
+		return
+	var p: Vector2 = hz["p"]
+	var heading: float = float(hz["a"])
+	var curve: float = beam_curve(hz)
+	var gap: float = LASER_TRAIL_STEP * (2.0 if kind == "flare" else 1.0)
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-8.0)
+	var s: float = -floor(LASER_TRAIL_REACH / gap) * gap
+	while s <= LASER_TRAIL_REACH + 0.01:
+		var at: Vector2 = _arc_point(p, heading, curve, s)
+		if rect.has_point(at):
+			_born.append(trail_patch(kind, at))
+		s += gap
+
+
+func trail_patch(kind: String, at: Vector2) -> Dictionary:
+	"""One piece of a laser's trail - grows in over LASER_TRAIL_WARN."""
+	var hz: Dictionary = {"k": kind, "t": 0.0, "w": LASER_TRAIL_WARN, "life": 3.0, "r": LASER_TRAIL_R, "p": at,
+		"v": Vector2.ZERO, "done": false, "tick": 0.0, "trail": true}
+	match kind:
+		"puddle":
+			hz["life"] = PUDDLE_LIFE
+		"ice":
+			hz["life"] = ICE_LIFE
+		"scorch":
+			hz["life"] = SCORCH_LIFE
+		"rubble":
+			hz["life"] = RUBBLE_LIFE
+		"shade":
+			hz["life"] = SHADE_LIFE
+		"flare":
+			hz["w"] = 0.6
+			hz["life"] = 0.9
+			hz["r"] = 30.0
+	return hz
+
+
+func _cross_flash(hz: Dictionary) -> void:
+	"""Where an X crosses: a flash in each of its two lands' colours."""
+	for e in [int(hz["e"]), int(hz["x_with"])]:
+		var flash: Dictionary = _patch("burst", hz["p"])
+		flash["e"] = e
+		flash["life"] = 0.45
+		flash["r"] = 30.0 if e == int(hz["e"]) else 22.0
+		_born.append(flash)
+
+
+func _blow_along(hz: Dictionary) -> void:
+	"""A wind laser fires: what floats near it is blown along it."""
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-12.0)
+	for other in hazards:
+		if not (str(other["k"]) in ["spark", "bubble", "wisp", "gas"]) or bool(other["done"]):
+			continue
+		var at: Vector2 = other["p"]
+		var near: Vector2 = closest_on_beam(hz, at)
+		if at.distance_to(near) > 40.0:
+			continue
+		var to: Vector2 = at + beam_heading(hz, near) * GUST_PUSH
+		other["p"] = Vector2(clampf(to.x, rect.position.x, rect.end.x), clampf(to.y, rect.position.y, rect.end.y))
+		reactions["blown"] = int(reactions.get("blown", 0)) + 1
+
+
 func beam_ends(hz: Dictionary) -> Array:
-	"""A laser's two ends: its line through its spot, held to the room."""
+	"""A laser's two ends, where it meets the walls (beam_points())."""
+	var line: PackedVector2Array = _beam_line(hz)
+	return [line[0], line[line.size() - 1]]
+
+
+func chord_ends(hz: Dictionary) -> Array:
+	"""Where a laser would meet the walls unbent: its straight line through
+	its spot, held to the room."""
 	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-4.0)
 	var dir := Vector2.from_angle(float(hz["a"]))
 	var p: Vector2 = hz["p"]
@@ -718,6 +1045,220 @@ func beam_ends(hz: Dictionary) -> Array:
 	if lo > hi or lo == -INF:
 		return [p, p]
 	return [p + dir * lo, p + dir * hi]
+
+
+var _paint := RandomNumberGenerator.new()
+
+
+func _along(line: PackedVector2Array) -> PackedFloat32Array:
+	"""How far along `line` each of its points is."""
+	var out := PackedFloat32Array()
+	var s: float = 0.0
+	for k in line.size():
+		if k > 0:
+			s += line[k].distance_to(line[k - 1])
+		out.append(s)
+	return out
+
+
+func _side(line: PackedVector2Array, k: int) -> Vector2:
+	"""The way across `line` at its point `k`."""
+	var lo: int = maxi(k - 1, 0)
+	var hi: int = mini(k + 1, line.size() - 1)
+	return (line[hi] - line[lo]).normalized().orthogonal()
+
+
+func _swayed(line: PackedVector2Array, offsets: PackedFloat32Array) -> PackedVector2Array:
+	"""`line` with each point moved across it by its offset, held at the ends."""
+	var out := PackedVector2Array()
+	var last: int = line.size() - 1
+	for k in line.size():
+		var held: float = clampf(minf(float(k), float(last - k)) / 2.0, 0.0, 1.0)
+		out.append(line[k] + _side(line, k) * offsets[k] * held)
+	return out
+
+
+func _waved(line: PackedVector2Array, along: PackedFloat32Array, rate: float, shift: float, height: float) -> PackedVector2Array:
+	var offsets := PackedFloat32Array()
+	for k in line.size():
+		offsets.append(sin(along[k] * rate + shift) * height)
+	return _swayed(line, offsets)
+
+
+func _draw_design(element: int, line: PackedVector2Array, t: float, fade: float, noise_seed: int) -> void:
+	"""A firing laser, drawn as its land's own beam along its bent line."""
+	if line.size() < 2 or fade <= 0.0:
+		return
+	var along: PackedFloat32Array = _along(line)
+	match element:
+		Element.Type.LIGHT:
+			var gold := Color(1.0, 0.9, 0.45)
+			_paint.seed = noise_seed + int(t / LIGHTNING_FLICKER)
+			var jags := PackedFloat32Array()
+			for k in line.size():
+				jags.append(_paint.randf_range(-6.0, 6.0))
+			var bolt: PackedVector2Array = _swayed(line, jags)
+			_air.draw_polyline(bolt, Color(gold, 0.18 * fade), 16.0)
+			_air.draw_polyline(bolt, Color(gold, 0.8 * fade), 5.0)
+			_air.draw_polyline(bolt, Color(1.0, 1.0, 1.0, fade), 1.6)
+			for f in 5:
+				var from: int = _paint.randi_range(2, maxi(2, bolt.size() - 3))
+				var heading: Vector2 = (bolt[mini(from + 1, bolt.size() - 1)] - bolt[from]).normalized()
+				heading = heading.rotated(_paint.randf_range(0.5, 1.0) * (1.0 if f % 2 == 0 else -1.0))
+				var fork := PackedVector2Array([bolt[from]])
+				for q in 4:
+					fork.append(fork[q] + heading.rotated(_paint.randf_range(-0.6, 0.6)) * _paint.randf_range(7.0, 12.0))
+				_air.draw_polyline(fork, Color(gold, 0.55 * fade), 3.0)
+				_air.draw_polyline(fork, Color(1.0, 1.0, 1.0, 0.9 * fade), 1.0)
+		Element.Type.FIRE:
+			_air.draw_polyline(line, Color(1.0, 0.35, 0.05, 0.16 * fade), 26.0)
+			for strand in 2:
+				var twist: PackedVector2Array = _waved(line, along, 0.07, PI * strand + t * 8.0, 7.0)
+				_air.draw_polyline(twist, Color(1.0, 0.4, 0.08, 0.9 * fade), 5.0)
+				_air.draw_polyline(twist, Color(1.0, 0.85, 0.35, fade), 1.8)
+			for k in range(2, line.size() - 2, 3):
+				var lick: float = 7.0 + 6.0 * absf(sin(t * 9.0 + float(k) * 1.3))
+				var at: Vector2 = line[k]
+				_air.draw_colored_polygon(PackedVector2Array([at + Vector2(-4, -2), at + Vector2(4, -2), at + Vector2(sin(t * 6.0 + float(k)) * 2.0, -2.0 - lick)]),
+					Color(1.0, 0.5 + 0.25 * float(k % 2), 0.1, 0.85 * fade))
+		Element.Type.ICE:
+			var cyan := Color(0.55, 0.9, 1.0)
+			var crystal := PackedVector2Array()
+			var kink: float = 6.0
+			for k in range(0, line.size(), 5):
+				crystal.append(line[k] + _side(line, k) * kink * (0.0 if k == 0 else 1.0))
+				kink = -kink
+			crystal.append(line[line.size() - 1])
+			_air.draw_polyline(crystal, Color(cyan, 0.2 * fade), 16.0)
+			_air.draw_polyline(crystal, Color(cyan, 0.85 * fade), 4.0)
+			_air.draw_polyline(crystal, Color(1.0, 1.0, 1.0, fade), 1.4)
+			var glint: int = int(fmod(t * 9.0, float(crystal.size())))
+			for k in range(1, crystal.size() - 1):
+				var at: Vector2 = crystal[k]
+				var out: Vector2 = _side(crystal, k) * (1.0 if k % 2 == 0 else -1.0)
+				var across: Vector2 = out.orthogonal()
+				var reach: float = 11.0 + 6.0 * absf(sin(float(k) * 1.3 + float(noise_seed % 7)))
+				var shard := PackedVector2Array([at + across * 3.0, at + out * reach, at - across * 3.0, at - out * 2.0])
+				_air.draw_colored_polygon(shard, Color(0.75, 0.95, 1.0, (0.95 if k == glint else 0.7) * fade))
+				_air.draw_polyline(PackedVector2Array([shard[0], shard[1], shard[2]]), Color(1.0, 1.0, 1.0, 0.9 * fade), 1.0)
+		Element.Type.WATER:
+			var wave: PackedVector2Array = _waved(line, along, 0.09, -t * 6.0, 8.0)
+			var crest: PackedVector2Array = _waved(line, along, 0.09, -t * 6.0, 8.0)
+			for k in crest.size():
+				crest[k] += Vector2(0, -4)
+			_air.draw_polyline(wave, Color(0.2, 0.5, 1.0, 0.25 * fade), 24.0)
+			_air.draw_polyline(wave, Color(0.25, 0.6, 1.0, 0.75 * fade), 11.0)
+			_air.draw_polyline(crest, Color(0.75, 0.92, 1.0, 0.95 * fade), 2.0)
+			for k in range(0, crest.size(), 2):
+				if sin(along[k] * 0.09 - t * 6.0) > 0.6:
+					_air.draw_circle(crest[k], 2.0, Color(1.0, 1.0, 1.0, 0.9 * fade))
+			for b in 10:
+				var k: int = (b * 7 + noise_seed % 5) % line.size()
+				var rise: float = fmod(t * 14.0 + float(b) * 5.0, 22.0)
+				_air.draw_arc(line[k] + Vector2(float((b * 13) % 21) - 10.0, 6.0 - rise), 2.0 + float(b % 3), 0.0, TAU, 12,
+					Color(0.7, 0.9, 1.0, 0.8 * fade * (1.0 - rise / 22.0)), 1.0)
+		Element.Type.WIND:
+			for strand in 4:
+				var thread: PackedVector2Array = _waved(line, along, 0.05, float(strand) * 2.1 + t * 7.0, 5.0 + 4.0 * float(strand))
+				_air.draw_polyline(thread, Color(0.85, 1.0, 0.9, (0.75 - 0.12 * float(strand)) * fade), 1.6)
+			for k in range(6, line.size() - 6, 10):
+				var at: Vector2 = line[k] + _side(line, k) * sin(float(k) * 2.3) * 12.0
+				var start: float = t * 6.0 + float(k)
+				_air.draw_arc(at, 6.0, start, start + 4.6, 16, Color(0.9, 1.0, 0.92, 0.8 * fade), 1.4)
+				_air.draw_arc(at, 3.0, start + 1.0, start + 5.0, 10, Color(0.9, 1.0, 0.92, 0.6 * fade), 1.2)
+			for leaf in 6:
+				var u: float = fmod(float(leaf) / 6.0 + t * 0.5, 1.0)
+				var k: int = int(u * float(line.size() - 1))
+				var at: Vector2 = line[k] + _side(line, k) * sin(t * 4.0 + float(leaf) * 2.0) * 14.0
+				_air.draw_set_transform(at, t * 5.0 + float(leaf), Vector2(1.0, 0.45))
+				_air.draw_circle(Vector2.ZERO, 4.0, Color(0.55, 0.85, 0.45, 0.9 * fade))
+				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		Element.Type.EARTH:
+			_paint.seed = noise_seed
+			var cracks := PackedFloat32Array()
+			for k in line.size():
+				cracks.append(_paint.randf_range(-4.0, 4.0))
+			var crack: PackedVector2Array = _swayed(line, cracks)
+			_air.draw_polyline(crack, Color(0.55, 0.38, 0.2, 0.35 * fade), 12.0)
+			_air.draw_polyline(crack, Color(0.05, 0.03, 0.02, fade), 4.0)
+			_air.draw_polyline(crack, Color(1.0, 0.55, 0.2, 0.7 * fade), 1.0)
+			for k in range(2, line.size() - 2, 4):
+				var at: Vector2 = line[k] + _side(line, k) * _paint.randf_range(-12.0, 12.0)
+				var r: float = _paint.randf_range(4.0, 8.0)
+				var lift: float = 4.0 + 10.0 * absf(sin(t * 5.0 + float(k) * 0.9))
+				_air.draw_set_transform(at, 0.0, Vector2(1.0, 0.45))
+				_air.draw_circle(Vector2.ZERO, r, Color(0.0, 0.0, 0.0, 0.35 * fade))
+				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				var rock := PackedVector2Array()
+				var sides: int = 5 + k % 3
+				for q in sides:
+					rock.append(at + Vector2(0, -lift) + Vector2.from_angle(TAU * float(q) / float(sides) + _paint.randf_range(-0.3, 0.3)) * r * _paint.randf_range(0.7, 1.1))
+				_air.draw_colored_polygon(rock, Color(Color(0.6, 0.47, 0.32).darkened(0.15 * float(k % 3)), fade))
+				rock.append(rock[0])
+				_air.draw_polyline(rock, Color(0.85, 0.72, 0.5, 0.8 * fade), 1.0)
+		Element.Type.DARK:
+			var writhe := PackedFloat32Array()
+			for k in line.size():
+				writhe.append(sin(along[k] * 0.045 + t * 3.0) * 6.0 + sin(along[k] * 0.17 - t * 5.0) * 2.5)
+			var tendril: PackedVector2Array = _swayed(line, writhe)
+			_air.draw_polyline(tendril, Color(0.5, 0.15, 0.8, 0.2 * fade), 26.0)
+			_air.draw_polyline(tendril, Color(0.6, 0.3, 1.0, 0.85 * fade), 10.0)
+			_air.draw_polyline(tendril, Color(0.03, 0.0, 0.06, fade), 7.0)
+			for k in range(4, tendril.size() - 4, 7):
+				var out: Vector2 = _side(tendril, k) * (1.0 if k % 2 == 0 else -1.0)
+				var wisp := PackedVector2Array()
+				for q in 6:
+					wisp.append(tendril[k] + out * float(q) * 4.0 + out.orthogonal() * sin(float(q) * 1.2 + t * 6.0) * 4.0)
+				_air.draw_polyline(wisp, Color(0.65, 0.35, 1.0, 0.6 * fade), 1.4)
+			for eye in 4:
+				var k: int = 4 + int(float(eye) * float(tendril.size() - 8) / 4.0)
+				var blink: float = clampf(absf(sin(t * 2.0 + float(eye) * 1.7)) * 1.6, 0.15, 1.0)
+				_air.draw_set_transform(tendril[k], 0.0, Vector2(1.0, blink))
+				_air.draw_circle(Vector2.ZERO, 5.0, Color(0.03, 0.0, 0.06, fade))
+				_air.draw_arc(Vector2.ZERO, 5.0, 0.0, TAU, 16, Color(0.75, 0.45, 1.0, fade), 1.2)
+				_air.draw_circle(Vector2(1, -1), 1.3, Color(0.9, 0.7, 1.0, fade))
+				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_:
+			var colour: Color = Element.colour_for(element)
+			_air.draw_polyline(line, Color(colour, 0.3 * fade), LASER_HALF * 4.0)
+			_air.draw_polyline(line, Color(colour * 1.4, 0.85 * fade), LASER_HALF * 2.0)
+			_air.draw_polyline(line, Color(1.0, 1.0, 1.0, 0.95 * fade), 3.0)
+
+
+func _draw_mote(element: int, at: Vector2, k: int, t: float, alpha: float, line: PackedVector2Array) -> void:
+	"""One piece of a land riding along a laser (motes())."""
+	if alpha <= 0.0:
+		return
+	var wob: float = sin(t * 7.0 + float(k) * 1.9)
+	match element:
+		Element.Type.FIRE:
+			var up := Vector2(wob * 2.0, -3.0 - 2.0 * absf(wob))
+			_air.draw_circle(at + up, 4.6, Color(1.0, 0.4, 0.08, 0.55 * alpha))
+			_air.draw_circle(at + up, 2.4, Color(1.0, 0.92, 0.55, alpha))
+		Element.Type.ICE:
+			var spin: float = t * 3.0 + float(k)
+			for q in 2:
+				var arm := Vector2.from_angle(spin + float(q) * PI / 2.0) * 5.0
+				_air.draw_line(at - arm, at + arm, Color(0.85, 0.97, 1.0, alpha), 1.6)
+		Element.Type.WATER:
+			_air.draw_circle(at, 3.6, Color(0.35, 0.65, 1.0, 0.9 * alpha))
+			_air.draw_circle(at + Vector2(-1.1, -1.1), 1.2, Color(1.0, 1.0, 1.0, alpha))
+		Element.Type.WIND:
+			var along: Vector2 = Vector2.RIGHT
+			if line.size() >= 2:
+				along = (line[line.size() - 1] - line[0]).normalized()
+			_air.draw_line(at - along * 9.0 + Vector2(0, wob * 2.0), at + along * 9.0, Color(0.88, 1.0, 0.92, 0.85 * alpha), 1.8)
+		Element.Type.LIGHT:
+			var twinkle: float = 3.5 + 2.0 * absf(wob)
+			_air.draw_line(at - Vector2(twinkle, 0), at + Vector2(twinkle, 0), Color(1.0, 0.97, 0.7, alpha), 1.6)
+			_air.draw_line(at - Vector2(0, twinkle), at + Vector2(0, twinkle), Color(1.0, 0.97, 0.7, alpha), 1.6)
+		Element.Type.EARTH:
+			_air.draw_rect(Rect2(at + Vector2(-2.5, -2.5 + wob), Vector2(5.0, 4.5)), Color(0.72, 0.56, 0.38, alpha))
+		Element.Type.DARK:
+			_air.draw_circle(at, 4.6, Color(0.25, 0.05, 0.4, 0.65 * alpha))
+			_air.draw_circle(at, 2.0, Color(0.78, 0.5, 1.0, alpha))
+		_:
+			_air.draw_circle(at, 2.0, Color(1.0, 1.0, 1.0, alpha))
 
 
 func burst_at(at: Vector2, element: int) -> void:
@@ -753,7 +1294,7 @@ func _react(me: Node2D) -> void:
 			continue
 		var kind: String = str(hz["k"])
 		var p: Vector2 = hz["p"]
-		if kind == "spark":
+		if kind == "spark" or (kind == "scorch" and float(hz["t"]) >= float(hz["w"])):
 			for other in hazards:
 				if bool(other["done"]) or is_same(other, hz):
 					continue
@@ -841,19 +1382,39 @@ func _draw_floor_hazards() -> void:
 		var kind: String = str(hz["k"])
 		var grow: float = clampf(t / w, 0.0, 1.0)
 		match kind:
-			"hail", "rock":
+			"hail", "rock", "meteor":
 				var colour := Color(0.85, 0.95, 1.0) if kind == "hail" else Color(0.55, 0.42, 0.3)
-				if not bool(hz.get("landed", false)):
+				if kind == "meteor":
+					colour = Color(1.0, 0.5, 0.15)
+				var fake: bool = bool(hz.get("fake", false))
+				var ring: float = float(hz["r"])
+				if fake:
+					# The tell: an illusion's circle shimmers.
+					ring *= 1.0 + 0.06 * sin(t * 17.0)
+					colour = colour.lerp(Color(0.8, 0.6, 1.0), 0.3 + 0.25 * sin(t * 9.0))
+				if fake and bool(hz.get("landed", false)):
+					var gone: float = clampf((t - w) / 0.35, 0.0, 1.0)
 					draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
-					draw_circle(Vector2.ZERO, float(hz["r"]) * grow, Color(0.0, 0.0, 0.0, 0.25 + 0.3 * grow))
-					draw_arc(Vector2.ZERO, float(hz["r"]), 0.0, TAU, 24, Color(colour, 0.7), 1.5)
+					draw_arc(Vector2.ZERO, ring * (1.0 + 0.5 * gone), 0.0, TAU, 24, Color(0.85, 0.65, 1.0, 1.0 - gone), 2.0)
+					for k in 8:
+						var spark := Vector2.from_angle(float(k) * TAU / 8.0) * ring * (0.4 + 0.8 * gone)
+						draw_circle(spark, 2.0, Color(0.9, 0.75, 1.0, 1.0 - gone))
+				elif not bool(hz.get("landed", false)):
+					draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
+					draw_circle(Vector2.ZERO, ring * grow, Color(0.0, 0.0, 0.0, 0.25 + 0.3 * grow))
+					draw_arc(Vector2.ZERO, ring, 0.0, TAU, 24, Color(colour, 0.7), 1.5)
 				else:
 					var after: float = clampf((t - w) / 0.3, 0.0, 1.0)
 					draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
 					draw_arc(Vector2.ZERO, float(hz["r"]) * (1.0 + after), 0.0, TAU, 24, Color(colour * 1.5, 1.0 - after), 3.0)
 			"flare":
 				draw_set_transform(p, 0.0, Vector2(1.0, 0.6))
-				draw_arc(Vector2.ZERO, float(hz["r"]), 0.0, TAU, 32, Color(1.0, 0.9, 0.5, 0.35 + 0.4 * grow), 1.5)
+				var flare_colour := Color(1.0, 0.9, 0.5, 0.35 + 0.4 * grow)
+				var flare_r: float = float(hz["r"])
+				if bool(hz.get("fake", false)):
+					flare_r *= 1.0 + 0.05 * sin(t * 17.0)
+					flare_colour = Color(flare_colour.lerp(Color(0.8, 0.6, 1.0), 0.3 + 0.25 * sin(t * 9.0)), flare_colour.a)
+				draw_arc(Vector2.ZERO, flare_r, 0.0, TAU, 32, flare_colour, 1.5)
 			"gust":
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				var rect: Rect2 = run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)
@@ -869,7 +1430,7 @@ func _draw_floor_hazards() -> void:
 			"puddle", "ice":
 				var fade: float = clampf((float(hz["life"]) - t) / 0.6, 0.0, 1.0)
 				var colour := Color(0.35, 0.6, 1.0, 0.35) if kind == "puddle" else Color(0.8, 0.95, 1.0, 0.5)
-				if kind == "puddle" and t < w:
+				if (kind == "puddle" or bool(hz.get("trail", false))) and t < w:
 					colour.a *= grow
 				if hz.has("shock") and t - float(hz["shock"]) < 0.35:
 					colour = Color(1.0, 0.95, 0.5, 0.75)
@@ -880,6 +1441,30 @@ func _draw_floor_hazards() -> void:
 					var shine := Color(1.0, 1.0, 1.0, 0.7 * fade)
 					draw_line(Vector2(-8, -5), Vector2(-2, -9), shine, 1.0)
 					draw_line(Vector2(2, 4), Vector2(9, -1), shine, 1.0)
+			"scorch", "rubble", "shade":
+				var fade: float = clampf((float(hz["life"]) - t) / 0.6, 0.0, 1.0) * grow
+				var r: float = float(hz["r"])
+				draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
+				match kind:
+					"scorch":
+						draw_circle(Vector2.ZERO, r, Color(0.12, 0.05, 0.02, 0.55 * fade))
+						draw_arc(Vector2.ZERO, r, 0.0, TAU, 20, Color(1.0, 0.45, 0.1, 0.7 * fade), 1.5)
+						draw_set_transform(p, 0.0, Vector2.ONE)
+						for k in 3:
+							var x: float = (float(k) - 1.0) * r * 0.55
+							var lick: float = 5.0 + 4.0 * absf(sin(t * 9.0 + float(k) * 2.1 + p.x * 0.1))
+							draw_colored_polygon(PackedVector2Array([Vector2(x - 3.0, 1.0), Vector2(x + 3.0, 1.0),
+								Vector2(x, 1.0 - lick)]), Color(1.0, 0.55 + 0.2 * float(k % 2), 0.15, 0.85 * fade))
+					"rubble":
+						draw_circle(Vector2.ZERO, r, Color(0.35, 0.26, 0.18, 0.5 * fade))
+						draw_set_transform(p, 0.0, Vector2.ONE)
+						for k in 4:
+							var at := Vector2.from_angle(float(k) * 1.7 + p.y * 0.05) * r * 0.5
+							draw_rect(Rect2(at - Vector2(2.5, 2.0), Vector2(5.0, 4.0)), Color(0.62, 0.5, 0.36, 0.9 * fade))
+					"shade":
+						var pulse: float = 0.5 + 0.5 * sin(t * 5.0 + p.x * 0.07)
+						draw_circle(Vector2.ZERO, r, Color(0.2, 0.05, 0.3, (0.45 + 0.15 * pulse) * fade))
+						draw_arc(Vector2.ZERO, r * (0.8 + 0.2 * pulse), 0.0, TAU, 20, Color(0.7, 0.4, 1.0, 0.6 * fade), 1.0)
 			"gas":
 				var alpha: float = (0.12 + 0.1 * sin(t * 4.0)) if t >= w else 0.08 * grow
 				for k in 5:
@@ -905,6 +1490,16 @@ func _draw_air() -> void:
 			"wisp":
 				_air.draw_circle(p, 13.0, Color(0.55, 0.3, 0.95, 0.25))
 				_air.draw_circle(p, 6.0, Color(0.8, 0.6, 1.0, 0.9))
+			"meteor":
+				if not bool(hz.get("landed", false)):
+					var fall: float = clampf(t / maxf(0.001, float(hz["w"])), 0.0, 1.0)
+					var from := Vector2(-110.0, -300.0)
+					var at: Vector2 = p + from * (1.0 - fall * fall)
+					for k in 5:
+						var back: Vector2 = at - from.normalized() * float(k) * 9.0
+						_air.draw_circle(back, 9.0 - float(k) * 1.4, Color(1.0, 0.45, 0.1, 0.5 - 0.09 * float(k)))
+					_air.draw_circle(at, 7.0, Color(1.0, 0.6, 0.2, 0.95))
+					_air.draw_circle(at, 3.5, Color(1.0, 0.95, 0.7, 1.0))
 			"blast":
 				# Over everything, as the flare's flash is (0.128.0).
 				var b: float = clampf(t / float(hz["life"]), 0.0, 1.0)
@@ -918,23 +1513,26 @@ func _draw_air() -> void:
 				_air.draw_arc(Vector2.ZERO, reach * (0.6 + 0.6 * b), 0.0, TAU, 28, Color(1.0, 0.85, 0.4, 1.0 - b), 3.0)
 				_air.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"laser":
-				var colour: Color = Element.colour_for(int(hz["e"]))
-				var ends: Array = beam_ends(hz)
+				var e: int = int(hz["e"])
+				var colour: Color = Element.colour_for(e)
+				var line: PackedVector2Array = _beam_line(hz)
+				var ends: Array = [line[0], line[line.size() - 1]]
 				var warn: float = maxf(0.001, float(hz["w"]))
+				var riding: PackedVector2Array = motes(hz)
 				if t < warn:
 					var k: float = t / warn
 					var flick: float = 0.3 + 0.4 * k + 0.25 * absf(sin(t * 20.0)) * k
-					_air.draw_line(ends[0], ends[1], Color(colour * 1.3, flick), 1.0 + 2.0 * k)
+					_air.draw_polyline(line, Color(colour * 1.3, flick), 1.0 + 2.0 * k)
 					for end in ends:
 						_air.draw_circle(end, 2.0 + 3.0 * k, Color(colour * 1.4, 0.9))
+					for m in riding.size():
+						_draw_mote(e, riding[m], m, t, 0.45 * k, line)
 				else:
 					var f: float = clampf((t - warn) / maxf(0.01, float(hz["life"]) - warn), 0.0, 1.0)
 					var fade: float = 1.0 if f < 0.8 else (1.0 - f) / 0.2
-					_air.draw_line(ends[0], ends[1], Color(colour, 0.3 * fade), LASER_HALF * 4.0)
-					_air.draw_line(ends[0], ends[1], Color(colour * 1.4, 0.85 * fade), LASER_HALF * 2.0)
-					_air.draw_line(ends[0], ends[1], Color(1.0, 1.0, 1.0, 0.95 * fade), 3.0)
+					_draw_design(e, line, t, fade, int(hz.get("seed", 0)))
 					for end in ends:
-						_air.draw_circle(end, 9.0, Color(colour * 1.5, 0.8 * fade))
+						_air.draw_circle(end, 9.0, Color(colour * 1.5, 0.6 * fade))
 						_air.draw_circle(end, 4.0, Color(1.0, 1.0, 1.0, fade))
 			"burst":
 				var bb: float = clampf(t / float(hz["life"]), 0.0, 1.0)

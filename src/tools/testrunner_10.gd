@@ -2973,9 +2973,10 @@ func _test_the_crowned_remade() -> void:
 	# ---- the crowns shed, and the fall ----------------------------------------------
 	boss.set("hp", int(float(int(boss.get("max_hp"))) * 0.7))
 	fight.call("_process", 0.016)
-	check("  under three quarters the crowns come off: its own dark kit and colours again, the floor quiet",
-		int(fight.get("crown")) == -1 and int(boss.get("crown_land")) == -1 and sprite.material == worn
-		and (lands.get("env_lands") as Array).is_empty())
+	# (Since 0.134.1 the Sealing follows at once - _test_the_crowned_falls_apart().)
+	check("  under three quarters the crowns come off and the Sealing begins: the boss in fire, the floor's random hazards stopped",
+		int(fight.get("crown")) == -1 and int(boss.get("crown_land")) == Element.Type.FIRE and sprite.material != worn
+		and int((fight.get("phases") as Node).get("phase")) == 2 and (lands.get("env_lands") as Array).is_empty())
 	boss.set("hp", 0)
 	fight.call("_process", 0.016)
 	var lit: bool = true
@@ -3883,6 +3884,9 @@ func _test_the_descent_bites() -> void:
 	beam["a"] = 0.0
 	beam["spin"] = 0.0
 	beam["e"] = Element.Type.LIGHT
+	# Unbent, for the wall-to-wall check (they bend since 0.134.1 -
+	# _test_the_lasers_bend()).
+	beam["bend"] = 0.0
 	var ends: Array = lands.call("beam_ends", beam)
 	var rect: Rect2 = desc.get("room_rect")
 	var count_was: int = (body.get("hits") as Array).size()
@@ -4579,3 +4583,447 @@ func _test_cut_the_cloth_rounds() -> void:
 	screen2.call("close")
 	await get_tree().process_frame
 	print("  cut the cloth, step 2: done")
+
+
+func _test_spikes_read_the_player_late() -> void:
+	# The owner, of the remade Crowned (0.134.1): "those spikes from the
+	# ground are deadly accurate and they predict the player well i think we
+	# need to improve the logic on that". bossenemy.gd, AIM_LEAD: the boss
+	# leads by the heading it has SEEN (eased over AIM_REACTION), by less
+	# (0.75), with a little doubt (AIM_SCATTER).
+	section("Spikes read the player late")
+	var world := Node2D.new()
+	add_child(world)
+	var boss: Node2D = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate() as Node2D
+	boss.position = Vector2(500, 400)
+	world.add_child(boss)
+	boss.reset_physics_interpolation()
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	var runner := CharacterBody2D.new()
+	runner.position = Vector2(560, 420)
+	world.add_child(runner)
+	runner.reset_physics_interpolation()
+	runner.add_to_group(&"player")
+	boss.set("_aim_target", runner)
+	var tick: float = 1.0 / 80.0
+	var shift_for := func(telegraph: float) -> Vector2:
+		var pattern: Array[Dictionary] = [{"pos": Vector2(1000, 1000), "telegraph": telegraph}]
+		var led: Array[Dictionary] = boss.call("_lead_pattern", pattern, &"lines")
+		return (led[0]["pos"] as Vector2) - Vector2(1000, 1000)
+	runner.velocity = Vector2(200, 0)
+	for k in 160:
+		boss.call("watch_runners", tick)
+	var want: float = 200.0 * 0.5 * BossEnemy.AIM_LEAD
+	var worst := 0.0
+	var all_near := true
+	for k in 40:
+		var shift: Vector2 = shift_for.call(0.5)
+		worst = maxf(worst, shift.distance_to(Vector2(want, 0)))
+		all_near = all_near and shift.distance_to(Vector2(want, 0)) <= BossEnemy.AIM_SCATTER + 0.01
+	check("a runner in a straight line is led by 0.75 of their heading, give or take the doubt (16 px)",
+		is_equal_approx(BossEnemy.AIM_LEAD, 0.75) and all_near and worst > 1.0, [want, worst])
+	runner.velocity = Vector2(0, -200)
+	for k in 8:
+		boss.call("watch_runners", tick)
+	var seen: Vector2 = boss.call("seen_velocity", runner)
+	check("  a tenth of a second after they turn, it still reads them going the old way",
+		seen.x > 120.0 and seen.y > -80.0 and (boss.call("_player_velocity") as Vector2) == seen, seen)
+	for k in 96:
+		boss.call("watch_runners", tick)
+	seen = boss.call("seen_velocity", runner)
+	check("  about a second on, it has caught up with the turn",
+		seen.y < -180.0 and absf(seen.x) < 20.0, seen)
+	runner.velocity = Vector2.ZERO
+	for k in 240:
+		boss.call("watch_runners", tick)
+	var still: Vector2 = shift_for.call(0.5)
+	check("  a player who has stood still a moment gets no lead and no doubt: it lands on them",
+		still == Vector2.ZERO, still)
+	runner.remove_from_group(&"player")
+	boss.call("watch_runners", tick)
+	check("  somebody out of the fight is forgotten",
+		(boss.get("_seen_heading") as Dictionary).is_empty())
+	var src: String = FileAccess.get_file_as_string("res://src/enemies/bossenemy.gd")
+	var at: int = _first_code_index(src, "func _physics_process(delta: float) -> void:", 0)
+	var watch: int = _first_code_index(src, "watch_runners(delta)", at)
+	check("  every tick the boss watches who is in the fight (not a picture of another game's boss)",
+		at != -1 and _within(watch, src.find("\nfunc ", at + 10)) != -1
+		and _first_code_index(src, "if not net_mirror:", at) != -1
+		and _first_code_index(src, "if not net_mirror:", at) < watch)
+	world.queue_free()
+	await get_tree().process_frame
+	print("  spikes read the player late: done")
+
+
+func _laser_on_edge(at: Vector2, rect: Rect2) -> bool:
+	return minf(minf(absf(at.x - rect.position.x), absf(at.x - rect.end.x)),
+		minf(absf(at.y - rect.position.y), absf(at.y - rect.end.y))) < 2.0
+
+
+func _test_the_lasers_bend() -> void:
+	# The owner, of the crossing lasers: "the x lasers are cool but i need
+	# them to bend and carry effects with them" - and "curve and whip"
+	# (0.134.1, descentlands.gd THEY BEND AND CARRY THEIR LAND).
+	section("The lasers bend, whip, and carry their land")
+	const RunScript := preload("res://src/world/descent/descentrun.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	Boons.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	var body: Node2D = made[2]
+	await get_tree().process_frame
+	var lands: Node2D = run.call("_lands_node")
+	lands.call("begin_env", RunScript.ALL_LANDS, 4)
+	_mix_fresh(lands)
+	body.global_position = (run.get("room_rect") as Rect2).get_center()
+	var at: Vector2 = body.global_position
+	var walls: Rect2 = (run.get("room_rect") as Rect2).grow(-4.0)
+	var far: Vector2 = (run.get("room_rect") as Rect2).position + Vector2(14, 14)
+	# ---- an arc through its spot, wall to wall, swaying ----
+	var beam: Dictionary = lands.call("spawn_env", "laser", body)
+	beam["p"] = at
+	beam["a"] = 0.0
+	beam["spin"] = 0.0
+	beam["ph"] = PI / 2.0
+	var line: PackedVector2Array = lands.call("beam_points", beam)
+	var bent := 0.0
+	for q in line:
+		bent = maxf(bent, q.y - at.y)
+	var ends: Array = lands.call("beam_ends", beam)
+	check("a laser is an arc: through its spot, %.0f px off its straight line at the most, meeting the walls at both ends" % bent,
+		line.has(at) and bent > 40.0 and _laser_on_edge(ends[0], walls) and _laser_on_edge(ends[1], walls)
+		and is_equal_approx(float(beam["bend"]), LandsScript.LASER_BEND), [ends, bent])
+	beam["t"] = LandsScript.LASER_WHIP_SECONDS / 2.0
+	var other_way := 0.0
+	for q in lands.call("beam_points", beam):
+		other_way = minf(other_way, (q as Vector2).y - at.y)
+	check("  half a sway (%.1f s) later it bends the other way (%.0f px)" % [LandsScript.LASER_WHIP_SECONDS / 2.0, other_way],
+		other_way < -40.0)
+	# ---- it burns you on its curve, not on its straight line ----
+	_mix_fresh(lands)
+	var spot: Vector2 = at + Vector2(-200, 0)
+	var arc: Dictionary = lands.call("spawn_env", "laser", body)
+	arc["p"] = spot
+	arc["a"] = 0.0
+	arc["spin"] = 0.0
+	arc["e"] = Element.Type.FIRE
+	arc["t"] = float(arc["w"])
+	arc["ph"] = PI / 2.0 - TAU * float(arc["w"]) / LandsScript.LASER_WHIP_SECONDS
+	arc["t"] = float(arc["w"]) + 0.016
+	var curve_then: float = lands.call("beam_curve", arc)
+	arc["t"] = float(arc["w"])
+	body.global_position = lands.call("_arc_point", spot, 0.0, curve_then, 200.0)
+	var off_line: float = body.global_position.y - at.y
+	lands.call("step", 0.016)
+	var on_curve: Array = _mix_last(body)
+	_mix_fresh(lands)
+	var count_was: int = (body.get("hits") as Array).size()
+	var straight: Dictionary = arc.duplicate()
+	straight["landed"] = false
+	straight["fired"] = false
+	straight["t"] = float(arc["w"])
+	straight.erase("pts")
+	lands.set("hazards", [straight])
+	body.global_position = at
+	lands.call("step", 0.016)
+	check("  it burns you where it bends (%.0f px off the straight line): %s as its land - and not on the straight line"
+		% [off_line, str(on_curve)],
+		off_line > 25.0 and on_curve == [LandsScript.env_amount(4, 400, LandsScript.LASER_HIT), Element.Type.FIRE]
+		and (body.get("hits") as Array).size() == count_was)
+	# ---- its land rides along it ----
+	var riding: PackedVector2Array = lands.call("motes", straight)
+	var on_it: bool = riding.size() == LandsScript.LASER_MOTES
+	for q in riding:
+		on_it = on_it and q.distance_to(lands.call("closest_on_beam", straight, q)) <= LandsScript.LASER_MOTE_SWAY + 1.0
+	check("  %d pieces of its land ride along it, swirling round it (none more than %.0f px off it)"
+		% [riding.size(), LandsScript.LASER_MOTE_SWAY], on_it)
+	# ---- it leaves its land where it burned ----
+	body.global_position = far
+	var left: Dictionary = {}
+	var all_near: bool = true
+	for land in [Element.Type.FIRE, Element.Type.ICE, Element.Type.WATER, Element.Type.WIND,
+			Element.Type.LIGHT, Element.Type.EARTH, Element.Type.DARK]:
+		_mix_fresh(lands)
+		var fading: Dictionary = lands.call("spawn_env", "laser", body)
+		fading["p"] = at
+		fading["a"] = 0.0
+		fading["spin"] = 0.0
+		fading["e"] = land
+		fading["fired"] = true
+		fading["landed"] = true
+		fading["t"] = float(fading["life"]) - LandsScript.LASER_TRAIL_BEFORE - 0.001
+		lands.call("step", 0.016)
+		var pieces: Array = []
+		for hz in lands.get("hazards"):
+			if bool(hz.get("trail", false)):
+				pieces.append(str(hz["k"]))
+				all_near = all_near and (hz["p"] as Vector2).distance_to(lands.call("closest_on_beam", fading, hz["p"])) < 3.0 \
+					and (hz["p"] as Vector2).distance_to(at) <= LandsScript.LASER_TRAIL_REACH + 1.0
+		left[land] = pieces
+	check("  as it fades it leaves its land along it, near its spot: fire scorches, ice ice, water puddles, light flares, earth rubble, dark shade; wind nothing",
+		left[Element.Type.FIRE] == ["scorch", "scorch", "scorch", "scorch", "scorch", "scorch", "scorch"]
+		and (left[Element.Type.ICE] as Array).count("ice") == 7 and (left[Element.Type.WATER] as Array).count("puddle") == 7
+		and left[Element.Type.LIGHT] == ["flare", "flare", "flare"] and (left[Element.Type.EARTH] as Array).count("rubble") == 7
+		and (left[Element.Type.DARK] as Array).count("shade") == 7 and (left[Element.Type.WIND] as Array).is_empty() and all_near,
+		left)
+	# ---- standing on it ----
+	_mix_fresh(lands)
+	body.global_position = at
+	var scorch: Dictionary = lands.call("trail_patch", "scorch", at)
+	lands.set("hazards", [scorch])
+	lands.call("step", 0.016)
+	var too_soon: bool = (body.get("hits") as Array).size() == count_was
+	scorch["t"] = LandsScript.LASER_TRAIL_WARN
+	lands.call("step", 0.016)
+	var burned: Array = _mix_last(body)
+	_mix_fresh(lands)
+	var rubble: Dictionary = lands.call("trail_patch", "rubble", at)
+	rubble["t"] = LandsScript.LASER_TRAIL_WARN
+	lands.set("hazards", [rubble])
+	var before_rubble: int = (body.get("hits") as Array).size()
+	lands.call("step", 0.016)
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	check("  a piece grows in first (no hit), then a scorch burns you for half a hazard (%s); rubble roots you once" % [burned],
+		too_soon and burned == [LandsScript.env_amount(4, 400, 0.5), Element.Type.FIRE]
+		and (body.get("hits") as Array).size() == before_rubble + 1 and _mix_last(body)[1] == Element.Type.EARTH)
+	# ---- wind blows what floats along it ----
+	_mix_fresh(lands)
+	body.global_position = far
+	var gale: Dictionary = lands.call("spawn_env", "laser", body)
+	gale["p"] = at
+	gale["a"] = 0.0
+	gale["spin"] = 0.0
+	gale["bend"] = 0.0
+	gale["e"] = Element.Type.WIND
+	gale["t"] = float(gale["w"])
+	var floating: Dictionary = lands.call("spawn_env", "bubble", body)
+	floating["p"] = at + Vector2(60, 10)
+	floating["v"] = Vector2.ZERO
+	lands.call("step", 0.016)
+	check("  a wind laser blows what floats near it along it (a bubble from x %.0f to %.0f)" % [at.x + 60.0, (floating["p"] as Vector2).x],
+		(floating["p"] as Vector2).x > at.x + 60.0 + LandsScript.GUST_PUSH * 0.9)
+	# ---- the X ----
+	_mix_fresh(lands)
+	lands.call("begin_env", [Element.Type.FIRE, Element.Type.WATER], 7)
+	lands.set("_env_left", 0.0)
+	body.global_position = at
+	lands.call("step", 0.016)
+	var lasers: Array = []
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "laser":
+			lasers.append(hz)
+	var pair: bool = lasers.size() == 2 and lasers[1]["p"] == lasers[0]["p"] \
+		and is_equal_approx(float(lasers[1]["ph"]), float(lasers[0]["ph"]) + PI) and lasers[1].has("x_with")
+	var flashes: Array = []
+	var crossing: Vector2 = lasers[0]["p"] if lasers.size() == 2 else at
+	if lasers.size() == 2:
+		lasers[0]["e"] = Element.Type.FIRE
+		lasers[1]["e"] = Element.Type.WATER
+		lasers[1]["x_with"] = Element.Type.FIRE
+		for hz in lasers:
+			hz["t"] = float(hz["w"])
+			hz["landed"] = true
+		lands.set("hazards", lasers.duplicate())
+		lands.set("_env_left", 999.0)
+		body.global_position = far
+		lands.call("step", 0.016)
+		for hz in lands.get("hazards"):
+			if str(hz["k"]) == "burst" and (hz["p"] as Vector2) == crossing:
+				flashes.append(int(hz["e"]))
+		flashes.sort()
+		for hz in lasers:
+			hz["t"] = float(hz["life"]) - LandsScript.LASER_TRAIL_BEFORE - 0.001
+		lands.call("step", 0.016)
+		lands.call("step", LandsScript.LASER_TRAIL_WARN + 0.05)
+	var steam_there: bool = false
+	for hz in lands.get("hazards"):
+		steam_there = steam_there or (str(hz["k"]) == "steam" and (hz["p"] as Vector2).distance_to(crossing) < 20.0)
+	var want_flashes: Array = [Element.Type.FIRE, Element.Type.WATER]
+	want_flashes.sort()
+	check("  an X: two beams through one spot, swaying opposite ways; as they fire it flashes in both lands (%s), and fire over water leaves steam where they cross"
+		% [flashes], pair and flashes == want_flashes and steam_there, [lasers.size(), _mix_kinds(lands)])
+	lands.call("end")
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the lasers bend: done")
+
+
+func _test_the_crowned_falls_apart() -> void:
+	# The Crowned, step 2 (0.134.1): its last three phases, the lying room and
+	# the rift (crownedphases.gd, crownedrift.gd). The owner, of the plan:
+	# "sounds good".
+	section("THE CROWNED, step 2 (0.134.1): the Sealing, the Trap, the Tear, the lying room, the rift")
+	const Phases := preload("res://src/world/crowned/crownedphases.gd")
+	const LandsScript := preload("res://src/world/descent/descentlands.gd")
+	const Boons := preload("res://src/world/descent/descentboons.gd")
+	const RunScript := preload("res://src/world/endless/endlessrun.gd")
+	const Fight := preload("res://src/world/crowned/crownedfight.gd")
+	Boons.clear()
+	check("the phases by health: the crowns over three quarters, the Sealing to a half, the Trap to a quarter, then the Tear",
+		Phases.phase_for(0.9) == 1 and Phases.phase_for(0.7) == 2 and Phases.phase_for(0.4) == 3 and Phases.phase_for(0.1) == 4)
+	var rise: float = Phases.LAVA_RISE * Phases.LAVA_MOST
+	check("  the lava rises a ring every %.1f s to %d rings, holds, falls back faster, rests, and again" % [Phases.LAVA_RISE, Phases.LAVA_MOST],
+		Phases.lava_depth_at(0.0) == 0 and Phases.lava_depth_at(Phases.LAVA_RISE * 2.0 + 0.1) == 2
+		and Phases.lava_depth_at(rise + 1.0) == Phases.LAVA_MOST
+		and Phases.lava_depth_at(rise + Phases.LAVA_HOLD + Phases.LAVA_FALL * 0.5) == Phases.LAVA_MOST - 1
+		and Phases.lava_depth_at(rise + Phases.LAVA_HOLD + Phases.LAVA_FALL * Phases.LAVA_MOST + 0.5) == 0)
+	# ---- the room ------------------------------------------------------------------
+	var room: Node2D = (load("res://scene/boss.tscn") as PackedScene).instantiate() as Node2D
+	room.set_script(null)
+	room.get_node("hudcontrol").free()
+	room.get_node("enemyrespawner").free()
+	var boss: Node2D = room.get_node("ysortworld/enemies/bossenemy") as Node2D
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	add_child(room)
+	await get_tree().process_frame
+	var fight: Node2D = room.get_node("crownedfight") as Node2D
+	var phases: Node2D = fight.get("phases")
+	var lands: Node2D = fight.get("lands")
+	var ground: TileMapLayer = room.get_node("ground") as TileMapLayer
+	var floor_rect: Rect2 = fight.get("room_rect")
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
+	body_script.reload()
+	var body: Node2D = Node2D.new()
+	body.set_script(body_script)
+	body.position = floor_rect.get_center() + Vector2(0, 150)
+	room.add_child(body)
+	body.reset_physics_interpolation()
+	fight.set("player_override", body)
+	fight.set("boss", boss)
+	var cells_whole: int = ground.get_used_cells().size()
+	# ---- the rift --------------------------------------------------------------------
+	var rift: Node2D = fight.get("rift")
+	var layer: CanvasLayer = rift.get_parent() as CanvasLayer if rift != null else null
+	var clipped: int = 0
+	for glimpse in (rift.get("glimpses") as Array if rift != null else []):
+		var holder: Polygon2D = glimpse[0]
+		if holder.clip_children == CanvasItem.CLIP_CHILDREN_ONLY and holder.get_child_count() > 0 \
+				and not floor_rect.grow(40.0).has_point(holder.position):
+			clipped += 1
+	check("the rift: behind the whole world (layer -1, with the camera), out of the room's darkness, %d glimpses of the heroes' worlds past the walls" % clipped,
+		layer != null and layer.layer == -1 and layer.follow_viewport_enabled and clipped == 4)
+	# ---- the Sealing -------------------------------------------------------------------
+	phases.call("step", 0.016, 0.7)
+	check("  under three quarters: the Sealing - the boss in fire, a share of the warnings illusions",
+		int(phases.get("phase")) == 2 and int(boss.get("crown_land")) == Element.Type.FIRE
+		and is_equal_approx(float(lands.get("false_share")), Phases.LIE_SHARE))
+	lands.set("false_share", 0.0)
+	lands.set("hazards", [])
+	phases.set("_meteor_left", 0.0)
+	phases.call("step", 0.016, 0.7)
+	var meteors: int = 0
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "meteor" and (hz["p"] as Vector2).distance_to(body.global_position) < 60.0:
+			meteors += 1
+	var meteor: Dictionary = lands.call("spawn_env", "meteor", body)
+	meteor["p"] = body.global_position
+	meteor["t"] = float(meteor["w"])
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	var struck: Array = (body.get("hits") as Array).back() if not (body.get("hits") as Array).is_empty() else []
+	var scorched: bool = false
+	for hz in lands.get("hazards"):
+		scorched = scorched or (str(hz["k"]) == "scorch" and (hz["p"] as Vector2) == body.global_position)
+	check("  meteors fall where you stand (%d near you) and strike as fire, leaving a scorch: %s" % [meteors, str(struck)],
+		meteors >= 1 and struck == [LandsScript.env_amount(4, 400, LandsScript.METEOR_TIMES), Element.Type.FIRE] and scorched)
+	lands.set("hazards", [])
+	lands.set("false_share", 1.0)
+	var hits_were: int = (body.get("hits") as Array).size()
+	var illusions_were: int = int((lands.get("reactions") as Dictionary).get("illusion", 0))
+	var lie: Dictionary = lands.call("spawn_env", "hail", body)
+	lie["p"] = body.global_position
+	lie["t"] = float(lie["w"])
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	check("  a false warning (its circle shimmers) lands on you and does nothing but break",
+		bool(lie.get("fake", false)) and (body.get("hits") as Array).size() == hits_were
+		and int((lands.get("reactions") as Dictionary).get("illusion", 0)) == illusions_were + 1 and not bool(lie.get("just", false)))
+	lands.set("false_share", Phases.LIE_SHARE)
+	lands.set("hazards", [])
+	phases.set("_meteor_left", 99.0)
+	phases.set("phase_clock", Phases.LAVA_RISE * 3.0 + 0.05)
+	body.global_position = Vector2(floor_rect.position.x + 20.0, floor_rect.get_center().y)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.016, 0.7)
+	var taken_floor: int = cells_whole - ground.get_used_cells().size()
+	var lava_cells: int = (phases.get("lava") as TileMapLayer).get_used_cells().size()
+	var burned: Array = (body.get("hits") as Array).back()
+	check("  the lava takes the floor ring by ring from the walls (3 rings: %d lava cells, %d floor cells gone) and burns whoever stands in it"
+		% [lava_cells, taken_floor],
+		int(phases.get("lava_depth")) == 3 and taken_floor == lava_cells * 4 and lava_cells > 100
+		and bool(phases.call("in_lava", body.global_position + Vector2(0, 10)))
+		and not bool(phases.call("in_lava", floor_rect.get_center())) and int(burned[1]) == Element.Type.FIRE)
+	# ---- the Trap --------------------------------------------------------------------
+	body.global_position = floor_rect.get_center() + Vector2(0, 150)
+	phases.call("step", 0.016, 0.4)
+	var floor_back: bool = ground.get_used_cells().size() == cells_whole
+	for k in 20:
+		phases.call("step", 0.1, 0.4)
+	var horde: Node2D = phases.get("swarm")
+	var alive: int = int(horde.get("alive")) if horde != null else 0
+	RunScript.pretend_phone = true
+	var on_phone: int = phases.call("horde_size")
+	RunScript.pretend_phone = false
+	lands.set("hazards", [])
+	phases.set("_laser_left", 0.0)
+	phases.call("step", 0.016, 0.4)
+	var beams: Array = []
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "laser":
+			beams.append(hz)
+	check("  under a half: the Trap - the floor whole again, a horde from the Endless filling (%d of %d; %d on a phone) and an X of lasers"
+		% [alive, Phases.HORDE_CROWD, on_phone],
+		int(phases.get("phase")) == 3 and floor_back and horde != null and horde.get_parent() == room.get_node("ysortworld/groundeffects")
+		and alive > 50 and alive <= Phases.HORDE_CROWD and on_phone == Phases.HORDE_PHONE
+		and beams.size() == 2 and (beams[1] as Dictionary).has("x_with") and beams[1]["p"] == beams[0]["p"])
+	# ---- the Tear --------------------------------------------------------------------
+	lands.set("hazards", [])
+	phases.call("step", 0.016, 0.2)
+	var horde_gone: bool = phases.get("swarm") == null
+	phases.set("_tear_left", 0.0)
+	var feet: Vector2 = body.global_position + Vector2(0, 10)
+	phases.call("step", 0.016, 0.2)
+	var tears: Dictionary = phases.get("tears")
+	var under: Vector2i = phases.call("piece_at", feet)
+	check("  under a quarter: the Tear - the horde gone, %d pieces of the floor cracking, one under you" % tears.size(),
+		int(phases.get("phase")) == 4 and horde_gone and tears.size() == Phases.TEAR_COUNT and tears.has(under)
+		and ground.get_used_cells().size() == cells_whole)
+	var land_was: int = int(boss.get("crown_land"))
+	phases.set("_flicker_left", 0.0)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", Phases.TEAR_WARN + 0.05, 0.2)
+	var holes: int = cells_whole - ground.get_used_cells().size()
+	var fell: Array = (body.get("hits") as Array).back()
+	check("  they fall into the rift (%d floor cells open); you fall through, are hurt as dark, and climb out on solid floor; it flickers to another land"
+		% holes,
+		holes == Phases.TEAR_COUNT * 16 and int(phases.get("falls")) == 1 and int(fell[1]) == Element.Type.DARK
+		and not bool(phases.call("fell_in", body.global_position + Vector2(0, 10)))
+		and floor_rect.has_point(body.global_position) and int(boss.get("crown_land")) != land_was)
+	# ---- the lying room ------------------------------------------------------------------
+	var lies_were: int = int(phases.get("lies"))
+	for k in 6:
+		phases.set("_lie_left", 0.0)
+		phases.call("_step_lies", 0.016)
+	fight.call("flash_wash", Element.Type.WATER)
+	var wash: ColorRect = fight.get("_wash")
+	check("  the room lies: %d walls to shimmer, a lie every few seconds, the floor washed in the wrong land a moment" % (phases.call("_walls") as Array).size(),
+		(phases.call("_walls") as Array).size() == 59 and int(phases.get("lies")) == lies_were + 6
+		and wash.color.a > Fight.WASH * 1.5)
+	# ---- the end -------------------------------------------------------------------------
+	phases.call("end")
+	check("  when the fight ends the room is put back: the floor whole, no lava, no tears, no horde, no illusions",
+		ground.get_used_cells().size() == cells_whole and (phases.get("tears") as Dictionary).is_empty()
+		and int(phases.get("lava_depth")) == 0 and phases.get("swarm") == null
+		and float(lands.get("false_share")) == 0.0 and int(phases.get("phase")) == 0)
+	room.queue_free()
+	Boons.clear()
+	await get_tree().process_frame
+	print("  the Crowned falls apart: done")

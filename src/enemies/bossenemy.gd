@@ -169,7 +169,30 @@ const PILLAR_RADIUS := 14.0
 # the pattern lands exactly on them. The counter is to CHANGE DIRECTION, which
 # is a real answer available at every moment. The ground still never moves once
 # it is marked.
-const AIM_LEAD := 0.9
+#
+# BUT IT READ THE PLAYER PERFECTLY (0.134.1). The owner, fighting the remade
+# Crowned: "those spikes from the ground are deadly accurate and they predict
+# the player well i think we need to improve the logic on that". It took the
+# player's velocity THIS tick and led every spike by 90% of it, so it knew a
+# turn the instant it was made: there was no reading it, only out-running it.
+# Now it reads them as a fighter does:
+#   - A REACTION (AIM_REACTION): it aims off the heading it has SEEN
+#     (watch_runners(), eased toward the real one over about that long), so a
+#     player who turns gets out from under a pattern cast just after - the
+#     change of direction this comment always meant to be the answer.
+#   - LESS LEAD (0.75): a runner who never turns still finds the pattern
+#     closing a little behind them - near enough to hurt, not dead centre.
+#   - A LITTLE DOUBT (AIM_SCATTER): a moving player's pattern lands up to
+#     that far off the guess, the shape kept whole.
+# A player who has stood still a moment gets no lead and no doubt: it lands
+# on them. (One who has only just stopped is still read as running - stopping
+# short is a dodge too.)
+const AIM_LEAD := 0.75
+# How long it takes to see a turn, in seconds: the time over which the
+# heading it aims by eases toward the real one.
+const AIM_REACTION := 0.4
+# How far off its guess a moving player's pattern may land, in pixels.
+const AIM_SCATTER := 16.0
 
 # Hard ceiling on how far ahead a single spike may be thrown, in pixels.
 #
@@ -1961,8 +1984,44 @@ func _aim_body() -> Node2D:
 func _player_velocity() -> Vector2:
 	# ANY TARGET THAT KNOWS ITS SPEED. The local player is a CharacterBody2D;
 	# another player's picture (shared monsters) works its velocity out from
-	# the positions it is sent. Either way the boss leads a runner.
-	return _velocity_of(_aim_body())
+	# the positions it is sent. Either way the boss leads a runner - by the
+	# heading it has SEEN (watch_runners()), not this tick's (AIM_LEAD).
+	var body: Node = _aim_body()
+	if not is_instance_valid(body):
+		return Vector2.ZERO
+	return seen_velocity(body)
+
+
+# Each fighter's heading as this boss has seen it (AIM_REACTION), by instance id.
+var _seen_heading: Dictionary = {}
+
+
+func seen_velocity(body: Node) -> Vector2:
+	"""Where `body` is heading as far as this boss can tell: eased toward its
+	real velocity over AIM_REACTION. One it has not watched yet, as it is."""
+	if not is_instance_valid(body):
+		return Vector2.ZERO
+	return _seen_heading.get(body.get_instance_id(), _velocity_of(body))
+
+
+func watch_runners(delta: float) -> void:
+	"""Each tick: ease the heading seen for everybody in the fight toward the
+	real one, and forget anybody who has left it."""
+	var ease_by: float = 1.0 - exp(-delta / AIM_REACTION)
+	var kept: Dictionary = {}
+	for body in fight_targets():
+		if not is_instance_valid(body):
+			continue
+		var id: int = (body as Node).get_instance_id()
+		var real: Vector2 = _velocity_of(body)
+		kept[id] = (_seen_heading.get(id, real) as Vector2).lerp(real, ease_by)
+	_seen_heading = kept
+
+
+func _physics_process(delta: float) -> void:
+	super._physics_process(delta)
+	if not net_mirror:
+		watch_runners(delta)
 
 
 func _velocity_of(body: Node) -> Vector2:
@@ -1987,11 +2046,14 @@ func _lead_pattern(pattern: Array[Dictionary], pattern_name: StringName) -> Arra
 	if vel.length_squared() < 64.0:
 		return pattern
 
+	# A LITTLE DOUBT: the whole shape off the guess by up to AIM_SCATTER,
+	# together, so it stays the shape it is.
+	var doubt: Vector2 = Vector2.from_angle(randf() * TAU) * randf() * AIM_SCATTER
 	for spike in pattern:
 		var shift: Vector2 = vel * float(spike["telegraph"]) * AIM_LEAD
 		if shift.length() > AIM_LEAD_MAX:
 			shift = shift.normalized() * AIM_LEAD_MAX
-		spike["pos"] = (spike["pos"] as Vector2) + shift
+		spike["pos"] = (spike["pos"] as Vector2) + shift + doubt
 	return pattern
 
 
