@@ -1898,8 +1898,8 @@ func _spawn_stalker(target: Node2D = null) -> void:
 	# it the resolved variant means its trail wears the boss's element without
 	# the stalker needing to know elements exist, and its pillars pick up the
 	# element from the scene rather than staying NONE, which is what they were.
-	stalker.setup(target, Projectiles.variant_of(eruption_scene, current_element()), trail_damage(),
-		current_element())
+	stalker.setup(target, Projectiles.variant_of(eruption_scene, crown_or_element()), trail_damage(),
+		crown_or_element())
 	# Whose trail it is, so each pillar it drops can be shown on every screen.
 	stalker.net_owner = self
 
@@ -2484,7 +2484,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	# WHAT HIT ME (0.85.0): every orb of it is this boss's `kind`.
 	HitSource.stamp_for(self, String(kind))
 	var extra: int = absi(int(parts[1])) if parts.size() > 1 and parts[1].is_valid_int() else 0
-	var element: int = current_element()
+	var element: int = crown_or_element()
 	var orb: int = BulletZone.share_of(spike_damage(), ORB_SHARE)
 	match kind:
 		&"prism":
@@ -2612,7 +2612,7 @@ func _lob_art() -> Node2D:
 	"""The boss's own stalagmite, for a boulder to carry: the risen frame of
 	its element's pillar, taken off the scene with its colouring and the rest
 	thrown away - the owner's art, not new art (bulletlob.gd)."""
-	var pillar: Node = Projectiles.variant_of(eruption_scene, current_element()).instantiate()
+	var pillar: Node = Projectiles.variant_of(eruption_scene, crown_or_element()).instantiate()
 	var art: AnimatedSprite2D = pillar.get_node_or_null(^"animatedsprite2d") as AnimatedSprite2D
 	if art != null:
 		art.owner = null
@@ -2630,10 +2630,22 @@ func _lob_art() -> Node2D:
 # WHO IS ATTACKED (0.77.0) - see THE KITS, NOBODY IS LOCKED ON
 # =============================================================================
 
+# THE SEVEN CROWNS (0.134.0, step 1 of the commit folder's CROWNED_PLAN.txt).
+# The Crowned's room (crownedfight.gd) moves the fight through the lands: with
+# crown_land set, its kit, its volleys' element, its pillars and its stalkers'
+# trails are that land's - its health, its melee and its kills stay its own.
+var crown_land: int = -1
+
+
+func crown_or_element() -> int:
+	"""The land it wears now (the Seven Crowns), or its own element."""
+	return crown_land if crown_land >= 0 else current_element()
+
+
 func kit() -> Dictionary:
 	"""This boss's kit: its element's, or the Crowned's for an element with
 	none of its own."""
-	return KITS.get(current_element(), KITS[Element.Type.DARK])
+	return KITS.get(crown_or_element(), KITS[Element.Type.DARK])
 
 
 func stalagmite_pool(phase: int) -> Array[StringName]:
@@ -2872,7 +2884,7 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# put in front of a parameter: eruption_scene and gate_scene are @export, so
 	# a scene pointed somewhere custom is not in the table and comes straight
 	# back out. The line below cannot silently replace a designer's choice.
-	var eruption: Node2D = Projectiles.variant_of(scene, current_element()).instantiate()
+	var eruption: Node2D = Projectiles.variant_of(scene, crown_or_element()).instantiate()
 	HitSource.tag(eruption, self, "spike")
 
 	# CONFIGURED BEFORE IT ENTERS THE TREE. add_child() is what runs _ready(),
@@ -2920,13 +2932,13 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# gets stamped — so without this line every spike from every one of the six
 	# elemental bosses was element NONE, and so was its acid.
 	if "element" in eruption:
-		eruption.element = current_element()
+		eruption.element = crown_or_element()
 
 	# AND WHAT THE ELEMENT DOES (0.77.0): an ice boss's stalagmite chills, an
 	# earth boss's roots (statuseffects.gd). From the element here, on every
 	# game that draws the spike, so each copy carries the same effect.
 	if "status" in eruption:
-		eruption.status = StatusEffects.for_element(current_element())
+		eruption.status = StatusEffects.for_element(crown_or_element())
 
 	# THE PUDDLE IS ROLLED FROM A SEED, so every game drawing this spike leaves
 	# the same acid in the same places (shared monsters). The seed is drawn

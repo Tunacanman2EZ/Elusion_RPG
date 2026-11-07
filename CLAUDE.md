@@ -7246,6 +7246,52 @@ The suite's display section attaches an `EngineErrorCounter` (a `Logger`
 that hears every engine error, not only script errors) around the write and
 fails if it hears one.
 
+### The Crowned, remade: step 1 - the room, the Seven Crowns, the decoy eyes (0.134.0)
+
+The owner, 5-6 Nov: "we remake the last boss and the area in the final boss
+room and we change the boss to be something that utilizes a bit of
+everything", "a beholder is a master of illusions", and of the commit
+folder's CROWNED_PLAN.txt, "lets try it out and see what happens". Steps 2
+(phases 2-4: the Sealing, the Trap, the Tear; false warnings, the lying room)
+and 3 (the ending, tuning) are still to come.
+
+- **The room** (`scene/boss.tscn`) is written by `src/tools/buildcrowned.gd`
+  now, as the Endless is: the underground floor, the crypt's walls laid end
+  to end all round (1,048 x 826; the half `[101, 101, 101]`, middles 391 at
+  the back and 390 at the front, twelve tall side pieces and one short),
+  candelabras, lanterns and bones, the ladder up to the Field and its
+  arrival, the victory teleporter. Built round the Crowned: `ORIGIN` puts
+  `ysortworld/enemies/bossenemy` at (-400, 100), where gamedata.json has it,
+  so the server needs nothing. Rebuilding it loses changes made by hand.
+- **The Seven Crowns** (`src/world/crowned/crownedfight.gd`, the room's
+  `crownedfight` node; every game runs its own): from the moment the Crowned
+  turns on somebody (`engaged`), while above `CROWNS_UNTIL` (0.75) of its
+  health, a crown every `CROWN_SECONDS` (12) in the bands' order
+  (`CROWN_ORDER`, `crown_at()`): the boss wears it (bossenemy.gd
+  `crown_land`, `crown_or_element()` - its kit, volleys, pillars and
+  stalkers' trails are that land's; its health scale and melee stay dark),
+  recoloured by `BaseEnemy.element_material()` (its shader ignores
+  modulate); the floor washes in the land's colour; its weather falls; its
+  light of the seven (`light_spots`, PointLight2Ds and a drawn crown) burns
+  while the rest are dim; the floor fights - the Descent's land hazards,
+  `descentlands.gd`, at `HAZARD_FLOOR` (4), this node their host
+  (`room_rect`, `_player()`, `_edge_spot()`): the crown's land and the last
+  one's, so two react; a banner says "The Crown of Fire". Under 0.75 the old
+  Crowned fights on, its own dark (step 2 replaces this). When it falls every
+  light burns ("The crowns are free"); when it turns away, quiet and dark.
+- **The decoy eyes** (`crowneddecoy.gd`): from `DECOY_FIRST` (10 s), every
+  `DECOY_EVERY` (22 s), `DECOY_COUNT` (2) for `DECOY_SECONDS` (9), 140-240 px
+  round the Crowned in the room, wearing its pictures, recolour and health
+  bar and moving as it moves; in "enemies" with a hurtbox, the stress-copy
+  mark so nothing counts or reports them; any blow breaks one. The real one
+  is the one that casts. Each game makes its own.
+- **Party**: each game counts its crowns from when it saw the fight begin,
+  so two screens may differ by a moment (step 3, if it shows).
+
+`_test_the_crowned_remade()` (testrunner_10); the finale's and the walk's
+checks hold the room's ladder, arrival and teleporter. Pictured and filmed in
+the commit folder (crowned_room_0134.png, crowned_0134.mp4).
+
 ### The Crowned Beholder, by name (0.11.6)
 
 The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The

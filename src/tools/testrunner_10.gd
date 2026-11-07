@@ -2872,6 +2872,128 @@ func _test_the_swarm_runs_lighter() -> void:
 	print("  the swarm runs lighter")
 
 
+# =============================================================================
+# THE CROWNED, REMADE (0.134.0) - step 1 of CROWNED_PLAN.txt
+# =============================================================================
+# The owner: "we remake the last boss and the area in the final boss room",
+# "a beholder is a master of illusions", "lets try it out and see what happens".
+
+func _test_the_crowned_remade() -> void:
+	section("THE CROWNED, REMADE (0.134.0): the room rebuilt, the Seven Crowns, the decoy eyes")
+	const Fight := preload("res://src/world/crowned/crownedfight.gd")
+	const Decoy := preload("res://src/world/crowned/crowneddecoy.gd")
+	const Builder := preload("res://src/tools/buildcrowned.gd")
+	# ---- the room -----------------------------------------------------------------
+	var packed: PackedScene = load("res://scene/boss.tscn") as PackedScene
+	var room: Node = packed.instantiate()
+	var fight_node: Node = room.get_node_or_null("crownedfight")
+	var boss_node: Node2D = room.get_node_or_null("ysortworld/enemies/bossenemy") as Node2D
+	var walls: int = 0
+	for piece in room.get_node("ysortworld/props").get_children():
+		if str(piece.scene_file_path).begins_with("res://scene/crypt/wall") or str(piece.scene_file_path).ends_with("pillar.tscn"):
+			walls += 1
+	var floor_rect: Rect2 = fight_node.get("room_rect") if fight_node != null else Rect2()
+	check("the Crowned's room is built by buildcrowned.gd: walled all round, the fight's node with its floor and seven lights, the Crowned where the server has it",
+		fight_node != null and fight_node.get_script() == Fight and walls == 59
+		and (fight_node.get("light_spots") as PackedVector2Array).size() == 7
+		and floor_rect.size.x > 1000.0 and floor_rect.size.y > 700.0
+		and boss_node != null and boss_node.position == Vector2(-400, 100)
+		and floor_rect.has_point(boss_node.position), [walls, floor_rect])
+	room.free()
+	var widths_back: int = 0
+	for w in Builder.wall_widths(Builder.BACK_MIDDLE):
+		widths_back += int(w)
+	var widths_front: int = 0
+	for w in Builder.wall_widths(Builder.FRONT_MIDDLE):
+		widths_front += int(w)
+	check("  its walls end to end: the back 997 between its corners, the front 996, each the same read either way",
+		widths_back == 997 and widths_front == 996
+		and Builder.wall_widths(Builder.BACK_MIDDLE) == _reversed(Builder.wall_widths(Builder.BACK_MIDDLE))
+		and Builder.wall_widths(Builder.FRONT_MIDDLE) == _reversed(Builder.wall_widths(Builder.FRONT_MIDDLE)))
+	check("  the crowns in the bands' order, CROWN_SECONDS each, round again",
+		Fight.CROWN_ORDER.size() == 7 and int(Fight.CROWN_ORDER[0]) == Element.Type.LIGHT
+		and int(Fight.CROWN_ORDER[6]) == Element.Type.DARK and Fight.crown_at(0.0) == 0
+		and Fight.crown_at(Fight.CROWN_SECONDS + 0.1) == 1 and Fight.crown_at(Fight.CROWN_SECONDS * 7.0 + 0.1) == 0)
+	# ---- the fight ----------------------------------------------------------------
+	var world := Node2D.new()
+	add_child(world)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	var boss: Node2D = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate() as Node2D
+	boss.position = Vector2(500, 400)
+	enemies.add_child(boss)
+	boss.reset_physics_interpolation()
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	var sprite: CanvasItem = boss.get_node("animatedsprite2d") as CanvasItem
+	var worn: Material = sprite.material
+	var fight: Node2D = Fight.new()
+	fight.set("room_rect", Rect2(0, 0, 1000, 800))
+	var spots := PackedVector2Array()
+	for k in 7:
+		spots.append(Vector2(60 + 120 * k, 60))
+	fight.set("light_spots", spots)
+	var me := Node2D.new()
+	me.position = Vector2(300, 600)
+	world.add_child(me)
+	world.add_child(fight)
+	fight.set("player_override", me)
+	await get_tree().process_frame
+	var quiet: bool = not bool(fight.get("fighting"))
+	boss.set("engaged", true)
+	fight.call("_process", 0.016)
+	var lands: Node = fight.get("lands")
+	check("turned on somebody, the fight begins in the Crown of Light: its kit, its colours, its light, its floor and weather, a banner",
+		quiet and bool(fight.get("fighting")) and int(fight.get("crown")) == 0
+		and int(boss.get("crown_land")) == Element.Type.LIGHT and int(boss.call("crown_or_element")) == Element.Type.LIGHT
+		and boss.call("kit") == BossEnemy.KITS[Element.Type.LIGHT] and sprite.material != worn
+		and float((fight.get("_light_want") as Array)[0]) == Fight.LIGHT_LIT
+		and float((fight.get("_light_want") as Array)[1]) == Fight.LIGHT_DIM
+		and (lands.get("env_lands") as Array) == [Element.Type.LIGHT]
+		and str((fight.get("_banner") as Label).text) == "The Crown of Light", [fight.get("crown"), boss.get("crown_land")])
+	fight.set("fight_clock", Fight.CROWN_SECONDS + 0.05)
+	fight.call("_process", 0.016)
+	check("  twelve seconds on, the Crown of Wind - and the last land lingers on the floor, so the two react",
+		int(fight.get("crown")) == 1 and int(boss.get("crown_land")) == Element.Type.WIND
+		and (lands.get("env_lands") as Array).has(Element.Type.WIND) and (lands.get("env_lands") as Array).has(Element.Type.LIGHT))
+	var edge: Vector2 = fight.call("_edge_spot")
+	check("  it hosts the lands' hazards: their player is this game's, an edge spot is in the room and clear of it",
+		fight.call("_player") == me and Rect2(0, 0, 1000, 800).has_point(edge) and edge.distance_to(me.position) >= Fight.EDGE_CLEAR - 0.01)
+	# ---- the illusions ------------------------------------------------------------
+	var made: Array = fight.call("make_decoys", 2)
+	var all_in: bool = made.size() == 2
+	for decoy in made:
+		all_in = all_in and (decoy as Node).is_in_group(&"enemies") and (decoy as Node).has_meta(Decoy.STRESS_MARK) \
+			and (decoy as Node).get_parent() == enemies and Rect2(0, 0, 1000, 800).has_point((decoy as Node2D).global_position) \
+			and bool((decoy as Node).call("can_be_aimed_at")) and (decoy as Node).get_node_or_null("healthbar") != null
+	(made[0] as Node).call("take_damage", 40.0, 0)
+	check("decoy eyes stand round it, among the monsters but never counted, wearing its health bar; a blow breaks one",
+		all_in and bool((made[0] as Node).get("broken")) and not (made[0] as Node).is_in_group(&"enemies")
+		and not bool((made[1] as Node).get("broken")))
+	# ---- the crowns shed, and the fall ----------------------------------------------
+	boss.set("hp", int(float(int(boss.get("max_hp"))) * 0.7))
+	fight.call("_process", 0.016)
+	check("  under three quarters the crowns come off: its own dark kit and colours again, the floor quiet",
+		int(fight.get("crown")) == -1 and int(boss.get("crown_land")) == -1 and sprite.material == worn
+		and (lands.get("env_lands") as Array).is_empty())
+	boss.set("hp", 0)
+	fight.call("_process", 0.016)
+	var lit: bool = true
+	for want in fight.get("_light_want"):
+		lit = lit and float(want) == Fight.LIGHT_DONE
+	check("  and when it falls every light burns, the decoys break, the fight is over",
+		not bool(fight.get("fighting")) and bool(fight.get("won")) and lit and (fight.get("decoys") as Array).is_empty())
+	world.queue_free()
+	await get_tree().process_frame
+	print("  the Crowned, remade")
+
+
+func _reversed(list: Array) -> Array:
+	var copy: Array = list.duplicate()
+	copy.reverse()
+	return copy
+
+
 
 # =============================================================================
 # THE DESCENT GOES DEEPER (0.123.0)

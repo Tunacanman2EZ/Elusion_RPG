@@ -1345,8 +1345,9 @@ func _test_bosses_hit_for_their_band() -> void:
 		and _within(_first_code_index(boss_src, "take_damage(melee_power", swing_at), swing_end) == -1)
 	var stalk_at := _first_code_index(boss_src, "func _spawn_stalker(", 0)
 	var stalk_end := _first_code_index(boss_src, "\nfunc ", stalk_at + 1)
+	# The boss's element - or the land it wears in the Seven Crowns (0.134.0).
 	check("and _spawn_stalker() hands the stalker trail_damage() and the boss's element",
-		_within(_first_code_index(boss_src, "trail_damage(),\n\t\tcurrent_element())", stalk_at), stalk_end) != -1)
+		_within(_first_code_index(boss_src, "trail_damage(),\n\t\tcrown_or_element())", stalk_at), stalk_end) != -1)
 	print("  bosses: spikes %s" % str(hits))
 
 
