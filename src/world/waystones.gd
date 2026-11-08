@@ -26,6 +26,12 @@
 # your head for CHANNEL_SECONDS; moving more than MOVE_SLACK, being hit
 # (Player.took_damage) or falling stops it and says why.
 #
+# PLAYERS DID NOT KNOW (0.134.3). The owner, of the map's row: "players have
+# no idea how to teleport". So a stone says it - its name and "Travel here
+# from the Map" under it once lit - and the moment one is found the player is
+# told (FOUND_NOTICE, over their head); the map's row reads as buttons, with a
+# line saying how (mapscreen.gd).
+#
 # Added to every area by AreaRegistry, like the sleeper; only the Big Field
 # gets stones. The map (mapscreen.gd) draws their pins, a row of them, and
 # starts travel from either.
@@ -59,6 +65,8 @@ const FRAMES := "res://art/teleport/teleportframes.tres"
 const ART_SCALE := 1.5
 const LIT_COLOUR := Color(0.42, 0.95, 1.0)
 const UNLIT_COLOUR := Color(0.62, 0.62, 0.66)
+const FOUND_NOTICE := "Waystone found: %s - travel here any time from the Map"
+const TRAVEL_LINE := "Travel here from the Map"
 const UNLIT_TINT := Color(0.26, 0.26, 0.3)
 
 # THE SUITE'S SEAM: when valid, a finished stand-still calls this with the
@@ -183,6 +191,11 @@ class Stone extends Node2D:
 	func _on_explored(_area: String) -> void:
 		if not _lit:
 			paint()
+			if _lit:
+				# Found just now: say so, and how to use it.
+				var player: Node = get_tree().get_first_node_in_group(&"player") if is_inside_tree() else null
+				if player != null and player.has_method("show_notice"):
+					player.call("show_notice", FOUND_NOTICE % str(stone.get("place", "")))
 
 	func lit() -> bool:
 		return _lit
@@ -198,7 +211,7 @@ class Stone extends Node2D:
 				_art.modulate = UNLIT_TINT
 				_art.stop()
 		if _label != null:
-			_label.text = ("Waystone - %s" % str(stone.get("place", ""))) if _lit else "Waystone"
+			_label.text = ("Waystone - %s\n%s" % [str(stone.get("place", "")), TRAVEL_LINE]) if _lit else "Waystone"
 			_label.add_theme_color_override("font_color",
 				LIT_COLOUR if _lit else UNLIT_COLOUR)
 

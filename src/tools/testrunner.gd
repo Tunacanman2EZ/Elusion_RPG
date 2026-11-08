@@ -244,6 +244,7 @@ func _run_all() -> void:
 	await _test_the_crowned_remade()
 	await _test_spikes_read_the_player_late()
 	await _test_the_lasers_bend()
+	await _test_the_readout_finds_its_spikes()
 	await _test_the_crowned_falls_apart()
 	await _test_one_look_for_the_game()
 	await _test_the_gm_panel_tidied_and_live()

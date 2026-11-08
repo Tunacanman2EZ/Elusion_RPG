@@ -127,6 +127,7 @@ const SOAKED_DEFENCE := 0.5
 # 400 x 0.2 / 2 = 40 px, stopped by walls like any step.
 const SHOVE_SPEED := 400.0
 const SHOVE_SECONDS := 0.2
+# A SLIDE is a shove that lasts longer (slide(), 0.134.3): the lands' wind.
 # A pull is never as fast as walking (90): you can always walk out of it.
 const PULL_SPEED_MAX := 50.0
 
@@ -206,6 +207,8 @@ var _burn_tick_left: float = 0.0
 var soaked_left: float = 0.0
 var shove_velocity: Vector2 = Vector2.ZERO
 var shove_left: float = 0.0
+# How long this shove lasts in all: SHOVE_SECONDS, or a slide's own.
+var shove_seconds: float = SHOVE_SECONDS
 var pull_to: Vector2 = Vector2.ZERO
 var pull_left: float = 0.0
 var pull_speed: float = 0.0
@@ -280,6 +283,19 @@ static func push_harder(body: Node, times: float) -> void:
 		fx.set("shove_velocity", (fx.get("shove_velocity") as Vector2) * times)
 
 
+static func slide(body: Node, times: float, seconds: float) -> void:
+	"""A shove just started on `body` becomes a SLIDE: `times` as fast as a
+	shove and slowing to nothing over `seconds`, not SHOVE_SECONDS - so
+	400 x times x seconds / 2 px, which you see yourself carried along
+	(descentlands.gd's wind, 0.134.3: "wind is still not sliding a player
+	when hit" - a 0.2 s shove of 100 px read as a jolt)."""
+	var fx: Node = of(body)
+	if fx != null and float(fx.get("shove_left")) > 0.0:
+		fx.set("shove_velocity", (fx.get("shove_velocity") as Vector2) * times)
+		fx.set("shove_left", seconds)
+		fx.set("shove_seconds", seconds)
+
+
 # =============================================================================
 # PUTTING ONE ON
 # =============================================================================
@@ -325,6 +341,7 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 				return false
 			shove_velocity = away.normalized() * SHOVE_SPEED * s
 			shove_left = SHOVE_SECONDS
+			shove_seconds = SHOVE_SECONDS
 			_started(SHOVE, false)
 			return true
 		ROOT:
@@ -440,7 +457,7 @@ func push_velocity() -> Vector2:
 	that eases its velocity (the tank) does not carry it into the next."""
 	var push: Vector2 = Vector2.ZERO
 	if shove_left > 0.0:
-		push += shove_velocity * (shove_left / SHOVE_SECONDS)
+		push += shove_velocity * (shove_left / maxf(0.001, shove_seconds))
 	if pull_left > 0.0 and host != null:
 		var toward: Vector2 = pull_to - _body_point()
 		if toward.length() > 4.0:

@@ -36,7 +36,7 @@ const SAMPLE_INTERVAL := 0.2
 
 # Lines are padded to this width so the numbers sit in a column and a change is
 # visible as movement rather than as re-reading.
-const LABEL_WIDTH := 9
+const LABEL_WIDTH := 10
 
 # The frame budget the `frame` row compares against, in milliseconds.
 #
@@ -48,6 +48,25 @@ const TARGET_FRAME_MS := 1000.0 / 60.0
 # stutter a player sees. Not "over budget": on a 60 Hz screen every frame
 # lands a hair either side of 16.67 ms, and counting those counts nothing.
 const HITCH_MS := TARGET_FRAME_MS * 1.5
+
+# LOADS ARE NOT HITCHES, AND A HITCH SAYS WHERE IT WAS (0.134.3). The owner's
+# screenshot after a fight: process worst 241 ms, physics worst 22.5 ms, frame
+# worst 31.25 - and no way to tell whether that was the fight or walking into
+# the area. Since then:
+#   - a frame is held back LOAD_BEFORE frames before it counts, so when the
+#     scene changes (a new area) the frames just before it, and LOAD_AFTER
+#     after, are the LOAD's - the "loads" row - and in no worst and no hitch;
+#   - every hitch is kept, the newest SPIKES_SHOWN on the "spikes" rows: how
+#     long, when, where, which part of the frame took it, and the nodes made
+#     or freed that frame (a big number there is something spawning);
+#   - the frame row's worst is the longest real frame, not the worst fps
+#     turned back into ms (fps is averaged over a second, so a 241 ms frame
+#     read as 31.25).
+const LOAD_BEFORE := 4
+const LOAD_AFTER := 4
+const SPIKES_SHOWN := 5
+# The fps monitor averages a second, so it reads low for one after a load.
+const FPS_SETTLE_MSEC := 1100
 
 
 var _label: Label
@@ -84,6 +103,24 @@ var _last_physics_frames: int = 0
 # browser's).
 var _measuring: bool = false
 
+# Frames not yet counted (LOAD_BEFORE of them), and the loads and spikes.
+var _pending: Array[Dictionary] = []
+var _load_after_left: int = 0
+var _scene_id: int = 0
+var _in_load: bool = false
+var _loads: int = 0
+var _last_load_ms: float = 0.0
+var _last_load_area: String = ""
+var _last_load_msec: int = -100000
+var _worst_frame_ms: float = 0.0
+var _spikes: Array[Dictionary] = []
+# The frame a _process() call measures is the one before it: its length is
+# this call's delta and its process time the monitor's, but its physics ticks
+# were counted - and its last tick's time read - in the call before.
+var _prev_ticks: int = 0
+var _prev_physics_ms: float = 0.0
+var _prev_nodes: int = 0
+
 
 func _ready() -> void:
 	# ALWAYS, so the readout keeps updating while the game is paused. Reading
@@ -119,6 +156,19 @@ func set_shown(on: bool) -> void:
 		_busy_frames = 0
 		_busy_ms = 0.0
 		_last_physics_frames = Engine.get_physics_frames()
+		_pending.clear()
+		_load_after_left = 0
+		_scene_id = _current_scene_id()
+		_in_load = false
+		_loads = 0
+		_last_load_ms = 0.0
+		_last_load_area = ""
+		_last_load_msec = -100000
+		_worst_frame_ms = 0.0
+		_spikes.clear()
+		_prev_ticks = 0
+		_prev_physics_ms = 0.0
+		_prev_nodes = 0
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
 	visible = on
 	_measure_render_time(on)
@@ -161,13 +211,23 @@ func _process(delta: float) -> void:
 	# A HELD FRAME IS NOT A RESULT (0.69.2): neither its rate nor its length
 	# says anything about the game, so it goes into no worst and no count.
 	var held: bool = Settings.held_reason() != ""
-	if not held and fps > 0.0 and (_worst_fps <= 0.0 or fps < _worst_fps):
-		_worst_fps = fps
-	_note_frame(delta, held)
 	var ticks: int = Engine.get_physics_frames() - _last_physics_frames
 	_last_physics_frames = Engine.get_physics_frames()
 	_busy_ms_sum += _process_ms() + _physics_ms() * float(maxi(ticks, 0))
 	_busy_frames += 1
+	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	if _current_scene_id() != _scene_id:
+		_scene_id = _current_scene_id()
+		mark_load()
+	push_sample({
+		"ms": delta * 1000.0, "held": held, "fps": fps,
+		"process": _process_ms(), "physics": _prev_physics_ms, "ticks": _prev_ticks,
+		"nodes": (nodes - _prev_nodes) if _prev_nodes > 0 else 0,
+		"area": AreaRegistry.current_area_id(), "at": Time.get_ticks_msec(),
+	})
+	_prev_ticks = maxi(ticks, 0)
+	_prev_physics_ms = _physics_ms()
+	_prev_nodes = nodes
 
 	_accum += delta
 	if _accum < SAMPLE_INTERVAL:
@@ -177,7 +237,7 @@ func _process(delta: float) -> void:
 	_busy_ms_sum = 0.0
 	_busy_frames = 0
 
-	_label.text = "\n".join([
+	var rows: PackedStringArray = [
 		_row("fps", "%d   (worst %d)%s" % [int(fps), int(_worst_fps), _cap_note()]),
 
 		# MILLISECONDS, BECAUSE FRAME RATE IS THE WRONG UNIT FOR THIS QUESTION.
@@ -191,12 +251,13 @@ func _process(delta: float) -> void:
 		# 60fps frame, and that arithmetic is only available in this unit.
 		_row("frame", "%.2f ms   (worst %.2f)   budget %.2f" % [
 			1000.0 / maxf(fps, 0.001),
-			1000.0 / maxf(_worst_fps, 0.001),
+			_worst_frame_ms,
 			TARGET_FRAME_MS,
 		]),
 		_row("hitches", "%s of %s frames over %.0f ms   (%.1f%%)" % [
 			_thousands(_hitches), _thousands(_frames), HITCH_MS,
 			100.0 * float(_hitches) / float(maxi(_frames, 1))]),
+		_row("loads", loads_text()),
 
 		# THE TWO HALVES OF A FRAME THAT A CROWD OF MONSTERS FILLS. Physics is
 		# every monster's brain - navigation, the formation ring, move_and_slide -
@@ -232,8 +293,7 @@ func _process(delta: float) -> void:
 			int(Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)))),
 		_row("draws", _thousands(
 			int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))),
-		_row("memory", "%.1f MB" % (
-			Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0)),
+		_row("memory", memory_text()),
 		# THE ONLY ROW HERE THAT IS NOT ABOUT THIS MACHINE. Every other number
 		# answers "is this smooth for me"; this one answers "what does one of
 		# me cost the server", and it is multiplied by every player online.
@@ -241,22 +301,143 @@ func _process(delta: float) -> void:
 		# number worth watching as the game grows.
 		_row("net", "%.2f req/s   (%s total)" % [
 			Api.requests_per_second(), _thousands(Api.requests_total())]),
-	])
+	]
+	# The spikes last, under everything, newest first.
+	var now_msec: int = Time.get_ticks_msec()
+	if _spikes.is_empty():
+		rows.append(_row("spikes", "none since switched on"))
+	for i in _spikes.size():
+		rows.append(_row("spikes" if i == 0 else "", spike_text(_spikes[i], now_msec)))
+	_label.text = "\n".join(rows)
 
 
-func _note_frame(delta: float, held: bool = false) -> void:
+func _current_scene_id() -> int:
+	var scene: Node = get_tree().current_scene if is_inside_tree() else null
+	return scene.get_instance_id() if scene != null else 0
+
+
+func push_sample(sample: Dictionary) -> void:
+	"""One frame measured: held back LOAD_BEFORE frames, then counted
+	(_count_sample()). `sample`: ms, held, fps, process, physics (its last
+	tick), ticks, nodes (made less freed), area, at (ticks msec)."""
+	if _load_after_left > 0:
+		sample["load"] = true
+		_load_after_left -= 1
+	_pending.append(sample)
+	while _pending.size() > LOAD_BEFORE:
+		_count_sample(_pending.pop_front())
+
+
+func mark_load() -> void:
+	"""The scene changed: the frames held back, and the next LOAD_AFTER, were
+	the load's."""
+	for sample in _pending:
+		sample["load"] = true
+	_load_after_left = LOAD_AFTER
+
+
+func flush_samples() -> void:
+	"""Counts every frame held back now (the suite)."""
+	while not _pending.is_empty():
+		_count_sample(_pending.pop_front())
+
+
+func _count_sample(sample: Dictionary) -> void:
+	var at: int = int(sample.get("at", 0))
+	if bool(sample.get("load", false)):
+		if not _in_load:
+			_loads += 1
+			_last_load_ms = 0.0
+		_in_load = true
+		_last_load_ms = maxf(_last_load_ms, float(sample.get("ms", 0.0)))
+		_last_load_area = str(sample.get("area", ""))
+		_last_load_msec = at
+		return
+	_in_load = false
+	var held: bool = bool(sample.get("held", false))
+	var fps: float = float(sample.get("fps", 0.0))
+	if not held and fps > 0.0 and at - _last_load_msec > FPS_SETTLE_MSEC \
+			and (_worst_fps <= 0.0 or fps < _worst_fps):
+		_worst_fps = fps
+	_note_frame(float(sample.get("ms", 0.0)) / 1000.0, held, sample)
+
+
+func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> void:
 	"""One frame into the since-switched-on counts: the frame, whether it
-	hitched, and the worst physics tick and script time. A frame drawn while
-	the game is HELD at the background rate (Settings.held_reason()) is not
-	counted: every one of those is 66 ms on purpose, and the owner's 8x
-	readout called 64% of its frames hitches for it (0.69.2)."""
+	hitched (and if so, the spike), and the worst frame, physics tick and
+	script time. A frame drawn while the game is HELD at the background rate
+	(Settings.held_reason()) is not counted: every one of those is 66 ms on
+	purpose, and the owner's 8x readout called 64% of its frames hitches for
+	it (0.69.2). `sample` is push_sample()'s; without one, the monitors now."""
 	if held:
 		return
 	_frames += 1
-	if delta * 1000.0 > HITCH_MS:
+	var ms: float = delta * 1000.0
+	var physics: float = float(sample.get("physics", _physics_ms()))
+	var process: float = float(sample.get("process", _process_ms()))
+	_worst_frame_ms = maxf(_worst_frame_ms, ms)
+	if ms > HITCH_MS:
 		_hitches += 1
-	_worst_physics_ms = maxf(_worst_physics_ms, _physics_ms())
-	_worst_process_ms = maxf(_worst_process_ms, _process_ms())
+		_spikes.push_front({
+			"ms": ms, "physics": physics, "ticks": int(sample.get("ticks", 1)),
+			"process": process, "nodes": int(sample.get("nodes", 0)),
+			"area": str(sample.get("area", AreaRegistry.current_area_id())),
+			"at": int(sample.get("at", Time.get_ticks_msec())),
+		})
+		if _spikes.size() > SPIKES_SHOWN:
+			_spikes.resize(SPIKES_SHOWN)
+	_worst_physics_ms = maxf(_worst_physics_ms, physics)
+	_worst_process_ms = maxf(_worst_process_ms, process)
+
+
+func spike_text(spike: Dictionary, now_msec: int) -> String:
+	"""One hitch: how long, how long ago, where, which part of the frame took
+	most of it, and the nodes made (or freed) that frame."""
+	var ms: float = float(spike["ms"])
+	var ticks: int = int(spike["ticks"])
+	var physics: float = float(spike["physics"])
+	var physics_all: float = physics * float(ticks)
+	var process: float = float(spike["process"])
+	var rest: float = maxf(0.0, ms - physics_all - process)
+	var what: String
+	if physics_all >= process and physics_all >= rest:
+		what = "physics, %d tick%s, the last %.1f ms" % [ticks, "" if ticks == 1 else "s", physics]
+	elif process >= rest:
+		what = "scripts + drawing %.1f ms" % process
+	else:
+		what = "outside the scripts %.1f ms (the graphics card, or a file loading)" % rest
+	var seconds: int = maxi(0, (now_msec - int(spike["at"])) / 1000)
+	var ago: String = ("%d s ago" % seconds) if seconds < 120 else ("%d min ago" % (seconds / 60))
+	var area: String = str(spike["area"])
+	var where: String = (" in " + AreaRegistry.display_name(area)) if area != "" else ""
+	var nodes: int = int(spike["nodes"])
+	var made: String = ""
+	if nodes != 0:
+		made = "   %s%s nodes" % ["+" if nodes > 0 else "", _thousands(nodes)]
+	return "%.0f ms   %s%s - %s%s" % [ms, ago, where, what, made]
+
+
+func loads_text() -> String:
+	if _loads == 0:
+		return "none since switched on   (an area's first frames count here, not as hitches)"
+	var area: String = AreaRegistry.display_name(_last_load_area) if _last_load_area != "" else "an area"
+	return "%s since switched on   the last %.0f ms, into %s" % [_thousands(_loads), _last_load_ms, area]
+
+
+func memory_text() -> String:
+	"""Godot counts the game's own memory in a debug build only: an exported
+	game read 0.0 MB (the owner's screenshot). The graphics memory where the
+	renderer says."""
+	var parts: PackedStringArray = []
+	var game: float = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
+	var video: float = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
+	if game > 0.0:
+		parts.append("%.1f MB" % game)
+	if video > 0.0:
+		parts.append("graphics %.1f MB" % video)
+	if parts.is_empty():
+		return "not measured in this build"
+	return "   ".join(parts)
 
 
 func _physics_ms() -> float:

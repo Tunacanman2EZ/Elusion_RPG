@@ -683,8 +683,7 @@ func _physics_process(_delta):
 	# it (attack_locks_movement). warrior sets this false so it can walk
 	# while swinging; mage/tank/healer keep the old frozen behavior.
 	if is_attacking and attack_locks_movement:
-		velocity = Vector2.ZERO
-		move_and_slide()
+		move_by_push_only()
 		_set_active()
 		return
 
@@ -2045,6 +2044,17 @@ func effects_damage_scale() -> float:
 func effects_push() -> Vector2:
 	"""A shove or a pull, on top of your own movement this frame."""
 	return status_effects.call(&"push_velocity") if status_effects != null else Vector2.ZERO
+
+
+func move_by_push_only() -> void:
+	"""STOOD STILL TO ATTACK, STILL BLOWN ALONG (0.134.3). The mage's cast,
+	the tank's and the healer's attacks hold you still; that used to hold you
+	against a shove too, so a mage casting in the wind was never moved (the
+	owner: "wind is still not sliding a player when hit"). Your own walking
+	stops; a shove or a pull still carries you."""
+	velocity = effects_push()
+	move_and_slide()
+	velocity = Vector2.ZERO
 
 
 func effects_heal_scale() -> float:

@@ -1384,12 +1384,29 @@ func _test_the_waystones() -> void:
 		not chasm.call("lit") and dark.get("kind") == "waystone" and not bool(dark.get("lit"))
 		and dark.get("waystone") == "chasm" and not (chasm.get_node("art") as AnimatedSprite2D).is_playing()
 		and (chasm.get_node("art") as CanvasItem).modulate == Ways.UNLIT_TINT, dark)
+	var listener_script := GDScript.new()
+	listener_script.source_code = "extends Node2D\nvar heard: Array = []\nfunc show_notice(message: String) -> void:\n\theard.append(message)\n"
+	listener_script.reload()
+	var listener := Node2D.new()
+	listener.set_script(listener_script)
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for other in others:
+		(other as Node).remove_from_group(&"player")
+	listener.add_to_group(&"player")
+	add_child(listener)
 	WorldMap.reveal_around(stone_chasm["at"] + Vector2(60, 60), "bigfield")
+	var heard: Array = (listener.get("heard") as Array).duplicate()
+	listener.remove_from_group(&"player")
+	listener.free()
+	for other in others:
+		(other as Node).add_to_group(&"player")
+	check("  finding it tells the player, and how to use it (0.134.3)",
+		heard.size() == 1 and str(heard[0]) == Ways.FOUND_NOTICE % "The Chasm", heard)
 	var bright: Dictionary = chasm.call("map_landmark")
 	check("  walking past it lights it, at once: the portal plays, its name shows, a cyan pin",
 		chasm.call("lit") and bool(bright.get("lit")) and bright.get("colour") == Ways.LIT_COLOUR
 		and (chasm.get_node("art") as AnimatedSprite2D).is_playing()
-		and (chasm.get_node("label") as Label).text == "Waystone - The Chasm", bright)
+		and (chasm.get_node("label") as Label).text == "Waystone - The Chasm\n" + Ways.TRAVEL_LINE, bright)
 	check("  and the others are still dark", not Ways.is_lit(Ways.stone_for("crypt")))
 
 	# ---- the stand-still ------------------------------------------------------------------------
@@ -1447,8 +1464,13 @@ func _test_the_waystones() -> void:
 		row != null and row.visible and row.get_child_count() == 8 and chasm_button != null
 		and not chasm_button.disabled and crypt_button.disabled and chasm_button.text == "Chasm",
 		[row != null and row.visible, row.get_child_count() if row != null else 0])
+	var hint: Label = map.get("waystone_hint")
+	check("  the row says how to use it (0.134.3: \"players have no idea how to teleport\") - found ones are cyan buttons",
+		hint != null and hint.visible and hint.text.contains("stand still") and hint.text.contains("Click")
+		and chasm_button.get_theme_stylebox("normal") is StyleBoxFlat
+		and (chasm_button.get_theme_stylebox("normal") as StyleBoxFlat).border_color.a > 0.5)
 	map.call("refresh", "endless")
-	check("  and hidden in a minigame", row != null and not row.visible)
+	check("  and hidden in a minigame", row != null and not row.visible and not hint.visible)
 	map.call("refresh", "elusion")
 	map.visible = true
 	chasm_button.pressed.emit()
@@ -4934,10 +4956,63 @@ func _test_the_lasers_bend() -> void:
 	var fx: Node = Effects.attach(pushed)
 	Effects.apply_to(pushed, Effects.SHOVE, 10, pushed.global_position - Vector2(30, 0))
 	var plain: float = (fx.get("shove_velocity") as Vector2).length()
-	Effects.push_harder(pushed, LandsScript.GUST_SHOVE)
-	check("  and wind shoves %.1f times as hard as any other shove" % LandsScript.GUST_SHOVE,
-		plain > 0.0 and is_equal_approx((fx.get("shove_velocity") as Vector2).length(), plain * LandsScript.GUST_SHOVE)
-		and LandsScript.GUST_SHOVE >= 2.0)
+	Effects.push_harder(pushed, 2.0)
+	check("  push_harder() still makes a shove that many times as hard",
+		plain > 0.0 and is_equal_approx((fx.get("shove_velocity") as Vector2).length(), plain * 2.0))
+	# ---- wind SLIDES you (0.134.3): "wind is still not sliding a player when hit" ----
+	fx.call("clear_all")
+	lands.call("_wind_slide", pushed, pushed.global_position - Vector2(30, 0))
+	var carried := Vector2.ZERO
+	var lasted: float = 0.0
+	for i in 200:
+		var v: Vector2 = fx.call("push_velocity")
+		if v == Vector2.ZERO:
+			break
+		carried += v * 0.0125
+		lasted += 0.0125
+		fx.call("_physics_process", 0.0125)
+	check("  a wind hit slides you along: %.0f px over %.2f s (a shove is 40 px in 0.2 s)" % [carried.x, lasted],
+		carried.x >= 150.0 and absf(carried.y) < 1.0 and lasted >= 0.5 and lasted <= 0.8, [carried, lasted])
+	fx.call("clear_all")
+	Effects.apply_to(pushed, Effects.SHOVE, 10, pushed.global_position - Vector2(30, 0))
+	carried = Vector2.ZERO
+	for i in 200:
+		var v2: Vector2 = fx.call("push_velocity")
+		if v2 == Vector2.ZERO:
+			break
+		carried += v2 * 0.0125
+		fx.call("_physics_process", 0.0125)
+	check("  and any other shove is the 40 px it was (%.1f px)" % carried.x, absf(carried.x - 40.0) < 3.0, carried)
+	# A gust inside the touch gap cannot hurt you yet - and still blows you.
+	fx.call("clear_all")
+	lands.set("hazards", [])
+	lands.set("_queue", [])
+	lands.set("_touch_left", 5.0)
+	body.global_position = at
+	var gfx: Node = Effects.attach(body)
+	gfx.call("clear_all")
+	var gust: Dictionary = lands.call("spawn_env", "gust", body)
+	gust["p"] = at
+	gust["dir"] = 1.0
+	gust["w"] = 0.0
+	lands.set("hazards", [gust])
+	var hurt_was: int = (body.get("hits") as Array).size()
+	lands.call("step", 0.016)
+	check("  a gust crossing you inside the touch gap: no hurt, and it still slides you along",
+		(body.get("hits") as Array).size() == hurt_was and float(gfx.get("shove_left")) > 0.4
+		and (gfx.call("push_velocity") as Vector2).x > 0.0, [gfx.get("shove_left"), gfx.call("push_velocity")])
+	lands.set("hazards", [])
+	lands.set("_touch_left", 0.0)
+	gfx.call("clear_all")
+	# Stood still to attack (the mage's cast, the tank's, the healer's), a
+	# shove still carries you.
+	var player_src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
+	var tank_src: String = FileAccess.get_file_as_string("res://src/characters/tank.gd")
+	var lock_at: int = player_src.find("if is_attacking and attack_locks_movement:")
+	var tank_at: int = tank_src.find("\tif is_attacking:\n")
+	check("  stood still for an attack, a shove still carries you (player.gd and tank.gd)",
+		lock_at > 0 and player_src.substr(lock_at, 90).contains("move_by_push_only()")
+		and tank_at > 0 and tank_src.substr(tank_at, 60).contains("move_by_push_only()"), [lock_at, tank_at])
 	pushed.queue_free()
 	lands.call("end")
 	room.queue_free()
@@ -5187,3 +5262,84 @@ func _test_the_crowned_falls_apart() -> void:
 	Boons.clear()
 	await get_tree().process_frame
 	print("  the Crowned falls apart: done")
+
+
+func _test_the_readout_finds_its_spikes() -> void:
+	# The owner's screenshot after a fight (0.134.3): process worst 241 ms,
+	# physics worst 22.5, frame worst 31.25 - and nothing to say whether that
+	# was the fight or the walk into the area (perfoverlay.gd LOADS ARE NOT
+	# HITCHES, AND A HITCH SAYS WHERE IT WAS).
+	section("The readout tells a load from a spike, and says where each spike was (0.134.3)")
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var now: int = Time.get_ticks_msec()
+	var plain := {"ms": 10.0, "held": false, "fps": 100.0, "process": 3.0, "physics": 0.5,
+		"ticks": 1, "nodes": 0, "area": "field", "at": now}
+	for i in 6:
+		PerfOverlay.push_sample(plain.duplicate())
+	var hitch := plain.duplicate()
+	hitch["ms"] = 40.0
+	PerfOverlay.push_sample(hitch)
+	check("a frame is held back %d frames before it counts, so a load found late still takes it" % PerfOverlay.LOAD_BEFORE,
+		PerfOverlay._hitches == 0 and PerfOverlay._pending.size() == PerfOverlay.LOAD_BEFORE, PerfOverlay._pending.size())
+	# A load: a 241 ms frame, then the scene changes.
+	var heavy := plain.duplicate()
+	heavy["ms"] = 241.0
+	heavy["process"] = 230.0
+	heavy["area"] = "descent"
+	PerfOverlay.push_sample(heavy)
+	PerfOverlay.mark_load()
+	for i in PerfOverlay.LOAD_AFTER:
+		var arrived := plain.duplicate()
+		arrived["area"] = "descent"
+		PerfOverlay.push_sample(arrived)
+	# A spike in the fight: two physics ticks, forty nodes made.
+	var spike := plain.duplicate()
+	spike["ms"] = 48.0
+	spike["physics"] = 22.5
+	spike["ticks"] = 2
+	spike["process"] = 2.0
+	spike["nodes"] = 40
+	spike["at"] = now - 12000
+	PerfOverlay.push_sample(spike)
+	var scripts := plain.duplicate()
+	scripts["ms"] = 60.0
+	scripts["process"] = 50.0
+	PerfOverlay.push_sample(scripts)
+	var outside := plain.duplicate()
+	outside["ms"] = 90.0
+	outside["nodes"] = -300
+	PerfOverlay.push_sample(outside)
+	PerfOverlay.flush_samples()
+	check("a 241 ms frame as the scene changed is a load: counted once, into the area it loaded",
+		PerfOverlay._loads == 1 and is_equal_approx(PerfOverlay._last_load_ms, 241.0)
+		and PerfOverlay.loads_text().contains("241 ms") and PerfOverlay.loads_text().contains(AreaRegistry.display_name("descent")),
+		PerfOverlay.loads_text())
+	check("  and in no worst and no hitch - the 40 ms frame it swallowed with it neither",
+		PerfOverlay._worst_process_ms < 100.0 and PerfOverlay._worst_frame_ms < 100.0 and PerfOverlay._hitches == 3,
+		[PerfOverlay._worst_process_ms, PerfOverlay._worst_frame_ms, PerfOverlay._hitches])
+	check("the frame row's worst is the longest real frame (90 ms), not the worst fps turned back into ms",
+		is_equal_approx(PerfOverlay._worst_frame_ms, 90.0), PerfOverlay._worst_frame_ms)
+	var said: String = PerfOverlay.spike_text(PerfOverlay._spikes[2], now)
+	check("a spike says how long, when, where, that physics took it, and what was made: \"%s\"" % said,
+		said.begins_with("48 ms") and said.contains("12 s ago") and said.contains(" in " + AreaRegistry.display_name("field"))
+		and said.contains("physics, 2 ticks, the last 22.5 ms") and said.contains("+40 nodes"), said)
+	said = PerfOverlay.spike_text(PerfOverlay._spikes[1], now)
+	check("  scripts and drawing when they took it: \"%s\"" % said, said.contains("scripts + drawing 50.0 ms"), said)
+	said = PerfOverlay.spike_text(PerfOverlay._spikes[0], now)
+	check("  and neither, newest first: \"%s\"" % said,
+		said.begins_with("90 ms") and said.contains("outside the scripts") and said.contains("-300 nodes"), said)
+	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var text: String = PerfOverlay.readout()
+	check("drawn: the loads row, the spikes rows, the frame's real worst",
+		text.contains("loads") and text.contains("spikes") and text.contains("(worst 90.00)") and text.contains("48 ms   12 s ago"), text)
+	check("every label has a space after it - \"after you\" ran into its value (\"after younobody\")",
+		PerfOverlay._row("after you", "nobody") == "after you nobody" and "after you".length() < PerfOverlay.LABEL_WIDTH)
+	check("memory never reads 0.0 MB: Godot counts it in a debug build only, so an exported game says so",
+		not PerfOverlay.memory_text().contains("0.0 MB") and PerfOverlay.memory_text() != "", PerfOverlay.memory_text())
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(shown_before)
+	print("  the readout finds its spikes: done")

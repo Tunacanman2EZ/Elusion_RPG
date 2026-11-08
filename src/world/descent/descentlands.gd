@@ -204,12 +204,20 @@ const GUST_PUSH := 120.0
 # the Crowned: "wind needs a stronger push at wind drifts and it needs to fire
 # at a separate time then the lasers the thing is sequences so that way things
 # feel not everything is happening at 1 time".
-#   - A gust (and a wind laser) shoves GUST_SHOVE times as hard as any other
-#     shove (StatusEffects.push_harder()), and blows what floats GUST_PUSH.
+#   - A gust (and a wind laser) shoves harder than any other shove (a slide
+#     since 0.134.3, below), and blows what floats GUST_PUSH.
 #   - A wave of the floor's hazards no longer lands at once: each comes
 #     ENV_STAGGER after the last (_queue), and the wave's laser comes
 #     LASER_LATER of the gap after it, so it fires between the waves.
-const GUST_SHOVE := 2.5
+#   - A SLIDE, NOT A JOLT (0.134.3). The owner: "wind is still not sliding
+#     a player when hit". 2.5 times a shove was 100 px in 0.2 s - over before
+#     it could be seen. Now a wind hit carries you GUST_SHOVE times a shove's
+#     speed, slowing over WIND_SLIDE_SECONDS (StatusEffects.slide()): 400 x
+#     1.4 x 0.6 / 2 = 168 px, against your walking. And a gust that crosses
+#     you inside the touch gap still blows you along (_wind_slide()) - it
+#     only cannot hurt you yet.
+const GUST_SHOVE := 1.4
+const WIND_SLIDE_SECONDS := 0.6
 const ENV_STAGGER := 0.3
 const LASER_LATER := 0.5
 # NEW SHAPES OF LASER (0.134.2, the owner's "lets check it out" of a list of
@@ -836,10 +844,8 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				if absf(me.global_position.y - (hz["p"] as Vector2).y) <= lane:
 					hz["landed"] = true
 					var from: Vector2 = me.global_position - Vector2(30.0 * float(hz["dir"]), 0.0)
-					var hits_were: int = env_hits
 					_env_hit(me, 1.0, Element.Type.WIND, StatusEffects.SHOVE, from)
-					if env_hits > hits_were:
-						StatusEffects.push_harder(me, GUST_SHOVE)
+					_wind_slide(me, from)
 		"gas":
 			hz["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2) * delta
 			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
@@ -883,10 +889,9 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 						var from: Vector2 = near
 						if e == Element.Type.WIND:
 							from = me.global_position - beam_heading(hz, near) * 30.0
-						var hits_were: int = env_hits
 						_env_hit(me, LASER_HIT, e, EFFECT_FOR.get(e, StatusEffects.DAZZLE), from)
-						if e == Element.Type.WIND and env_hits > hits_were:
-							StatusEffects.push_harder(me, GUST_SHOVE)
+						if e == Element.Type.WIND:
+							_wind_slide(me, from)
 				if t >= float(hz["life"]) - LASER_TRAIL_BEFORE and not bool(hz.get("left", false)):
 					hz["left"] = true
 					_leave_trail(hz)
@@ -1558,6 +1563,13 @@ func _react(me: Node2D) -> void:
 
 func _touches(me: Node2D, at: Vector2, radius: float) -> bool:
 	return me.global_position.distance_to(at) <= radius + TOUCH_SLACK
+
+
+func _wind_slide(me: Node2D, from: Vector2) -> void:
+	"""Wind carries this game's player away from `from` in a slide
+	(WIND_SLIDE_SECONDS), whether or not the touch gap let it hurt them."""
+	if StatusEffects.apply_to(me, StatusEffects.SHOVE, 0, from, false, 1.0):
+		StatusEffects.slide(me, GUST_SHOVE, WIND_SLIDE_SECONDS)
 
 
 func _env_hit(me: Node2D, times: float, element: int, effect: StringName, from: Vector2) -> void:

@@ -13,6 +13,15 @@
 # the cursor while the last monster is still being swung at. A click on a card
 # only chooses it (ringed in gold, `chosen`); Take it, under the cards, takes
 # it, and stays dimmed until a card is chosen.
+#
+# A LIGHTER, TIDIER PLATE (0.134.3). The owner, of the plate: "we need to
+# upgrade this box and make more transparent and organized". It was a dark
+# box of centred lines with every upgrade on one long line. Now, see-through
+# (PLATE_ALPHA) and in rows: the title, the floor and its land, and the gold
+# on one line; the rooms' dots with "Room 4 of 4" beside them; the Ward and
+# Fury bars side by side; a challenge's clock when there is one; and the
+# upgrades as chips in their rarity's colour, wrapping at PLATE_WIDTH
+# (rebuilt only when they change).
 extends CanvasLayer
 
 const Boons := preload("res://src/world/descent/descentboons.gd")
@@ -29,13 +38,21 @@ const WARD_BAR := Vector2(200, 10)
 const WARD_GOLD := Color(1.0, 0.8, 0.3)
 # AXE FURY's bar (0.115.0), under the ward's, while the Double Axe is on.
 const FURY_ORANGE := Color(1.0, 0.55, 0.2)
+const PLATE_ALPHA := 0.42
+const PLATE_WIDTH := 500.0
+const CLOCK_RED := Color(1.0, 0.55, 0.4)
 
 var run: Node = null
 var plate: PanelContainer = null
 var title: Label = null
 var detail: Label = null
 var pips: Control = null
-var boon_line: Label = null
+# The upgrades taken, as chips (A LIGHTER, TIDIER PLATE).
+var boon_line: HFlowContainer = null
+var gold_text: Label = null
+var room_text: Label = null
+var clock_text: Label = null
+var _chips_for: String = "-"
 var ward_row: HBoxContainer = null
 var ward_bar: Control = null
 var ward_text: Label = null
@@ -75,35 +92,75 @@ func _ready() -> void:
 	plate.name = "plate"
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.03, 0.05, 0.8)
-	style.border_color = Color(GOLD, 0.45)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(8)
+	style.bg_color = Color(0.04, 0.03, 0.06, PLATE_ALPHA)
+	style.border_color = Color(GOLD, 0.28)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 12.0
+	style.content_margin_right = 12.0
+	style.content_margin_top = 6.0
+	style.content_margin_bottom = 7.0
 	plate.add_theme_stylebox_override("panel", style)
 	add_child(plate)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 2)
+	column.add_theme_constant_override("separation", 4)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.custom_minimum_size = Vector2(PLATE_WIDTH, 0)
 	plate.add_child(column)
-	title = _label("title", 18, GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(title)
+	# The head: the title and where you are on the left, the gold on the right.
+	var head := HBoxContainer.new()
+	head.name = "head"
+	head.add_theme_constant_override("separation", 10)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(head)
+	title = _label("title", 16, GOLD)
+	head.add_child(title)
 	detail = _label("detail", 13, HINT)
-	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(detail)
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	detail.clip_text = true
+	head.add_child(detail)
+	gold_text = _label("gold", 13, GOLD)
+	gold_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(gold_text)
+	var rule := ColorRect.new()
+	rule.name = "rule"
+	rule.color = Color(GOLD, 0.18)
+	rule.custom_minimum_size = Vector2(0, 1)
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(rule)
+	# The route: a dot a room, and which room this is.
+	var route := HBoxContainer.new()
+	route.name = "route"
+	route.alignment = BoxContainer.ALIGNMENT_CENTER
+	route.add_theme_constant_override("separation", 10)
+	route.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(route)
 	pips = Control.new()
 	pips.name = "pips"
-	pips.custom_minimum_size = Vector2(PIP_GAP * (run_rooms() + 1), 22)
+	pips.custom_minimum_size = Vector2(PIP_GAP * (run_rooms() + 1), 20)
 	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pips.draw.connect(_draw_pips)
-	column.add_child(pips)
+	route.add_child(pips)
+	room_text = _label("room", 12, HINT)
+	room_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	route.add_child(room_text)
+	clock_text = _label("clock", 13, CLOCK_RED)
+	clock_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(clock_text)
+	# The bars, side by side.
+	var bars := HBoxContainer.new()
+	bars.name = "bars"
+	bars.alignment = BoxContainer.ALIGNMENT_CENTER
+	bars.add_theme_constant_override("separation", 22)
+	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(bars)
 	ward_row = HBoxContainer.new()
 	ward_row.name = "ward"
 	ward_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	ward_row.add_theme_constant_override("separation", 8)
 	ward_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_child(ward_row)
+	bars.add_child(ward_row)
 	var ward_name: Label = _label("wardname", 13, WARD_GOLD)
 	ward_name.text = "Ward"
 	ward_row.add_child(ward_name)
@@ -121,7 +178,7 @@ func _ready() -> void:
 	fury_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	fury_row.add_theme_constant_override("separation", 8)
 	fury_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_child(fury_row)
+	bars.add_child(fury_row)
 	var fury_name: Label = _label("furyname", 13, FURY_ORANGE)
 	fury_name.text = "Fury"
 	fury_row.add_child(fury_name)
@@ -134,8 +191,12 @@ func _ready() -> void:
 	fury_row.add_child(fury_bar)
 	fury_text = _label("furytext", 13, FURY_ORANGE)
 	fury_row.add_child(fury_text)
-	boon_line = _label("boons", 12, GOLD)
-	boon_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boon_line = HFlowContainer.new()
+	boon_line.name = "boons"
+	boon_line.alignment = FlowContainer.ALIGNMENT_CENTER
+	boon_line.add_theme_constant_override("h_separation", 4)
+	boon_line.add_theme_constant_override("v_separation", 4)
+	boon_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(boon_line)
 	banner = _label("banner", 30, GOLD)
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -243,18 +304,24 @@ func paint() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1280, 720)
 	var running: bool = bool(run.call("running"))
 	title.text = "The Descent"
+	clock_text.visible = false
 	if running:
 		var info: Dictionary = run.call("floor_info")
-		detail.text = "Floor %d  -  %s  -  %s  -  Gold %d" % [int(run.get("floor_index")) + 1, str(info["name"]),
-			"the keeper" if str(run.get("room_kind")) == "keeper" else "room %d of %d" % [maxi(1, int(run.get("room"))), run_rooms()],
-			int(run.get("gold"))]
+		detail.text = "Floor %d  ·  %s" % [int(run.get("floor_index")) + 1, str(info["name"])]
+		gold_text.text = "Gold %s" % GameConstants.commas(int(run.get("gold")))
+		room_text.text = "The keeper" if str(run.get("room_kind")) == "keeper" \
+			else "Room %d of %d" % [maxi(1, int(run.get("room"))), run_rooms()]
 		# A CHALLENGE'S CLOCK (0.115.0), while it is fought.
 		if str(run.get("room_kind")) == "challenge" and float(run.get("challenge_left")) > 0.0 \
 				and int(run.get("state")) == 1:
-			detail.text += "  -  Clear it: %d s" % ceili(float(run.get("challenge_left")))
+			clock_text.text = "Clear it: %d s" % ceili(float(run.get("challenge_left")))
+			clock_text.visible = true
 	else:
 		detail.text = "Walk through a door to begin"
+		gold_text.text = ""
+		room_text.text = ""
 	pips.visible = running
+	room_text.visible = running
 	pips.queue_redraw()
 	ward_row.visible = running and Boons.ward_most > 0
 	ward_text.text = "%d" % Boons.ward
@@ -265,9 +332,8 @@ func paint() -> void:
 	var taken: Array = []
 	for id in Boons.ORDER:
 		if Boons.level(id) > 0:
-			taken.append("%s %d" % [str(Boons.BOONS[id]["name"]), Boons.level(id)])
-	boon_line.text = "  ".join(taken)
-	boon_line.visible = not taken.is_empty()
+			taken.append(id)
+	_paint_chips(taken)
 	plate.reset_size()
 	plate.position = Vector2(floorf((screen.x - plate.size.x) / 2.0), RUN_TOP)
 	banner.visible = _banner_left > 0.0
@@ -288,6 +354,46 @@ func paint() -> void:
 	if pick_panel.visible:
 		pick_panel.reset_size()
 		pick_panel.position = ((screen - pick_panel.size) / 2.0).floor()
+
+
+func _paint_chips(taken: Array) -> void:
+	"""The upgrades taken, a chip each in its rarity's colour - rebuilt only
+	when what is taken changes."""
+	var key: String = ""
+	for id in taken:
+		key += "%s%d," % [str(id), Boons.level(str(id))]
+	boon_line.visible = not taken.is_empty()
+	if key == _chips_for:
+		return
+	_chips_for = key
+	for chip in boon_line.get_children():
+		boon_line.remove_child(chip)
+		chip.queue_free()
+	for id in taken:
+		boon_line.add_child(boon_chip(str(id)))
+
+
+func boon_chip(id: String) -> PanelContainer:
+	"""One upgrade: its name and level, rimmed in its rarity's colour."""
+	var colour: Color = rarity_colour(id)
+	var chip := PanelContainer.new()
+	chip.name = "chip_%s" % id
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var look := StyleBoxFlat.new()
+	look.bg_color = Color(colour.r * 0.25, colour.g * 0.25, colour.b * 0.25, 0.35)
+	look.border_color = Color(colour, 0.55)
+	look.set_border_width_all(1)
+	look.set_corner_radius_all(3)
+	look.content_margin_left = 6.0
+	look.content_margin_right = 6.0
+	look.content_margin_top = 0.0
+	look.content_margin_bottom = 1.0
+	chip.add_theme_stylebox_override("panel", look)
+	var words: Label = _label("words", 11, colour)
+	words.add_theme_constant_override("outline_size", 3)
+	words.text = "%s %d" % [str(Boons.BOONS[id]["name"]), Boons.level(id)]
+	chip.add_child(words)
+	return chip
 
 
 func _draw_ward() -> void:

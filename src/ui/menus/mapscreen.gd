@@ -226,6 +226,9 @@ var _icon_cache: Dictionary = {}
 const CLICK_SLACK := 5.0
 var _press_travel: float = 0.0
 var waystone_row: HFlowContainer = null
+# How to use them, under the row (PLAYERS DID NOT KNOW, waystones.gd).
+var waystone_hint: Label = null
+const WAYSTONE_HINT := "Click a lit waystone, then stand still for 3 seconds to travel there. Grey ones: walk past them in the Big Field to light them."
 var _waystone_buttons: Dictionary = {}
 
 
@@ -545,9 +548,10 @@ func _build_waystone_row() -> void:
 		return
 	waystone_row = HFlowContainer.new()
 	waystone_row.name = "waystonerow"
-	waystone_row.add_theme_constant_override("h_separation", 4)
+	waystone_row.add_theme_constant_override("h_separation", 6)
+	waystone_row.add_theme_constant_override("v_separation", 4)
 	var title := Label.new()
-	title.text = "Waystones:"
+	title.text = "Travel by waystone:"
 	title.add_theme_color_override("font_color", Waystones.LIT_COLOUR)
 	waystone_row.add_child(title)
 	for stone in Waystones.STONES:
@@ -556,11 +560,51 @@ func _build_waystone_row() -> void:
 		button.text = str(stone["place"]).trim_prefix("The ")
 		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect(travel_to_waystone.bind(str(stone["id"])))
+		# PLAYERS DID NOT KNOW (waystones.gd): a found stone is a cyan button,
+		# plainly one; one not found is a dim outline.
+		for look in ["normal", "hover", "pressed", "disabled"]:
+			button.add_theme_stylebox_override(look, _waystone_look(look))
+		button.add_theme_color_override("font_color", Waystones.LIT_COLOUR)
+		button.add_theme_color_override("font_hover_color", Color.WHITE)
+		button.add_theme_color_override("font_disabled_color", Color(Waystones.UNLIT_COLOUR, 0.7))
 		waystone_row.add_child(button)
 		_waystone_buttons[str(stone["id"])] = button
+	waystone_hint = Label.new()
+	waystone_hint.name = "waystonehint"
+	waystone_hint.text = WAYSTONE_HINT
+	waystone_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	waystone_hint.add_theme_font_size_override("font_size", 12)
+	waystone_hint.add_theme_color_override("font_color", Color(0.78, 0.82, 0.86))
 	var column: Node = footer.get_parent()
 	column.add_child(waystone_row)
 	column.move_child(waystone_row, footer.get_index())
+	column.add_child(waystone_hint)
+	column.move_child(waystone_hint, footer.get_index())
+
+
+func _waystone_look(look: String) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	var cyan: Color = Waystones.LIT_COLOUR
+	match look:
+		"hover":
+			box.bg_color = Color(cyan, 0.32)
+			box.border_color = cyan
+		"pressed":
+			box.bg_color = Color(cyan, 0.45)
+			box.border_color = Color.WHITE
+		"disabled":
+			box.bg_color = Color(0.2, 0.2, 0.22, 0.25)
+			box.border_color = Color(Waystones.UNLIT_COLOUR, 0.35)
+		_:
+			box.bg_color = Color(cyan, 0.16)
+			box.border_color = Color(cyan, 0.75)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(4)
+	box.content_margin_left = 8.0
+	box.content_margin_right = 8.0
+	box.content_margin_top = 2.0
+	box.content_margin_bottom = 2.0
+	return box
 
 
 func _paint_waystone_row() -> void:
@@ -568,6 +612,8 @@ func _paint_waystone_row() -> void:
 	if waystone_row == null:
 		return
 	waystone_row.visible = Waystones.reachable_from(_area)
+	if waystone_hint != null:
+		waystone_hint.visible = waystone_row.visible
 	for stone in Waystones.STONES:
 		var button: Button = _waystone_buttons.get(str(stone["id"]))
 		if button == null:

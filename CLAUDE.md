@@ -7398,7 +7398,8 @@ hazards are - nothing new on the wire. Its header has the numbers.
     drifts and it needs to fire at a separate time then the lasers the
     thing is sequences" (descentlands.gd, WIND PUSHES HARDER, AND THINGS
     COME IN TURN): a gust or a wind laser shoves GUST_SHOVE (2.5) times as
-    hard (`StatusEffects.push_harder()` - `strength` stops at 1), floaters
+    hard (`StatusEffects.push_harder()` - `strength` stops at 1; a slide
+    since 0.134.3, "Wind slides you" below), floaters
     are blown GUST_PUSH (120); and a wave's hazards come one at a time,
     ENV_STAGGER (0.3 s) apart (`_queue`, `_send_queued()`), its laser
     LASER_LATER (half) of the gap after, firing between the waves. This is
@@ -7434,6 +7435,67 @@ hazards are - nothing new on the wire. Its header has the numbers.
     (eased over FLOOD_EASE). The forge and crypt windows keep their clocks.
 `_test_the_crowned_falls_apart()` (testrunner_10). Step 3 (the ending, the
 portal line, tuning) is next.
+
+### A tidier Descent plate, and waystones that explain themselves (0.134.3)
+
+- **The Descent's plate** (descenthud.gd, A LIGHTER, TIDIER PLATE). The
+  owner: "we need to upgrade this box and make more transparent and
+  organized". See-through (PLATE_ALPHA 0.42, a thin soft gold edge), in rows
+  PLATE_WIDTH wide: the title, floor and land, gold on the right
+  (`gold_text`); the rooms' dots with `room_text`; a challenge's clock on its
+  own line (`clock_text`); Ward and Fury side by side; the upgrades as chips
+  in their rarity's colour (`boon_line` is an HFlowContainer now,
+  `boon_chip()`, rebuilt only when they change). Pictured in the commit
+  folder (hud_before_after.png).
+- **Waystones** (waystones.gd PLAYERS DID NOT KNOW). The owner, of the map's
+  row: "players have no idea how to teleport". A found stone's label says
+  "Travel here from the Map" under its name (TRAVEL_LINE); finding one tells
+  the player over their head (FOUND_NOTICE); the map's row is "Travel by
+  waystone:" with cyan buttons for the found and dim outlines for the rest
+  (mapscreen.gd `_waystone_look()`), and a line under it saying how
+  (`waystone_hint`, WAYSTONE_HINT). `_test_the_waystones()` holds all three.
+- **Wind slides you** (the same 0.134.3). The owner: "wind is still not
+  sliding a player when hit". 0.134.2's 2.5 times a shove was 100 px in
+  0.2 s, a jolt over before it was seen. Three things:
+  - `StatusEffects.slide(body, times, seconds)`: a shove just started goes
+    `times` as fast and slows to nothing over `seconds` (`shove_seconds`,
+    which every ordinary shove sets back to SHOVE_SECONDS - still 40 px).
+    The lands' gust and wind laser call `_wind_slide()`: GUST_SHOVE 1.4,
+    WIND_SLIDE_SECONDS 0.6, 168 px against your walking.
+  - A gust crossing you inside the touch gap (TOUCH_GAP 0.6, after any other
+    hazard's hit) used to pass straight through - no hurt and no shove. It
+    still cannot hurt you then, but it blows you along.
+  - Standing still to attack (the mage's cast, the tank's, the healer's -
+    `attack_locks_movement`) held you against a shove too: velocity zero,
+    no push. `move_by_push_only()` (player.gd, and tank.gd's own loop) stops
+    your walking and keeps the push. Still skipped: the one frame an attack
+    starts on.
+  `_test_the_lasers_bend()` measures the slide (172 px over 0.61 s), a plain
+  shove (40 px), the gust inside the gap, and the two loops.
+- **The readout tells a load from a spike** (the same 0.134.3; perfoverlay.gd
+  LOADS ARE NOT HITCHES). The owner's screenshot after a fight: process worst
+  241 ms, physics worst 22.5, frame worst 31.25, and "we need a way to
+  increase my budget". The budget is a limit, not an allowance (12.5 ms is
+  80 ticks a second; a bigger one is fewer ticks); the averages were 5% of
+  it. What he could not tell was where the worst came from:
+  - Every frame is a sample (`push_sample()`: length, fps, process, the
+    physics ticks it ran and the last one's time, nodes made less freed,
+    area, when), held back LOAD_BEFORE (4) frames. When the current scene
+    changes (`mark_load()`), those and the next LOAD_AFTER (4) are a load:
+    the "loads" row (how many, the last one's longest frame, the area it
+    loaded), in no worst and no hitch; fps stays out of its worst for
+    FPS_SETTLE_MSEC after one (the monitor averages a second).
+  - Every hitch is kept, the newest SPIKES_SHOWN (5) under the readout
+    (`spike_text()`): how long, when, where, which part took most of it -
+    physics (ticks, the last tick's time), scripts + drawing, or outside the
+    scripts (the graphics card, or a file loading) - and "+N nodes".
+  - The frame row's worst is the longest real frame (`_worst_frame_ms`);
+    it was the worst fps turned back into ms, and fps is averaged over a
+    second. Labels are 10 wide ("after younobody"), and memory says "not
+    measured in this build" rather than 0.0 MB (Godot counts it in a debug
+    build only), with the graphics memory where the renderer says.
+  `_test_the_readout_finds_its_spikes()` (testrunner_10). Pictured:
+  readout_0134_3.png in the commit folder.
 
 ### The Crowned Beholder, by name (0.11.6)
 
