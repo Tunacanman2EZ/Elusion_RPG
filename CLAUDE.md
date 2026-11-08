@@ -7533,6 +7533,38 @@ drawn), and WAITING, the rest. Checked in a rendered run: a 250 ms stall in a
 "physics 180.3 ms, 1 tick", and the window's first frames "drawing 45.3 ms".
 The physics and process worsts are the clock's too (loads left out).
 
+### The Crowned's room draws lighter (0.134.5)
+
+The owner, after his readout in the Crown of Wind: frame worst 6,080 ms,
+draws 514, and spikes of 30 ms drawing - "i have a billion ideas for the
+boss but the accumulation of these effects makes the boss feel real".
+Measured on the sandbox (zz/crownprofile.gd, a god-mode warrior through the
+phases, the readout's clock): hiding the rift took the room's 532 draws to
+266.
+
+- **The rift's void in one draw** (crownedrift.gd IN ONE DRAW,
+  riftvoid.gdshader): the rect, the 14 clouds' 56 discs and the 260 stars
+  were drawn one by one; now one ColorRect (`_void`) works the same picture
+  out per pixel. The clouds are moved in GDScript each frame
+  (`_move_clouds()`, `cloud_at()` - the old drift exactly), so a pixel only
+  measures a distance; the four discs of a cloud are one mix,
+  1 - 0.965^rings. Stars are one in some of each 160 px square
+  (`star_share` 0.49 - the old density), glimmering at the old speeds. The
+  tears moved to a child drawn above it (`_veins`), and the generator still
+  draws the stars' 520 numbers first, so they stay where they were. A
+  glimpse out of sight is hidden, not drawn at alpha 0.
+  Rift alone: 337 draws -> 21-30; on the software renderer here the drawing
+  time came out level or better (26 -> 20-27 ms), so a real graphics card
+  gains the draws. Pictured: rift_before_after_0134_5.png (0.1% of pixels
+  differ - the stars).
+- **The worst spike keeps a row** on the readout (perfoverlay.gd THE WORST
+  STAYS): his 6,080 ms had scrolled off the five newest.
+- `_test_the_rift_draws_once()` and the readout test (testrunner_10).
+- **Not done yet: warming the fight's effects.** The 6 s frame is not
+  explained; on the sandbox's software renderer every frame of the fight is
+  slow, so a first draw cannot be told from the rest. The worst row will
+  say which part it was on his PC.
+
 ### The Crowned Beholder, by name (0.11.6)
 
 The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The

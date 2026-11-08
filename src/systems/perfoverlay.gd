@@ -131,6 +131,10 @@ var _last_load_area: String = ""
 var _last_load_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
+# THE WORST STAYS (0.134.4): the owner's "frame worst 6080.90" had scrolled
+# off the five newest before he looked. The longest hitch since switched on
+# keeps its own row.
+var _worst_spike: Dictionary = {}
 # Nodes at the last frame, for the nodes made (or freed) in a frame.
 var _prev_nodes: int = 0
 # The clock's stamps for the frame running now (usec; 0 not yet).
@@ -248,6 +252,7 @@ func set_shown(on: bool) -> void:
 		_last_load_msec = -100000
 		_worst_frame_ms = 0.0
 		_spikes.clear()
+		_worst_spike = {}
 		_prev_nodes = 0
 		_frame_start_usec = 0
 		_frame_start_usec_next = 0
@@ -397,6 +402,8 @@ func _process(delta: float) -> void:
 		rows.append(_row("spikes", "none since switched on"))
 	for i in _spikes.size():
 		rows.append(_row("spikes" if i == 0 else "", spike_text(_spikes[i], now_msec)))
+	if not _worst_spike.is_empty():
+		rows.append(_row("worst", spike_text(_worst_spike, now_msec)))
 	_label.text = "\n".join(rows)
 
 
@@ -476,6 +483,8 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 			"area": str(sample.get("area", AreaRegistry.current_area_id())),
 			"at": int(sample.get("at", Time.get_ticks_msec())),
 		})
+		if _worst_spike.is_empty() or ms > float(_worst_spike["ms"]):
+			_worst_spike = _spikes[0]
 		if _spikes.size() > SPIKES_SHOWN:
 			_spikes.resize(SPIKES_SHOWN)
 	_worst_physics_ms = maxf(_worst_physics_ms, worst_tick)

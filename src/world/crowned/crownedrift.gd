@@ -12,6 +12,12 @@
 #   - THE VOID: deep indigo, slow clouds in the seven lands' colours, stars
 #     that glimmer, and violet tears that pulse. Redrawn REDRAW_FPS times a
 #     second - it moves slowly.
+#   - IN ONE DRAW (0.134.4). The owner's readout in this room: 514 draws and
+#     30 ms of drawing; hiding the rift took 532 draws to 266. The rect, the
+#     56 cloud discs and the 260 star dots are one ColorRect with
+#     riftvoid.gdshader (`_void`), the same picture worked out per pixel; the
+#     tears are drawn by a child above it (`_veins`). A glimpse out of sight
+#     is hidden, not drawn see-through.
 #   - GLIMPSES (GLIMPSES): windows into the heroes' worlds, each fading in
 #     and out on its own slow clock (GLIMPSE_SECONDS), ringed in violet: the
 #     volcano (the town's bubbling lava and the Forge's lava falls), the forge
@@ -43,7 +49,7 @@ const LAVA_FRAMES := 9
 const LAVA_FPS := 3.0
 const FLOOR_TILE := 16
 const REDRAW_FPS := 20.0
-const STARS := 260
+const VOID_SHADER := preload("res://src/world/crowned/riftvoid.gdshader")
 const CLOUDS := 14
 const TEARS := 6
 const REACH := 1400.0
@@ -66,8 +72,13 @@ var room: Rect2 = Rect2(0, 0, 1024, 768)
 var clock: float = 0.0
 var glimpses: Array = []
 var _redraw_left: float = 0.0
-var _stars := PackedVector2Array()
 var _tears: Array = []
+# The void (one ColorRect, riftvoid.gdshader) and the tears drawn over it.
+var _void: ColorRect = null
+var _veins: Node2D = null
+# Where each cloud rests and how big it is (x, y, size); moved each frame.
+var _cloud_rest := PackedVector3Array()
+var _cloud_now := PackedVector4Array()
 # How often the realm cracks: 1 the first phase, more as the fight goes on.
 var intensity: float = 1.0
 # How far the Sealing's lava is in (0 none, 1 the most), and as shown.
@@ -84,9 +95,11 @@ var _cracks: Node2D = null
 func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4021
-	var span: Rect2 = room.grow(REACH)
-	for k in STARS:
-		_stars.append(Vector2(rng.randf_range(span.position.x, span.end.x), rng.randf_range(span.position.y, span.end.y)))
+	_make_void()
+	# The 260 stars drew two numbers each from this generator before the tears
+	# did; the stars are the shader's now, but the tears stay where they were.
+	for k in 520:
+		rng.randf()
 	for k in TEARS:
 		var start: Vector2 = _outside(rng)
 		var heading: float = rng.randf() * TAU
@@ -109,6 +122,11 @@ func _ready() -> void:
 		glimpse.append_array([str(GLIMPSES[k]), spots[k], nearer[k]])
 		glimpses.append(glimpse)
 	_zip_rng.randomize()
+	_veins = Node2D.new()
+	_veins.name = "veins"
+	_veins.draw.connect(_draw_tears)
+	add_child(_veins)
+	move_child(_veins, 1)
 	_cracks = Node2D.new()
 	_cracks.name = "cracks"
 	_cracks.draw.connect(_draw_cracks)
@@ -139,10 +157,15 @@ func _process(delta: float) -> void:
 			var sway: float = 0.5 - 0.5 * cos(TAU * (clock / GLIMPSE_SECONDS + float(glimpses[k][2])))
 			holder.modulate.a = clampf(sway * 1.4 - 0.2, 0.0, 1.0)
 		ring.modulate.a = holder.modulate.a
+		holder.visible = holder.modulate.a > 0.001
+		ring.visible = holder.visible
+	if _void != null:
+		_move_clouds()
 	_redraw_left -= delta
 	if _redraw_left <= 0.0:
 		_redraw_left = 1.0 / REDRAW_FPS
-		queue_redraw()
+		if _veins != null:
+			_veins.queue_redraw()
 	_step_zips(delta)
 
 
@@ -217,28 +240,59 @@ func _draw_cracks() -> void:
 			_cracks.draw_circle(shown[shown.size() - 1], 14.0, Color(0.7, 0.45, 1.0, 0.35))
 
 
-func _draw() -> void:
+func _make_void() -> void:
+	"""The void, its clouds and its stars: one ColorRect over everything the
+	rift reaches, drawn by riftvoid.gdshader."""
 	var span: Rect2 = room.grow(REACH)
-	draw_rect(span, Color(0.06, 0.035, 0.11))
 	var lands: Array = [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
 		Element.Type.EARTH, Element.Type.FIRE, Element.Type.DARK]
+	var colours := PackedVector4Array()
+	_cloud_rest.clear()
 	for k in CLOUDS:
 		var colour: Color = Element.colour_for(int(lands[k % lands.size()]))
-		var base := Vector2(room.position.x + fmod(float(k) * 431.0, room.size.x + 800.0) - 400.0,
-			room.position.y + fmod(float(k) * 277.0, room.size.y + 700.0) - 350.0)
-		var at: Vector2 = base + Vector2(sin(clock * 0.07 + float(k)), cos(clock * 0.05 + float(k) * 1.7)) * 40.0
-		var size: float = 160.0 + float(k % 4) * 50.0
-		for ring in 4:
-			draw_circle(at, size * (1.0 - 0.2 * float(ring)), Color(colour, 0.035))
-	for k in _stars.size():
-		var glimmer: float = 0.35 + 0.35 * sin(clock * (1.3 + float(k % 5) * 0.4) + float(k))
-		draw_circle(_stars[k], 1.0 + float(k % 3) * 0.4, Color(0.9, 0.85, 1.0, glimmer))
+		_cloud_rest.append(Vector3(room.position.x + fmod(float(k) * 431.0, room.size.x + 800.0) - 400.0,
+			room.position.y + fmod(float(k) * 277.0, room.size.y + 700.0) - 350.0,
+			160.0 + float(k % 4) * 50.0))
+		colours.append(Vector4(colour.r, colour.g, colour.b, 1.0))
+	var paint := ShaderMaterial.new()
+	paint.shader = VOID_SHADER
+	paint.set_shader_parameter(&"origin", span.position)
+	paint.set_shader_parameter(&"cloud_colour", colours)
+	paint.set_shader_parameter(&"clouds", CLOUDS)
+	_void = ColorRect.new()
+	_void.name = "void"
+	_void.position = span.position
+	_void.size = span.size
+	_void.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_void.material = paint
+	add_child(_void)
+	_move_clouds()
+
+
+func cloud_at(k: int) -> Vector2:
+	"""Where cloud `k` is now: drifting round where it rests, as it always has."""
+	var rest: Vector3 = _cloud_rest[k]
+	return Vector2(rest.x, rest.y) + Vector2(sin(clock * 0.07 + float(k)), cos(clock * 0.05 + float(k) * 1.7)) * 40.0
+
+
+func _move_clouds() -> void:
+	_cloud_now.resize(CLOUDS)
+	for k in CLOUDS:
+		var at: Vector2 = cloud_at(k)
+		var size: float = _cloud_rest[k].z
+		_cloud_now[k] = Vector4(at.x, at.y, size * size, 0.0)
+	var paint := _void.material as ShaderMaterial
+	paint.set_shader_parameter(&"cloud_spot", _cloud_now)
+	paint.set_shader_parameter(&"clock", clock)
+
+
+func _draw_tears() -> void:
 	for k in _tears.size():
 		var pulse: float = 0.5 + 0.5 * sin(clock * 1.1 + float(k) * 1.9)
 		var tear: PackedVector2Array = _tears[k]
-		draw_polyline(tear, Color(0.6, 0.3, 1.0, 0.12 + 0.12 * pulse), 12.0)
-		draw_polyline(tear, Color(0.8, 0.6, 1.0, 0.4 + 0.4 * pulse), 3.0)
-		draw_polyline(tear, Color(1.0, 0.95, 1.0, 0.5 + 0.5 * pulse), 1.0)
+		_veins.draw_polyline(tear, Color(0.6, 0.3, 1.0, 0.12 + 0.12 * pulse), 12.0)
+		_veins.draw_polyline(tear, Color(0.8, 0.6, 1.0, 0.4 + 0.4 * pulse), 3.0)
+		_veins.draw_polyline(tear, Color(1.0, 0.95, 1.0, 0.5 + 0.5 * pulse), 1.0)
 
 
 # =============================================================================

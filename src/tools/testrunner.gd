@@ -246,6 +246,7 @@ func _run_all() -> void:
 	await _test_the_lasers_bend()
 	await _test_the_readout_finds_its_spikes()
 	_test_a_won_room_stays_won()
+	_test_the_rift_draws_once()
 	await _test_the_crowned_falls_apart()
 	await _test_one_look_for_the_game()
 	await _test_the_gm_panel_tidied_and_live()

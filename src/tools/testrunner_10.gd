@@ -5338,12 +5338,21 @@ func _test_the_readout_finds_its_spikes() -> void:
 	said = PerfOverlay.spike_text(PerfOverlay._spikes[0], now)
 	check("  and none of the game's, newest first: \"%s\"" % said,
 		said.begins_with("90 ms") and said.contains("waiting") and said.contains("-300 nodes"), said)
+	for i in 6:
+		var small := plain.duplicate()
+		small["ms"] = 30.0
+		PerfOverlay.push_sample(small)
+	PerfOverlay.flush_samples()
+	check("the worst spike keeps its own row once newer ones push it off the five (0.134.4: \"frame worst 6080.90\" was gone)",
+		not PerfOverlay._worst_spike.is_empty() and is_equal_approx(float(PerfOverlay._worst_spike["ms"]), 267.0)
+		and PerfOverlay._spikes.size() == PerfOverlay.SPIKES_SHOWN and float(PerfOverlay._spikes[PerfOverlay.SPIKES_SHOWN - 1]["ms"]) < 100.0,
+		PerfOverlay._worst_spike)
 	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var text: String = PerfOverlay.readout()
-	check("drawn: the loads row, the spikes rows, the frame's real worst",
-		text.contains("loads") and text.contains("spikes") and text.contains("(worst 267.00)") and text.contains("48 ms   12 s ago"), text)
+	check("drawn: the loads row, the spikes rows, the worst spike's row, the frame's real worst",
+		text.contains("loads") and text.contains("spikes") and text.contains("(worst 267.00)") and text.contains("worst     267 ms"), text)
 	check("every label has a space after it - \"after you\" ran into its value (\"after younobody\")",
 		PerfOverlay._row("after you", "nobody") == "after you nobody" and "after you".length() < PerfOverlay.LABEL_WIDTH)
 	check("memory never reads 0.0 MB: Godot counts it in a debug build only, so an exported game says so",
@@ -5411,3 +5420,47 @@ func _test_a_won_room_stays_won() -> void:
 	teleporter.free()
 	stand.free()
 	print("  a won room stays won: done")
+
+
+func _test_the_rift_draws_once() -> void:
+	# The owner's readout in the Crowned's room (0.134.4): 514 draws, spikes
+	# of 30 ms drawing; hiding the rift took 532 draws to 266 (crownedrift.gd
+	# IN ONE DRAW, riftvoid.gdshader).
+	section("The rift's void, clouds and stars in one draw (0.134.4)")
+	const Rift := preload("res://src/world/crowned/crownedrift.gd")
+	var rift: Node2D = Rift.new()
+	rift.set("room", Rect2(0, 0, 1024, 768))
+	add_child(rift)
+	var void_rect: ColorRect = rift.get("_void")
+	var paint: ShaderMaterial = void_rect.material as ShaderMaterial if void_rect != null else null
+	check("the void is one ColorRect drawn by riftvoid.gdshader, over everything the rift reaches",
+		paint != null and paint.shader != null and paint.shader.resource_path.ends_with("riftvoid.gdshader")
+		and void_rect.get_index() == 0 and is_equal_approx(void_rect.size.x, 1024.0 + 2.0 * Rift.REACH), void_rect)
+	check("  and the rift draws nothing itself - no rect, 56 discs and 260 dots a frame",
+		not rift.has_method("_draw") and not (Rift as Script).get_script_constant_map().has("STARS"))
+	var veins: Node2D = rift.get("_veins")
+	check("  the tears are drawn above it, by a child", veins != null and veins.get_index() == 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4021
+	for k in 520:
+		rng.randf()
+	var first: Vector2 = rift.call("_outside", rng)
+	check("  and they are where they always were (the stars' numbers still drawn first)",
+		((rift.get("_tears") as Array)[0] as PackedVector2Array)[0].is_equal_approx(first), first)
+	rift.set("clock", 7.0)
+	rift.call("_move_clouds")
+	var now_at: PackedVector4Array = paint.get_shader_parameter(&"cloud_spot")
+	var rest := Vector2(0.0 + fmod(3.0 * 431.0, 1024.0 + 800.0) - 400.0, 0.0 + fmod(3.0 * 277.0, 768.0 + 700.0) - 350.0)
+	var want: Vector2 = rest + Vector2(sin(7.0 * 0.07 + 3.0), cos(7.0 * 0.05 + 3.0 * 1.7)) * 40.0
+	check("  the clouds drift as before - moved here each frame, not worked out by every pixel",
+		now_at.size() == Rift.CLOUDS and Vector2(now_at[3].x, now_at[3].y).is_equal_approx(want)
+		and is_equal_approx(now_at[3].z, pow(160.0 + 3.0 * 50.0, 2.0)), [now_at[3] if now_at.size() > 3 else null, want])
+	rift.set("clock", 0.0)
+	rift.call("_process", 0.0)
+	var hidden: int = 0
+	for glimpse in rift.get("glimpses"):
+		if not (glimpse[0] as Node2D).visible and (glimpse[0] as Node2D).modulate.a <= 0.001:
+			hidden += 1
+	check("  a glimpse out of sight is hidden, not drawn see-through (%d)" % hidden, hidden >= 1)
+	rift.free()
+	print("  the rift draws once: done")
