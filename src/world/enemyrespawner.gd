@@ -139,6 +139,14 @@ var _census: Array[Dictionary] = []
 # LIFECYCLE
 # =============================================================================
 
+# Found by group, so a room's victory teleporter can stop it (0.134.4).
+const GROUP := &"enemy_respawners"
+
+
+func _init() -> void:
+	add_to_group(GROUP)
+
+
 func _ready() -> void:
 	# ONE FRAME LATER. The enemies' own _ready() has to have run before they are
 	# in the "enemies" group, and a census taken in the same frame as theirs

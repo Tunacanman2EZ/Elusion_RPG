@@ -5274,8 +5274,8 @@ func _test_the_readout_finds_its_spikes() -> void:
 	PerfOverlay.set_shown(false)
 	PerfOverlay.set_shown(true)
 	var now: int = Time.get_ticks_msec()
-	var plain := {"ms": 10.0, "held": false, "fps": 100.0, "process": 3.0, "physics": 0.5,
-		"ticks": 1, "nodes": 0, "area": "field", "at": now}
+	var plain := {"ms": 10.0, "held": false, "fps": 100.0, "scripts": 3.0, "drawing": 1.0,
+		"physics": 0.5, "worst_tick": 0.5, "ticks": 1, "nodes": 0, "area": "field", "at": now}
 	for i in 6:
 		PerfOverlay.push_sample(plain.duplicate())
 	var hitch := plain.duplicate()
@@ -5283,10 +5283,10 @@ func _test_the_readout_finds_its_spikes() -> void:
 	PerfOverlay.push_sample(hitch)
 	check("a frame is held back %d frames before it counts, so a load found late still takes it" % PerfOverlay.LOAD_BEFORE,
 		PerfOverlay._hitches == 0 and PerfOverlay._pending.size() == PerfOverlay.LOAD_BEFORE, PerfOverlay._pending.size())
-	# A load: a 241 ms frame, then the scene changes.
+	# A load: a 400 ms frame, then the scene changes.
 	var heavy := plain.duplicate()
-	heavy["ms"] = 241.0
-	heavy["process"] = 230.0
+	heavy["ms"] = 400.0
+	heavy["scripts"] = 390.0
 	heavy["area"] = "descent"
 	PerfOverlay.push_sample(heavy)
 	PerfOverlay.mark_load()
@@ -5297,49 +5297,117 @@ func _test_the_readout_finds_its_spikes() -> void:
 	# A spike in the fight: two physics ticks, forty nodes made.
 	var spike := plain.duplicate()
 	spike["ms"] = 48.0
-	spike["physics"] = 22.5
+	spike["physics"] = 45.0
+	spike["worst_tick"] = 22.5
 	spike["ticks"] = 2
-	spike["process"] = 2.0
+	spike["scripts"] = 2.0
 	spike["nodes"] = 40
 	spike["at"] = now - 12000
 	PerfOverlay.push_sample(spike)
 	var scripts := plain.duplicate()
 	scripts["ms"] = 60.0
-	scripts["process"] = 50.0
+	scripts["scripts"] = 50.0
 	PerfOverlay.push_sample(scripts)
+	var drew := plain.duplicate()
+	drew["ms"] = 267.0
+	drew["drawing"] = 260.0
+	PerfOverlay.push_sample(drew)
 	var outside := plain.duplicate()
 	outside["ms"] = 90.0
 	outside["nodes"] = -300
 	PerfOverlay.push_sample(outside)
 	PerfOverlay.flush_samples()
-	check("a 241 ms frame as the scene changed is a load: counted once, into the area it loaded",
-		PerfOverlay._loads == 1 and is_equal_approx(PerfOverlay._last_load_ms, 241.0)
-		and PerfOverlay.loads_text().contains("241 ms") and PerfOverlay.loads_text().contains(AreaRegistry.display_name("descent")),
+	check("a 400 ms frame as the scene changed is a load: counted once, into the area it loaded",
+		PerfOverlay._loads == 1 and is_equal_approx(PerfOverlay._last_load_ms, 400.0)
+		and PerfOverlay.loads_text().contains("400 ms") and PerfOverlay.loads_text().contains(AreaRegistry.display_name("descent")),
 		PerfOverlay.loads_text())
 	check("  and in no worst and no hitch - the 40 ms frame it swallowed with it neither",
-		PerfOverlay._worst_process_ms < 100.0 and PerfOverlay._worst_frame_ms < 100.0 and PerfOverlay._hitches == 3,
+		PerfOverlay._worst_process_ms < 390.0 and PerfOverlay._worst_frame_ms < 400.0 and PerfOverlay._hitches == 4,
 		[PerfOverlay._worst_process_ms, PerfOverlay._worst_frame_ms, PerfOverlay._hitches])
-	check("the frame row's worst is the longest real frame (90 ms), not the worst fps turned back into ms",
-		is_equal_approx(PerfOverlay._worst_frame_ms, 90.0), PerfOverlay._worst_frame_ms)
-	var said: String = PerfOverlay.spike_text(PerfOverlay._spikes[2], now)
+	check("the frame row's worst is the longest real frame (267 ms), not the worst fps turned back into ms",
+		is_equal_approx(PerfOverlay._worst_frame_ms, 267.0), PerfOverlay._worst_frame_ms)
+	var said: String = PerfOverlay.spike_text(PerfOverlay._spikes[3], now)
 	check("a spike says how long, when, where, that physics took it, and what was made: \"%s\"" % said,
 		said.begins_with("48 ms") and said.contains("12 s ago") and said.contains(" in " + AreaRegistry.display_name("field"))
-		and said.contains("physics, 2 ticks, the last 22.5 ms") and said.contains("+40 nodes"), said)
+		and said.contains("physics 45.0 ms, 2 ticks, the worst 22.5 ms") and said.contains("+40 nodes"), said)
+	said = PerfOverlay.spike_text(PerfOverlay._spikes[2], now)
+	check("  the scripts when they took it: \"%s\"" % said, said.contains("scripts 50.0 ms"), said)
 	said = PerfOverlay.spike_text(PerfOverlay._spikes[1], now)
-	check("  scripts and drawing when they took it: \"%s\"" % said, said.contains("scripts + drawing 50.0 ms"), said)
+	check("  the drawing when it did - a new effect's first draw: \"%s\"" % said,
+		said.begins_with("267 ms") and said.contains("drawing 260.0 ms"), said)
 	said = PerfOverlay.spike_text(PerfOverlay._spikes[0], now)
-	check("  and neither, newest first: \"%s\"" % said,
-		said.begins_with("90 ms") and said.contains("outside the scripts") and said.contains("-300 nodes"), said)
+	check("  and none of the game's, newest first: \"%s\"" % said,
+		said.begins_with("90 ms") and said.contains("waiting") and said.contains("-300 nodes"), said)
 	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var text: String = PerfOverlay.readout()
 	check("drawn: the loads row, the spikes rows, the frame's real worst",
-		text.contains("loads") and text.contains("spikes") and text.contains("(worst 90.00)") and text.contains("48 ms   12 s ago"), text)
+		text.contains("loads") and text.contains("spikes") and text.contains("(worst 267.00)") and text.contains("48 ms   12 s ago"), text)
 	check("every label has a space after it - \"after you\" ran into its value (\"after younobody\")",
 		PerfOverlay._row("after you", "nobody") == "after you nobody" and "after you".length() < PerfOverlay.LABEL_WIDTH)
 	check("memory never reads 0.0 MB: Godot counts it in a debug build only, so an exported game says so",
 		not PerfOverlay.memory_text().contains("0.0 MB") and PerfOverlay.memory_text() != "", PerfOverlay.memory_text())
+	# ---- timed by the clock (0.134.4): a 267 ms frame was a "100 ms" delta ----
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var t0: int = 1000000
+	PerfOverlay._ticks_now = 0
+	check("  the clock: the first frame has nothing before it", PerfOverlay.clocked_frame(t0).is_empty())
+	PerfOverlay._pre_draw_usec = t0 + 5000
+	PerfOverlay._post_draw_usec = t0 + 265000
+	PerfOverlay._ticks_now = 2
+	PerfOverlay._frame_start_usec_next = t0 + 270000
+	PerfOverlay._tick_usec = t0 + 290000
+	PerfOverlay._tick_worst_usec = 20000
+	var a: Dictionary = PerfOverlay.clocked_frame(t0 + 300000)
+	check("timed by the clock: a 270 ms frame is 270 ms (Godot's delta stops at 100) - 5 ms of scripts, 260 of drawing",
+		is_equal_approx(float(a.get("ms", 0.0)), 270.0) and is_equal_approx(float(a.get("scripts", 0.0)), 5.0)
+		and is_equal_approx(float(a.get("drawing", 0.0)), 260.0) and is_zero_approx(float(a.get("physics", 1.0))), a)
+	var b: Dictionary = PerfOverlay.clocked_frame(t0 + 400000)
+	check("  and the next: its 2 ticks 30 ms (the worst 20), then 100 ms of scripts with nothing drawn",
+		is_equal_approx(float(b.get("ms", 0.0)), 130.0) and is_equal_approx(float(b.get("physics", 0.0)), 30.0)
+		and int(b.get("ticks", 0)) == 2 and is_equal_approx(float(b.get("worst_tick", 0.0)), 20.0)
+		and is_equal_approx(float(b.get("scripts", 0.0)), 100.0) and is_zero_approx(float(b.get("drawing", 1.0))), b)
 	PerfOverlay.set_shown(false)
 	PerfOverlay.set_shown(shown_before)
 	print("  the readout finds its spikes: done")
+
+
+func _test_a_won_room_stays_won() -> void:
+	# The owner, in the arena with the way home open (0.134.4): "was chilling
+	# afk and the bosses respawned also while the portal in the middle was
+	# open" (victoryteleporter.gd A WON ROOM STAYS WON).
+	section("A won room stays won: no boss comes back once the way home is open (0.134.4)")
+	var state: SceneState = (load("res://scene/bossarena.tscn") as PackedScene).get_state()
+	var arena_on: Variant = null
+	for i in state.get_node_count():
+		if str(state.get_node_name(i)) != "enemyrespawner":
+			continue
+		for k in state.get_node_property_count(i):
+			if str(state.get_node_property_name(i, k)) == "enabled":
+				arena_on = state.get_node_property_value(i, k)
+	check("the arena's bosses never come back during a visit - one run each time you walk in",
+		arena_on == false, arena_on)
+	var real: Node = (load("res://src/world/enemyrespawner.gd") as GDScript).new()
+	check("  every respawner can be found by its group",
+		real.is_in_group(&"enemy_respawners"), real.get_groups())
+	real.free()
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node\nvar enabled: bool = true\n"
+	stand_script.reload()
+	var stand: Node = stand_script.new()
+	stand.add_to_group(&"enemy_respawners")
+	add_child(stand)
+	var teleporter := Area2D.new()
+	teleporter.set_script(load("res://src/world/victoryteleporter.gd"))
+	teleporter.set("boss_path", NodePath("nowhere"))
+	add_child(teleporter)
+	check("  the Crowned's room: its boss would come back while the teleporter is hidden",
+		bool(stand.get("enabled")))
+	teleporter.call("_appear")
+	check("once the teleporter opens, the room's respawner stops - nothing comes back round the winner",
+		not bool(stand.get("enabled")))
+	teleporter.free()
+	stand.free()
+	print("  a won room stays won: done")

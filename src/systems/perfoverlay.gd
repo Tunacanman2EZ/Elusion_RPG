@@ -67,6 +67,23 @@ const LOAD_AFTER := 4
 const SPIKES_SHOWN := 5
 # The fps monitor averages a second, so it reads low for one after a load.
 const FPS_SETTLE_MSEC := 1100
+#
+# TIMED BY THE CLOCK, NOT BY GODOT'S MONITORS (0.134.4). The owner's next
+# screenshot: four spikes in the Boss Arena, 98 and 100 ms among them, every
+# one "outside the scripts", and process worst 267.6 ms with no frame that
+# long. Two things were wrong with the numbers, not the game:
+#   - a frame's delta stops at 100 ms: Godot runs at most 8 physics ticks a
+#     frame (80 a second) and advances the clock only as far as they go, so
+#     a 267 ms freeze arrives as a 100 ms delta;
+#   - TIME_PROCESS and TIME_PHYSICS_PROCESS are the WORST of the last second,
+#     set once a second, so a spike's own cost is not in them yet.
+# So each frame is timed here (Time.get_ticks_usec()): from its first physics
+# tick (this node's _physics_process - an autoload, so early in the tick) to
+# this node's _process is PHYSICS, from there to RenderingServer's
+# frame_pre_draw is SCRIPTS (every _process, and anything loaded in one),
+# from there to frame_post_draw is DRAWING (where a new effect's shader is
+# built the first time it is drawn), and the rest until the next frame starts
+# is WAITING (the screen's refresh).
 
 
 var _label: Label
@@ -114,12 +131,20 @@ var _last_load_area: String = ""
 var _last_load_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
-# The frame a _process() call measures is the one before it: its length is
-# this call's delta and its process time the monitor's, but its physics ticks
-# were counted - and its last tick's time read - in the call before.
-var _prev_ticks: int = 0
-var _prev_physics_ms: float = 0.0
+# Nodes at the last frame, for the nodes made (or freed) in a frame.
 var _prev_nodes: int = 0
+# The clock's stamps for the frame running now (usec; 0 not yet).
+var _frame_start_usec: int = 0     # its first physics tick, or its _process
+var _tick_usec: int = 0            # the physics tick running now
+var _tick_worst_usec: int = 0      # this frame's longest tick so far
+var _ticks_now: int = 0
+var _idle_usec: int = 0            # this node's _process
+var _pre_draw_usec: int = 0
+var _post_draw_usec: int = 0
+# The next frame's start, stamped by its first tick before its _process.
+var _frame_start_usec_next: int = 0
+# The ticks of the frame running now, kept for its sample when it ends.
+var _last_parts: Dictionary = {}
 
 
 func _ready() -> void:
@@ -141,6 +166,63 @@ func _ready() -> void:
 	add_child(_label)
 
 	visible = false
+	RenderingServer.frame_pre_draw.connect(_on_pre_draw)
+	RenderingServer.frame_post_draw.connect(_on_post_draw)
+
+
+func _on_pre_draw() -> void:
+	if visible:
+		_pre_draw_usec = Time.get_ticks_usec()
+
+
+func _on_post_draw() -> void:
+	if visible:
+		_post_draw_usec = Time.get_ticks_usec()
+
+
+func _physics_process(_delta: float) -> void:
+	if not visible:
+		return
+	var now: int = Time.get_ticks_usec()
+	if _tick_usec > 0:
+		_tick_worst_usec = maxi(_tick_worst_usec, now - _tick_usec)
+	_tick_usec = now
+	_ticks_now += 1
+	if _ticks_now == 1:
+		_frame_start_usec_next = now
+
+
+func clocked_frame(now_usec: int) -> Dictionary:
+	"""Closes the frame that just ended and opens the one starting now (its
+	ticks have run; its _process is this call). Returns the ended frame's
+	parts in ms - length, physics, worst_tick, ticks, scripts, drawing - or {}
+	for the first frame."""
+	var start: int = _frame_start_usec_next if _ticks_now > 0 else now_usec
+	var parts: Dictionary = {}
+	if _frame_start_usec > 0 and _idle_usec > 0:
+		var drew: bool = _pre_draw_usec >= _idle_usec and _post_draw_usec >= _pre_draw_usec
+		var scripts_end: int = _pre_draw_usec if drew else start
+		parts = {
+			"ms": float(start - _frame_start_usec) / 1000.0,
+			"physics": float(_idle_usec - _frame_start_usec) / 1000.0,
+			"worst_tick": _last_parts.get("next_worst_tick", 0.0),
+			"ticks": int(_last_parts.get("next_ticks", 0)),
+			"scripts": float(maxi(0, scripts_end - _idle_usec)) / 1000.0,
+			"drawing": float(_post_draw_usec - _pre_draw_usec) / 1000.0 if drew else 0.0,
+		}
+	# This frame: its ticks ran before this call; the last one ends now.
+	if _tick_usec > 0 and _ticks_now > 0:
+		_tick_worst_usec = maxi(_tick_worst_usec, now_usec - _tick_usec)
+	_last_parts = {
+		"next_worst_tick": float(_tick_worst_usec) / 1000.0,
+		"next_ticks": _ticks_now,
+	}
+	_frame_start_usec = start
+	_idle_usec = now_usec
+	_tick_usec = 0
+	_tick_worst_usec = 0
+	_ticks_now = 0
+	return parts
 
 
 func set_shown(on: bool) -> void:
@@ -166,9 +248,16 @@ func set_shown(on: bool) -> void:
 		_last_load_msec = -100000
 		_worst_frame_ms = 0.0
 		_spikes.clear()
-		_prev_ticks = 0
-		_prev_physics_ms = 0.0
 		_prev_nodes = 0
+		_frame_start_usec = 0
+		_frame_start_usec_next = 0
+		_last_parts = {}
+		_tick_usec = 0
+		_tick_worst_usec = 0
+		_ticks_now = 0
+		_idle_usec = 0
+		_pre_draw_usec = 0
+		_post_draw_usec = 0
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
 	visible = on
 	_measure_render_time(on)
@@ -219,14 +308,14 @@ func _process(delta: float) -> void:
 	if _current_scene_id() != _scene_id:
 		_scene_id = _current_scene_id()
 		mark_load()
-	push_sample({
-		"ms": delta * 1000.0, "held": held, "fps": fps,
-		"process": _process_ms(), "physics": _prev_physics_ms, "ticks": _prev_ticks,
-		"nodes": (nodes - _prev_nodes) if _prev_nodes > 0 else 0,
-		"area": AreaRegistry.current_area_id(), "at": Time.get_ticks_msec(),
-	})
-	_prev_ticks = maxi(ticks, 0)
-	_prev_physics_ms = _physics_ms()
+	var parts: Dictionary = clocked_frame(Time.get_ticks_usec())
+	if not parts.is_empty():
+		parts["held"] = held
+		parts["fps"] = fps
+		parts["nodes"] = (nodes - _prev_nodes) if _prev_nodes > 0 else 0
+		parts["area"] = AreaRegistry.current_area_id()
+		parts["at"] = Time.get_ticks_msec()
+		push_sample(parts)
 	_prev_nodes = nodes
 
 	_accum += delta
@@ -373,21 +462,24 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 		return
 	_frames += 1
 	var ms: float = delta * 1000.0
-	var physics: float = float(sample.get("physics", _physics_ms()))
-	var process: float = float(sample.get("process", _process_ms()))
+	var ticks: int = int(sample.get("ticks", 1))
+	var physics: float = float(sample.get("physics", _physics_ms() * float(ticks)))
+	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
+	var scripts: float = float(sample.get("scripts", _process_ms()))
+	var drawing: float = float(sample.get("drawing", 0.0))
 	_worst_frame_ms = maxf(_worst_frame_ms, ms)
 	if ms > HITCH_MS:
 		_hitches += 1
 		_spikes.push_front({
-			"ms": ms, "physics": physics, "ticks": int(sample.get("ticks", 1)),
-			"process": process, "nodes": int(sample.get("nodes", 0)),
+			"ms": ms, "physics": physics, "worst_tick": worst_tick, "ticks": ticks,
+			"scripts": scripts, "drawing": drawing, "nodes": int(sample.get("nodes", 0)),
 			"area": str(sample.get("area", AreaRegistry.current_area_id())),
 			"at": int(sample.get("at", Time.get_ticks_msec())),
 		})
 		if _spikes.size() > SPIKES_SHOWN:
 			_spikes.resize(SPIKES_SHOWN)
-	_worst_physics_ms = maxf(_worst_physics_ms, physics)
-	_worst_process_ms = maxf(_worst_process_ms, process)
+	_worst_physics_ms = maxf(_worst_physics_ms, worst_tick)
+	_worst_process_ms = maxf(_worst_process_ms, scripts + drawing)
 
 
 func spike_text(spike: Dictionary, now_msec: int) -> String:
@@ -396,16 +488,20 @@ func spike_text(spike: Dictionary, now_msec: int) -> String:
 	var ms: float = float(spike["ms"])
 	var ticks: int = int(spike["ticks"])
 	var physics: float = float(spike["physics"])
-	var physics_all: float = physics * float(ticks)
-	var process: float = float(spike["process"])
-	var rest: float = maxf(0.0, ms - physics_all - process)
+	var scripts: float = float(spike["scripts"])
+	var drawing: float = float(spike["drawing"])
+	var waiting: float = maxf(0.0, ms - physics - scripts - drawing)
+	var most: float = maxf(maxf(physics, scripts), maxf(drawing, waiting))
 	var what: String
-	if physics_all >= process and physics_all >= rest:
-		what = "physics, %d tick%s, the last %.1f ms" % [ticks, "" if ticks == 1 else "s", physics]
-	elif process >= rest:
-		what = "scripts + drawing %.1f ms" % process
+	if most == physics:
+		what = "physics %.1f ms, %d tick%s, the worst %.1f ms" % [physics, ticks, "" if ticks == 1 else "s",
+			float(spike["worst_tick"])]
+	elif most == scripts:
+		what = "scripts %.1f ms (the game's code, or a file loading)" % scripts
+	elif most == drawing:
+		what = "drawing %.1f ms (the graphics card - a new effect's first draw)" % drawing
 	else:
-		what = "outside the scripts %.1f ms (the graphics card, or a file loading)" % rest
+		what = "waiting %.1f ms (nothing of the game's - the computer busy elsewhere)" % waiting
 	var seconds: int = maxi(0, (now_msec - int(spike["at"])) / 1000)
 	var ago: String = ("%d s ago" % seconds) if seconds < 120 else ("%d min ago" % (seconds / 60))
 	var area: String = str(spike["area"])

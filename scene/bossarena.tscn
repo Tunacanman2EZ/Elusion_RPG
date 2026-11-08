@@ -576,6 +576,7 @@ position = Vector2(0, 150)
 respawn_seconds = 120.0
 respawn_jitter = 0.0
 min_player_distance = 400.0
+enabled = false
 
 [connection signal="body_entered" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_exited"]

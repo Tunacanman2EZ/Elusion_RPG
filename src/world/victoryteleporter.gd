@@ -252,6 +252,20 @@ func _appear() -> void:
 	Audio.play("teleport")
 	if OS.is_debug_build():
 		print("[WORLD] victory teleporter appeared - the way home is open")
+	keep_the_room_won()
+
+
+func keep_the_room_won() -> void:
+	"""A WON ROOM STAYS WON (0.134.4). The owner, in the arena with the way
+	home open: "was chilling afk and the bosses respawned also while the
+	portal in the middle was open". The room's respawner (enemyrespawner.gd,
+	120 s in both rooms) went on bringing bosses back round the winner. Once
+	this is open nothing comes back - a clock already running finds it off
+	when it ends; leave and come back for another fight (the room is built
+	fresh)."""
+	for respawner in get_tree().get_nodes_in_group(&"enemy_respawners"):
+		if "enabled" in respawner:
+			respawner.set("enabled", false)
 
 
 # =============================================================================

@@ -7497,6 +7497,42 @@ portal line, tuning) is next.
   `_test_the_readout_finds_its_spikes()` (testrunner_10). Pictured:
   readout_0134_3.png in the commit folder.
 
+### A won room stays won (0.134.4)
+
+The owner, in the boss arena with the way home open: "was chilling afk and
+the bosses respawned also while the portal in the middle was open". Both
+boss rooms have an enemyrespawner at 120 s, so a boss came back two minutes
+after it died, round a winner standing by the teleporter - and in the arena,
+a wave 1 boss came back during wave 3, a boss the gauntlet did not count.
+
+- **The arena is one run a visit**: its respawner is `enabled = false`
+  (bossarena.tscn). Leave by the teleporter and walk back in for another
+  fight; the room is built fresh.
+- **Once a victory teleporter opens, nothing comes back**
+  (victoryteleporter.gd `keep_the_room_won()`, from `_appear()`): every
+  respawner (enemyrespawner.gd joins `enemy_respawners` in `_init()`) is
+  switched off, and a clock already running finds it off when it ends. The
+  Crowned's room too.
+- `_test_a_won_room_stays_won()` (testrunner_10): the arena's scene, the
+  group, and a teleporter opening on a stand-in respawner.
+
+**And the readout times each frame by the clock** (the same 0.134.4;
+perfoverlay.gd TIMED BY THE CLOCK). His next screenshot: four Boss Arena
+spikes, 98 and 100 ms among them, all "outside the scripts", and process
+worst 267.6 ms with no frame that long. The numbers were wrong, not the game:
+a frame's delta stops at 100 ms (at most 8 physics ticks a frame at 80 a
+second, and the clock advances only as far as they go), and TIME_PROCESS /
+TIME_PHYSICS_PROCESS are the worst of the last second, set once a second, so
+a spike's own cost was never in its sample. Now `clocked_frame()` stamps
+`Time.get_ticks_usec()` at this node's first `_physics_process` of a frame
+(an autoload, early in the tick), its `_process`, and RenderingServer's
+`frame_pre_draw` and `frame_post_draw`: PHYSICS (ticks, the worst one),
+SCRIPTS, DRAWING (where a new effect's shader is built the first time it is
+drawn), and WAITING, the rest. Checked in a rendered run: a 250 ms stall in a
+`_process` read "262 ms - scripts 250.7 ms", one in `_physics_process`
+"physics 180.3 ms, 1 tick", and the window's first frames "drawing 45.3 ms".
+The physics and process worsts are the clock's too (loads left out).
+
 ### The Crowned Beholder, by name (0.11.6)
 
 The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The
