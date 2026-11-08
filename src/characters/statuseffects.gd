@@ -271,6 +271,15 @@ static func apply_to(body: Node, kind: StringName, amount: int = 0,
 	return bool(fx.call(&"apply", kind, amount, from, ground, strength))
 
 
+static func push_harder(body: Node, times: float) -> void:
+	"""A shove just started on `body`, `times` as hard - past the 1 that
+	`strength` stops at (descentlands.gd's wind, 0.134.2: "wind needs a
+	stronger push")."""
+	var fx: Node = of(body)
+	if fx != null and float(fx.get("shove_left")) > 0.0:
+		fx.set("shove_velocity", (fx.get("shove_velocity") as Vector2) * times)
+
+
 # =============================================================================
 # PUTTING ONE ON
 # =============================================================================

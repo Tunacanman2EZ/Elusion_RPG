@@ -11,18 +11,32 @@
 #      scorch), METEOR_GAP apart; and the lava creeps in from the walls - the
 #      floor taken away ring by ring (LAVA_TILE, the town's own bubbling lava
 #      under it), to LAVA_MOST rings and back (lava_depth_at()), its front
-#      glowing before it comes. Lava burns (LAVA_TIMES of a hazard).
+#      glowing before it comes. Lava burns (LAVA_TIMES of a hazard). It came
+#      5 rings in; the owner: "that is actually pretty cool for the lave to
+#      get closer to the middle" - 7, then "bring the lava even closer to the
+#      middle": 9 - and then "we want player be be forced into a box
+#      basically": it closes in from every side at once to a square box,
+#      BOX_CELLS lava cells (256 px) a side round the middle - faster from the
+#      long sides (dry_rect()), LAVA_MOST steps of LAVA_RISE. And the rift's
+#      volcano windows show only while it floods (crownedrift.gd `flood`).
 #   3. THE TRAP (below TRAP_FROM, the warrior's): it calls a horde - the
 #      Endless's swarm (swarm.gd), HORDE_CROWD slimes (HORDE_PHONE on a
-#      phone, endlessrun.gd on_phone()), of every land - while an X of lasers
-#      crosses the room every TRAP_LASER_GAP (descentlands.gd cross_lasers()).
+#      phone, endlessrun.gd on_phone()), of every land - while lasers come
+#      every TRAP_LASER_GAP in one of LASER_SHAPES, in turn (descentlands.gd:
+#      an X, a pinwheel round the Crowned, a sweep wall to wall, a cage
+#      closing on you, a beam that pulses to a beat).
 #   4. THE TEAR (below TEAR_FROM, the cloth's): pieces of the floor
 #      (TEAR_PIECE square) crack (TEAR_WARN) and fall into the rift beneath
-#      (crownedrift.gd shows through), TEAR_COUNT every TEAR_GAP - one where
-#      you stand - and knit back after TEAR_OPEN. Fall in: TEAR_TIMES of a
-#      hazard, and you climb out on the nearest solid floor. The Crowned
-#      flickers through all seven lands (FLICKER_SECONDS): its kit and its
-#      colour change each time.
+#      (crownedrift.gd shows through), and knit back after TEAR_OPEN. Every
+#      TEAR_GAP a pattern is cut across the whole map (cut_pattern(): a row
+#      or a column with gaps, a ring round the middle, or a scatter kept
+#      apart), TEAR_PATTERNS of them at once - and always the piece under
+#      you. The owner, playing it: "there need to be more map cutting i think
+#      patterns need to be spread out more", then "more squares", and "if
+#      we doubles the size of the squares might be cooler" (128 px). Fall in:
+#      TEAR_TIMES of a hazard, and you climb out on the nearest solid floor.
+#      The Crowned flickers through all seven lands (FLICKER_SECONDS): its
+#      kit and its colour change each time.
 #
 # THE LYING ROOM, phases 2 to 4: LIE_SHARE of what warns before it falls is an
 # illusion (descentlands.gd false_share - the circle shimmers); and every
@@ -49,10 +63,11 @@ const METEOR_GAP := 2.0
 const METEOR_SECOND := 0.4
 const LAVA_TILE := 32
 const LAVA_CELL := Vector2i(0, 5)
-const LAVA_MOST := 5
-const LAVA_RISE := 1.4
+const LAVA_MOST := 12
+const LAVA_RISE := 0.9
+const BOX_CELLS := 8
 const LAVA_HOLD := 4.0
-const LAVA_FALL := 0.8
+const LAVA_FALL := 0.5
 const LAVA_REST := 3.0
 const LAVA_TIMES := 0.8
 const LAVA_WARN := 1.0
@@ -66,15 +81,19 @@ const HORDE_TOUCH := 9
 const HORDE_RECOLOUR := 4.0
 const TRAP_LASER_GAP := 5.0
 const TRAP_LASER_FIRST := 2.0
+const LASER_SHAPES := ["x", "pinwheel", "sweep", "cage", "pulse"]
 const BACK_WALL_GAP := 6.0
 
-const TEAR_PIECE := 64
+const TEAR_PIECE := 128
 # Lava cells along a tear piece's side, and floor cells along a lava cell's.
-const TEAR_PER := 2
+const TEAR_PER := 4
 const FLOOR_PER := 2
-const TEAR_GAP := 2.4
-const TEAR_COUNT := 2
-const TEAR_MOST := 10
+const TEAR_GAP := 1.8
+const TEAR_PATTERNS := 2
+const TEAR_SCATTER := 6
+const TEAR_SCATTER_APART := 2
+const TEAR_MOST := 20
+const PATTERNS := ["row", "column", "ring", "scatter"]
 const TEAR_WARN := 1.4
 const TEAR_OPEN := 7.0
 const TEAR_DROP := 0.5
@@ -109,6 +128,7 @@ var falls: int = 0
 var lies: int = 0
 var _meteor_left: float = 0.0
 var _laser_left: float = 0.0
+var lasers_cast: int = 0
 var _horde_owed: float = 0.0
 var _recolour_left: float = 0.0
 var _tear_left: float = 0.0
@@ -157,6 +177,7 @@ func enter(next: int) -> void:
 	phase_clock = 0.0
 	if last == 2:
 		set_lava_depth(0)
+		_tell_rift_flood(0.0)
 	if last == 3:
 		_clear_horde()
 	if last == 4:
@@ -180,6 +201,10 @@ func enter(next: int) -> void:
 			_mood(Element.Type.DARK, boss)
 	if fight != null and NAMES.has(next):
 		fight.call("say", str(NAMES[next]))
+	# The realm cracks faster as the fight goes on (crownedrift.gd).
+	var rift: Node = fight.get("rift") if fight != null else null
+	if rift != null:
+		rift.set("intensity", 1.0 + 0.6 * float(maxi(0, next - 1)))
 
 
 func _mood(land: int, boss: Node2D) -> void:
@@ -199,6 +224,10 @@ func end() -> void:
 		lands.set("false_share", 0.0)
 	for wall in _walls():
 		(wall as CanvasItem).modulate = Color(1, 1, 1, 1)
+	var rift: Node = fight.get("rift") if fight != null else null
+	if rift != null:
+		rift.set("intensity", 1.0)
+	_tell_rift_flood(0.0)
 	phase = 0
 	queue_redraw()
 
@@ -215,8 +244,15 @@ func _step_sealing(delta: float, me: Node2D) -> void:
 		if _rng.randf() < METEOR_SECOND:
 			lands.call("spawn_env", "meteor", me)
 	set_lava_depth(lava_depth_at(phase_clock))
+	_tell_rift_flood(float(lava_depth) / float(LAVA_MOST))
 	if me != null and in_lava(_feet(me)) and lands != null:
 		lands.call("_env_hit", me, LAVA_TIMES, Element.Type.FIRE, StatusEffects.BURN, _feet(me))
+
+
+func _tell_rift_flood(share: float) -> void:
+	var rift: Node = fight.get("rift") if fight != null else null
+	if rift != null:
+		rift.set("flood", share)
 
 
 static func lava_depth_at(seconds: float) -> int:
@@ -244,6 +280,31 @@ func _lava_span() -> Rect2i:
 	var x1: int = floori((room.end.x - origin.x - LAVA_TILE / 2.0) / LAVA_TILE)
 	var y1: int = floori((room.end.y - origin.y - LAVA_TILE / 2.0) / LAVA_TILE)
 	return Rect2i(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+
+
+func _closing(depth: int) -> Vector2i:
+	"""How many cells in from each side the lava holds at `depth` - the two
+	sides meeting the BOX_CELLS square together at LAVA_MOST."""
+	var span: Rect2i = _lava_span()
+	var share: float = clampf(float(depth) / float(LAVA_MOST), 0.0, 1.0)
+	return Vector2i(roundi(share * floorf(float(span.size.x - BOX_CELLS) / 2.0)),
+		roundi(share * floorf(float(span.size.y - BOX_CELLS) / 2.0)))
+
+
+func dry_at(cell: Vector2i, depth: int) -> bool:
+	"""Whether lava cell `cell` is still floor at `depth`."""
+	var span: Rect2i = _lava_span()
+	var closing: Vector2i = _closing(depth)
+	return mini(cell.x - span.position.x, span.end.x - 1 - cell.x) >= closing.x \
+		and mini(cell.y - span.position.y, span.end.y - 1 - cell.y) >= closing.y
+
+
+func dry_rect(depth: int) -> Rect2:
+	"""The floor the lava leaves at `depth`, in the world."""
+	var span: Rect2i = _lava_span()
+	var closing: Vector2i = _closing(depth)
+	var origin: Vector2 = ground.global_position if ground != null else Vector2.ZERO
+	return Rect2(origin + Vector2((span.position + closing) * LAVA_TILE), Vector2((span.size - closing * 2) * LAVA_TILE))
 
 
 func ring_of(cell: Vector2i) -> int:
@@ -276,7 +337,7 @@ func set_lava_depth(depth: int) -> void:
 		for y in range(span.position.y, span.end.y):
 			for x in range(span.position.x, span.end.x):
 				var cell := Vector2i(x, y)
-				if ring_of(cell) < depth:
+				if not dry_at(cell, depth):
 					want[cell] = true
 	for cell in _flooded.keys():
 		if not want.has(cell):
@@ -361,9 +422,26 @@ func _step_trap(delta: float, me: Node2D) -> void:
 	_laser_left -= delta
 	if _laser_left <= 0.0 and me != null and lands != null:
 		_laser_left = TRAP_LASER_GAP
-		var first: int = int(LANDS[_rng.randi() % LANDS.size()])
-		var second: int = int(LANDS[_rng.randi() % LANDS.size()])
-		lands.call("cross_lasers", me, first, second)
+		cast_lasers(str(LASER_SHAPES[lasers_cast % LASER_SHAPES.size()]), me)
+		lasers_cast += 1
+
+
+func cast_lasers(shape: String, me: Node2D) -> void:
+	"""One of the Trap's laser shapes, in a random land."""
+	var land: int = int(LANDS[_rng.randi() % LANDS.size()])
+	match shape:
+		"pinwheel":
+			var boss: Node2D = fight.get("boss") if fight != null else null
+			var at: Vector2 = boss.global_position if boss != null and is_instance_valid(boss) else room.get_center()
+			lands.call("pinwheel", me, at, land)
+		"sweep":
+			lands.call("sweep", me, land)
+		"cage":
+			lands.call("cage", me, land)
+		"pulse":
+			lands.call("pulse_beam", me, land)
+		_:
+			lands.call("cross_lasers", me, land, int(LANDS[_rng.randi() % LANDS.size()]))
 
 
 func _make_horde() -> void:
@@ -407,16 +485,12 @@ func _step_tear(delta: float, me: Node2D) -> void:
 	_tear_left -= delta
 	if _tear_left <= 0.0:
 		_tear_left = TEAR_GAP
-		var made: int = 0
 		if me != null:
-			if cut(piece_at(_feet(me))):
-				made += 1
-		var tries: int = 0
-		while made < TEAR_COUNT and tries < 20:
-			tries += 1
-			var span: Rect2i = _piece_span()
-			if cut(Vector2i(_rng.randi_range(span.position.x, span.end.x - 1), _rng.randi_range(span.position.y, span.end.y - 1))):
-				made += 1
+			cut(piece_at(_feet(me)))
+		var shapes: Array = PATTERNS.duplicate()
+		shapes.shuffle()
+		for k in TEAR_PATTERNS:
+			cut_pattern(str(shapes[k % shapes.size()]))
 	if me != null and fell_in(_feet(me)):
 		_climb_out(me)
 	_flicker_left -= delta
@@ -469,6 +543,48 @@ func cut(piece: Vector2i) -> bool:
 	return true
 
 
+func cut_pattern(shape: String) -> int:
+	"""Cut `shape` across the whole floor; how many pieces began to crack."""
+	var span: Rect2i = _piece_span()
+	var pieces: Array = []
+	match shape:
+		"row":
+			var y: int = _rng.randi_range(1, span.size.y - 2)
+			var odd: int = _rng.randi() % 2
+			for x in span.size.x:
+				if x % 2 == odd:
+					pieces.append(Vector2i(x, y))
+		"column":
+			var x: int = _rng.randi_range(1, span.size.x - 2)
+			var odd: int = _rng.randi() % 2
+			for y in span.size.y:
+				if y % 2 == odd:
+					pieces.append(Vector2i(x, y))
+		"ring":
+			var middle := Vector2(span.size) / 2.0 - Vector2(0.5, 0.5)
+			var reach: float = _rng.randf_range(1.5, maxf(1.6, minf(middle.x, middle.y)))
+			var count: int = int(TAU * reach / 2.0)
+			var turn: float = _rng.randf() * TAU
+			for k in count:
+				var at: Vector2 = middle + Vector2.from_angle(turn + TAU * float(k) / float(count)) * reach
+				pieces.append(Vector2i(roundi(at.x), roundi(at.y)))
+		_:
+			for tries in 60:
+				if pieces.size() >= TEAR_SCATTER:
+					break
+				var piece := Vector2i(_rng.randi_range(0, span.size.x - 1), _rng.randi_range(0, span.size.y - 1))
+				var clear: bool = true
+				for other in pieces:
+					clear = clear and maxi(absi(piece.x - (other as Vector2i).x), absi(piece.y - (other as Vector2i).y)) >= TEAR_SCATTER_APART
+				if clear:
+					pieces.append(piece)
+	var made: int = 0
+	for piece in pieces:
+		if cut(piece):
+			made += 1
+	return made
+
+
 func _torn_at(lava_cell: Vector2i) -> bool:
 	for piece in tears.keys():
 		if bool(tears[piece]["open"]) and lava_cell in _piece_lava_cells(piece):
@@ -491,14 +607,17 @@ func _climb_out(me: Node2D) -> void:
 	var best: Vector2 = room.get_center()
 	var best_d: float = INF
 	var hole: Rect2 = piece_rect(piece_at(at))
-	for k in 16:
-		var out: Vector2 = hole.get_center() + Vector2.from_angle(TAU * float(k) / 16.0) * (TEAR_PIECE * 0.75 + 10.0)
-		if not room.grow(-12.0).has_point(out) or fell_in(out) or in_lava(out):
-			continue
-		var d: float = out.distance_squared_to(at)
-		if d < best_d:
-			best_d = d
-			best = out
+	for reach in [0.75, 1.25, 1.75, 2.5, 3.5]:
+		for k in 16:
+			var out: Vector2 = hole.get_center() + Vector2.from_angle(TAU * float(k) / 16.0) * (TEAR_PIECE * float(reach) + 10.0)
+			if not room.grow(-12.0).has_point(out) or fell_in(out) or in_lava(out):
+				continue
+			var d: float = out.distance_squared_to(at)
+			if d < best_d:
+				best_d = d
+				best = out
+		if best_d < INF:
+			break
 	me.global_position = best - (_feet(me) - me.global_position)
 	me.reset_physics_interpolation()
 
@@ -561,16 +680,13 @@ static func _feet(body: Node2D) -> Vector2:
 
 func _draw() -> void:
 	if phase == 2 and ground != null:
-		var span: Rect2i = _lava_span()
-		var origin: Vector2 = ground.global_position
 		var next_depth: int = lava_depth_at(phase_clock + LAVA_WARN)
 		var pulse: float = 0.5 + 0.5 * sin(phase_clock * 8.0)
 		for ring_depth in [lava_depth, next_depth]:
 			var warn: bool = ring_depth != lava_depth
 			if ring_depth <= 0 or (warn and ring_depth < lava_depth):
 				continue
-			var inner := Rect2(origin + Vector2((span.position + Vector2i(ring_depth, ring_depth)) * LAVA_TILE),
-				Vector2((span.size - Vector2i(ring_depth * 2, ring_depth * 2)) * LAVA_TILE))
+			var inner: Rect2 = dry_rect(ring_depth)
 			draw_rect(inner, Color(1.0, 0.45, 0.1, (0.35 + 0.4 * pulse) if warn else 0.5), false, 4.0 if warn else 3.0)
 	for piece in tears.keys():
 		var held: Dictionary = tears[piece]

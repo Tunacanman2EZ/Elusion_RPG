@@ -7377,6 +7377,61 @@ hazards are - nothing new on the wire. Its header has the numbers.
   and fade or the floor washes in the wrong land (`flash_wash()`).
 - **The end**: `end()` puts the room back - the floor whole, no lava, tears,
   horde or illusions.
+- **After his first play (0.134.2)** ("the fire balls look upside down there need to
+  be more map cutting i think patterns need to be spread out more illusions
+  are not great ig players know exactly where the boss is"):
+  - the meteor's tail streams back up the way it came (it was drawn ahead
+    of it); and descentlands.gd makes its air layer on the first hazard
+    spawned (`_ensure_air()`), so meteors and lasers draw in a fight joined
+    below three quarters, where no crown ever called `begin_env()`;
+  - the Tear cuts TEAR_PATTERNS (2) patterns across the whole map every
+    TEAR_GAP (1.8 s) - `cut_pattern()`: a row or a column with gaps, a ring,
+    or a scatter of TEAR_SCATTER (12) kept TEAR_SCATTER_APART - and always
+    the piece under you ("more squares"); then twice the size ("if we
+    doubles the size of the squares might be cooler"): TEAR_PIECE 128, a
+    scatter of 6, TEAR_MOST 20;
+  - the eyes shuffle (crownedfight.gd `shuffle()`): three copies now, and as
+    they appear and every DECOY_SHUFFLE (3 s) all of them blink out in a
+    dark flash and come back in each other's places, the Crowned in any of
+    them (moved only by the game running it).
+  - then, watching the whole fight: "wind needs a stronger push at wind
+    drifts and it needs to fire at a separate time then the lasers the
+    thing is sequences" (descentlands.gd, WIND PUSHES HARDER, AND THINGS
+    COME IN TURN): a gust or a wind laser shoves GUST_SHOVE (2.5) times as
+    hard (`StatusEffects.push_harder()` - `strength` stops at 1), floaters
+    are blown GUST_PUSH (120); and a wave's hazards come one at a time,
+    ENV_STAGGER (0.3 s) apart (`_queue`, `_send_queued()`), its laser
+    LASER_LATER (half) of the gap after, firing between the waves. This is
+    the Descent's floor too.
+  - then, of a list of laser ideas, "lets check it out" (descentlands.gd
+    NEW SHAPES OF LASER): `pinwheel()` (PINWHEEL_ARMS beams through one
+    spot, turning together), `sweep()` (a straight beam wall to wall at
+    SWEEP_SPEED), `cage()` (four beams closing on you from CAGE_REACH,
+    held in the room, stopping CAGE_STOP short), `pulse_beam()` (on
+    PULSE_ON, off PULSE_OFF, PULSES times - `beam_on()`), an X that bursts
+    where it crosses (X_BLAST_R), and GHOSTS faint lines of where a turning
+    or moving beam will sweep while it warns (`ghost_lines()`). The Trap
+    casts them in turn (crownedphases.gd `cast_lasers()`, LASER_SHAPES).
+    Not built from that list yet: the healer's beam clashing with a boss
+    laser, light bouncing off walls or ice, his own laser sounds.
+  - then, of a rift tear: "we need it to zip accross the screen ... looks
+    like the realm is breaking" (crownedrift.gd THE REALM BREAKING): every
+    ZIP_GAP_LEAST to ZIP_GAP_MOST seconds, divided by `intensity` (raised
+    by crownedphases.gd `enter()`: 1 + 0.6 a phase past the first), a crack
+    races across the void at ZIP_SPEED, forking, over the glimpses too, and
+    fades over ZIP_FADE (`make_zip()`, `_draw_cracks()` on its own node
+    above them). Seen through the Tear's holes as well.
+  - then: "that is actually pretty cool for the lave to get closer to the
+    middle", and "the lava only appears there when the map is flooding":
+    the Sealing's lava comes LAVA_MOST rings in (5, then 7, then "bring the
+    lava even closer to the middle": 9; then "we want player be be forced
+    into a box basically": it closes from every side to a square of
+    BOX_CELLS (8 lava cells, 256 px) round the middle, faster from the long
+    sides - `dry_at()`, `dry_rect()`, LAVA_MOST 12 steps of LAVA_RISE 0.9 s), and the
+    rift's volcano windows show only while it floods - crownedphases.gd
+    tells crownedrift.gd `flood` (rings held / LAVA_MOST), and they fade in
+    and float from where they rest to NEAR_WALL past the walls as it rises
+    (eased over FLOOD_EASE). The forge and crypt windows keep their clocks.
 `_test_the_crowned_falls_apart()` (testrunner_10). Step 3 (the ending, the
 portal line, tuning) is next.
 

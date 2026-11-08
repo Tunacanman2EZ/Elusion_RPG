@@ -3622,6 +3622,9 @@ func _test_the_floor_itself_fights() -> void:
 	var skies: int = lands.find_children("*", "CPUParticles2D", false, false).size()
 	var made_before: int = int(lands.get("env_made"))
 	run.call("_process", LandsScript.ENV_FIRST + 0.05)
+	# Each in turn since 0.134.2 (ENV_STAGGER): give the wave time to arrive.
+	for k in 6:
+		run.call("_process", LandsScript.ENV_STAGGER)
 	var line: Array = run.call("line")
 	check("  room 2 of the Drowned Halls: its lands %s each with weather (%d), and %.1f s in, the floor's first hazards; the party's line carries the mix"
 		% [room_lands, skies, LandsScript.ENV_FIRST],
@@ -4814,6 +4817,8 @@ func _test_the_lasers_bend() -> void:
 	lands.set("_env_left", 0.0)
 	body.global_position = at
 	lands.call("step", 0.016)
+	# The wave's laser comes LASER_LATER of the gap after it (0.134.2).
+	lands.call("step", float(lands.get("env_every")) * LandsScript.LASER_LATER + 0.01)
 	var lasers: Array = []
 	for hz in lands.get("hazards"):
 		if str(hz["k"]) == "laser":
@@ -4848,6 +4853,92 @@ func _test_the_lasers_bend() -> void:
 	want_flashes.sort()
 	check("  an X: two beams through one spot, swaying opposite ways; as they fire it flashes in both lands (%s), and fire over water leaves steam where they cross"
 		% [flashes], pair and flashes == want_flashes and steam_there, [lasers.size(), _mix_kinds(lands)])
+	# ---- new shapes (0.134.2) ----
+	_mix_fresh(lands)
+	lands.call("begin_env", [Element.Type.LIGHT], 4)
+	lands.set("_env_left", 999.0)
+	lands.set("hazards", [])
+	body.global_position = at
+	var wheel: Array = lands.call("pinwheel", body, at, Element.Type.FIRE)
+	var wheel_ok: bool = wheel.size() == LandsScript.PINWHEEL_ARMS
+	for arm in wheel:
+		wheel_ok = wheel_ok and arm["p"] == at and float(arm["spin"]) == float(wheel[0]["spin"]) and float(arm["spin"]) != 0.0
+	var ghosts: int = (lands.call("ghost_lines", wheel[0]) as Array).size()
+	lands.set("hazards", [])
+	var swept: Dictionary = lands.call("sweep", body, Element.Type.WATER)
+	var swept_from: Vector2 = swept["p"]
+	swept["t"] = float(swept["w"])
+	lands.set("_touch_left", 99.0)
+	lands.call("step", 1.0)
+	var swept_by: float = (swept["p"] as Vector2).distance_to(swept_from)
+	check("  a pinwheel of %d turning beams through one spot (its path ghosted %d times while it warns); a sweep crossing the room (%.0f px in a second)"
+		% [wheel.size(), ghosts, swept_by],
+		wheel_ok and ghosts == LandsScript.GHOSTS and absf(swept_by - LandsScript.SWEEP_SPEED) < 2.0 and float(swept["bend"]) == 0.0)
+	lands.set("hazards", [])
+	var bars: Array = lands.call("cage", body, Element.Type.ICE)
+	for bar in bars:
+		bar["t"] = float(bar["w"])
+	lands.set("_touch_left", 99.0)
+	for k in 18:
+		lands.call("step", 0.1)
+	var closest: float = INF
+	var farthest: float = 0.0
+	for bar in bars:
+		var gap: float = body.global_position.distance_to(lands.call("closest_on_beam", bar, body.global_position))
+		closest = minf(closest, gap)
+		farthest = maxf(farthest, gap)
+	check("  a cage of 4 beams closes round you and stops %.0f px short (%.0f to %.0f now)" % [LandsScript.CAGE_STOP, closest, farthest],
+		bars.size() == 4 and absf(closest - LandsScript.CAGE_STOP) < 3.0 and absf(farthest - LandsScript.CAGE_STOP) < 3.0)
+	lands.set("hazards", [])
+	var beat: Dictionary = lands.call("pulse_beam", body, Element.Type.DARK)
+	beat["p"] = at
+	var beats: Array = []
+	for at_t in [0.1, 0.5, 0.75]:
+		beat["t"] = float(beat["w"]) + at_t
+		beats.append(bool(lands.call("beam_on", beat)))
+	var hits_were_pulse: int = (body.get("hits") as Array).size()
+	beat["t"] = float(beat["w"]) + LandsScript.PULSE_ON + 0.05
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	var off_hit: bool = (body.get("hits") as Array).size() > hits_were_pulse
+	check("  a pulse beam burns to a beat - on, off, on - and not between beats",
+		beats == [true, false, true] and not off_hit)
+	_mix_fresh(lands)
+	lands.set("hazards", [])
+	var pair_x: Array = lands.call("cross_lasers", body, Element.Type.FIRE, Element.Type.ICE)
+	for half in pair_x:
+		half["p"] = body.global_position
+		half["t"] = float(half["w"])
+		half["landed"] = true
+	var hits_were_x: int = (body.get("hits") as Array).size()
+	lands.set("_touch_left", 0.0)
+	lands.call("step", 0.016)
+	check("  where an X crosses it bursts as it fires: standing on the crossing hurts",
+		(body.get("hits") as Array).size() > hits_were_x)
+	# ---- a wave comes in turn, and wind pushes harder (0.134.2) ----
+	_mix_fresh(lands)
+	lands.call("begin_env", [Element.Type.WIND], 4)
+	lands.set("_env_left", 0.0)
+	lands.set("hazards", [])
+	var made_was: int = int(lands.get("env_made"))
+	lands.call("step", 0.016)
+	var first: int = int(lands.get("env_made")) - made_was
+	var waiting: int = (lands.get("_queue") as Array).size()
+	lands.call("step", LandsScript.ENV_STAGGER)
+	var second: int = int(lands.get("env_made")) - made_was
+	check("  a wave of the floor's hazards comes in turn, %.1f s apart (%d, then %d), not all at once" % [LandsScript.ENV_STAGGER, first, second],
+		first == 1 and second == 2 and waiting >= LandsScript.env_count(4) - 1)
+	const Effects := preload("res://src/characters/statuseffects.gd")
+	var pushed := Node2D.new()
+	add_child(pushed)
+	var fx: Node = Effects.attach(pushed)
+	Effects.apply_to(pushed, Effects.SHOVE, 10, pushed.global_position - Vector2(30, 0))
+	var plain: float = (fx.get("shove_velocity") as Vector2).length()
+	Effects.push_harder(pushed, LandsScript.GUST_SHOVE)
+	check("  and wind shoves %.1f times as hard as any other shove" % LandsScript.GUST_SHOVE,
+		plain > 0.0 and is_equal_approx((fx.get("shove_velocity") as Vector2).length(), plain * LandsScript.GUST_SHOVE)
+		and LandsScript.GUST_SHOVE >= 2.0)
+	pushed.queue_free()
 	lands.call("end")
 	room.queue_free()
 	Boons.clear()
@@ -4910,10 +5001,18 @@ func _test_the_crowned_falls_apart() -> void:
 			clipped += 1
 	check("the rift: behind the whole world (layer -1, with the camera), out of the room's darkness, %d glimpses of the heroes' worlds past the walls" % clipped,
 		layer != null and layer.layer == -1 and layer.follow_viewport_enabled and clipped == 4)
+	var zip: Dictionary = rift.call("make_zip")
+	var zip_along: PackedFloat32Array = zip["along"]
+	var zips_were: int = int(rift.get("zips_made"))
+	rift.set("_zip_left", 0.0)
+	rift.call("_step_zips", 0.016)
+	check("  the realm breaking: cracks race across the void (%.0f px, forking %d ways), one after another" % [zip_along[zip_along.size() - 1], (zip["forks"] as Array).size()],
+		zip_along[zip_along.size() - 1] >= 700.0 and (zip["forks"] as Array).size() >= 2 and int(rift.get("zips_made")) == zips_were + 1
+		and not (rift.get("zips") as Array).is_empty())
 	# ---- the Sealing -------------------------------------------------------------------
 	phases.call("step", 0.016, 0.7)
-	check("  under three quarters: the Sealing - the boss in fire, a share of the warnings illusions",
-		int(phases.get("phase")) == 2 and int(boss.get("crown_land")) == Element.Type.FIRE
+	check("  under three quarters: the Sealing - the boss in fire, a share of the warnings illusions, the realm cracking faster",
+		int(phases.get("phase")) == 2 and int(boss.get("crown_land")) == Element.Type.FIRE and float(rift.get("intensity")) > 1.0
 		and is_equal_approx(float(lands.get("false_share")), Phases.LIE_SHARE))
 	lands.set("false_share", 0.0)
 	lands.set("hazards", [])
@@ -4956,6 +5055,24 @@ func _test_the_crowned_falls_apart() -> void:
 	var taken_floor: int = cells_whole - ground.get_used_cells().size()
 	var lava_cells: int = (phases.get("lava") as TileMapLayer).get_used_cells().size()
 	var burned: Array = (body.get("hits") as Array).back()
+	var volcano: Array = []
+	for glimpse in rift.get("glimpses"):
+		if str(glimpse[3]) == "volcano":
+			volcano = glimpse
+	rift.call("_process", 10.0)
+	var shows_while_flooding: bool = float(rift.get("flood")) > 0.0 and (volcano[0] as Node2D).modulate.a > 0.0 \
+		and (volcano[0] as Node2D).position.distance_to(floor_rect.get_center()) < (volcano[4] as Vector2).distance_to(floor_rect.get_center())
+	check("  the volcano's windows in the rift come in toward the walls only while the lava floods",
+		shows_while_flooding)
+	phases.call("set_lava_depth", Phases.LAVA_MOST)
+	var dry: Rect2 = phases.call("dry_rect", Phases.LAVA_MOST)
+	check("  at its height the lava boxes you in: a %.0f x %.0f px square of floor round the middle, nothing else dry"
+		% [dry.size.x, dry.size.y],
+		absf(dry.size.x - dry.size.y) < 1.0 and is_equal_approx(dry.size.x, float(Phases.BOX_CELLS * Phases.LAVA_TILE))
+		and dry.has_point(floor_rect.get_center() + Vector2(0, 20)) and not bool(phases.call("in_lava", dry.get_center()))
+		and bool(phases.call("in_lava", dry.position + Vector2(-20, dry.size.y / 2.0)))
+		and bool(phases.call("in_lava", dry.position + Vector2(dry.size.x / 2.0, -20))))
+	phases.call("set_lava_depth", 3)
 	check("  the lava takes the floor ring by ring from the walls (3 rings: %d lava cells, %d floor cells gone) and burns whoever stands in it"
 		% [lava_cells, taken_floor],
 		int(phases.get("lava_depth")) == 3 and taken_floor == lava_cells * 4 and lava_cells > 100
@@ -4965,6 +5082,8 @@ func _test_the_crowned_falls_apart() -> void:
 	body.global_position = floor_rect.get_center() + Vector2(0, 150)
 	phases.call("step", 0.016, 0.4)
 	var floor_back: bool = ground.get_used_cells().size() == cells_whole
+	rift.call("_process", 10.0)
+	floor_back = floor_back and float(rift.get("flood")) == 0.0 and (volcano[0] as Node2D).modulate.a == 0.0
 	for k in 20:
 		phases.call("step", 0.1, 0.4)
 	var horde: Node2D = phases.get("swarm")
@@ -4974,6 +5093,7 @@ func _test_the_crowned_falls_apart() -> void:
 	RunScript.pretend_phone = false
 	lands.set("hazards", [])
 	phases.set("_laser_left", 0.0)
+	phases.set("lasers_cast", 0)
 	phases.call("step", 0.016, 0.4)
 	var beams: Array = []
 	for hz in lands.get("hazards"):
@@ -4993,18 +5113,34 @@ func _test_the_crowned_falls_apart() -> void:
 	phases.call("step", 0.016, 0.2)
 	var tears: Dictionary = phases.get("tears")
 	var under: Vector2i = phases.call("piece_at", feet)
-	check("  under a quarter: the Tear - the horde gone, %d pieces of the floor cracking, one under you" % tears.size(),
-		int(phases.get("phase")) == 4 and horde_gone and tears.size() == Phases.TEAR_COUNT and tears.has(under)
+	var lo := Vector2i(999, 999)
+	var hi := Vector2i(-999, -999)
+	for piece in tears.keys():
+		lo = Vector2i(mini(lo.x, piece.x), mini(lo.y, piece.y))
+		hi = Vector2i(maxi(hi.x, piece.x), maxi(hi.y, piece.y))
+	var spread: int = maxi(hi.x - lo.x, hi.y - lo.y)
+	check("  under a quarter: the Tear - the horde gone, a pattern of %d pieces cracking across the map (%d apart at the most), one under you"
+		% [tears.size(), spread],
+		int(phases.get("phase")) == 4 and horde_gone and tears.size() >= 4 and spread >= 3 and tears.has(under)
 		and ground.get_used_cells().size() == cells_whole)
+	var shapes_ok: bool = true
+	for shape in Phases.PATTERNS:
+		phases.call("knit_all")
+		shapes_ok = shapes_ok and int(phases.call("cut_pattern", shape)) >= 3
+	phases.call("knit_all")
+	phases.call("cut", under)
+	phases.call("cut_pattern", "row")
+	check("  each pattern cuts across the floor: a row, a column, a ring, a scatter", shapes_ok)
 	var land_was: int = int(boss.get("crown_land"))
 	phases.set("_flicker_left", 0.0)
 	lands.set("_touch_left", 0.0)
 	phases.call("step", Phases.TEAR_WARN + 0.05, 0.2)
+	var torn_now: int = (phases.get("tears") as Dictionary).size()
 	var holes: int = cells_whole - ground.get_used_cells().size()
 	var fell: Array = (body.get("hits") as Array).back()
 	check("  they fall into the rift (%d floor cells open); you fall through, are hurt as dark, and climb out on solid floor; it flickers to another land"
 		% holes,
-		holes == Phases.TEAR_COUNT * 16 and int(phases.get("falls")) == 1 and int(fell[1]) == Element.Type.DARK
+		holes == torn_now * (Phases.TEAR_PER * Phases.FLOOR_PER) * (Phases.TEAR_PER * Phases.FLOOR_PER) and int(phases.get("falls")) == 1 and int(fell[1]) == Element.Type.DARK
 		and not bool(phases.call("fell_in", body.global_position + Vector2(0, 10)))
 		and floor_rect.has_point(body.global_position) and int(boss.get("crown_land")) != land_was)
 	# ---- the lying room ------------------------------------------------------------------
@@ -5017,6 +5153,30 @@ func _test_the_crowned_falls_apart() -> void:
 	check("  the room lies: %d walls to shimmer, a lie every few seconds, the floor washed in the wrong land a moment" % (phases.call("_walls") as Array).size(),
 		(phases.call("_walls") as Array).size() == 59 and int(phases.get("lies")) == lies_were + 6
 		and wash.color.a > Fight.WASH * 1.5)
+	# ---- the eyes shuffle -------------------------------------------------------------------
+	lands.set("hazards", [])
+	var eyes: Array = fight.call("make_decoys", 3)
+	var before: Array = [boss.global_position]
+	for eye in eyes:
+		before.append((eye as Node2D).global_position)
+	fight.call("shuffle")
+	var after: Array = [boss.global_position]
+	for eye in eyes:
+		after.append((eye as Node2D).global_position)
+	var same_spots: bool = true
+	for at in before:
+		var found: bool = false
+		for q in after:
+			found = found or (q as Vector2).distance_to(at) < 0.5
+		same_spots = same_spots and found
+	var flashes: int = 0
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "burst":
+			flashes += 1
+	check("  the eyes shuffle: all %d blink out in a flash of dark and come back in each other's places, the Crowned among them"
+		% flashes, eyes.size() == 3 and same_spots and after != before and flashes == 4 and int(fight.get("shuffles")) >= 1)
+	for eye in eyes:
+		(eye as Node).call("shatter")
 	# ---- the end -------------------------------------------------------------------------
 	phases.call("end")
 	check("  when the fight ends the room is put back: the floor whole, no lava, no tears, no horde, no illusions",

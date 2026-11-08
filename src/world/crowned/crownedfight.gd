@@ -28,6 +28,13 @@
 # eyes (crowneddecoy.gd) stand round the boss for DECOY_SECONDS, wearing its
 # own pictures - an attack, a pet or the touch aim may pick one, and it
 # breaks. The real one is the one that casts. Each game sees its own.
+# AND THEY SHUFFLE (0.134.2). The owner, playing it: "illusions are not great
+# ig players know exactly where the boss is" - the copies stood round a boss
+# that never moved. Now as they appear, and every DECOY_SHUFFLE while any is
+# left, every eye blinks out in a flash of dark (shuffle()) and they come back
+# in each other's places - the Crowned in any of them. (The game running the
+# boss moves it; a picture of another game's boss stays, and only its copies
+# trade places.)
 #
 # When the Crowned falls every light burns (the crowns returned); when it
 # turns away (a leash home, nobody left), the room goes quiet and dark.
@@ -52,8 +59,9 @@ const WASH := 0.14
 const WASH_EASE := 1.2
 const DECOY_FIRST := 10.0
 const DECOY_EVERY := 22.0
-const DECOY_COUNT := 2
+const DECOY_COUNT := 3
 const DECOY_SECONDS := 9.0
+const DECOY_SHUFFLE := 3.0
 const DECOY_NEAR := 140.0
 const DECOY_FAR := 240.0
 const LIGHT_DIM := 0.18
@@ -87,6 +95,8 @@ var _wash_want: Color = Color(0, 0, 0, 0)
 var _lights: Array = []
 var _light_want: Array = []
 var _decoy_left: float = DECOY_FIRST
+var _shuffle_left: float = DECOY_SHUFFLE
+var shuffles: int = 0
 var _banner: Label = null
 var _banner_left: float = 0.0
 var _rng := RandomNumberGenerator.new()
@@ -295,11 +305,50 @@ func _tint_boss(land: int) -> void:
 
 func _step_decoys(delta: float) -> void:
 	decoys = decoys.filter(func(d: Object) -> bool: return is_instance_valid(d) and not bool(d.get("broken")))
+	if not decoys.is_empty():
+		_shuffle_left -= delta
+		if _shuffle_left <= 0.0:
+			_shuffle_left = DECOY_SHUFFLE
+			shuffle()
 	_decoy_left -= delta
 	if _decoy_left > 0.0:
 		return
 	_decoy_left = DECOY_EVERY
-	make_decoys(DECOY_COUNT)
+	if not make_decoys(DECOY_COUNT).is_empty():
+		shuffle()
+		_shuffle_left = DECOY_SHUFFLE
+
+
+func shuffle() -> void:
+	"""Every eye blinks out and comes back in another's place: the Crowned and
+	its copies trade the spots they stood on."""
+	if boss == null or not is_instance_valid(boss):
+		return
+	decoys = decoys.filter(func(d: Object) -> bool: return is_instance_valid(d) and not bool(d.get("broken")))
+	var spots: Array = [boss.global_position]
+	for decoy in decoys:
+		spots.append((decoy as Node2D).global_position)
+	if spots.size() < 2:
+		return
+	var order: Array = spots.duplicate()
+	order.shuffle()
+	if order == spots:
+		order.push_back(order.pop_front())
+	for at in spots:
+		lands.call("burst_at", at, Element.Type.DARK)
+	if not bool(boss.get("net_mirror")):
+		boss.global_position = order[0]
+		boss.reset_physics_interpolation()
+		if boss is CharacterBody2D:
+			(boss as CharacterBody2D).velocity = Vector2.ZERO
+		order.remove_at(0)
+	else:
+		order.erase(boss.global_position)
+	for k in decoys.size():
+		var decoy: Node2D = decoys[k]
+		decoy.call("place", order[k % order.size()])
+		decoy.reset_physics_interpolation()
+	shuffles += 1
 
 
 func make_decoys(count: int) -> Array:

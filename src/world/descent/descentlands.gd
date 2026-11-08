@@ -199,7 +199,43 @@ const PUDDLE_R := 24.0
 const ICE_LIFE := 5.0
 const SHOCK_REACH := 1.5
 const FREEZE_REACH := 24.0
-const GUST_PUSH := 70.0
+const GUST_PUSH := 120.0
+# WIND PUSHES HARDER, AND THINGS COME IN TURN (0.134.2). The owner, watching
+# the Crowned: "wind needs a stronger push at wind drifts and it needs to fire
+# at a separate time then the lasers the thing is sequences so that way things
+# feel not everything is happening at 1 time".
+#   - A gust (and a wind laser) shoves GUST_SHOVE times as hard as any other
+#     shove (StatusEffects.push_harder()), and blows what floats GUST_PUSH.
+#   - A wave of the floor's hazards no longer lands at once: each comes
+#     ENV_STAGGER after the last (_queue), and the wave's laser comes
+#     LASER_LATER of the gap after it, so it fires between the waves.
+const GUST_SHOVE := 2.5
+const ENV_STAGGER := 0.3
+const LASER_LATER := 0.5
+# NEW SHAPES OF LASER (0.134.2, the owner's "lets check it out" of a list of
+# ideas): spawned by whoever runs the fight (crownedphases.gd's Trap):
+#   - pinwheel(): PINWHEEL_ARMS beams through one spot, turning together.
+#   - sweep(): one straight beam crossing the whole room, wall to wall, at
+#     SWEEP_SPEED.
+#   - cage(): four straight beams round the player, closing in at CAGE_SPEED
+#     from CAGE_REACH and stopping CAGE_STOP short - stay in the middle.
+#   - pulse_beam(): a beam that fires to a beat, PULSE_ON on and PULSE_OFF
+#     off, PULSES times - it hurts only while on; dodge by timing.
+#   - and where an X crosses it bursts (X_BLAST_R, X_BLAST_TIMES of a hazard
+#     in the crossing land) as it fires - the crossing is the danger spot.
+#   - A turning or moving beam shows faint ghosts of where it will sweep
+#     while it warns (GHOSTS), so its path can be read.
+const PINWHEEL_ARMS := 3
+const SWEEP_SPEED := 170.0
+const CAGE_REACH := 250.0
+const CAGE_STOP := 70.0
+const CAGE_SPEED := 120.0
+const PULSE_ON := 0.35
+const PULSE_OFF := 0.3
+const PULSES := 5
+const X_BLAST_R := 34.0
+const X_BLAST_TIMES := 1.0
+const GHOSTS := 3
 const BLAST_PAST := 12.0
 const KIND_FOR := {Element.Type.FIRE: "spark", Element.Type.ICE: "hail", Element.Type.WATER: "bubble",
 	Element.Type.WIND: "gust", Element.Type.LIGHT: "flare", Element.Type.EARTH: "rock", Element.Type.DARK: "wisp"}
@@ -225,6 +261,8 @@ var env_hits: int = 0
 var _env_left: float = -1.0
 var _touch_left: float = 0.0
 var _air: Node2D = null
+# What the floor has yet to send this wave: [seconds until, kind].
+var _queue: Array = []
 # What share of FAKEABLE hazards are illusions (0: none - the Descent).
 var false_share: float = 0.0
 # What a hazard made this step (a puddle, a blast), joined after it.
@@ -270,6 +308,7 @@ func end() -> void:
 	_left = -1.0
 	env_lands = []
 	hazards = []
+	_queue = []
 	_env_left = -1.0
 	queue_redraw()
 	if _air != null and is_instance_valid(_air):
@@ -556,7 +595,16 @@ func begin_env(lands: Array, floor_index: int, faster: bool = false) -> void:
 	env_floor = floor_index
 	env_every = env_gap(floor_index) * (0.5 if faster else 1.0)
 	hazards = []
+	_queue = []
 	_env_left = ENV_FIRST if not env_lands.is_empty() else -1.0
+	_ensure_air()
+
+
+func _ensure_air() -> void:
+	"""The layer above everything that what flies is drawn on - made with the
+	first floor's hazards, or the first hazard spawned without one (0.134.2:
+	the Crowned's meteors and lasers below three quarters, in a fight joined
+	after its crowns, were drawn nowhere)."""
 	if _air == null or not is_instance_valid(_air):
 		_air = Node2D.new()
 		_air.name = "air"
@@ -580,14 +628,15 @@ func _step_env(delta: float) -> void:
 		_env_left -= delta
 		if _env_left <= 0.0 and me != null:
 			_env_left = env_every
+			var kinds: Array = []
 			for i in env_count(env_floor):
-				spawn_env(str(KIND_FOR[env_lands[randi() % env_lands.size()]]), me)
+				kinds.append(str(KIND_FOR[env_lands[randi() % env_lands.size()]]))
 			if env_floor >= GAS_FROM and randf() < GAS_CHANCE:
-				spawn_env("gas", me)
+				kinds.append("gas")
+			for k in kinds.size():
+				_queue.append([float(k) * ENV_STAGGER, kinds[k]])
 			if randf() < laser_chance(env_floor):
-				var beam: Dictionary = spawn_env("laser", me)
-				if env_floor >= LASER_TWO_FROM:
-					_cross(beam, spawn_env("laser", me))
+				_queue.append([env_every * LASER_LATER, "laser"])
 	var still: Array = []
 	_born = []
 	for hz in hazards:
@@ -597,9 +646,30 @@ func _step_env(delta: float) -> void:
 	_react(me)
 	hazards.append_array(_born)
 	_born = []
+	_send_queued(delta, me)
 	queue_redraw()
 	if _air != null and is_instance_valid(_air):
 		_air.queue_redraw()
+
+
+func _send_queued(delta: float, me: Node2D) -> void:
+	"""The wave's hazards, each when its turn comes (ENV_STAGGER, LASER_LATER)."""
+	if _queue.is_empty() or me == null:
+		return
+	var later: Array = []
+	for item in _queue:
+		item[0] = float(item[0]) - delta
+		if float(item[0]) > 0.0:
+			later.append(item)
+			continue
+		var kind: String = str(item[1])
+		if kind == "laser":
+			var beam: Dictionary = spawn_env("laser", me)
+			if env_floor >= LASER_TWO_FROM:
+				_cross(beam, spawn_env("laser", me))
+		else:
+			spawn_env(kind, me)
+	_queue = later
 
 
 func _cross(beam: Dictionary, cross: Dictionary) -> void:
@@ -622,6 +692,7 @@ func cross_lasers(me: Node2D, land: int, other_land: int) -> Array:
 
 func spawn_env(kind: String, me: Node2D) -> Dictionary:
 	"""One hazard of `kind`, placed for this game's player."""
+	_ensure_air()
 	var rect: Rect2 = run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)
 	var at: Vector2 = me.global_position
 	var hz: Dictionary = {"k": kind, "t": 0.0, "w": 0.0, "life": 8.0, "r": 8.0, "p": at, "v": Vector2.ZERO,
@@ -765,7 +836,10 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 				if absf(me.global_position.y - (hz["p"] as Vector2).y) <= lane:
 					hz["landed"] = true
 					var from: Vector2 = me.global_position - Vector2(30.0 * float(hz["dir"]), 0.0)
+					var hits_were: int = env_hits
 					_env_hit(me, 1.0, Element.Type.WIND, StatusEffects.SHOVE, from)
+					if env_hits > hits_were:
+						StatusEffects.push_harder(me, GUST_SHOVE)
 		"gas":
 			hz["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2) * delta
 			if t >= float(hz["w"]) and me != null and _touches(me, hz["p"], float(hz["r"])):
@@ -786,18 +860,22 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 			var e: int = int(hz["e"])
 			if t >= float(hz["w"]):
 				hz["a"] = float(hz["a"]) + float(hz["spin"]) * delta
+				if hz.has("travel") and float(hz["travel"]) > 0.0:
+					var move: float = minf(float(hz["travel"]), (hz["v"] as Vector2).length() * delta)
+					hz["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2).normalized() * move
+					hz["travel"] = float(hz["travel"]) - move
 			hz["pts"] = beam_points(hz)
 			if t >= float(hz["w"]):
 				if not bool(hz.get("fired", false)):
 					hz["fired"] = true
 					hz["just"] = true
 					if hz.has("x_with"):
-						_cross_flash(hz)
+						_cross_flash(hz, me)
 					if e == Element.Type.WIND:
 						_blow_along(hz)
 				# One beam, one hit: a turning beam across a player stood still
 				# hit twice in its 1.3 s (the bench, zz/descparty4.gd).
-				if me != null and not bool(hz.get("landed", false)):
+				if me != null and not bool(hz.get("landed", false)) and beam_on(hz):
 					var near: Vector2 = closest_on_beam(hz, me.global_position)
 					if me.global_position.distance_to(near) <= LASER_HALF + TOUCH_SLACK and _touch_left <= 0.0:
 						hz["landed"] = true
@@ -805,7 +883,10 @@ func _step_hazard(hz: Dictionary, delta: float, me: Node2D) -> bool:
 						var from: Vector2 = near
 						if e == Element.Type.WIND:
 							from = me.global_position - beam_heading(hz, near) * 30.0
+						var hits_were: int = env_hits
 						_env_hit(me, LASER_HIT, e, EFFECT_FOR.get(e, StatusEffects.DAZZLE), from)
+						if e == Element.Type.WIND and env_hits > hits_were:
+							StatusEffects.push_harder(me, GUST_SHOVE)
 				if t >= float(hz["life"]) - LASER_TRAIL_BEFORE and not bool(hz.get("left", false)):
 					hz["left"] = true
 					_leave_trail(hz)
@@ -831,6 +912,27 @@ func _arc_point(p: Vector2, heading: float, curve: float, s: float) -> Vector2:
 	if absf(curve) < 0.000001:
 		return p + Vector2.from_angle(heading) * s
 	return p + Vector2(sin(heading + curve * s) - sin(heading), cos(heading) - cos(heading + curve * s)) / curve
+
+
+func ghost_lines(hz: Dictionary) -> Array:
+	"""Where a turning or moving laser will sweep, GHOSTS faint lines of it."""
+	var lines: Array = []
+	var turning: bool = absf(float(hz.get("spin", 0.0))) > 0.0
+	var moving: bool = hz.has("travel") and float(hz.get("travel", 0.0)) > 0.0
+	if not turning and not moving:
+		return lines
+	var fire: float = float(hz["life"]) - float(hz["w"])
+	for g in range(1, GHOSTS + 1):
+		var share: float = float(g) / float(GHOSTS)
+		var later: Dictionary = hz.duplicate()
+		later.erase("pts")
+		later["t"] = float(hz["w"]) + fire * share
+		if turning:
+			later["a"] = float(hz["a"]) + float(hz["spin"]) * fire * share
+		if moving:
+			later["p"] = (hz["p"] as Vector2) + (hz["v"] as Vector2).normalized() * float(hz["travel"]) * share
+		lines.append(beam_points(later))
+	return lines
 
 
 func beam_curve(hz: Dictionary) -> float:
@@ -995,14 +1097,113 @@ func trail_patch(kind: String, at: Vector2) -> Dictionary:
 	return hz
 
 
-func _cross_flash(hz: Dictionary) -> void:
-	"""Where an X crosses: a flash in each of its two lands' colours."""
+func _cross_flash(hz: Dictionary, me: Node2D = null) -> void:
+	"""Where an X crosses: a flash in each of its two lands' colours, and a
+	burst that hurts (X_BLAST_R)."""
 	for e in [int(hz["e"]), int(hz["x_with"])]:
 		var flash: Dictionary = _patch("burst", hz["p"])
 		flash["e"] = e
 		flash["life"] = 0.45
-		flash["r"] = 30.0 if e == int(hz["e"]) else 22.0
+		flash["r"] = X_BLAST_R if e == int(hz["e"]) else X_BLAST_R * 0.7
 		_born.append(flash)
+	if me != null and _touches(me, hz["p"], X_BLAST_R):
+		_touch_left = 0.0
+		var land: int = int(hz["e"])
+		_env_hit(me, X_BLAST_TIMES, land, EFFECT_FOR.get(land, StatusEffects.DAZZLE), hz["p"])
+
+
+func beam_on(hz: Dictionary) -> bool:
+	"""Whether a laser burns now: always while it fires, a pulsing one only on
+	its beat."""
+	var t: float = float(hz["t"]) - float(hz["w"])
+	if t < 0.0:
+		return false
+	if not bool(hz.get("pulse", false)):
+		return true
+	return fmod(t, PULSE_ON + PULSE_OFF) < PULSE_ON
+
+
+func _shaped(me: Node2D, land: int, at: Vector2, angle: float) -> Dictionary:
+	"""A laser of `land` through `at` at `angle`, nothing else changed."""
+	var hz: Dictionary = spawn_env("laser", me)
+	hz["e"] = land
+	hz["p"] = at
+	hz["a"] = angle
+	return hz
+
+
+func pinwheel(me: Node2D, at: Vector2, land: int) -> Array:
+	"""PINWHEEL_ARMS beams through `at`, turning together."""
+	var made: Array = []
+	var turn: float = randf() * PI
+	var spin: float = LASER_SPIN if randf() < 0.5 else -LASER_SPIN
+	var phase_of: float = randf() * TAU
+	for k in PINWHEEL_ARMS:
+		var arm: Dictionary = _shaped(me, land, at, turn + PI * float(k) / float(PINWHEEL_ARMS))
+		arm["spin"] = spin
+		arm["ph"] = phase_of + PI * float(k)
+		arm["life"] = LASER_WARN + LASER_FIRE_SPIN * 1.4
+		made.append(arm)
+	return made
+
+
+func sweep(me: Node2D, land: int) -> Dictionary:
+	"""One straight beam crossing the whole room from wall to wall."""
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-20.0)
+	var across: bool = randf() < 0.5
+	var forward: bool = randf() < 0.5
+	var start: Vector2
+	var heading: Vector2
+	if across:
+		start = Vector2(rect.get_center().x, rect.position.y if forward else rect.end.y)
+		heading = Vector2(0, 1 if forward else -1)
+	else:
+		start = Vector2(rect.position.x if forward else rect.end.x, rect.get_center().y)
+		heading = Vector2(1 if forward else -1, 0)
+	var hz: Dictionary = _shaped(me, land, start, 0.0 if across else PI / 2.0)
+	var span: float = rect.size.y if across else rect.size.x
+	hz["spin"] = 0.0
+	hz["bend"] = 0.0
+	hz["v"] = heading * SWEEP_SPEED
+	hz["travel"] = span
+	hz["life"] = LASER_WARN + span / SWEEP_SPEED + 0.3
+	return hz
+
+
+func cage(me: Node2D, land: int) -> Array:
+	"""Four straight beams round the player, closing in to CAGE_STOP."""
+	var made: Array = []
+	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-12.0)
+	var centre: Vector2 = me.global_position
+	var longest: float = 0.0
+	var reaches: Array = []
+	for k in 4:
+		var side := Vector2.from_angle(PI / 2.0 * float(k)).round()
+		# Held inside the room: a side by a wall starts at the wall.
+		var room_left: float = [rect.end.x - centre.x, rect.end.y - centre.y, centre.x - rect.position.x, centre.y - rect.position.y][k]
+		var reach: float = clampf(room_left, CAGE_STOP, CAGE_REACH)
+		reaches.append(reach)
+		longest = maxf(longest, reach - CAGE_STOP)
+	for k in 4:
+		var side := Vector2.from_angle(PI / 2.0 * float(k)).round()
+		var reach: float = float(reaches[k])
+		var hz: Dictionary = _shaped(me, land, centre + side * reach, PI / 2.0 * float(k) + PI / 2.0)
+		hz["spin"] = 0.0
+		hz["bend"] = 0.0
+		hz["v"] = -side * CAGE_SPEED
+		hz["travel"] = reach - CAGE_STOP
+		hz["life"] = LASER_WARN + longest / CAGE_SPEED + 0.5
+		made.append(hz)
+	return made
+
+
+func pulse_beam(me: Node2D, land: int) -> Dictionary:
+	"""A beam that fires to a beat (PULSE_ON on, PULSE_OFF off, PULSES times)."""
+	var hz: Dictionary = spawn_env("laser", me)
+	hz["e"] = land
+	hz["pulse"] = true
+	hz["life"] = LASER_WARN + float(PULSES) * (PULSE_ON + PULSE_OFF)
+	return hz
 
 
 func _blow_along(hz: Dictionary) -> void:
@@ -1492,14 +1693,20 @@ func _draw_air() -> void:
 				_air.draw_circle(p, 6.0, Color(0.8, 0.6, 1.0, 0.9))
 			"meteor":
 				if not bool(hz.get("landed", false)):
+					# Falling from up and to the left, its tail streaming back up
+					# the way it came (it was drawn ahead of it - "the fire balls
+					# look upside down").
 					var fall: float = clampf(t / maxf(0.001, float(hz["w"])), 0.0, 1.0)
 					var from := Vector2(-110.0, -300.0)
 					var at: Vector2 = p + from * (1.0 - fall * fall)
-					for k in 5:
-						var back: Vector2 = at - from.normalized() * float(k) * 9.0
-						_air.draw_circle(back, 9.0 - float(k) * 1.4, Color(1.0, 0.45, 0.1, 0.5 - 0.09 * float(k)))
-					_air.draw_circle(at, 7.0, Color(1.0, 0.6, 0.2, 0.95))
-					_air.draw_circle(at, 3.5, Color(1.0, 0.95, 0.7, 1.0))
+					var back: Vector2 = from.normalized()
+					for k in range(6, 0, -1):
+						var behind: Vector2 = at + back * float(k) * 7.0
+						var fade: float = 1.0 - float(k) / 7.0
+						_air.draw_circle(behind, 3.0 + 4.0 * fade, Color(1.0, 0.35 + 0.3 * fade, 0.08, 0.15 + 0.45 * fade))
+					_air.draw_circle(at, 9.0, Color(1.0, 0.45, 0.1, 0.45))
+					_air.draw_circle(at, 6.5, Color(1.0, 0.65, 0.2, 0.95))
+					_air.draw_circle(at + back * 1.5, 3.2, Color(1.0, 0.95, 0.7, 1.0))
 			"blast":
 				# Over everything, as the flare's flash is (0.128.0).
 				var b: float = clampf(t / float(hz["life"]), 0.0, 1.0)
@@ -1522,6 +1729,8 @@ func _draw_air() -> void:
 				if t < warn:
 					var k: float = t / warn
 					var flick: float = 0.3 + 0.4 * k + 0.25 * absf(sin(t * 20.0)) * k
+					for ghost in ghost_lines(hz):
+						_air.draw_polyline(ghost, Color(colour * 1.2, 0.18 * k), 1.0)
 					_air.draw_polyline(line, Color(colour * 1.3, flick), 1.0 + 2.0 * k)
 					for end in ends:
 						_air.draw_circle(end, 2.0 + 3.0 * k, Color(colour * 1.4, 0.9))
@@ -1530,7 +1739,10 @@ func _draw_air() -> void:
 				else:
 					var f: float = clampf((t - warn) / maxf(0.01, float(hz["life"]) - warn), 0.0, 1.0)
 					var fade: float = 1.0 if f < 0.8 else (1.0 - f) / 0.2
-					_draw_design(e, line, t, fade, int(hz.get("seed", 0)))
+					if beam_on(hz):
+						_draw_design(e, line, t, fade, int(hz.get("seed", 0)))
+					else:
+						_air.draw_polyline(line, Color(colour * 1.3, 0.45 * fade), 2.0)
 					for end in ends:
 						_air.draw_circle(end, 9.0, Color(colour * 1.5, 0.6 * fade))
 						_air.draw_circle(end, 4.0, Color(1.0, 1.0, 1.0, fade))
