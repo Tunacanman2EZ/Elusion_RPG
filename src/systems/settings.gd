@@ -150,6 +150,14 @@ const DEFAULTS := {
 	# dim - the single biggest cost in any lit area.
 	"lighting": "full",
 
+	# PHYSICS (0.134.6). "smooth" moves the world 80 times a second, as it
+	# always has (a feel decision: CLAUDE.md "Speed on day 1"); "light" 60 -
+	# a quarter less physics work - and catches up at most LIGHT_CATCH_UP
+	# ticks after a slow frame instead of 8, so a slow phone's frame does not
+	# make the next one slower still. The owner's phone in the Endless: 20 ms
+	# a physics tick. Phones get "light" (PHONE_STEPS); anyone may choose.
+	"physics_rate": "smooth",
+
 	# Drop to BACKGROUND_FPS while the game is not the focused window. On by
 	# default: nobody is watching those frames, and a laptop on battery or a
 	# second monitor running a video should not pay for them.
@@ -1003,6 +1011,12 @@ func note_window_place(screen: int, spot: Vector2i, windowed: bool) -> void:
 
 const RENDER_RESOLUTIONS := ["screen", "low"]
 const LIGHTING_MODES := ["full", "simple"]
+const PHYSICS_RATES := ["smooth", "light"]
+const PHYSICS_TICKS := {"smooth": 80, "light": 60}
+# How many physics ticks one frame may run to catch up after a slow one -
+# Godot's default 8 for smooth. At 4, a frame slower than 4 ticks lets the
+# game's clock slip a little instead of spending the next frame catching up.
+const PHYSICS_CATCH_UP := {"smooth": 8, "light": 4}
 
 # While the window is in the background. Low enough to cost almost nothing,
 # high enough that nothing time-driven stutters when you look back.
@@ -1034,8 +1048,10 @@ const SAVER_FPS := 30
 const PHONE_STEPS := [
 	{"render_resolution": "low", "lighting": "simple"},
 	{"battery_saver": true},
+	{"physics_rate": "light"},
 ]
-const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple", "battery_saver": true}
+const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple", "battery_saver": true,
+	"physics_rate": "light"}
 const PHONE_TUNED_SECTION := "device"
 const PHONE_TUNED_KEY := "phone_tuned"
 
@@ -1150,6 +1166,15 @@ static func on_phone() -> bool:
 	"""A phone or a tablet: the browser build on Android or iOS (Godot's
 	web_android and web_ios), or a mobile build."""
 	return OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+
+
+static func apply_physics_rate(rate: String) -> void:
+	"""The world's ticks a second and how many one frame may catch up
+	(PHYSICS_TICKS, PHYSICS_CATCH_UP). Physics interpolation is on, so a
+	body is still drawn smoothly between ticks either way."""
+	var known: String = rate if rate in PHYSICS_RATES else "smooth"
+	Engine.physics_ticks_per_second = int(PHYSICS_TICKS[known])
+	Engine.max_physics_steps_per_frame = int(PHYSICS_CATCH_UP[known])
 
 
 static func dimmer_alpha(brightness: float) -> float:
@@ -2068,6 +2093,8 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			return normalise_choice(typed, RENDER_RESOLUTIONS, "screen")
 		"lighting":
 			return normalise_choice(typed, LIGHTING_MODES, "full")
+		"physics_rate":
+			return normalise_choice(typed, PHYSICS_RATES, "smooth")
 		"brightness":
 			return clampf(float(typed), BRIGHTNESS_MIN, BRIGHTNESS_MAX)
 		"projectile_brightness":
@@ -2226,6 +2253,8 @@ func _apply(key: String, value: Variant) -> void:
 				reapply_camera_zoom.call_deferred()
 		"lighting":
 			_apply_lighting_everywhere(str(value))
+		"physics_rate":
+			apply_physics_rate(str(value))
 		"camera_zoom":
 			_apply_camera_zoom_everywhere(float(value))
 		"sharp_pixels":

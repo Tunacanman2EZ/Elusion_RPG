@@ -5464,3 +5464,81 @@ func _test_the_rift_draws_once() -> void:
 	check("  a glimpse out of sight is hidden, not drawn see-through (%d)" % hidden, hidden >= 1)
 	rift.free()
 	print("  the rift draws once: done")
+
+
+func _test_a_part_left_out_is_kept() -> void:
+	# The owner, after a lesson on gateways (0.134.6): the broadcast poll is
+	# built from a dozen parts and is also the heartbeat, so the server now
+	# leaves out a part that fails and names it in "missing" (app.py A POLL
+	# THAT ALWAYS ANSWERS). Read as empty, that part would wipe what is on
+	# screen (characterhud.gd _apply_broadcast).
+	section("A part the server left out of the poll is kept, not read as none (0.134.6)")
+	Lands.clear()
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var kept_cursor: int = hud._broadcast_cursor
+	var now: int = int(Time.get_unix_time_from_system())
+	var fire: Dictionary = {"on": true, "tick": 12, "element": Element.Type.FIRE, "name": "fire",
+		"started_at": now - 600, "ends_at": now + 3600, "hit": 0.25, "resist": 1.5,
+		"bags": 1.5, "xp": 0.0, "health": 0.5, "speed": 0.15, "now": now}
+	var asked := {"with": "bob", "from_them": true, "they_accepted": false, "you_accepted": false, "trade_id": "t-77"}
+	hud._apply_broadcast({"messages": [], "latest_id": kept_cursor, "world": fire, "trade": asked})
+	check("  to begin: the fire lands stir and bob's trade is waiting",
+		Lands.stirring() == Element.Type.FIRE and str(hud._trade_announced) == "t-77",
+		[Lands.stirring(), hud._trade_announced])
+	hud._apply_broadcast({"messages": [], "latest_id": kept_cursor, "missing": ["world", "trade"]})
+	check("a poll with the lands and the trade left out keeps both on screen",
+		Lands.stirring() == Element.Type.FIRE and str(hud._trade_announced) == "t-77",
+		[Lands.stirring(), hud._trade_announced])
+	hud._apply_broadcast({"messages": [], "latest_id": kept_cursor, "world": fire})
+	check("  but a poll that sends no trade, and does not say it left one out, is no trade",
+		str(hud._trade_announced) == "", hud._trade_announced)
+	hud.queue_free()
+	Lands.clear()
+	await get_tree().process_frame
+	print("  a part left out is kept: done")
+
+
+func _test_phones_move_the_world_lighter() -> void:
+	# The owner: "physics are costing me when pcs and phones can easily handle
+	# what im doing" (0.134.6). His PC: 0.4 to 1.6 ms a tick of 12.5. His
+	# phone in the Endless: 20 ms. 80 ticks a second is a feel decision
+	# (CLAUDE.md "Speed on day 1"), so a PC keeps it and a phone gets 60, with
+	# the catch-up after a slow frame held to 4 ticks (settings.gd PHYSICS).
+	section("Phones move the world 60 times a second, and catch up less (0.134.6)")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	check("a PC keeps 80 a second and Godot's 8 ticks of catch-up: Smooth is the default",
+		SettingsScript.DEFAULTS.get("physics_rate") == "smooth"
+		and SettingsScript.PHYSICS_TICKS["smooth"] == 80 and SettingsScript.PHYSICS_CATCH_UP["smooth"] == 8)
+	check("  Light is 60 a second, a quarter less physics, and catches up at most 4 ticks",
+		SettingsScript.PHYSICS_TICKS["light"] == 60 and SettingsScript.PHYSICS_CATCH_UP["light"] == 4)
+	check("  a phone is put on Light once, as a step of its own, and its first launch has it",
+		SettingsScript.PHONE_STEPS.back() == {"physics_rate": "light"}
+		and SettingsScript.PHONE_DEFAULTS.get("physics_rate") == "light"
+		and SettingsScript.phone_changes(true, 0).get("physics_rate") == "light")
+	check("  a value nobody knows is Smooth, any case is read",
+		Settings._normalise("physics_rate", "LIGHT") == "light" and Settings._normalise("physics_rate", "banana") == "smooth")
+	var was: String = str(Settings.get_value("physics_rate"))
+	Settings.set_value("physics_rate", "light")
+	var light_ticks: int = Engine.physics_ticks_per_second
+	var light_catch: int = Engine.max_physics_steps_per_frame
+	Settings.set_value("physics_rate", "smooth")
+	check("choosing it changes the engine at once: Light 60 and 4, Smooth 80 and 8",
+		light_ticks == 60 and light_catch == 4 and Engine.physics_ticks_per_second == 80
+		and Engine.max_physics_steps_per_frame == 8, [light_ticks, light_catch, Engine.physics_ticks_per_second])
+	Settings.set_value("physics_rate", was)
+	var options: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
+	add_child(options)
+	await get_tree().process_frame
+	var picker: OptionButton = options.get_node_or_null("%physicsrate") as OptionButton
+	check("Options has a Physics choice, Smooth and Light, showing the setting",
+		picker != null and picker.item_count == 2 and picker.get_item_text(0).begins_with("Smooth")
+		and picker.get_item_text(1).begins_with("Light")
+		and picker.selected == SettingsScript.PHYSICS_RATES.find(str(Settings.get_value("physics_rate"))),
+		[picker.item_count if picker != null else -1])
+	options.queue_free()
+	await get_tree().process_frame
+	check("the readout's physics budget follows the rate (12.5 ms at 80, 16.7 at 60)",
+		_code_src("res://src/systems/perfoverlay.gd").contains("1000.0 / float(Engine.physics_ticks_per_second)"))
+	print("  phones move the world lighter: done")

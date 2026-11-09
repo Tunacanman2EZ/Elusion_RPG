@@ -2158,19 +2158,32 @@ func _apply_broadcast(data: Dictionary) -> void:
 	reader below is fed from here and nowhere else - so a reader that is written
 	and tested but never called from the poll (this project's most repeated
 	bug) shows up as a failing check on THIS function, not as a feature that
-	silently never runs."""
-	_read_maintenance(data.get("maintenance"))
-	_read_teleport(data.get("teleport"))
+	silently never runs.
 
-	_read_pvp(data)
+	A PART THE SERVER LEFT OUT IS NOT "NONE" (0.134.6). The server builds
+	each part of this answer on its own, and one that fails there is left out
+	and named in "missing" (app.py A POLL THAT ALWAYS ANSWERS) rather than
+	failing the poll - which is the heartbeat. Read as empty, a missing
+	"trade" would shut the trade card and a missing "guild" take the tag off
+	your head, so a part named there is not read at all: what is on screen
+	stays until a poll brings it."""
+	var missing: Array = data.get("missing") if data.get("missing") is Array else []
+	_read_maintenance(data.get("maintenance"))
+	if not missing.has("teleport"):
+		_read_teleport(data.get("teleport"))
+
+	if not missing.has("pvp"):
+		_read_pvp(data)
 	# THE STIRRING LANDS (0.46.0), before the messages: their announcement
 	# is written in the land's colour, and a stir that began since the last
 	# poll gets its banner below.
 	var was_land: int = Lands.stirring()
-	var stirred: bool = _read_world(data.get("world"))
+	var stirred: bool = false if missing.has("world") else _read_world(data.get("world"))
 	# THE WORLD'S EVENTS (0.48.0): what is on and what is next, under the
 	# land's line - and the ones that began since the last poll, for a banner.
-	var began: Array[Dictionary] = _read_events(data.get("events"))
+	var began: Array[Dictionary] = []
+	if not missing.has("events"):
+		began = _read_events(data.get("events"))
 	# AND ONE THAT ENDS BECAUSE THE OWNER SWITCHED THE LANDS OFF says so too:
 	# the owner turned them off and "nothing happened but the clock stopped".
 	# Not a stir that only ran out (the next one's banner says that), and not
@@ -2178,13 +2191,21 @@ func _apply_broadcast(data: Dictionary) -> void:
 	var world_said: Dictionary = data.get("world") if data.get("world") is Dictionary else {}
 	var stilled: bool = was_land != 0 and Lands.stirring() == 0 \
 		and world_said.get("on") is bool and not bool(world_said.get("on"))
-	_read_guild(data)
-	_read_party(data.get("party"))
-	_read_trade(data.get("trade"))
-	_read_trade_resync(data.get("trade_resync"))
-	_read_chat_news(data.get("chat_news"))
-	_read_asks(data.get("asks"))
-	if data.has("open_report_players"):
+	if not missing.has("guild"):
+		_read_guild(data)
+	if not missing.has("party"):
+		_read_party(data.get("party"))
+	if not missing.has("trade"):
+		_read_trade(data.get("trade"))
+	if not missing.has("trade_resync"):
+		_read_trade_resync(data.get("trade_resync"))
+	if not missing.has("chat_news"):
+		_read_chat_news(data.get("chat_news"))
+	if not missing.has("asks"):
+		_read_asks(data.get("asks"))
+	if missing.has("open_reports"):
+		pass
+	elif data.has("open_report_players"):
 		_mark_open_reports(int(data.get("open_report_players", 0)), int(data.get("open_reports", 0)))
 	else:
 		_mark_open_reports(int(data.get("open_reports", 0)))

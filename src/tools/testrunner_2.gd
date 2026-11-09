@@ -4003,9 +4003,10 @@ func _test_text_size_and_font() -> void:
 	# 681 since 0.54.0: Brightness and the Battery saver in its right column.
 	# 713 since 0.55.0 - measured without the Windows row. 702 since 0.56.1,
 	# with it: both columns 4 apart, not 6, and the right one 598 of the 616
-	# a 720-high window leaves it.
+	# a 720-high window leaves it. 712 since 0.134.6: the Physics row in the
+	# right column - still inside 720, and nothing scrolls (the checks below).
 	check("Options opens at the size it was drawn at - a hidden window is not measured",
-		screen.size.y == 702.0 and columns_scroll.custom_minimum_size.y + 0.5
+		screen.size.y == 712.0 and columns_scroll.custom_minimum_size.y + 0.5
 		>= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y, screen.size)
 	var before: float = columns_scroll.custom_minimum_size.y
 	screen._show_account_form(screen.account_password_form)

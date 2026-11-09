@@ -4147,8 +4147,9 @@ func _test_a_phone_saves_its_battery() -> void:
 		first.get("render_resolution") == "low" and first.get("lighting") == "simple", first)
 	check("  and since 0.55.0 turns the battery saver on - half the frames, half the heat",
 		first.get("battery_saver") == true and first == SettingsScript.PHONE_DEFAULTS, first)
-	check("  a step at a time: a phone tuned by 0.54.0 (which wrote true) is given only the battery saver",
-		SettingsScript.phone_changes(true, SettingsScript.phone_steps_stored(true)) == {"battery_saver": true}
+	check("  a step at a time: a phone tuned by 0.54.0 (which wrote true) is given only what came after - the battery saver, and since 0.134.6 the lighter physics",
+		SettingsScript.phone_changes(true, SettingsScript.phone_steps_stored(true)) == {"battery_saver": true, "physics_rate": "light"}
+		and SettingsScript.phone_changes(true, 2) == {"physics_rate": "light"}
 		and SettingsScript.phone_steps_stored(false) == 0 and SettingsScript.phone_steps_stored(2) == 2,
 		SettingsScript.phone_changes(true, 1))
 	check("  once: a phone that has taken every step, or a laptop, is left as it is - a player who sets one back keeps it",

@@ -7565,6 +7565,64 @@ phases, the readout's clock): hiding the rift took the room's 532 draws to
   slow, so a first draw cannot be told from the rest. The worst row will
   say which part it was on his PC.
 
+### A part the server left out is kept (0.134.6)
+
+The owner, after a lesson on gateways ("one request built from many services
+gives up a part, not the answer"): "if its needed lets build it". It was:
+the broadcast poll is one answer built from a dozen parts - the lands,
+events, teleport, guild, party, trade, trade sync, chat news, asks, reports -
+and it is also the heartbeat, so one part raising on the server answered 500
+and every game counted toward OFFLINE_SIGNOUT_SECONDS. A bug in whisper
+notices would have signed out everybody online at 90 s.
+
+- **The server** (the API's CLAUDE.md, "A poll that always answers") builds
+  each part on its own, leaves out one that fails and names it in
+  `"missing"`; the poll still answers 200. The beat, the messages, their
+  cursor and maintenance stay vital.
+- **The game** (characterhud.gd `_apply_broadcast()`, A PART THE SERVER LEFT
+  OUT IS NOT "NONE") does not read a part named in `missing`: read as empty,
+  a missing trade would shut bob's card and a missing guild take the tag off
+  your head. What is on screen stays until a poll brings it. A part simply
+  absent, with no `missing`, is read as before (an older server).
+- `_test_a_part_left_out_is_kept()` (testrunner_10); the server's
+  test_poll_parts.py.
+- **Deploy order: either.** An older game ignores `missing` and reads the
+  left-out part as empty - as before, but it is no longer signed out; this
+  game against an older server never sees a `missing`.
+
+### Phones move the world 60 times a second (the same 0.134.6)
+
+The owner: "physics are costing me when pcs and phones can easily handle what
+im doing", then "lets focus deep on this". His readouts: on his PC physics
+is 0.4 to 1.6 ms a tick of 12.5 - drawing was the cost there - and on his
+phone in the Endless 20 ms a tick. 80 ticks a second is a feel decision
+("Speed on day 1"), so a PC keeps it:
+
+- **`physics_rate`** (settings.gd PHYSICS): "smooth", 80 a second and
+  Godot's 8 ticks of catch-up after a slow frame; "light", 60 and at most
+  `PHYSICS_CATCH_UP` 4 - a quarter fewer ticks, and a slow frame on a phone
+  lets the game's clock slip a little instead of spending the next frame
+  catching up, which made that one slower still. `apply_physics_rate()`
+  writes `Engine.physics_ticks_per_second` and
+  `max_physics_steps_per_frame`; physics interpolation keeps bodies drawn
+  smoothly between ticks either way.
+- **Phones are put on Light once**: a third `PHONE_STEPS` step, so a phone
+  tuned by 0.55.0 gets only this and a player who sets Smooth back keeps it.
+- **Options > Performance > Physics** (`%physicsrate`, Smooth (80/s) / Light
+  (60/s)) - every setting has a control. The window is 712 tall now (702),
+  inside 720, nothing scrolls.
+- **Nothing counts ticks as time**: every `get_physics_frames()` use is a
+  same-tick cache or a stride (baseenemy.gd's seats, waits and sight;
+  touchcontrols' aim), presence sends by the clock (`SEND_SECONDS`), and the
+  readout's physics budget reads the rate.
+- **Measured** (zz/endlessbench.gd, the Endless at 2,960 slimes, a warrior
+  attacking, headless): Smooth 80 ticks/s, physics 69 ms of every second;
+  Light 60 ticks/s, 55 ms - a fifth less, frames the same.
+- `_test_phones_move_the_world_lighter()` (testrunner_10); the phone steps
+  check in `_test_a_phone_saves_its_battery()`.
+- **His call still**: try Light on the PC (Options > Physics); if it feels
+  the same, the default can be Light everywhere.
+
 ### The Crowned Beholder, by name (0.11.6)
 
 The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The

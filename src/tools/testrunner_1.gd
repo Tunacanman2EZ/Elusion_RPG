@@ -4653,6 +4653,8 @@ func _test_settings() -> void:
 		# 0.40.1: other players' attacks.
 		"others_attacks": "othersattacks",
 		"render_resolution": "renderresolution", "lighting": "lighting",
+		# 0.134.6: how often the world moves.
+		"physics_rate": "physicsrate",
 		"background_fps_limit": "backgroundlimit",
 		# 0.54.0: for a phone's battery.
 		"battery_saver": "batterysaver",   "brightness": "brightness",

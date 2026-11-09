@@ -83,6 +83,7 @@ const HELP := {
 	"vsyncmode": "Keeps the game in step with your screen, so the picture never tears (looks split across) when you move. Most players: On. Off is for testing; Adaptive and Fast are for a graphics card that ignores On.",
 	"framecap": "The most pictures a second the game will draw. With V-Sync On, leave it Unlimited - your screen already sets the pace. To keep a laptop cool, Battery saver is the easy way.",
 	"renderresolution": "Full draws writing and windows as sharp as your screen allows. 1280 x 720 draws them smaller and stretches them: softer, but less work for a slow computer. The world looks the same either way.",
+	"physicsrate": "How often the world moves: Smooth, 80 times a second; Light, 60 - a quarter less work for the processor, and a slow frame cannot make the next one slower. Phones start on Light. Most players: Smooth.",
 	"lighting": "Full: candles, lanterns and the dark of the crypts. Simple: no lights and the dark lifted - the biggest saving on a slow computer. Most players: Full.",
 	# The three numbers are Settings' own, filled in by help_for().
 	"backgroundlimit": "While you are in another window, the game draws only %d pictures a second, so it does not slow your computer or drain its battery. Most players: On.",
@@ -211,6 +212,7 @@ signal credits_requested
 
 @onready var render_resolution: OptionButton = get_node_or_null("%renderresolution")
 @onready var lighting:          OptionButton = get_node_or_null("%lighting")
+@onready var physics_rate:      OptionButton = get_node_or_null("%physicsrate")
 @onready var background_limit:  CheckButton  = get_node_or_null("%backgroundlimit")
 # 0.54.0: for a phone's battery.
 @onready var battery_saver:     CheckButton  = get_node_or_null("%batterysaver")
@@ -289,6 +291,7 @@ static func text_size_label(index: int) -> String:
 
 const RESOLUTION_LABELS := {"screen": "Full (sharpest)", "low": "1280 x 720 (fastest)"}
 const LIGHTING_LABELS := {"full": "Full", "simple": "Simple (fastest)"}
+const PHYSICS_LABELS := {"smooth": "Smooth (80/s)", "light": "Light (60/s)"}
 # forward_plus is never offered, but a project could be switched to it by
 # hand, and the note should still name what is running.
 const RENDERER_LABELS := {
@@ -477,6 +480,11 @@ func _connect_controls() -> void:
 		for choice in Settings.LIGHTING_MODES:
 			lighting.add_item(LIGHTING_LABELS.get(choice, choice))
 		lighting.item_selected.connect(_on_lighting_selected)
+	if physics_rate != null:
+		physics_rate.clear()
+		for choice in Settings.PHYSICS_RATES:
+			physics_rate.add_item(PHYSICS_LABELS.get(choice, choice))
+		physics_rate.item_selected.connect(_on_physics_rate_selected)
 	if background_limit != null:
 		background_limit.toggled.connect(_on_background_limit_toggled)
 	if battery_saver != null:
@@ -593,6 +601,8 @@ func refresh() -> void:
 			str(Settings.get_value("render_resolution")))
 	if lighting != null:
 		lighting.selected = Settings.LIGHTING_MODES.find(str(Settings.get_value("lighting")))
+	if physics_rate != null:
+		physics_rate.selected = Settings.PHYSICS_RATES.find(str(Settings.get_value("physics_rate")))
 	if background_limit != null:
 		background_limit.button_pressed = bool(Settings.get_value("background_fps_limit"))
 	if battery_saver != null:
@@ -1406,6 +1416,14 @@ func _on_lighting_selected(index: int) -> void:
 	if index < 0 or index >= Settings.LIGHTING_MODES.size():
 		return
 	Settings.set_value("lighting", Settings.LIGHTING_MODES[index])
+
+
+func _on_physics_rate_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.PHYSICS_RATES.size():
+		return
+	Settings.set_value("physics_rate", Settings.PHYSICS_RATES[index])
 
 
 func _on_background_limit_toggled(pressed: bool) -> void:
