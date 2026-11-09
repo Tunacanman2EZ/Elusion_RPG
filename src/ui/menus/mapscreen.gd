@@ -283,6 +283,7 @@ func _ready() -> void:
 	if whole_button != null:
 		whole_button.pressed.connect(show_whole)
 	_build_waystone_row()
+	_build_key()
 
 	visible = false
 
@@ -362,6 +363,7 @@ func refresh(area: String = "") -> void:
 	if header_label != null:
 		header_label.text = AreaRegistry.display_name(_area) if _area != "" else "Map"
 
+	_fill_key()
 	_say_explored()
 	_collect_landmarks()
 
@@ -703,6 +705,8 @@ static func shows_monster(enemy: Node) -> bool:
 func _draw_monsters() -> void:
 	if not is_inside_tree():
 		return
+	var counts: Dictionary = {}
+	var bosses: int = 0
 	for enemy in get_tree().get_nodes_in_group(&"enemies"):
 		if not shows_monster(enemy):
 			continue
@@ -717,6 +721,198 @@ func _draw_monsters() -> void:
 		var radius: float = BOSS_RADIUS if enemy is BossEnemy else MONSTER_RADIUS
 		markers.draw_circle(at, radius + 1.0, MONSTER_EDGE)
 		markers.draw_circle(at, radius, monster_colour(enemy))
+		var element: int = int(enemy.call("current_element")) if enemy.has_method("current_element") else Element.Type.NONE
+		counts[element] = int(counts.get(element, 0)) + 1
+		if enemy is BossEnemy:
+			bosses += 1
+	_count_key(counts, bosses)
+
+
+# =============================================================================
+# THE KEY (0.135.0)
+# =============================================================================
+# The owner, of the map: "time to improve map colored grid on right side
+# explaining monsters". A column right of the map: each element's dot as the
+# map draws it (bigger, to be read), its name, and how many of them you can see
+# on the map now - alive, on ground you have explored, so the key gives away
+# no more than the dots do. A row with none is dimmed, not hidden: the key
+# reads the same in every area. In the Big Field each says where its land is
+# (Lands.WINGS), and the stirring land's says so. Then the boss's dot, your
+# party's ring and your arrow. Shown only where monsters are.
+
+const KEY_WIDTH := 172.0
+# By where they stand in the Big Field, first wing to last; physical last.
+const KEY_ORDER := [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
+	Element.Type.LIGHTNING, Element.Type.POISON, Element.Type.EARTH, Element.Type.FIRE,
+	Element.Type.DARK, Element.Type.NONE]
+# Where the lands that never stir stand (the rest from Lands.WINGS).
+const KEY_WHERE := {Element.Type.LIGHTNING: "the Chasm", Element.Type.POISON: "the Chasm",
+	Element.Type.NONE: "the Crypt"}
+const KEY_DOT := 4.5
+const KEY_BOSS_DOT := 6.5
+const KEY_DIM := 0.38
+const KEY_TEXT := Color(0.92, 0.90, 0.86)
+const KEY_SOFT := Color(0.66, 0.68, 0.74)
+const KEY_STIR := Color(1.0, 0.78, 0.35)
+
+var key_panel: PanelContainer = null
+var key_total: Label = null
+# element (or "boss") -> {"row": the row, "count": its number, "where": its line}
+var _key_rows: Dictionary = {}
+var _key_counts: Dictionary = {}
+
+
+func _build_key() -> void:
+	"""The map and the key side by side: the frame moves into a row with the
+	key to its right."""
+	if frame == null or frame.get_parent() == null:
+		return
+	var column: Node = frame.get_parent()
+	var row := HBoxContainer.new()
+	row.name = "maprow"
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 8)
+	column.add_child(row)
+	column.move_child(row, frame.get_index())
+	frame.reparent(row, false)
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key_panel = PanelContainer.new()
+	key_panel.name = "mapkey"
+	key_panel.custom_minimum_size = Vector2(KEY_WIDTH, 0)
+	key_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var look := StyleBoxFlat.new()
+	look.bg_color = Color(0.06, 0.05, 0.08, 0.86)
+	look.border_color = Color(0.30, 0.26, 0.36)
+	look.set_border_width_all(1)
+	look.set_corner_radius_all(4)
+	look.set_content_margin_all(8)
+	key_panel.add_theme_stylebox_override("panel", look)
+	row.add_child(key_panel)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	key_panel.add_child(list)
+	var head := HBoxContainer.new()
+	head.add_child(_key_label("Monsters", 14, KEY_TEXT))
+	key_total = _key_label("0", 14, KEY_TEXT)
+	key_total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	key_total.tooltip_text = "Monsters you can see on the map"
+	head.add_child(key_total)
+	list.add_child(head)
+	list.add_child(HSeparator.new())
+	for element in KEY_ORDER:
+		list.add_child(_key_row(element, "dot", Element.colour_for(element),
+			Element.name_for(element).capitalize()))
+	list.add_child(HSeparator.new())
+	list.add_child(_key_row("boss", "boss", Color(0.55, 0.55, 0.6), "Boss"))
+	var boss_line: Label = _key_rows["boss"]["where"]
+	boss_line.text = "a bigger dot, in its colour"
+	boss_line.visible = true
+	list.add_child(_key_row("party", "ring", Party.COLOUR, "Your party"))
+	list.add_child(_key_row("you", "arrow", MARKER_COLOUR, "You"))
+	var note := _key_label("Seen on ground you have explored.", 10, KEY_SOFT)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(note)
+
+
+func _key_label(text: String, font_size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", colour)
+	return label
+
+
+func _key_row(id: Variant, kind: String, colour: Color, title: String) -> Control:
+	var row := HBoxContainer.new()
+	row.name = "key_%s" % [Element.name_for(id) if id is int else str(id)]
+	row.add_theme_constant_override("separation", 6)
+	var swatch := Control.new()
+	swatch.custom_minimum_size = Vector2(16, 16)
+	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	swatch.draw.connect(_draw_swatch.bind(swatch, kind, colour))
+	row.add_child(swatch)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", -3)
+	words.add_child(_key_label(title, 12, KEY_TEXT))
+	var where := _key_label("", 10, KEY_SOFT)
+	where.visible = false
+	words.add_child(where)
+	row.add_child(words)
+	var count := _key_label("", 12, KEY_TEXT)
+	count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(count)
+	_key_rows[id] = {"row": row, "count": count, "where": where}
+	return row
+
+
+func _draw_swatch(swatch: Control, kind: String, colour: Color) -> void:
+	"""A row's mark, drawn as the map draws it."""
+	var c: Vector2 = swatch.size * 0.5
+	match kind:
+		"dot", "boss":
+			var radius: float = KEY_BOSS_DOT if kind == "boss" else KEY_DOT
+			swatch.draw_circle(c, radius + 1.0, MONSTER_EDGE)
+			swatch.draw_circle(c, radius, colour)
+		"ring":
+			swatch.draw_circle(c, PARTY_RADIUS + 1.5, MONSTER_EDGE)
+			swatch.draw_arc(c, PARTY_RADIUS, 0.0, TAU, 20, colour, 2.0, true)
+		"arrow":
+			var points := PackedVector2Array([c + Vector2(0, MARKER_SIZE),
+				c + Vector2(-MARKER_SIZE * 0.6, -MARKER_SIZE * 0.6), c + Vector2(MARKER_SIZE * 0.6, -MARKER_SIZE * 0.6)])
+			swatch.draw_colored_polygon(points, colour)
+			swatch.draw_polyline(points + PackedVector2Array([points[0]]), MARKER_EDGE, 1.0, true)
+
+
+func key_where(element: int) -> String:
+	"""Where an element's monsters stand in the Big Field, or ''."""
+	if Lands.WINGS.has(element):
+		return str(Lands.WINGS[element][0])
+	return str(KEY_WHERE.get(element, ""))
+
+
+func _fill_key() -> void:
+	"""On refresh: shown where monsters are, and in the Big Field where each
+	land is and which one stirs."""
+	if key_panel == null:
+		return
+	key_panel.visible = is_inside_tree() and not get_tree().get_nodes_in_group(&"enemies").is_empty()
+	var big: bool = _area == "bigfield"
+	for element in KEY_ORDER:
+		var where: Label = _key_rows[element]["where"]
+		var stirs: bool = big and element != Element.Type.NONE and Lands.stirring() == element
+		where.text = (key_where(element) + (" - stirring" if stirs else "")) if big else ""
+		where.add_theme_color_override("font_color", KEY_STIR if stirs else KEY_SOFT)
+		where.visible = where.text != ""
+	_key_counts.clear()
+	_count_key({}, 0)
+
+
+func _count_key(counts: Dictionary, bosses: int) -> void:
+	"""Each row's number, as the dots were just drawn - changed only when it
+	changes."""
+	if key_panel == null or not key_panel.visible:
+		return
+	var total: int = 0
+	for element in KEY_ORDER:
+		var n: int = int(counts.get(element, 0))
+		total += n
+		_key_number(element, n)
+	_key_number("boss", bosses)
+	_key_number("party", -1)
+	_key_number("you", -1)
+	if key_total != null:
+		key_total.text = str(total)
+
+
+func _key_number(id: Variant, n: int) -> void:
+	if _key_counts.get(id, -2) == n:
+		return
+	_key_counts[id] = n
+	var entry: Dictionary = _key_rows[id]
+	(entry["count"] as Label).text = str(n) if n >= 0 else ""
+	(entry["row"] as Control).modulate.a = KEY_DIM if n == 0 else 1.0
 
 
 func _draw_party() -> void:

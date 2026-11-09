@@ -1334,6 +1334,46 @@ func _was_park_proxies() -> void:
 # The owner approved waystones with the speed plan, then their picture: "yes
 # looks good". Seven in the Big Field, lit once explored, a pin and a row on
 # the map, three seconds standing still, from town too. See waystones.gd.
+func _test_the_map_key() -> void:
+	section("THE MAP'S KEY - each monster colour, what it is, how many you can see (0.135.0)")
+	# The owner: "time to improve map colored grid on right side explaining monsters".
+	const MapScript := preload("res://src/ui/menus/mapscreen.gd")
+	var map: Control = (load("res://scene/ui/menus/mapscreen.tscn") as PackedScene).instantiate()
+	add_child(map)
+	await get_tree().process_frame
+	var key: Control = map.get("key_panel")
+	var frame: Control = map.get_node_or_null("%mapframe")
+	check("a key stands right of the map, beside it in one row, a fixed width",
+		key != null and frame != null and key.get_parent() == frame.get_parent()
+		and key.get_index() > frame.get_index() and is_equal_approx(key.custom_minimum_size.x, MapScript.KEY_WIDTH))
+	var rows: Dictionary = map.get("_key_rows")
+	var missing: Array = []
+	for element in Element.Type.values():
+		if not rows.has(element):
+			missing.append(Element.name_for(element))
+	check("  a row for every element - and the boss, your party, you", missing.is_empty()
+		and rows.has("boss") and rows.has("party") and rows.has("you"), missing)
+	var astray: Array = []
+	for land in BIG_FIELD_LANDS:
+		var element: int = Element.Type.NONE if land == "plain" else \
+			(Element.Type.LIGHTNING if land == "electric" else int(Element.NAMES.find_key(land)))
+		var wing: String = str(map.call("key_where", element)).trim_prefix("the ").to_lower()
+		if wing != str(BIG_FIELD_LANDS[land]):
+			astray.append([land, wing])
+	check("  in the Big Field each says the wing its monsters stand in", astray.is_empty(), astray)
+	key.visible = true
+	map.call("_count_key", {Element.Type.FIRE: 3, Element.Type.NONE: 2}, 1)
+	var fire: Dictionary = rows[Element.Type.FIRE]
+	var earth: Dictionary = rows[Element.Type.EARTH]
+	check("  counted as the dots are drawn: the total, each element's, a row with none dimmed",
+		(map.get("key_total") as Label).text == "5" and (fire["count"] as Label).text == "3"
+		and (earth["count"] as Label).text == "0" and (earth["row"] as Control).modulate.a < 0.5
+		and is_equal_approx((fire["row"] as Control).modulate.a, 1.0) and (rows["boss"]["count"] as Label).text == "1",
+		[(map.get("key_total") as Label).text, (fire["count"] as Label).text])
+	map.queue_free()
+	await get_tree().process_frame
+
+
 func _test_the_waystones() -> void:
 	section("THE WAYSTONES - seven in the Big Field, lit once found, three seconds still to travel, from town too (0.118.0)")
 	const Ways := preload("res://src/world/waystones.gd")

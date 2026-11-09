@@ -2698,6 +2698,37 @@ approved picture is the commit folder's bigfield_microchip.png. Folded into
 - **Also:** the Crowned room's victory teleporter now hears a player step
   off it too (`body_exited`, buildcrowned.gd and boss.tscn).
 
+### The map's key, and sleepers off the engine's frame lists (0.135.0)
+
+The owner: "still need the color chart for enemies on side of map", then a
+screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
+8,462 asleep, 36 fps, "process 39 ms".
+
+- **The key (mapscreen.gd, THE KEY).** `_build_key()` moves `%mapframe` into
+  a row (`maprow`) with `mapkey` to its right, `KEY_WIDTH` wide. A row per
+  element in `KEY_ORDER` (the Big Field's wings in order, physical last):
+  its dot as the map draws it but bigger, its name, and how many of it you
+  can see now - counted in `_draw_monsters()` as the dots are drawn, so
+  only the alive on explored ground (`_count_key()`); none dims the row.
+  In the Big Field each says its wing (`key_where()`: Lands.WINGS, and
+  `KEY_WHERE` for lightning, poison and physical), the stirring one in
+  gold. Then the boss, your party, you. Hidden where no monster is.
+  `_test_the_map_key()` (testrunner_10).
+- **Why 16x was slow.** PROCESS_MODE_DISABLED stops a sleeper's code, but
+  Godot keeps every node whose process flags are on in its frame lists and
+  steps over each one every frame and physics tick: about 20 nodes a
+  monster. Benched in the container (zz/benchparts.gd, sandbox only), 8,668
+  monsters at 16x: 22 to 62 ms a frame as it was, 6.9 ms with the
+  sleepers' flags off - the same as taking them out of the tree. The
+  sleeper's own round was 0.8 ms.
+- **enemysleeper.gd, OFF THE ENGINE'S FRAME LISTS TOO.** `put_to_sleep()`
+  switches off every process flag of the monster and its nodes and keeps
+  the ones that were on (`FLAGS_META`); `_wake()` turns just those back on
+  (`flags_on()`). Never the monster's own physics flag: that is the welcome
+  story's switch (field.gd), kept separate as before. Born asleep (the
+  stress copies, the swell: put to sleep before add_child), the flags go
+  off once it is ready. `_test_far_enemies_sleep()` checks all three.
+
 ### The Field is built from a plan too (0.94.2)
 
 The owner, 28 Oct: "work on the next map field", then candidate B ("sounds

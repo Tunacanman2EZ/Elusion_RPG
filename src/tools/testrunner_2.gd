@@ -1364,6 +1364,17 @@ func _test_the_big_field() -> void:
 # disables the ones more than SLEEP_DISTANCE away and wakes them inside
 # WAKE_DISTANCE. Measured in the Big Field: 87 of 128 asleep where you arrive,
 # physics 2.1 ms a frame against 3.3 with the sleeper off.
+func _processing_nodes(root: Node) -> Array:
+	"""Every node under (and with) root with a process flag on."""
+	var found: Array = []
+	var nodes: Array = [root]
+	nodes.append_array(root.find_children("*", "", true, false))
+	for n in nodes:
+		if n.is_processing() or n.is_physics_processing() or n.is_processing_internal() or n.is_physics_processing_internal():
+			found.append(n)
+	return found
+
+
 func _test_far_enemies_sleep() -> void:
 	section("FAR ENEMIES SLEEP - beyond 1100 px an enemy stops thinking, inside 900 it wakes")
 
@@ -1412,6 +1423,36 @@ func _test_far_enemies_sleep() -> void:
 		near.process_mode == Node.PROCESS_MODE_INHERIT and far.process_mode == Node.PROCESS_MODE_INHERIT)
 	check("  and while off it sleeps nobody", sleeper.check_now() == 0
 		and far.process_mode == Node.PROCESS_MODE_INHERIT)
+
+	# OFF THE ENGINE'S FRAME LISTS TOO (0.135.0): a real monster asleep has
+	# none of its nodes' process flags on but its own physics one (the story's
+	# switch), and waking puts back what was on.
+	sleeper.enabled = true
+	player.position = Vector2.ZERO
+	var slime: Node2D = (load("res://scene/enemy/lightslime.tscn") as PackedScene).instantiate()
+	slime.position = Vector2(3000, 0)
+	holder.add_child(slime)
+	await get_tree().process_frame
+	var was_on: Array = _processing_nodes(slime)
+	sleeper.check_now()
+	var left_on: Array = _processing_nodes(slime)
+	check("a monster asleep is off the engine's frame lists: none of its %d processing nodes is left on but its own physics"
+		% was_on.size(), slime.has_meta(&"asleep") and was_on.size() >= 2
+		and left_on == ([slime] if slime.is_physics_processing() else []), [was_on.size(), left_on])
+	player.position = Vector2(2900, 0)
+	sleeper.check_now()
+	check("  and waking puts each back as it was", not slime.has_meta(&"asleep")
+		and _processing_nodes(slime) == was_on and not slime.has_meta(Sleeper.FLAGS_META), _processing_nodes(slime).size())
+	player.position = Vector2(-2000, 0)
+	slime.free()
+	var born: Node2D = (load("res://scene/enemy/lightslime.tscn") as PackedScene).instantiate()
+	born.position = Vector2(3000, 0)
+	Sleeper.put_to_sleep(born)
+	holder.add_child(born)
+	check("  one born asleep (the stress copies, the swell) is off them from the start, once it is ready",
+		born.has_meta(Sleeper.FLAGS_META) and _processing_nodes(born) == ([born] if born.is_physics_processing() else []),
+		_processing_nodes(born).size())
+	born.free()
 
 	var registry: String = _func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(")
 	check("every area gets one when it opens (AreaRegistry._on_scene_changed)",

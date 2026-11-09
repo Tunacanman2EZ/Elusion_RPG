@@ -71,6 +71,22 @@ const DOZE_MARGIN := 150.0
 const VIEW_MARGIN := 96.0
 const NODE_NAME := "enemysleeper"
 
+# OFF THE ENGINE'S FRAME LISTS TOO (0.135.0). PROCESS_MODE_DISABLED stops a
+# sleeper's code, but Godot keeps every node whose process flags are on in
+# its frame lists and steps over each one, every frame and every physics
+# tick. The owner's PC in the chip's Big Field at 16x (9 Nov): 8,604
+# monsters, 8,462 asleep, 36 fps. In the container, 8,668 monsters about 20
+# nodes each: 22 to 62 ms a frame as they were, 6.9 ms with the sleepers'
+# flags off - the same as taking them out of the tree. So a sleeper's nodes
+# have their four process flags switched off, the ones that were on kept in
+# FLAGS_META, and waking turns just those back on (one something else turned
+# on while it slept stays on). Not the monster's own physics flag: that one is
+# the welcome story's switch (THE PROCESS MODE, above), kept separate as
+# ever. Born asleep (stresscrowd.gd, swell.gd: put to sleep before it is in
+# the tree), its flags go off once it is ready - the engine switches them on
+# as it readies.
+const FLAGS_META := &"asleep_flags"
+
 # Off wakes everyone at once and leaves them awake. For measuring, and an
 # escape hatch if a fight ever needs the whole map awake.
 var enabled: bool = true:
@@ -236,9 +252,63 @@ static func put_to_sleep(enemy: Node) -> void:
 	if item != null:
 		enemy.set_meta(&"asleep_shown", item.visible)
 		item.visible = false
+	if enemy.is_node_ready():
+		flags_off(enemy)
+	else:
+		enemy.ready.connect(_flags_off_if_asleep.bind(enemy), CONNECT_ONE_SHOT)
+
+
+static func _flags_off_if_asleep(enemy: Node) -> void:
+	if is_instance_valid(enemy) and enemy.has_meta(&"asleep"):
+		flags_off(enemy)
+
+
+static func flags_off(enemy: Node) -> void:
+	"""OFF THE ENGINE'S FRAME LISTS TOO: every process flag of it and its
+	nodes off, the ones that were on kept."""
+	if enemy.has_meta(FLAGS_META):
+		return
+	var nodes: Array = [enemy]
+	nodes.append_array(enemy.find_children("*", "", true, false))
+	var kept: Array = []
+	for node in nodes:
+		var n := node as Node
+		# The monster's own physics flag is the welcome story's (field.gd).
+		var physics: bool = n != enemy and n.is_physics_processing()
+		var mask: int = (1 if n.is_processing() else 0) | (2 if physics else 0) \
+			| (4 if n.is_processing_internal() else 0) | (8 if n.is_physics_processing_internal() else 0)
+		if mask == 0:
+			continue
+		kept.append([n, mask])
+		n.set_process(false)
+		if physics:
+			n.set_physics_process(false)
+		n.set_process_internal(false)
+		n.set_physics_process_internal(false)
+	enemy.set_meta(FLAGS_META, kept)
+
+
+static func flags_on(enemy: Node) -> void:
+	"""Waking: the flags that were on, on again."""
+	for pair in enemy.get_meta(FLAGS_META, []):
+		var n: Variant = pair[0]
+		if not is_instance_valid(n):
+			continue
+		var mask: int = int(pair[1])
+		if mask & 1:
+			(n as Node).set_process(true)
+		if mask & 2:
+			(n as Node).set_physics_process(true)
+		if mask & 4:
+			(n as Node).set_process_internal(true)
+		if mask & 8:
+			(n as Node).set_physics_process_internal(true)
+	if enemy.has_meta(FLAGS_META):
+		enemy.remove_meta(FLAGS_META)
 
 
 func _wake(enemy: Node) -> void:
+	flags_on(enemy)
 	enemy.process_mode = Node.PROCESS_MODE_INHERIT
 	enemy.remove_meta(&"asleep")
 	var item := enemy as CanvasItem
