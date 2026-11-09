@@ -1033,16 +1033,22 @@ func _test_the_swell() -> void:
 		var tile: float = float(plan.get("tile", 16))
 		var names := {Element.Type.LIGHT: "light", Element.Type.WIND: "wind", Element.Type.WATER: "water",
 			Element.Type.ICE: "ice", Element.Type.EARTH: "earth", Element.Type.FIRE: "fire", Element.Type.DARK: "dark"}
+		# By the room a monster stands in (0.134.9): a wing's pads on the chip's
+		# ring lie outside its box, and are still its own.
 		for land in names:
 			var wing: String = str(Lands.WINGS[land][0]).trim_prefix("the ").to_lower()
-			var box: Array = plan["wings"].get(wing, {}).get("box", [])
 			for m in plan["monsters"]:
 				if str(m.get("land", "")) != names[land]:
 					continue
-				var inside: bool = box.size() == 4 and float(m["x"]) >= float(box[0]) * tile and float(m["x"]) <= float(box[2]) * tile \
-					and float(m["y"]) >= float(box[1]) * tile and float(m["y"]) <= float(box[3]) * tile
-				if not inside:
-					astray.append([names[land], wing, m["x"], m["y"]])
+				var cx: int = floori(float(m["x"]) / tile)
+				var cy: int = floori(float(m["y"]) / tile)
+				var stood: String = ""
+				for r in plan["rooms"]:
+					if cx >= int(r["x"]) and cx < int(r["x"]) + int(r["w"]) and cy >= int(r["y"]) and cy < int(r["y"]) + int(r["h"]):
+						stood = str(r["wing"])
+						break
+				if stood != wing:
+					astray.append([names[land], wing, stood, m["x"], m["y"]])
 	check("every land's Big Field monsters stand in the wing the line names (bigfield_build.json)",
 		plan is Dictionary and astray.is_empty(), astray.slice(0, 4))
 	# ---- the swell in an area ----

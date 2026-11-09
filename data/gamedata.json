@@ -10,2256 +10,4288 @@
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_001_darksprite",
-					"x": 5208.0,
-					"y": 2232.0
+					"x": 7784.0,
+					"y": 6536.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_002_darksprite",
-					"x": 5180.0,
-					"y": 2252.0
+					"x": 7756.0,
+					"y": 6518.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_003_darkfiresprite",
-					"x": 5236.0,
-					"y": 2252.0
+					"x": 7812.0,
+					"y": 6518.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_004_darkbushsniper",
-					"x": 4856.0,
-					"y": 2296.0
+					"x": 8024.0,
+					"y": 5544.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_005_darkbushsniper",
-					"x": 4828.0,
-					"y": 2278.0
+					"x": 7996.0,
+					"y": 5526.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_006_darksprite",
-					"x": 4884.0,
-					"y": 2278.0
+					"x": 8052.0,
+					"y": 5526.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_007_darksprite",
-					"x": 4856.0,
-					"y": 3704.0
+					"x": 6584.0,
+					"y": 5048.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_008_darksprite",
-					"x": 4828.0,
-					"y": 3686.0
+					"x": 6556.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_009_darksprite",
-					"x": 4884.0,
-					"y": 3686.0
+					"x": 6612.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darkbushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_010_darkbushmage",
-					"x": 6008.0,
-					"y": 2408.0
+					"x": 5816.0,
+					"y": 6152.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_011_darkfiresprite",
-					"x": 5980.0,
-					"y": 2390.0
+					"x": 5788.0,
+					"y": 6134.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_012_darkfiresprite",
-					"x": 6036.0,
-					"y": 2390.0
+					"x": 5844.0,
+					"y": 6134.0
 				},
 				{
 					"e": "darkslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_013_darkslimelarge",
-					"x": 5864.0,
-					"y": 5000.0
+					"x": 6120.0,
+					"y": 6536.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_014_darkslime",
-					"x": 5836.0,
-					"y": 4982.0
+					"x": 6092.0,
+					"y": 6518.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_015_darkslime",
-					"x": 5892.0,
-					"y": 4982.0
+					"x": 6148.0,
+					"y": 6518.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_016_darksprite",
-					"x": 4872.0,
-					"y": 4760.0
+					"x": 7944.0,
+					"y": 5048.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_017_darksprite",
-					"x": 4844.0,
-					"y": 4742.0
+					"x": 7916.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_018_darkfiresprite",
-					"x": 4900.0,
-					"y": 4742.0
+					"x": 7972.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_019_darkbushsniper",
-					"x": 4840.0,
-					"y": 3192.0
+					"x": 5832.0,
+					"y": 5480.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_020_darkbushsniper",
-					"x": 4812.0,
-					"y": 3174.0
+					"x": 5804.0,
+					"y": 5462.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_021_darksprite",
-					"x": 4868.0,
-					"y": 3174.0
+					"x": 5860.0,
+					"y": 5462.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_022_darksprite",
-					"x": 4840.0,
-					"y": 2824.0
+					"x": 8008.0,
+					"y": 5976.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_023_darksprite",
-					"x": 4812.0,
-					"y": 2806.0
+					"x": 7980.0,
+					"y": 5958.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_024_darksprite",
-					"x": 4868.0,
-					"y": 2806.0
+					"x": 8036.0,
+					"y": 5958.0
 				},
 				{
 					"e": "darkbushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_025_darkbushmage",
-					"x": 6040.0,
-					"y": 4440.0
+					"x": 7288.0,
+					"y": 6584.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_026_darkfiresprite",
-					"x": 6012.0,
-					"y": 4422.0
+					"x": 7260.0,
+					"y": 6566.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_027_darkfiresprite",
-					"x": 6068.0,
-					"y": 4422.0
+					"x": 7316.0,
+					"y": 6566.0
 				},
 				{
 					"e": "darkslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_028_darkslimelarge",
-					"x": 4872.0,
-					"y": 4152.0
+					"x": 6744.0,
+					"y": 6552.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_029_darkslime",
-					"x": 4844.0,
-					"y": 4134.0
+					"x": 6716.0,
+					"y": 6534.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_030_darkslime",
-					"x": 4900.0,
-					"y": 4134.0
+					"x": 6772.0,
+					"y": 6534.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_031_darksprite",
-					"x": 6008.0,
-					"y": 2824.0
+					"x": 6104.0,
+					"y": 5048.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_032_darksprite",
-					"x": 5980.0,
-					"y": 2806.0
+					"x": 6076.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_033_darkfiresprite",
-					"x": 6036.0,
-					"y": 2806.0
+					"x": 6132.0,
+					"y": 5030.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_034_darkbushsniper",
-					"x": 6040.0,
-					"y": 4024.0
+					"x": 7160.0,
+					"y": 5016.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_035_darkbushsniper",
-					"x": 6012.0,
-					"y": 4006.0
+					"x": 7132.0,
+					"y": 4998.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_036_darksprite",
-					"x": 6068.0,
-					"y": 4006.0
+					"x": 7188.0,
+					"y": 4998.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_037_darksprite",
-					"x": 6040.0,
-					"y": 3544.0
+					"x": 7512.0,
+					"y": 5000.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_038_darksprite",
-					"x": 6012.0,
-					"y": 3526.0
+					"x": 7484.0,
+					"y": 4982.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_039_darksprite",
-					"x": 6068.0,
-					"y": 3526.0
-				},
-				{
-					"e": "darkbushmage",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_040_darkbushmage",
-					"x": 5176.0,
-					"y": 5000.0
-				},
-				{
-					"e": "darkfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_041_darkfiresprite",
-					"x": 5148.0,
+					"x": 7540.0,
 					"y": 4982.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_040_darksprite",
+					"x": 7592.0,
+					"y": 5464.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_041_darksprite",
+					"x": 7564.0,
+					"y": 5446.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_042_darkfiresprite",
-					"x": 5204.0,
-					"y": 4982.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_043_darksprite",
-					"x": 5384.0,
-					"y": 4648.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_044_darksprite",
-					"x": 5356.0,
-					"y": 4668.0
-				},
-				{
-					"e": "darkfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_045_darkfiresprite",
-					"x": 5412.0,
-					"y": 4668.0
+					"x": 7564.0,
+					"y": 5484.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_046_darkbushsniper",
-					"x": 5384.0,
-					"y": 2584.0
+					"o": "ysortworld/enemies/dark_043_darkbushsniper",
+					"x": 6296.0,
+					"y": 5480.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_047_darkbushsniper",
-					"x": 5356.0,
-					"y": 2566.0
+					"o": "ysortworld/enemies/dark_044_darkbushsniper",
+					"x": 6268.0,
+					"y": 5462.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_045_darksprite",
+					"x": 6324.0,
+					"y": 5462.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_046_darksprite",
+					"x": 7144.0,
+					"y": 5432.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_047_darksprite",
+					"x": 7116.0,
+					"y": 5414.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_048_darksprite",
-					"x": 5412.0,
-					"y": 2566.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_049_darksprite",
-					"x": 5720.0,
-					"y": 4216.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_050_darksprite",
-					"x": 5692.0,
-					"y": 4198.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_051_darksprite",
-					"x": 5748.0,
-					"y": 4198.0
+					"x": 7172.0,
+					"y": 5414.0
 				},
 				{
 					"e": "darkbushmage",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_052_darkbushmage",
-					"x": 5720.0,
-					"y": 3384.0
+					"o": "ysortworld/enemies/dark_049_darkbushmage",
+					"x": 7096.0,
+					"y": 6184.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_053_darkfiresprite",
-					"x": 5692.0,
-					"y": 3366.0
+					"o": "ysortworld/enemies/dark_050_darkfiresprite",
+					"x": 7068.0,
+					"y": 6166.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_054_darkfiresprite",
-					"x": 5748.0,
-					"y": 3366.0
+					"o": "ysortworld/enemies/dark_051_darkfiresprite",
+					"x": 7124.0,
+					"y": 6166.0
 				},
 				{
 					"e": "darkslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_055_darkslimelarge",
-					"x": 5160.0,
-					"y": 4376.0
+					"o": "ysortworld/enemies/dark_052_darkslimelarge",
+					"x": 6296.0,
+					"y": 6008.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_056_darkslime",
-					"x": 5132.0,
-					"y": 4358.0
+					"o": "ysortworld/enemies/dark_053_darkslime",
+					"x": 6268.0,
+					"y": 5990.0
 				},
 				{
 					"e": "darkslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_057_darkslime",
-					"x": 5188.0,
-					"y": 4358.0
+					"o": "ysortworld/enemies/dark_054_darkslime",
+					"x": 6268.0,
+					"y": 6028.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_058_darksprite",
-					"x": 5160.0,
-					"y": 3928.0
+					"o": "ysortworld/enemies/dark_055_darksprite",
+					"x": 6728.0,
+					"y": 6152.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_059_darksprite",
-					"x": 5132.0,
-					"y": 3910.0
+					"o": "ysortworld/enemies/dark_056_darksprite",
+					"x": 6700.0,
+					"y": 6134.0
 				},
 				{
 					"e": "darkfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_060_darkfiresprite",
-					"x": 5188.0,
-					"y": 3910.0
+					"o": "ysortworld/enemies/dark_057_darkfiresprite",
+					"x": 6756.0,
+					"y": 6134.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_061_darkbushsniper",
-					"x": 5160.0,
-					"y": 2984.0
+					"o": "ysortworld/enemies/dark_058_darkbushsniper",
+					"x": 7592.0,
+					"y": 5944.0
 				},
 				{
 					"e": "darkbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_062_darkbushsniper",
-					"x": 5132.0,
-					"y": 2966.0
+					"o": "ysortworld/enemies/dark_059_darkbushsniper",
+					"x": 7564.0,
+					"y": 5926.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_060_darksprite",
+					"x": 7564.0,
+					"y": 5964.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_061_darksprite",
+					"x": 6728.0,
+					"y": 5416.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_062_darksprite",
+					"x": 6700.0,
+					"y": 5398.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/dark_063_darksprite",
-					"x": 5188.0,
-					"y": 2966.0
+					"x": 6756.0,
+					"y": 5398.0
+				},
+				{
+					"e": "darkslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_064_darkslimelarge",
+					"x": 8328.0,
+					"y": 5576.0
+				},
+				{
+					"e": "darkslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_065_darkslime",
+					"x": 8300.0,
+					"y": 5558.0
+				},
+				{
+					"e": "darkslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_066_darkslime",
+					"x": 8356.0,
+					"y": 5558.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_067_darkbushsniper",
+					"x": 8344.0,
+					"y": 6568.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/dark_068_darkbushsniper",
+					"x": 8316.0,
+					"y": 6550.0
 				},
 				{
 					"e": "darksprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_064_darksprite",
-					"x": 5144.0,
-					"y": 3384.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_065_darksprite",
-					"x": 5116.0,
-					"y": 3366.0
-				},
-				{
-					"e": "darksprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/dark_066_darksprite",
-					"x": 5172.0,
-					"y": 3366.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_001_skeletonsoldier",
-					"x": 4280.0,
-					"y": 1832.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_002_skeletonsoldier",
-					"x": 4252.0,
-					"y": 1814.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_003_skeletonsoldier",
-					"x": 4308.0,
-					"y": 1814.0
-				},
-				{
-					"e": "earthbushsniper",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_004_earthbushsniper",
-					"x": 4252.0,
-					"y": 1852.0
+					"o": "ysortworld/enemies/dark_069_darksprite",
+					"x": 8372.0,
+					"y": 6550.0
 				},
 				{
 					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_005_earthslimelarge",
-					"x": 4488.0,
-					"y": 1784.0
+					"o": "ysortworld/enemies/earth_001_earthslimelarge",
+					"x": 5912.0,
+					"y": 792.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_002_earthslimelarge",
+					"x": 5884.0,
+					"y": 774.0
 				},
 				{
 					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_006_earthslime",
-					"x": 4460.0,
-					"y": 1766.0
+					"o": "ysortworld/enemies/earth_003_earthslime",
+					"x": 5940.0,
+					"y": 774.0
 				},
 				{
 					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_007_earthslime",
-					"x": 4516.0,
-					"y": 1766.0
+					"o": "ysortworld/enemies/earth_004_earthslime",
+					"x": 5884.0,
+					"y": 812.0
 				},
 				{
-					"e": "bushmage",
+					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_008_bushmage",
-					"x": 5240.0,
-					"y": 1160.0
+					"o": "ysortworld/enemies/earth_005_earthslime",
+					"x": 5940.0,
+					"y": 812.0
 				},
 				{
-					"e": "bushmage",
+					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_009_bushmage",
-					"x": 5212.0,
-					"y": 1142.0
+					"o": "ysortworld/enemies/earth_006_skeletonsoldier",
+					"x": 6040.0,
+					"y": 616.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_007_skeletonsoldier",
+					"x": 6012.0,
+					"y": 636.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_008_skeletonsoldier",
+					"x": 6068.0,
+					"y": 636.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_009_earthbushsniper",
+					"x": 6040.0,
+					"y": 652.0
 				},
 				{
 					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/earth_010_earthslimelarge",
-					"x": 5268.0,
-					"y": 1142.0
+					"x": 6184.0,
+					"y": 1608.0
 				},
 				{
 					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/earth_011_earthslimelarge",
-					"x": 5212.0,
-					"y": 1180.0
+					"x": 6156.0,
+					"y": 1590.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_012_earthslime",
+					"x": 6212.0,
+					"y": 1590.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_013_earthslime",
+					"x": 6156.0,
+					"y": 1628.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_014_earthslime",
+					"x": 6212.0,
+					"y": 1628.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_015_earthslimelarge",
+					"x": 6024.0,
+					"y": 1752.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_016_earthslime",
+					"x": 5996.0,
+					"y": 1734.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_017_earthslime",
+					"x": 6052.0,
+					"y": 1734.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_018_earthslimelarge",
+					"x": 6840.0,
+					"y": 984.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_019_earthslimelarge",
+					"x": 6812.0,
+					"y": 966.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_020_earthslime",
+					"x": 6868.0,
+					"y": 966.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_021_earthslime",
+					"x": 6812.0,
+					"y": 1004.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_022_earthslime",
+					"x": 6868.0,
+					"y": 1004.0
 				},
 				{
 					"e": "earthbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_012_earthbushsniper",
-					"x": 5268.0,
-					"y": 1180.0
+					"o": "ysortworld/enemies/earth_023_earthbushsniper",
+					"x": 6904.0,
+					"y": 728.0
 				},
 				{
 					"e": "earthbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_013_earthbushsniper",
-					"x": 5336.0,
-					"y": 1304.0
-				},
-				{
-					"e": "earthbushsniper",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_014_earthbushsniper",
-					"x": 5308.0,
-					"y": 1286.0
+					"o": "ysortworld/enemies/earth_024_earthbushsniper",
+					"x": 6876.0,
+					"y": 710.0
 				},
 				{
 					"e": "earthsprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_015_earthsprite",
-					"x": 5364.0,
-					"y": 1286.0
-				},
-				{
-					"e": "bushmage",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_016_bushmage",
-					"x": 5048.0,
-					"y": 1016.0
-				},
-				{
-					"e": "earthfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_017_earthfiresprite",
-					"x": 5020.0,
-					"y": 998.0
-				},
-				{
-					"e": "earthfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_018_earthfiresprite",
-					"x": 5076.0,
-					"y": 998.0
-				},
-				{
-					"e": "earthsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_019_earthsprite",
-					"x": 5192.0,
-					"y": 328.0
-				},
-				{
-					"e": "earthsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_020_earthsprite",
-					"x": 5164.0,
-					"y": 310.0
-				},
-				{
-					"e": "earthfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_021_earthfiresprite",
-					"x": 5220.0,
-					"y": 310.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_022_skeletonsoldier",
-					"x": 4280.0,
-					"y": 648.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_023_skeletonsoldier",
-					"x": 4252.0,
-					"y": 630.0
-				},
-				{
-					"e": "skeletonsoldier",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_024_skeletonsoldier",
-					"x": 4308.0,
-					"y": 630.0
-				},
-				{
-					"e": "earthbushsniper",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_025_earthbushsniper",
-					"x": 4252.0,
-					"y": 668.0
+					"o": "ysortworld/enemies/earth_025_earthsprite",
+					"x": 6932.0,
+					"y": 710.0
 				},
 				{
 					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/earth_026_earthslimelarge",
-					"x": 4408.0,
-					"y": 1208.0
+					"x": 7208.0,
+					"y": 1688.0
 				},
 				{
-					"e": "earthslime",
+					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_027_earthslime",
-					"x": 4380.0,
-					"y": 1190.0
+					"o": "ysortworld/enemies/earth_027_earthslimelarge",
+					"x": 7180.0,
+					"y": 1670.0
 				},
 				{
 					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/earth_028_earthslime",
-					"x": 4436.0,
-					"y": 1190.0
+					"x": 7180.0,
+					"y": 1708.0
 				},
 				{
-					"e": "earthbushsniper",
+					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_029_earthbushsniper",
-					"x": 5688.0,
-					"y": 1784.0
+					"o": "ysortworld/enemies/earth_029_earthslime",
+					"x": 7208.0,
+					"y": 1724.0
 				},
 				{
-					"e": "earthbushsniper",
+					"e": "earthslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_030_earthbushsniper",
-					"x": 5660.0,
-					"y": 1766.0
-				},
-				{
-					"e": "earthsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_031_earthsprite",
-					"x": 5716.0,
-					"y": 1766.0
+					"o": "ysortworld/enemies/earth_030_earthslime",
+					"x": 7208.0,
+					"y": 1652.0
 				},
 				{
 					"e": "bushmage",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_032_bushmage",
-					"x": 5832.0,
-					"y": 408.0
+					"o": "ysortworld/enemies/earth_031_bushmage",
+					"x": 7016.0,
+					"y": 1768.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_032_earthfiresprite",
+					"x": 6988.0,
+					"y": 1750.0
 				},
 				{
 					"e": "earthfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/earth_033_earthfiresprite",
-					"x": 5804.0,
-					"y": 390.0
+					"x": 7044.0,
+					"y": 1750.0
 				},
 				{
-					"e": "earthfiresprite",
+					"e": "earthslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_034_earthfiresprite",
-					"x": 5860.0,
-					"y": 390.0
+					"o": "ysortworld/enemies/earth_034_earthslimelarge",
+					"x": 7656.0,
+					"y": 1176.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_035_earthslimelarge",
+					"x": 7628.0,
+					"y": 1158.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_036_earthslime",
+					"x": 7684.0,
+					"y": 1158.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_037_earthslime",
+					"x": 7628.0,
+					"y": 1196.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_038_earthslime",
+					"x": 7684.0,
+					"y": 1196.0
 				},
 				{
 					"e": "earthsprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_035_earthsprite",
-					"x": 5048.0,
-					"y": 1800.0
+					"o": "ysortworld/enemies/earth_039_earthsprite",
+					"x": 7464.0,
+					"y": 1000.0
 				},
 				{
 					"e": "earthsprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_036_earthsprite",
-					"x": 5020.0,
-					"y": 1782.0
+					"o": "ysortworld/enemies/earth_040_earthsprite",
+					"x": 7436.0,
+					"y": 982.0
 				},
 				{
 					"e": "earthfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/earth_037_earthfiresprite",
-					"x": 5076.0,
-					"y": 1782.0
+					"o": "ysortworld/enemies/earth_041_earthfiresprite",
+					"x": 7492.0,
+					"y": 982.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_042_earthslimelarge",
+					"x": 7880.0,
+					"y": 2056.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_043_earthslimelarge",
+					"x": 7852.0,
+					"y": 2038.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_044_earthslime",
+					"x": 7908.0,
+					"y": 2038.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_045_earthslime",
+					"x": 7852.0,
+					"y": 2076.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_046_earthslime",
+					"x": 7908.0,
+					"y": 2076.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_047_skeletonsoldier",
+					"x": 8040.0,
+					"y": 1688.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_048_skeletonsoldier",
+					"x": 8012.0,
+					"y": 1670.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_049_skeletonsoldier",
+					"x": 8012.0,
+					"y": 1708.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_050_earthbushsniper",
+					"x": 8040.0,
+					"y": 1724.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_051_bushmage",
+					"x": 6056.0,
+					"y": 3080.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_052_bushmage",
+					"x": 6028.0,
+					"y": 3062.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_053_earthslimelarge",
+					"x": 6084.0,
+					"y": 3062.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_054_earthslimelarge",
+					"x": 6028.0,
+					"y": 3100.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_055_earthbushsniper",
+					"x": 6084.0,
+					"y": 3100.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_056_earthslimelarge",
+					"x": 7080.0,
+					"y": 3816.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_057_earthslime",
+					"x": 7052.0,
+					"y": 3798.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_058_earthslime",
+					"x": 7108.0,
+					"y": 3798.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_059_earthbushsniper",
+					"x": 6648.0,
+					"y": 4216.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_060_earthbushsniper",
+					"x": 6620.0,
+					"y": 4198.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_061_earthsprite",
+					"x": 6676.0,
+					"y": 4198.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_062_bushmage",
+					"x": 5736.0,
+					"y": 232.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_063_earthfiresprite",
+					"x": 5708.0,
+					"y": 214.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_064_earthfiresprite",
+					"x": 5764.0,
+					"y": 214.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_065_earthsprite",
+					"x": 6088.0,
+					"y": 248.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_066_earthsprite",
+					"x": 6060.0,
+					"y": 230.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_067_earthfiresprite",
+					"x": 6116.0,
+					"y": 230.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_068_skeletonsoldier",
+					"x": 6584.0,
+					"y": 312.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_069_skeletonsoldier",
+					"x": 6556.0,
+					"y": 294.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_070_skeletonsoldier",
+					"x": 6612.0,
+					"y": 294.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_071_earthbushsniper",
+					"x": 6556.0,
+					"y": 332.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_072_earthslimelarge",
+					"x": 7032.0,
+					"y": 232.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_073_earthslime",
+					"x": 7004.0,
+					"y": 214.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_074_earthslime",
+					"x": 7060.0,
+					"y": 214.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_075_earthbushsniper",
+					"x": 7544.0,
+					"y": 184.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_076_earthbushsniper",
+					"x": 7516.0,
+					"y": 166.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_077_earthsprite",
+					"x": 7572.0,
+					"y": 166.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_078_bushmage",
+					"x": 7864.0,
+					"y": 216.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_079_earthfiresprite",
+					"x": 7836.0,
+					"y": 198.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_080_earthfiresprite",
+					"x": 7892.0,
+					"y": 198.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_081_earthsprite",
+					"x": 8392.0,
+					"y": 216.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_082_earthsprite",
+					"x": 8364.0,
+					"y": 198.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_083_earthfiresprite",
+					"x": 8420.0,
+					"y": 198.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_084_skeletonsoldier",
+					"x": 8408.0,
+					"y": 1096.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_085_skeletonsoldier",
+					"x": 8380.0,
+					"y": 1078.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_086_skeletonsoldier",
+					"x": 8436.0,
+					"y": 1078.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_087_earthbushsniper",
+					"x": 8380.0,
+					"y": 1116.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_088_earthslimelarge",
+					"x": 8344.0,
+					"y": 1992.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_089_earthslime",
+					"x": 8316.0,
+					"y": 1974.0
+				},
+				{
+					"e": "earthslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_090_earthslime",
+					"x": 8372.0,
+					"y": 1974.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_091_earthbushsniper",
+					"x": 8344.0,
+					"y": 3000.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_092_earthbushsniper",
+					"x": 8316.0,
+					"y": 2982.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_093_earthsprite",
+					"x": 8372.0,
+					"y": 2982.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_094_bushmage",
+					"x": 8408.0,
+					"y": 3832.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_095_earthfiresprite",
+					"x": 8380.0,
+					"y": 3814.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_096_earthfiresprite",
+					"x": 8436.0,
+					"y": 3814.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_097_earthsprite",
+					"x": 8360.0,
+					"y": 4696.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_098_earthsprite",
+					"x": 8332.0,
+					"y": 4678.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_099_earthfiresprite",
+					"x": 8388.0,
+					"y": 4678.0
 				},
 				{
 					"e": "electricsprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_001_electricsprite",
-					"x": 2344.0,
-					"y": 424.0
+					"x": 3240.0,
+					"y": 664.0
 				},
 				{
 					"e": "electricsprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_002_electricsprite",
-					"x": 2316.0,
-					"y": 406.0
+					"x": 3212.0,
+					"y": 646.0
 				},
 				{
 					"e": "bushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_003_bushsniper",
-					"x": 2372.0,
-					"y": 406.0
+					"x": 3268.0,
+					"y": 646.0
 				},
 				{
 					"e": "electricsprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_004_electricsprite",
-					"x": 1704.0,
-					"y": 440.0
+					"x": 4584.0,
+					"y": 952.0
 				},
 				{
 					"e": "electricsprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_005_electricsprite",
-					"x": 1676.0,
-					"y": 422.0
+					"x": 4556.0,
+					"y": 934.0
 				},
 				{
 					"e": "bushsniper",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/electric_006_bushsniper",
-					"x": 1732.0,
-					"y": 422.0
+					"x": 4612.0,
+					"y": 934.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_001_firebushmage",
-					"x": 3096.0,
-					"y": 3080.0
+					"x": 3208.0,
+					"y": 5240.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_002_firesprite",
-					"x": 3068.0,
-					"y": 3062.0
+					"x": 3180.0,
+					"y": 5222.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_003_firesprite",
-					"x": 3124.0,
-					"y": 3062.0
+					"x": 3236.0,
+					"y": 5222.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_004_firesprite",
-					"x": 3032.0,
-					"y": 3400.0
+					"x": 3496.0,
+					"y": 5272.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_005_firesprite",
-					"x": 3004.0,
-					"y": 3382.0
+					"x": 3468.0,
+					"y": 5254.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_006_firesprite",
-					"x": 3060.0,
-					"y": 3382.0
+					"x": 3524.0,
+					"y": 5254.0
 				},
 				{
 					"e": "skeletonelite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_007_skeletonelite",
-					"x": 3096.0,
-					"y": 3976.0
+					"x": 3416.0,
+					"y": 5672.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_008_firesprite",
-					"x": 3068.0,
-					"y": 3958.0
+					"x": 3388.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_009_firesprite",
-					"x": 3124.0,
-					"y": 3958.0
+					"x": 3444.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_010_firebushmage",
-					"x": 3096.0,
-					"y": 4776.0
+					"x": 3304.0,
+					"y": 5800.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_011_firesprite",
-					"x": 3068.0,
-					"y": 4758.0
+					"x": 3276.0,
+					"y": 5782.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_012_firesprite",
-					"x": 3124.0,
-					"y": 4758.0
+					"x": 3332.0,
+					"y": 5782.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_013_firebushmage",
-					"x": 3080.0,
-					"y": 4584.0
+					"x": 3224.0,
+					"y": 6168.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_014_firesprite",
-					"x": 3052.0,
-					"y": 4566.0
+					"x": 3196.0,
+					"y": 6150.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_015_firesprite",
-					"x": 3108.0,
-					"y": 4566.0
+					"x": 3252.0,
+					"y": 6150.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_016_firesprite",
-					"x": 3560.0,
-					"y": 3416.0
+					"x": 3400.0,
+					"y": 6568.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_017_firesprite",
-					"x": 3532.0,
-					"y": 3398.0
+					"x": 3372.0,
+					"y": 6550.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_018_firesprite",
-					"x": 3588.0,
-					"y": 3398.0
+					"x": 3428.0,
+					"y": 6550.0
 				},
 				{
 					"e": "skeletonelite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_019_skeletonelite",
-					"x": 3592.0,
-					"y": 3208.0
+					"x": 4056.0,
+					"y": 4968.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_020_firesprite",
-					"x": 3564.0,
-					"y": 3190.0
+					"x": 4028.0,
+					"y": 4950.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_021_firesprite",
-					"x": 3620.0,
-					"y": 3190.0
+					"x": 4084.0,
+					"y": 4950.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_022_firebushmage",
-					"x": 3528.0,
-					"y": 4040.0
+					"x": 3880.0,
+					"y": 5032.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_023_firesprite",
-					"x": 3500.0,
-					"y": 4022.0
+					"x": 3852.0,
+					"y": 5014.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_024_firesprite",
-					"x": 3556.0,
-					"y": 4022.0
+					"x": 3908.0,
+					"y": 5014.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_025_firebushmage",
-					"x": 3512.0,
-					"y": 3864.0
+					"x": 3832.0,
+					"y": 5672.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_026_firesprite",
-					"x": 3484.0,
-					"y": 3846.0
+					"x": 3804.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_027_firesprite",
-					"x": 3540.0,
-					"y": 3846.0
+					"x": 3860.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_028_firesprite",
-					"x": 3464.0,
-					"y": 4712.0
+					"x": 3928.0,
+					"y": 5528.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_029_firesprite",
-					"x": 3436.0,
-					"y": 4694.0
+					"x": 3900.0,
+					"y": 5510.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_030_firesprite",
-					"x": 3492.0,
-					"y": 4694.0
+					"x": 3956.0,
+					"y": 5510.0
 				},
 				{
 					"e": "skeletonelite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_031_skeletonelite",
-					"x": 3560.0,
-					"y": 4840.0
+					"x": 3944.0,
+					"y": 6568.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_032_firesprite",
-					"x": 3532.0,
-					"y": 4822.0
+					"x": 3916.0,
+					"y": 6550.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_033_firesprite",
-					"x": 3588.0,
-					"y": 4822.0
+					"x": 3972.0,
+					"y": 6550.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_034_firebushmage",
-					"x": 3960.0,
-					"y": 3112.0
+					"x": 4008.0,
+					"y": 6376.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_035_firesprite",
-					"x": 3932.0,
-					"y": 3132.0
+					"x": 3980.0,
+					"y": 6358.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_036_firesprite",
-					"x": 3988.0,
-					"y": 3132.0
+					"x": 4036.0,
+					"y": 6358.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_037_firebushmage",
-					"x": 3960.0,
-					"y": 3368.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_038_firesprite",
-					"x": 3932.0,
-					"y": 3350.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_039_firesprite",
-					"x": 3988.0,
-					"y": 3350.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_040_firesprite",
-					"x": 4008.0,
-					"y": 4136.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_041_firesprite",
-					"x": 3980.0,
-					"y": 4118.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_042_firesprite",
-					"x": 3980.0,
-					"y": 4156.0
-				},
-				{
-					"e": "skeletonelite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_043_skeletonelite",
-					"x": 3960.0,
+					"x": 4520.0,
 					"y": 4872.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_044_firesprite",
-					"x": 3932.0,
+					"o": "ysortworld/enemies/fire_038_firesprite",
+					"x": 4492.0,
 					"y": 4854.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_039_firesprite",
+					"x": 4548.0,
+					"y": 4854.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_040_firesprite",
+					"x": 4568.0,
+					"y": 5032.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_041_firesprite",
+					"x": 4540.0,
+					"y": 5014.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_042_firesprite",
+					"x": 4596.0,
+					"y": 5014.0
+				},
+				{
+					"e": "skeletonelite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_043_skeletonelite",
+					"x": 4568.0,
+					"y": 5912.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_044_firesprite",
+					"x": 4540.0,
+					"y": 5894.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_045_firesprite",
-					"x": 3988.0,
-					"y": 4854.0
+					"x": 4596.0,
+					"y": 5894.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_046_firebushmage",
-					"x": 3896.0,
-					"y": 4536.0
+					"x": 4808.0,
+					"y": 5672.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_047_firesprite",
-					"x": 3868.0,
-					"y": 4518.0
+					"x": 4780.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_048_firesprite",
-					"x": 3924.0,
-					"y": 4518.0
+					"x": 4836.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_049_firebushmage",
-					"x": 4328.0,
-					"y": 3144.0
+					"x": 4632.0,
+					"y": 6168.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_050_firesprite",
-					"x": 4300.0,
-					"y": 3126.0
+					"x": 4604.0,
+					"y": 6150.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_051_firesprite",
-					"x": 4356.0,
-					"y": 3126.0
+					"x": 4660.0,
+					"y": 6150.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_052_firesprite",
-					"x": 4312.0,
-					"y": 3400.0
+					"x": 4664.0,
+					"y": 6376.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_053_firesprite",
-					"x": 4284.0,
-					"y": 3382.0
+					"x": 4636.0,
+					"y": 6358.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_054_firesprite",
-					"x": 4340.0,
-					"y": 3382.0
+					"x": 4692.0,
+					"y": 6358.0
 				},
 				{
 					"e": "skeletonelite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_055_skeletonelite",
-					"x": 4440.0,
-					"y": 3832.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_056_firesprite",
-					"x": 4412.0,
-					"y": 3814.0
-				},
-				{
-					"e": "firesprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_057_firesprite",
-					"x": 4412.0,
-					"y": 3852.0
-				},
-				{
-					"e": "firebushmage",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_058_firebushmage",
-					"x": 4344.0,
+					"x": 5272.0,
 					"y": 4856.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_059_firesprite",
-					"x": 4316.0,
+					"o": "ysortworld/enemies/fire_056_firesprite",
+					"x": 5244.0,
 					"y": 4838.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/fire_060_firesprite",
-					"x": 4372.0,
+					"o": "ysortworld/enemies/fire_057_firesprite",
+					"x": 5300.0,
 					"y": 4838.0
 				},
 				{
 					"e": "firebushmage",
 					"gated": false,
 					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_058_firebushmage",
+					"x": 5144.0,
+					"y": 5000.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_059_firesprite",
+					"x": 5116.0,
+					"y": 4982.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_060_firesprite",
+					"x": 5172.0,
+					"y": 4982.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_061_firebushmage",
-					"x": 4360.0,
-					"y": 4616.0
+					"x": 5064.0,
+					"y": 5672.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_062_firesprite",
-					"x": 4332.0,
-					"y": 4598.0
+					"x": 5036.0,
+					"y": 5654.0
 				},
 				{
 					"e": "firesprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/fire_063_firesprite",
-					"x": 4388.0,
-					"y": 4598.0
+					"x": 5092.0,
+					"y": 5654.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_064_firesprite",
+					"x": 5256.0,
+					"y": 5896.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_065_firesprite",
+					"x": 5228.0,
+					"y": 5878.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_066_firesprite",
+					"x": 5284.0,
+					"y": 5878.0
+				},
+				{
+					"e": "skeletonelite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_067_skeletonelite",
+					"x": 5160.0,
+					"y": 6520.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_068_firesprite",
+					"x": 5132.0,
+					"y": 6502.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_069_firesprite",
+					"x": 5188.0,
+					"y": 6502.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_070_firebushmage",
+					"x": 5336.0,
+					"y": 6248.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_071_firesprite",
+					"x": 5308.0,
+					"y": 6230.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/fire_072_firesprite",
+					"x": 5364.0,
+					"y": 6230.0
 				},
 				{
 					"e": "iceslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/ice_001_iceslimelarge",
-					"x": 3560.0,
-					"y": 1144.0
+					"x": 4024.0,
+					"y": 648.0
 				},
 				{
-					"e": "iceslimelarge",
+					"e": "iceslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_002_iceslimelarge",
-					"x": 3532.0,
-					"y": 1126.0
+					"o": "ysortworld/enemies/ice_002_iceslime",
+					"x": 3996.0,
+					"y": 630.0
 				},
 				{
 					"e": "iceslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/ice_003_iceslime",
-					"x": 3588.0,
-					"y": 1126.0
-				},
-				{
-					"e": "iceslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_004_iceslime",
-					"x": 3532.0,
-					"y": 1164.0
-				},
-				{
-					"e": "iceslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_005_iceslime",
-					"x": 3588.0,
-					"y": 1164.0
-				},
-				{
-					"e": "iceslimelarge",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_006_iceslimelarge",
-					"x": 2056.0,
-					"y": 1192.0
-				},
-				{
-					"e": "iceslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_007_iceslime",
-					"x": 2028.0,
-					"y": 1174.0
-				},
-				{
-					"e": "iceslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_008_iceslime",
-					"x": 2084.0,
-					"y": 1174.0
+					"x": 4052.0,
+					"y": 630.0
 				},
 				{
 					"e": "icebushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_009_icebushsniper",
-					"x": 2488.0,
-					"y": 1192.0
+					"o": "ysortworld/enemies/ice_004_icebushsniper",
+					"x": 5352.0,
+					"y": 952.0
 				},
 				{
 					"e": "icebushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_010_icebushsniper",
-					"x": 2460.0,
-					"y": 1174.0
+					"o": "ysortworld/enemies/ice_005_icebushsniper",
+					"x": 5324.0,
+					"y": 934.0
 				},
 				{
 					"e": "icesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_011_icesprite",
-					"x": 2516.0,
-					"y": 1174.0
+					"o": "ysortworld/enemies/ice_006_icesprite",
+					"x": 5380.0,
+					"y": 934.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_007_iceslimelarge",
+					"x": 3192.0,
+					"y": 1576.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_008_iceslimelarge",
+					"x": 3164.0,
+					"y": 1558.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_009_iceslime",
+					"x": 3220.0,
+					"y": 1558.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_010_iceslime",
+					"x": 3164.0,
+					"y": 1596.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_011_iceslime",
+					"x": 3220.0,
+					"y": 1596.0
 				},
 				{
 					"e": "icebushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/ice_012_icebushmage",
-					"x": 1832.0,
-					"y": 1192.0
+					"x": 3752.0,
+					"y": 1576.0
 				},
 				{
 					"e": "icefiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/ice_013_icefiresprite",
-					"x": 1804.0,
-					"y": 1174.0
+					"x": 3724.0,
+					"y": 1558.0
 				},
 				{
 					"e": "icefiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/ice_014_icefiresprite",
-					"x": 1860.0,
-					"y": 1174.0
+					"x": 3780.0,
+					"y": 1558.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_015_iceslimelarge",
+					"x": 3976.0,
+					"y": 2152.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_016_iceslimelarge",
+					"x": 3948.0,
+					"y": 2134.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_017_iceslime",
+					"x": 4004.0,
+					"y": 2134.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_018_iceslime",
+					"x": 3948.0,
+					"y": 2172.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_019_iceslime",
+					"x": 4004.0,
+					"y": 2172.0
 				},
 				{
 					"e": "icesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_015_icesprite",
-					"x": 2808.0,
-					"y": 1672.0
+					"o": "ysortworld/enemies/ice_020_icesprite",
+					"x": 4136.0,
+					"y": 2072.0
 				},
 				{
 					"e": "icesprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_016_icesprite",
-					"x": 2780.0,
-					"y": 1654.0
+					"o": "ysortworld/enemies/ice_021_icesprite",
+					"x": 4108.0,
+					"y": 2054.0
 				},
 				{
 					"e": "icefiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/ice_017_icefiresprite",
-					"x": 2836.0,
-					"y": 1654.0
+					"o": "ysortworld/enemies/ice_022_icefiresprite",
+					"x": 4164.0,
+					"y": 2054.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_023_iceslimelarge",
+					"x": 5176.0,
+					"y": 2280.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_024_iceslimelarge",
+					"x": 5148.0,
+					"y": 2262.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_025_iceslime",
+					"x": 5204.0,
+					"y": 2262.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_026_iceslime",
+					"x": 5148.0,
+					"y": 2300.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_027_iceslime",
+					"x": 5204.0,
+					"y": 2300.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_028_icesprite",
+					"x": 5208.0,
+					"y": 1896.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_029_icesprite",
+					"x": 5180.0,
+					"y": 1878.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_030_icesprite",
+					"x": 5236.0,
+					"y": 1878.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_031_iceslimelarge",
+					"x": 3880.0,
+					"y": 328.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_032_iceslime",
+					"x": 3852.0,
+					"y": 310.0
+				},
+				{
+					"e": "iceslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_033_iceslime",
+					"x": 3908.0,
+					"y": 310.0
+				},
+				{
+					"e": "icebushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_034_icebushsniper",
+					"x": 4776.0,
+					"y": 296.0
+				},
+				{
+					"e": "icebushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_035_icebushsniper",
+					"x": 4748.0,
+					"y": 278.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_036_icesprite",
+					"x": 4804.0,
+					"y": 278.0
 				},
 				{
 					"e": "lightslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/light_001_lightslimelarge",
-					"x": 1048.0,
-					"y": 2232.0
+					"x": 1096.0,
+					"y": 824.0
 				},
 				{
-					"e": "lightslime",
+					"e": "lightslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_002_lightslime",
-					"x": 1020.0,
-					"y": 2214.0
+					"o": "ysortworld/enemies/light_002_lightslimelarge",
+					"x": 1068.0,
+					"y": 806.0
 				},
 				{
 					"e": "lightslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/light_003_lightslime",
-					"x": 1076.0,
-					"y": 2214.0
+					"x": 1124.0,
+					"y": 806.0
 				},
 				{
-					"e": "lightbushsniper",
+					"e": "lightslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_004_lightbushsniper",
-					"x": 1064.0,
-					"y": 2392.0
+					"o": "ysortworld/enemies/light_004_lightslime",
+					"x": 1068.0,
+					"y": 844.0
 				},
 				{
-					"e": "lightbushsniper",
+					"e": "lightslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_005_lightbushsniper",
-					"x": 1036.0,
-					"y": 2374.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_006_lightsprite",
-					"x": 1092.0,
-					"y": 2374.0
-				},
-				{
-					"e": "lightbushmage",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_007_lightbushmage",
-					"x": 824.0,
-					"y": 1624.0
-				},
-				{
-					"e": "lightfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_008_lightfiresprite",
-					"x": 796.0,
-					"y": 1606.0
-				},
-				{
-					"e": "lightfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_009_lightfiresprite",
-					"x": 852.0,
-					"y": 1606.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_010_lightsprite",
-					"x": 728.0,
-					"y": 1768.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_011_lightsprite",
-					"x": 700.0,
-					"y": 1750.0
-				},
-				{
-					"e": "lightfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_012_lightfiresprite",
-					"x": 756.0,
-					"y": 1750.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_013_lightsprite",
-					"x": 968.0,
-					"y": 664.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_014_lightsprite",
-					"x": 996.0,
-					"y": 646.0
-				},
-				{
-					"e": "lightsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/light_015_lightsprite",
-					"x": 940.0,
-					"y": 684.0
+					"o": "ysortworld/enemies/light_005_lightslime",
+					"x": 1096.0,
+					"y": 860.0
 				},
 				{
 					"e": "lightslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_016_lightslimelarge",
-					"x": 1144.0,
+					"o": "ysortworld/enemies/light_006_lightslimelarge",
+					"x": 1160.0,
+					"y": 1032.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_007_lightslime",
+					"x": 1132.0,
+					"y": 1014.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_008_lightslime",
+					"x": 1188.0,
+					"y": 1014.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_009_lightslimelarge",
+					"x": 2024.0,
+					"y": 840.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_010_lightslimelarge",
+					"x": 1996.0,
+					"y": 822.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_011_lightslime",
+					"x": 2024.0,
+					"y": 876.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_012_lightslime",
+					"x": 2024.0,
+					"y": 804.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_013_lightslime",
+					"x": 2000.0,
+					"y": 880.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_014_lightbushsniper",
+					"x": 2008.0,
+					"y": 1272.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_015_lightbushsniper",
+					"x": 1980.0,
+					"y": 1254.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_016_lightsprite",
+					"x": 2036.0,
+					"y": 1254.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_017_lightslimelarge",
+					"x": 2408.0,
+					"y": 600.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_018_lightslimelarge",
+					"x": 2380.0,
+					"y": 620.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_019_lightslime",
+					"x": 2368.0,
 					"y": 600.0
 				},
 				{
 					"e": "lightslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_017_lightslime",
-					"x": 1116.0,
-					"y": 620.0
+					"o": "ysortworld/enemies/light_020_lightslime",
+					"x": 2448.0,
+					"y": 600.0
 				},
 				{
 					"e": "lightslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_018_lightslime",
-					"x": 1172.0,
-					"y": 620.0
+					"o": "ysortworld/enemies/light_021_lightslime",
+					"x": 2384.0,
+					"y": 640.0
 				},
 				{
-					"e": "lightbushsniper",
+					"e": "lightbushmage",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_019_lightbushsniper",
-					"x": 376.0,
-					"y": 2264.0
+					"o": "ysortworld/enemies/light_022_lightbushmage",
+					"x": 2652.0,
+					"y": 614.0
 				},
 				{
-					"e": "lightbushsniper",
+					"e": "lightfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_020_lightbushsniper",
-					"x": 404.0,
-					"y": 2246.0
+					"o": "ysortworld/enemies/light_023_lightfiresprite",
+					"x": 2708.0,
+					"y": 614.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_024_lightfiresprite",
+					"x": 2652.0,
+					"y": 652.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_025_lightslimelarge",
+					"x": 792.0,
+					"y": 2792.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_026_lightslimelarge",
+					"x": 764.0,
+					"y": 2774.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_027_lightslime",
+					"x": 820.0,
+					"y": 2774.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_028_lightslime",
+					"x": 764.0,
+					"y": 2812.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_029_lightslime",
+					"x": 820.0,
+					"y": 2812.0
 				},
 				{
 					"e": "lightsprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/light_021_lightsprite",
-					"x": 348.0,
-					"y": 2284.0
+					"o": "ysortworld/enemies/light_030_lightsprite",
+					"x": 824.0,
+					"y": 3288.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_031_lightsprite",
+					"x": 796.0,
+					"y": 3270.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_032_lightfiresprite",
+					"x": 852.0,
+					"y": 3270.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_033_lightslimelarge",
+					"x": 1560.0,
+					"y": 3272.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_034_lightslimelarge",
+					"x": 1532.0,
+					"y": 3254.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_035_lightslime",
+					"x": 1588.0,
+					"y": 3254.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_036_lightslime",
+					"x": 1532.0,
+					"y": 3292.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_037_lightslime",
+					"x": 1588.0,
+					"y": 3292.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_038_lightsprite",
+					"x": 1880.0,
+					"y": 3064.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_039_lightsprite",
+					"x": 1852.0,
+					"y": 3046.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_040_lightsprite",
+					"x": 1908.0,
+					"y": 3046.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_041_lightslimelarge",
+					"x": 2664.0,
+					"y": 3160.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_042_lightslimelarge",
+					"x": 2636.0,
+					"y": 3142.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_043_lightslime",
+					"x": 2692.0,
+					"y": 3142.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_044_lightslime",
+					"x": 2636.0,
+					"y": 3180.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_045_lightslime",
+					"x": 2692.0,
+					"y": 3180.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_046_lightslimelarge",
+					"x": 2520.0,
+					"y": 3384.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_047_lightslime",
+					"x": 2492.0,
+					"y": 3366.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_048_lightslime",
+					"x": 2548.0,
+					"y": 3366.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_049_lightbushsniper",
+					"x": 216.0,
+					"y": 264.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_050_lightbushsniper",
+					"x": 188.0,
+					"y": 246.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_051_lightsprite",
+					"x": 244.0,
+					"y": 246.0
+				},
+				{
+					"e": "lightbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_052_lightbushmage",
+					"x": 264.0,
+					"y": 2040.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_053_lightfiresprite",
+					"x": 236.0,
+					"y": 2022.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_054_lightfiresprite",
+					"x": 292.0,
+					"y": 2022.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_055_lightsprite",
+					"x": 328.0,
+					"y": 3848.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_056_lightsprite",
+					"x": 300.0,
+					"y": 3830.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_057_lightfiresprite",
+					"x": 356.0,
+					"y": 3830.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_058_lightsprite",
+					"x": 664.0,
+					"y": 200.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_059_lightsprite",
+					"x": 636.0,
+					"y": 182.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_060_lightsprite",
+					"x": 692.0,
+					"y": 182.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_061_lightslimelarge",
+					"x": 1608.0,
+					"y": 200.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_062_lightslime",
+					"x": 1580.0,
+					"y": 182.0
+				},
+				{
+					"e": "lightslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_063_lightslime",
+					"x": 1636.0,
+					"y": 182.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_064_lightbushsniper",
+					"x": 2552.0,
+					"y": 232.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_065_lightbushsniper",
+					"x": 2524.0,
+					"y": 214.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_066_lightsprite",
+					"x": 2580.0,
+					"y": 214.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_001_skeletonsoldier",
-					"x": 1480.0,
-					"y": 4152.0
+					"x": 760.0,
+					"y": 5368.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_002_skeletonsoldier",
-					"x": 1452.0,
-					"y": 4134.0
+					"x": 732.0,
+					"y": 5350.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_003_skeletonsoldier",
-					"x": 1452.0,
-					"y": 4172.0
+					"x": 788.0,
+					"y": 5350.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_004_skeletonsoldier",
-					"x": 1508.0,
-					"y": 4172.0
+					"x": 732.0,
+					"y": 5388.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_005_skeletonsoldier",
-					"x": 1480.0,
-					"y": 4188.0
+					"x": 788.0,
+					"y": 5388.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_006_skeletonsoldier",
-					"x": 472.0,
-					"y": 4264.0
+					"x": 680.0,
+					"y": 5976.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_007_skeletonsoldier",
-					"x": 444.0,
-					"y": 4246.0
+					"x": 652.0,
+					"y": 5958.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_008_skeletonsoldier",
-					"x": 444.0,
-					"y": 4284.0
+					"x": 708.0,
+					"y": 5958.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_009_skeletonsoldier",
-					"x": 472.0,
-					"y": 4300.0
+					"x": 680.0,
+					"y": 5940.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_010_skeletonsoldier",
-					"x": 472.0,
-					"y": 4228.0
+					"x": 640.0,
+					"y": 5976.0
 				},
 				{
 					"e": "skeletonelite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_011_skeletonelite",
-					"x": 424.0,
-					"y": 4696.0
+					"x": 840.0,
+					"y": 6488.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_012_skeletonsoldier",
-					"x": 396.0,
-					"y": 4716.0
+					"x": 812.0,
+					"y": 6470.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_013_skeletonsoldier",
-					"x": 452.0,
-					"y": 4716.0
+					"x": 868.0,
+					"y": 6470.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_014_skeletonsoldier",
-					"x": 904.0,
-					"y": 4184.0
+					"x": 1272.0,
+					"y": 5144.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_015_skeletonsoldier",
-					"x": 876.0,
-					"y": 4166.0
+					"x": 1244.0,
+					"y": 5126.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_016_skeletonsoldier",
-					"x": 932.0,
-					"y": 4166.0
+					"x": 1300.0,
+					"y": 5126.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_017_skeletonsoldier",
-					"x": 876.0,
-					"y": 4204.0
+					"x": 1244.0,
+					"y": 5164.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_018_skeletonsoldier",
-					"x": 932.0,
-					"y": 4204.0
+					"x": 1300.0,
+					"y": 5164.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_019_skeletonsoldier",
-					"x": 888.0,
-					"y": 4696.0
+					"x": 1144.0,
+					"y": 5944.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_020_skeletonsoldier",
-					"x": 860.0,
-					"y": 4678.0
+					"x": 1116.0,
+					"y": 5926.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_021_skeletonsoldier",
-					"x": 916.0,
-					"y": 4678.0
+					"x": 1172.0,
+					"y": 5926.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_022_skeletonsoldier",
-					"x": 860.0,
-					"y": 4716.0
+					"x": 1116.0,
+					"y": 5964.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_023_skeletonsoldier",
-					"x": 1512.0,
-					"y": 4808.0
+					"x": 1172.0,
+					"y": 5964.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_024_skeletonsoldier",
-					"x": 1484.0,
-					"y": 4790.0
+					"x": 1096.0,
+					"y": 6552.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_025_skeletonsoldier",
-					"x": 1540.0,
-					"y": 4790.0
+					"x": 1068.0,
+					"y": 6534.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_026_skeletonsoldier",
-					"x": 1484.0,
-					"y": 4828.0
+					"x": 1124.0,
+					"y": 6534.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_027_skeletonsoldier",
-					"x": 2040.0,
-					"y": 4184.0
+					"x": 1068.0,
+					"y": 6572.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_028_skeletonsoldier",
-					"x": 2012.0,
-					"y": 4166.0
+					"x": 1124.0,
+					"y": 6572.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_029_skeletonsoldier",
-					"x": 2068.0,
-					"y": 4166.0
+					"x": 1832.0,
+					"y": 5048.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_030_skeletonsoldier",
-					"x": 2012.0,
-					"y": 4204.0
+					"x": 1804.0,
+					"y": 5030.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_031_skeletonsoldier",
-					"x": 2068.0,
-					"y": 4204.0
+					"x": 1860.0,
+					"y": 5030.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_032_skeletonsoldier",
-					"x": 1960.0,
-					"y": 4712.0
+					"x": 1804.0,
+					"y": 5068.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_033_skeletonsoldier",
-					"x": 1932.0,
-					"y": 4694.0
+					"x": 1860.0,
+					"y": 5068.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_034_skeletonsoldier",
-					"x": 1988.0,
-					"y": 4694.0
+					"x": 1832.0,
+					"y": 5608.0
 				},
 				{
 					"e": "skeletonsoldier",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/plain_035_skeletonsoldier",
-					"x": 1932.0,
-					"y": 4732.0
+					"x": 1804.0,
+					"y": 5590.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_036_skeletonsoldier",
+					"x": 1860.0,
+					"y": 5590.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_037_skeletonsoldier",
+					"x": 1804.0,
+					"y": 5628.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_038_skeletonsoldier",
+					"x": 1860.0,
+					"y": 5628.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_039_skeletonsoldier",
+					"x": 1624.0,
+					"y": 6424.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_040_skeletonsoldier",
+					"x": 1596.0,
+					"y": 6406.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_041_skeletonsoldier",
+					"x": 1652.0,
+					"y": 6406.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_042_skeletonsoldier",
+					"x": 1596.0,
+					"y": 6444.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_043_skeletonsoldier",
+					"x": 1652.0,
+					"y": 6444.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_044_skeletonsoldier",
+					"x": 2344.0,
+					"y": 5048.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_045_skeletonsoldier",
+					"x": 2316.0,
+					"y": 5030.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_046_skeletonsoldier",
+					"x": 2316.0,
+					"y": 5068.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_047_skeletonsoldier",
+					"x": 2344.0,
+					"y": 5084.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_048_skeletonsoldier",
+					"x": 2344.0,
+					"y": 5012.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_049_skeletonsoldier",
+					"x": 2312.0,
+					"y": 5928.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_050_skeletonsoldier",
+					"x": 2284.0,
+					"y": 5910.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_051_skeletonsoldier",
+					"x": 2340.0,
+					"y": 5910.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_052_skeletonsoldier",
+					"x": 2284.0,
+					"y": 5948.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_053_skeletonsoldier",
+					"x": 2340.0,
+					"y": 5948.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_054_skeletonsoldier",
+					"x": 2136.0,
+					"y": 6504.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_055_skeletonsoldier",
+					"x": 2108.0,
+					"y": 6486.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_056_skeletonsoldier",
+					"x": 2164.0,
+					"y": 6486.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_057_skeletonsoldier",
+					"x": 2108.0,
+					"y": 6524.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_058_skeletonsoldier",
+					"x": 2164.0,
+					"y": 6524.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_059_skeletonsoldier",
+					"x": 2584.0,
+					"y": 5272.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_060_skeletonsoldier",
+					"x": 2556.0,
+					"y": 5254.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_061_skeletonsoldier",
+					"x": 2612.0,
+					"y": 5254.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_062_skeletonsoldier",
+					"x": 2556.0,
+					"y": 5292.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_063_skeletonsoldier",
+					"x": 2612.0,
+					"y": 5292.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_064_skeletonsoldier",
+					"x": 2760.0,
+					"y": 5720.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_065_skeletonsoldier",
+					"x": 2732.0,
+					"y": 5702.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_066_skeletonsoldier",
+					"x": 2788.0,
+					"y": 5702.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_067_skeletonsoldier",
+					"x": 2732.0,
+					"y": 5740.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_068_skeletonsoldier",
+					"x": 2788.0,
+					"y": 5740.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_069_skeletonsoldier",
+					"x": 2776.0,
+					"y": 6520.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_070_skeletonsoldier",
+					"x": 2748.0,
+					"y": 6502.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_071_skeletonsoldier",
+					"x": 2804.0,
+					"y": 6502.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_072_skeletonsoldier",
+					"x": 2748.0,
+					"y": 6540.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_073_skeletonsoldier",
+					"x": 2804.0,
+					"y": 6540.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_074_skeletonsoldier",
+					"x": 328.0,
+					"y": 5544.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_075_skeletonsoldier",
+					"x": 300.0,
+					"y": 5526.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_076_skeletonsoldier",
+					"x": 300.0,
+					"y": 5564.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_077_skeletonsoldier",
+					"x": 328.0,
+					"y": 5580.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_078_skeletonsoldier",
+					"x": 184.0,
+					"y": 6456.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_079_skeletonsoldier",
+					"x": 156.0,
+					"y": 6438.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_080_skeletonsoldier",
+					"x": 212.0,
+					"y": 6438.0
+				},
+				{
+					"e": "skeletonsoldier",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/plain_081_skeletonsoldier",
+					"x": 156.0,
+					"y": 6476.0
 				},
 				{
 					"e": "poisonslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/poison_001_poisonslime",
-					"x": 3080.0,
-					"y": 280.0
+					"x": 4008.0,
+					"y": 856.0
 				},
 				{
 					"e": "poisonslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/poison_002_poisonslime",
-					"x": 1688.0,
-					"y": 1704.0
+					"x": 5432.0,
+					"y": 808.0
 				},
 				{
 					"e": "waterslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/water_001_waterslimelarge",
-					"x": 2904.0,
-					"y": 808.0
+					"x": 3544.0,
+					"y": 760.0
 				},
 				{
-					"e": "waterslimelarge",
+					"e": "waterslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_002_waterslimelarge",
-					"x": 2876.0,
-					"y": 790.0
+					"o": "ysortworld/enemies/water_002_waterslime",
+					"x": 3516.0,
+					"y": 742.0
 				},
 				{
 					"e": "waterslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/water_003_waterslime",
-					"x": 2932.0,
-					"y": 790.0
-				},
-				{
-					"e": "waterslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/water_004_waterslime",
-					"x": 2876.0,
-					"y": 828.0
-				},
-				{
-					"e": "waterslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/water_005_waterslime",
-					"x": 2932.0,
-					"y": 828.0
-				},
-				{
-					"e": "waterslimelarge",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/water_006_waterslimelarge",
-					"x": 3624.0,
-					"y": 840.0
-				},
-				{
-					"e": "waterslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/water_007_waterslime",
-					"x": 3596.0,
-					"y": 822.0
-				},
-				{
-					"e": "waterslime",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/water_008_waterslime",
-					"x": 3652.0,
-					"y": 822.0
+					"x": 3572.0,
+					"y": 742.0
 				},
 				{
 					"e": "waterbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_009_waterbushsniper",
-					"x": 1832.0,
-					"y": 856.0
+					"o": "ysortworld/enemies/water_004_waterbushsniper",
+					"x": 4760.0,
+					"y": 792.0
 				},
 				{
 					"e": "waterbushsniper",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_010_waterbushsniper",
-					"x": 1804.0,
-					"y": 838.0
+					"o": "ysortworld/enemies/water_005_waterbushsniper",
+					"x": 4732.0,
+					"y": 774.0
 				},
 				{
 					"e": "watersprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_011_watersprite",
-					"x": 1860.0,
-					"y": 838.0
+					"o": "ysortworld/enemies/water_006_watersprite",
+					"x": 4788.0,
+					"y": 774.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_007_waterslimelarge",
+					"x": 5448.0,
+					"y": 1288.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_008_waterslimelarge",
+					"x": 5420.0,
+					"y": 1270.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_009_waterslime",
+					"x": 5476.0,
+					"y": 1270.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_010_waterslime",
+					"x": 5420.0,
+					"y": 1308.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_011_waterslime",
+					"x": 5476.0,
+					"y": 1308.0
 				},
 				{
 					"e": "waterbushmage",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/water_012_waterbushmage",
-					"x": 2056.0,
-					"y": 824.0
+					"x": 3560.0,
+					"y": 1224.0
 				},
 				{
 					"e": "waterfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/water_013_waterfiresprite",
-					"x": 2028.0,
-					"y": 806.0
+					"x": 3532.0,
+					"y": 1206.0
 				},
 				{
 					"e": "waterfiresprite",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/water_014_waterfiresprite",
-					"x": 2084.0,
-					"y": 806.0
+					"x": 3588.0,
+					"y": 1206.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_015_waterslimelarge",
+					"x": 3368.0,
+					"y": 2072.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_016_waterslimelarge",
+					"x": 3340.0,
+					"y": 2054.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_017_waterslime",
+					"x": 3396.0,
+					"y": 2054.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_018_waterslime",
+					"x": 3340.0,
+					"y": 2092.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_019_waterslime",
+					"x": 3396.0,
+					"y": 2092.0
 				},
 				{
 					"e": "watersprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_015_watersprite",
-					"x": 3320.0,
-					"y": 1832.0
+					"o": "ysortworld/enemies/water_020_watersprite",
+					"x": 3512.0,
+					"y": 1992.0
 				},
 				{
 					"e": "watersprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_016_watersprite",
-					"x": 3292.0,
-					"y": 1814.0
+					"o": "ysortworld/enemies/water_021_watersprite",
+					"x": 3484.0,
+					"y": 1974.0
 				},
 				{
 					"e": "waterfiresprite",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/water_017_waterfiresprite",
-					"x": 3348.0,
-					"y": 1814.0
+					"o": "ysortworld/enemies/water_022_waterfiresprite",
+					"x": 3540.0,
+					"y": 1974.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_023_waterslimelarge",
+					"x": 4584.0,
+					"y": 2264.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_024_waterslimelarge",
+					"x": 4556.0,
+					"y": 2246.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_025_waterslime",
+					"x": 4612.0,
+					"y": 2246.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_026_waterslime",
+					"x": 4556.0,
+					"y": 2284.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_027_waterslime",
+					"x": 4612.0,
+					"y": 2284.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_028_watersprite",
+					"x": 4632.0,
+					"y": 2040.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_029_watersprite",
+					"x": 4604.0,
+					"y": 2022.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_030_watersprite",
+					"x": 4660.0,
+					"y": 2022.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_031_waterslimelarge",
+					"x": 3432.0,
+					"y": 184.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_032_waterslime",
+					"x": 3404.0,
+					"y": 166.0
+				},
+				{
+					"e": "waterslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_033_waterslime",
+					"x": 3460.0,
+					"y": 166.0
+				},
+				{
+					"e": "waterbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_034_waterbushsniper",
+					"x": 4376.0,
+					"y": 312.0
+				},
+				{
+					"e": "waterbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_035_waterbushsniper",
+					"x": 4348.0,
+					"y": 294.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_036_watersprite",
+					"x": 4404.0,
+					"y": 294.0
+				},
+				{
+					"e": "waterbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_037_waterbushmage",
+					"x": 5224.0,
+					"y": 248.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_038_waterfiresprite",
+					"x": 5196.0,
+					"y": 230.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_039_waterfiresprite",
+					"x": 5252.0,
+					"y": 230.0
 				},
 				{
 					"e": "windslimelarge",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/wind_001_windslimelarge",
-					"x": 408.0,
-					"y": 936.0
+					"x": 1192.0,
+					"y": 1944.0
 				},
 				{
-					"e": "windslime",
+					"e": "windslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_002_windslime",
-					"x": 380.0,
-					"y": 918.0
+					"o": "ysortworld/enemies/wind_002_windslimelarge",
+					"x": 1164.0,
+					"y": 1926.0
 				},
 				{
 					"e": "windslime",
 					"gated": false,
 					"leash": 250.0,
 					"o": "ysortworld/enemies/wind_003_windslime",
-					"x": 436.0,
-					"y": 918.0
+					"x": 1164.0,
+					"y": 1964.0
 				},
 				{
-					"e": "windbushsniper",
+					"e": "windslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_004_windbushsniper",
-					"x": 584.0,
-					"y": 808.0
+					"o": "ysortworld/enemies/wind_004_windslime",
+					"x": 1192.0,
+					"y": 1980.0
 				},
 				{
-					"e": "windbushsniper",
+					"e": "windslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_005_windbushsniper",
-					"x": 556.0,
-					"y": 790.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_006_windsprite",
-					"x": 612.0,
-					"y": 790.0
-				},
-				{
-					"e": "windbushmage",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_007_windbushmage",
-					"x": 344.0,
-					"y": 3336.0
-				},
-				{
-					"e": "windfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_008_windfiresprite",
-					"x": 316.0,
-					"y": 3318.0
-				},
-				{
-					"e": "windfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_009_windfiresprite",
-					"x": 372.0,
-					"y": 3318.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_010_windsprite",
-					"x": 616.0,
-					"y": 3528.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_011_windsprite",
-					"x": 588.0,
-					"y": 3510.0
-				},
-				{
-					"e": "windfiresprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_012_windfiresprite",
-					"x": 644.0,
-					"y": 3510.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_013_windsprite",
-					"x": 456.0,
-					"y": 2936.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_014_windsprite",
-					"x": 428.0,
-					"y": 2918.0
-				},
-				{
-					"e": "windsprite",
-					"gated": false,
-					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_015_windsprite",
-					"x": 484.0,
-					"y": 2918.0
+					"o": "ysortworld/enemies/wind_005_windslime",
+					"x": 1192.0,
+					"y": 1908.0
 				},
 				{
 					"e": "windslimelarge",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_016_windslimelarge",
-					"x": 300.0,
-					"y": 2726.0
+					"o": "ysortworld/enemies/wind_006_windslimelarge",
+					"x": 648.0,
+					"y": 2200.0
 				},
 				{
 					"e": "windslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_017_windslime",
+					"o": "ysortworld/enemies/wind_007_windslime",
+					"x": 620.0,
+					"y": 2182.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_008_windslime",
+					"x": 676.0,
+					"y": 2182.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_009_windslimelarge",
+					"x": 1752.0,
+					"y": 1976.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_010_windslimelarge",
+					"x": 1724.0,
+					"y": 1958.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_011_windslime",
+					"x": 1780.0,
+					"y": 1958.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_012_windslime",
+					"x": 1780.0,
+					"y": 1996.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_013_windslime",
+					"x": 1752.0,
+					"y": 2012.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_014_windbushsniper",
+					"x": 1420.0,
+					"y": 2118.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_015_windbushsniper",
+					"x": 1420.0,
+					"y": 2156.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_016_windsprite",
+					"x": 1476.0,
+					"y": 2156.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_017_windslimelarge",
+					"x": 2840.0,
+					"y": 1960.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_018_windslimelarge",
+					"x": 2812.0,
+					"y": 1942.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_019_windslime",
+					"x": 2868.0,
+					"y": 1942.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_020_windslime",
+					"x": 2868.0,
+					"y": 1980.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_021_windslime",
+					"x": 2840.0,
+					"y": 1996.0
+				},
+				{
+					"e": "windbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_022_windbushmage",
+					"x": 2488.0,
+					"y": 2184.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_023_windfiresprite",
+					"x": 2460.0,
+					"y": 2166.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_024_windfiresprite",
+					"x": 2516.0,
+					"y": 2166.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_025_windslimelarge",
+					"x": 1112.0,
+					"y": 4392.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_026_windslimelarge",
+					"x": 1084.0,
+					"y": 4374.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_027_windslime",
+					"x": 1140.0,
+					"y": 4374.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_028_windslime",
+					"x": 1084.0,
+					"y": 4412.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_029_windslime",
+					"x": 1140.0,
+					"y": 4412.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_030_windsprite",
+					"x": 1032.0,
+					"y": 4216.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_031_windsprite",
+					"x": 1004.0,
+					"y": 4198.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_032_windfiresprite",
+					"x": 1060.0,
+					"y": 4198.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_033_windslimelarge",
+					"x": 1512.0,
+					"y": 4168.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_034_windslimelarge",
+					"x": 1484.0,
+					"y": 4150.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_035_windslime",
+					"x": 1540.0,
+					"y": 4150.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_036_windslime",
+					"x": 1484.0,
+					"y": 4188.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_037_windslime",
+					"x": 1540.0,
+					"y": 4188.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_038_windsprite",
+					"x": 1688.0,
+					"y": 4264.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_039_windsprite",
+					"x": 1660.0,
+					"y": 4246.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_040_windsprite",
+					"x": 1716.0,
+					"y": 4246.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_041_windslimelarge",
+					"x": 2680.0,
+					"y": 3912.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_042_windslimelarge",
+					"x": 2652.0,
+					"y": 3894.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_043_windslime",
+					"x": 2708.0,
+					"y": 3894.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_044_windslime",
+					"x": 2652.0,
+					"y": 3932.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_045_windslime",
+					"x": 2708.0,
+					"y": 3932.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_046_windslimelarge",
+					"x": 2488.0,
+					"y": 4120.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_047_windslime",
+					"x": 2460.0,
+					"y": 4102.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_048_windslime",
+					"x": 2516.0,
+					"y": 4102.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_049_windbushsniper",
+					"x": 328.0,
+					"y": 1144.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_050_windbushsniper",
+					"x": 300.0,
+					"y": 1126.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_051_windsprite",
 					"x": 356.0,
-					"y": 2726.0
+					"y": 1126.0
+				},
+				{
+					"e": "windbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_052_windbushmage",
+					"x": 328.0,
+					"y": 2984.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_053_windfiresprite",
+					"x": 300.0,
+					"y": 2966.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_054_windfiresprite",
+					"x": 300.0,
+					"y": 3004.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_055_windsprite",
+					"x": 248.0,
+					"y": 4696.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_056_windsprite",
+					"x": 220.0,
+					"y": 4678.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_057_windfiresprite",
+					"x": 276.0,
+					"y": 4678.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_058_windsprite",
+					"x": 1160.0,
+					"y": 296.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_059_windsprite",
+					"x": 1132.0,
+					"y": 278.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_060_windsprite",
+					"x": 1188.0,
+					"y": 278.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_061_windslimelarge",
+					"x": 2120.0,
+					"y": 200.0
 				},
 				{
 					"e": "windslime",
 					"gated": false,
 					"leash": 250.0,
-					"o": "ysortworld/enemies/wind_018_windslime",
-					"x": 300.0,
-					"y": 2764.0
+					"o": "ysortworld/enemies/wind_062_windslime",
+					"x": 2092.0,
+					"y": 182.0
+				},
+				{
+					"e": "windslime",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_063_windslime",
+					"x": 2148.0,
+					"y": 182.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_064_windbushsniper",
+					"x": 2968.0,
+					"y": 248.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_065_windbushsniper",
+					"x": 2940.0,
+					"y": 230.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_066_windsprite",
+					"x": 2996.0,
+					"y": 230.0
 				}
 			]
 		},
@@ -3450,7 +5482,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 4,
+			"placed_count": 6,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/bushmage.tres",
@@ -3546,7 +5578,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 5,
+			"placed_count": 4,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darkbushmage.tres",
@@ -3594,7 +5626,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 12,
+			"placed_count": 14,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darkbushsniper.tres",
@@ -3636,7 +5668,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 16,
+			"placed_count": 14,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darkfiresprite.tres",
@@ -3678,7 +5710,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 40,
+			"placed_count": 50,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darkslime.tres",
@@ -3713,7 +5745,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 72,
 			"pet_odds_override": 0,
-			"placed_count": 4,
+			"placed_count": 5,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darkslimelarge.tres",
@@ -3755,7 +5787,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 33,
+			"placed_count": 34,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/darksprite.tres",
@@ -3852,7 +5884,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 7,
+			"placed_count": 13,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/earthbushsniper.tres",
@@ -3894,7 +5926,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 6,
+			"placed_count": 12,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/earthfiresprite.tres",
@@ -3936,7 +5968,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 36,
+			"placed_count": 170,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/earthslime.tres",
@@ -3971,7 +6003,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 4,
+			"placed_count": 18,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/earthslimelarge.tres",
@@ -4013,7 +6045,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 216,
 			"pet_odds_override": 0,
-			"placed_count": 6,
+			"placed_count": 12,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/earthsprite.tres",
@@ -4157,7 +6189,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 13,
+			"placed_count": 14,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/firebushmage.tres",
@@ -4205,7 +6237,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 216,
 			"pet_odds_override": 216,
-			"placed_count": 56,
+			"placed_count": 63,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/firesprite.tres",
@@ -4349,7 +6381,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 2,
+			"placed_count": 4,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/icebushsniper.tres",
@@ -4433,7 +6465,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 29,
+			"placed_count": 77,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/iceslime.tres",
@@ -4468,7 +6500,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 8,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/iceslimelarge.tres",
@@ -4510,7 +6542,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 7,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/icesprite.tres",
@@ -4606,7 +6638,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 1,
+			"placed_count": 2,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightbushmage.tres",
@@ -4654,7 +6686,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 4,
+			"placed_count": 6,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightbushsniper.tres",
@@ -4696,7 +6728,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 6,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightfiresprite.tres",
@@ -4738,7 +6770,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 20,
+			"placed_count": 144,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightslime.tres",
@@ -4773,7 +6805,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 2,
+			"placed_count": 15,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightslimelarge.tres",
@@ -4815,7 +6847,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 7,
+			"placed_count": 13,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/lightsprite.tres",
@@ -4933,7 +6965,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 0,
 			"pet_odds_override": 0,
-			"placed_count": 8,
+			"placed_count": 9,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/skeletonelite.tres",
@@ -4981,7 +7013,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 0,
 			"pet_odds_override": 0,
-			"placed_count": 42,
+			"placed_count": 94,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/skeletonsoldier.tres",
@@ -5077,7 +7109,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 1,
+			"placed_count": 2,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/waterbushmage.tres",
@@ -5125,7 +7157,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 2,
+			"placed_count": 4,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/waterbushsniper.tres",
@@ -5167,7 +7199,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 5,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/waterfiresprite.tres",
@@ -5209,7 +7241,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 29,
+			"placed_count": 77,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/waterslime.tres",
@@ -5244,7 +7276,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 8,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/waterslimelarge.tres",
@@ -5286,7 +7318,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 648,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 7,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/watersprite.tres",
@@ -5382,7 +7414,7 @@
 			"pet_drop_id": "petmage",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 1,
+			"placed_count": 2,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windbushmage.tres",
@@ -5430,7 +7462,7 @@
 			"pet_drop_id": "petsniper",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 2,
+			"placed_count": 6,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windbushsniper.tres",
@@ -5472,7 +7504,7 @@
 			"pet_drop_id": "petfiresprite",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 3,
+			"placed_count": 6,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windfiresprite.tres",
@@ -5514,7 +7546,7 @@
 			"pet_drop_id": "petpoisonslimesmall",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 20,
+			"placed_count": 144,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windslime.tres",
@@ -5549,7 +7581,7 @@
 			"pet_drop_id": "",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 2,
+			"placed_count": 15,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windslimelarge.tres",
@@ -5591,7 +7623,7 @@
 			"pet_drop_id": "petelectricsprite",
 			"pet_odds": 1296,
 			"pet_odds_override": 0,
-			"placed_count": 6,
+			"placed_count": 13,
 			"rare_pet_chance": 0.25,
 			"rare_pet_drop_id": "",
 			"resource": "res://data/enemies/windsprite.tres",

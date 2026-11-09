@@ -551,6 +551,7 @@ func _test_the_big_field_draws_only_near_the_view() -> void:
 	var frames: int = await _settle(helper)
 	var near_arrival: Array = _chunks_wrong(helper, true)
 	var shown_arrival: int = int(helper.call("shown"))
+	var touching_arrival: int = _chunks_touching(helper)
 	check("at the arrival (zoom 3): every chunk whose reach touches the view is shown, every far one hidden - %d of %d shown"
 		% [shown_arrival, chunks.size()], in_view_first.is_empty() and near_arrival.is_empty() and shown_arrival * 4 < chunks.size(),
 		[in_view_first.slice(0, 2), near_arrival.slice(0, 4)])
@@ -586,10 +587,14 @@ func _test_the_big_field_draws_only_near_the_view() -> void:
 	await _settle(helper)
 	wrong_wide.append_array(_chunks_wrong(helper, true))
 	var shown_wide: int = int(helper.call("shown"))
+	# More touch the wider view than the close one. (Not "more shown": a chunk
+	# between SHOW_MARGIN and HIDE_MARGIN keeps what it was, so the close
+	# count can carry a few from the jump - the chip's open die, 0.134.9.)
 	check("zoomed all the way out (1x, %s): the wider view's chunks are shown in the frame - %d of %d"
 		% [helper.call("view_rect").size, shown_wide, chunks.size()],
 		wrong_wide.is_empty() and (helper.call("view_rect") as Rect2).size.x > 1000.0
-		and shown_wide >= shown_arrival and shown_wide < chunks.size(), wrong_wide.slice(0, 4))
+		and _chunks_touching(helper) > touching_arrival and shown_wide < chunks.size(),
+		[wrong_wide.slice(0, 4), touching_arrival, _chunks_touching(helper)])
 
 	# ---- a hidden wall is still a wall -------------------------------------------
 	var hidden_wall: Node2D = null
@@ -656,6 +661,16 @@ func _settle(helper: Node) -> int:
 		await get_tree().process_frame
 		frames += 1
 	return frames
+
+
+func _chunks_touching(helper: Node) -> int:
+	"""How many chunks' reach touches a helper's view."""
+	var view: Rect2 = helper.call("view_rect")
+	var count: int = 0
+	for reach in helper.get("_reaches"):
+		if (reach as Rect2).intersects(view, true):
+			count += 1
+	return count
 
 
 func _chunks_wrong(helper: Node, settled: bool) -> Array:
@@ -1344,7 +1359,8 @@ func _test_the_waystones() -> void:
 			bad.append([stone["id"], floor_ok, roundi(nearest)])
 	check("seven waystones, each on open floor and 250 px or more from every monster the Big Field places",
 		Ways.STONES.size() == 7 and bad.is_empty() and ids.has("crossroads"), bad)
-	var arrival := Vector2(1832, 2384)
+	# Where you land, from the build file (the portal's marker stands 8 px under it).
+	var arrival := Vector2(float(plan["arrival"][0]), float(plan["arrival"][1]) + 8.0)
 	check("  the Crossroads' is lit as you arrive: within the map's reveal of the arrival",
 		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival) < 16.0 * WorldMap.SEEN_RADIUS - 8.0,
 		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival))
@@ -5345,7 +5361,40 @@ func _test_the_crowned_falls_apart() -> void:
 		and float(phases.get("wheel_t")) < 0.0)
 	# ---- the Tear --------------------------------------------------------------------
 	lands.set("hazards", [])
+	# A wheel turning when the Trap ends fades out with it (0.134.9: it was
+	# stepped only in the Trap and stood frozen through the Tear).
+	phases.call("begin_wheel", body)
+	phases.set("wheel_t", Phases.WHEEL_WARN + 1.0)
+	var wheel_hits_were: int = int(lands.get("env_hits"))
 	phases.call("step", 0.016, 0.2)
+	var wheel_fading: bool = float(phases.get("wheel_t")) >= Phases.WHEEL_WARN + Phases.WHEEL_SECONDS - Phases.WHEEL_FADE
+	phases.set("wheel_angle", (body.global_position - (phases.call("wheel_eye") as Vector2)).angle())
+	lands.set("_touch_left", 0.0)
+	phases.set("_wheel_hit_left", 0.0)
+	phases.call("step", Phases.WHEEL_FADE + 0.02, 0.2)
+	check("  a wheel turning when the Trap ends fades with it - harmless - and is gone in %.1f s, not frozen through the Tear" % Phases.WHEEL_FADE,
+		wheel_fading and float(phases.get("wheel_t")) < 0.0 and int(lands.get("env_hits")) == wheel_hits_were)
+	phases.call("begin_wheel", body)
+	phases.call("_wheel_out")
+	check("  and one still warning is simply gone", float(phases.get("wheel_t")) < 0.0)
+	# No X in this room (0.134.9, "i thought we got rid of x laser"): a deep
+	# floor's laser comes alone here, crossed in the Descent.
+	lands.set("hazards", [])
+	lands.set("_queue", [[0.0, "laser"]])
+	lands.call("_send_queued", 0.016, body)
+	var crowned_beams: Array = (lands.get("hazards") as Array).filter(func(h: Dictionary) -> bool: return str(h["k"]) == "laser")
+	var descent_lands: Node2D = LandsScript.new()
+	room.add_child(descent_lands)
+	descent_lands.set("env_floor", LandsScript.LASER_TWO_FROM)
+	descent_lands.set("_queue", [[0.0, "laser"]])
+	descent_lands.call("_send_queued", 0.016, body)
+	var descent_beams: Array = (descent_lands.get("hazards") as Array).filter(func(h: Dictionary) -> bool: return str(h["k"]) == "laser")
+	descent_lands.queue_free()
+	check("  no X of lasers in the Crowned's room: its floor's laser comes alone (%d beam), the Descent's still crosses (%d)" % [crowned_beams.size(), descent_beams.size()],
+		lands.get("crosses") == false and int(lands.get("env_floor")) >= LandsScript.LASER_TWO_FROM
+		and crowned_beams.size() == 1 and not (crowned_beams[0] as Dictionary).has("x_with")
+		and descent_beams.size() == 2 and (descent_beams[1] as Dictionary).has("x_with"))
+	lands.set("hazards", [])
 	var horde_gone: bool = phases.get("swarm") == null
 	phases.set("_tear_left", 0.0)
 	var feet: Vector2 = body.global_position + Vector2(0, 10)

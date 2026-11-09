@@ -183,9 +183,9 @@ const WINGS := {
 	Element.Type.WIND: ["the Courts", "west"],
 	Element.Type.WATER: ["the Chasm", "north"],
 	Element.Type.ICE: ["the Chasm", "north"],
-	Element.Type.EARTH: ["the Caverns", "north-east"],
-	Element.Type.FIRE: ["the Fortress", "south-east"],
-	Element.Type.DARK: ["the Descent", "east"],
+	Element.Type.EARTH: ["the Caverns", "east"],
+	Element.Type.FIRE: ["the Fortress", "south"],
+	Element.Type.DARK: ["the Descent", "south-east"],
 }
 
 
@@ -200,7 +200,7 @@ func land_name() -> String:
 
 
 func line() -> String:
-	"""The HUD's line: 'The Fire lands stir in the Fortress, south-east - 2h
+	"""The HUD's line: 'The Fire lands stir in the Fortress, south - 2h
 	14m left', or '' for none. Where since 0.97.1: a stir is worth a trip."""
 	if stirring() == 0:
 		return ""

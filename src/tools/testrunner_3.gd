@@ -266,7 +266,7 @@ func _test_stirring_lands() -> void:
 	next_tick["tick"] = 13
 	check("  the same land as a new stir is", Lands.apply(next_tick))
 	check("the line on the HUD counts down on the server's clock",
-		Lands.line() == "The Fire lands stir in the Fortress, south-east - 2h 14m left", Lands.line())
+		Lands.line() == "The Fire lands stir in the Fortress, south - 2h 14m left", Lands.line())
 	check("  and what it does, in words, from the numbers sent",
 		Lands.effects_line() == "Fire monsters hit 25% harder, have 50% more health, move 15% faster and drop loot 1.5x as often; fire resistance counts 1.5x.",
 		Lands.effects_line())
@@ -411,7 +411,7 @@ func _test_stirring_lands() -> void:
 		"latest_id": 5, "world": fire})
 	var chip: PanelContainer = hud.world_chip
 	check("logging in during a stir: the line under the top of the screen, in fire's colour, and no banner",
-		chip != null and chip.visible and hud.world_label.text == "The Fire lands stir in the Fortress, south-east - 2h 14m left"
+		chip != null and chip.visible and hud.world_label.text == "The Fire lands stir in the Fortress, south - 2h 14m left"
 		and hud.world_label.get_theme_color("font_color").is_equal_approx(Element.colour_for(Element.Type.FIRE).lightened(0.35))
 		and (hud.mythic_banner == null or not is_instance_valid(hud.mythic_banner)), hud.world_label.text if hud.world_label else "")
 	var water: Dictionary = fire.duplicate()

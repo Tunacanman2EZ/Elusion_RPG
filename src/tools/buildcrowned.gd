@@ -198,6 +198,7 @@ func _victory(interactables: Node) -> void:
 	shape.disabled = true
 	_own(shape, door)
 	door.connect("body_entered", Callable(door, "_on_body_entered"), CONNECT_PERSIST)
+	door.connect("body_exited", Callable(door, "_on_body_exited"), CONNECT_PERSIST)
 
 
 # =============================================================================

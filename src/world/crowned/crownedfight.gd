@@ -111,6 +111,9 @@ func _ready() -> void:
 	lands.name = "crownlands"
 	lands.z_index = -1
 	lands.set("run", self)
+	# No X of lasers in this room: its floor's lasers come one at a time
+	# (0.134.9, "i thought we got rid of x laser").
+	lands.set("crosses", false)
 	add_child(lands)
 	phases = PhasesScript.new()
 	phases.name = "crownphases"

@@ -31,7 +31,7 @@ import walls
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 22
 OUT = sys.argv[2] if len(sys.argv) > 2 else "out"
 rng = random.Random(SEED)
-TW, TH = 385, 322
+TW, TH = 540, 450
 TILE = 16
 CLR = 5            # cells of rock kept inside a shape (tidy)
 CLR_X, CLR_Y = 3, 4   # rock between two places that do not join: two columns
@@ -524,51 +524,90 @@ def carve(x, y, w, h, wing, kind, shape="rect"):
 
 
 # =============================================================================
-# THE PLAN
+# THE PLAN - THE MICROCHIP (0.134.9)
 # =============================================================================
+# The owner, 9 Nov: "we need this map to be 2x larger so we can have more
+# enemies", then "get rid of long walk ways and connect all the areas", "build
+# it like a microchip design", "make sure walkways are symetrical" and "we do
+# not need so many walkways". He approved the sketch (the commit folder's
+# bigfield_microchip_plan.py); this is it, built to be walled.
+#
+# 540 x 450 cells, twice the old floor. THE DIE - the Crossroads, where you
+# arrive - in the very middle, pinned out two a side. Round it a block of the
+# chip on every side, each the mirror of the block across the middle:
+#
+#   NW  courts' halls   N  the chasm, its rift   NE  the caverns' cache
+#   W   courts' plazas     THE DIE               E   the arena
+#   SW  the crypt       S  the fortress          SE  the descent's rings
+#
+# and a ring of pads round the edge, pad to pad. EVERY WAY IS A STRAIGHT
+# TRACE across a gap (link()), its middle on a line whose mirror - left to
+# right and top to bottom - carries one too. Inside a block the rows are
+# joined across and only the middle column (the middle two, if there is no
+# middle) joins them down: a comb, every room reachable, few ways.
 WING = {  # wing: (tier, box)
-    "courts": (1, (3, 24, 84, 244)),
-    "chasm": (2, (96, 3, 238, 120)),
-    "caverns": (3, (256, 3, 382, 126)),
-    "fortress": (4, (148, 182, 292, 319)),
-    "descent": (5, (296, 132, 383, 319)),
-    "crypt": (0, (3, 250, 142, 319)),
+    "courts": (1, (34, 34, 182, 294)),
+    "chasm": (2, (196, 34, 344, 150)),
+    "caverns": (3, (358, 34, 506, 294)),
+    "fortress": (4, (196, 300, 344, 416)),
+    "descent": (5, (358, 308, 506, 416)),
+    "crypt": (0, (34, 308, 182, 416)),
 }
 wings = {k: [] for k in WING}
 DOOR_W = 6      # a crypt door's corridor: pillar, door, pillar
+TRACE_W = 6     # a way between rooms
+BOND_W = 4      # a pad's ways
+RING = 16       # the pads' line, in from every edge
+MID_X, MID_Y = TW // 2, TH // 2
 
 
-# THE CROSSROADS: a big hall, you arrive in its middle
-hub = place(np.ones((34, 50), bool), 90, 132, "hub", "hub", "rect")
+def _owned(rid, axis, lo, w):
+    """The rows (a way down) or columns (across) where room rid fills the
+    whole width of a way from lo to lo + w."""
+    if axis == "v":
+        band = owner[:, lo:lo + w] == rid
+        return [int(i) for i in np.nonzero(band.all(axis=1))[0]]
+    band = owner[lo:lo + w, :] == rid
+    return [int(i) for i in np.nonzero(band.all(axis=0))[0]]
 
-# ---- the places that do not move: each wing's way in, the rift, the rings
-cx0, cy0, cx1, cy1 = WING["chasm"][1]
-HALL_X, HALL_W = cx0 + 8, (cx1 - cx0) - 16
-north_hall = carve(HALL_X, 46, HALL_W, 12, "chasm", "bank")
-RIFT_TOP = north_hall["y"] + north_hall["h"]          # first cliff row
-RIFT_ROWS = 9                                         # 2 of cliff, 7 of dark
-south_hall = carve(HALL_X, RIFT_TOP + RIFT_ROWS, HALL_W, 12, "chasm", "bank")
-reserved[RIFT_TOP:RIFT_TOP + RIFT_ROWS, HALL_X:HALL_X + HALL_W] = True
-chasm_open[RIFT_TOP:RIFT_TOP + RIFT_ROWS, HALL_X:HALL_X + HALL_W] = True
-bridges = []
-for k in range(3):
-    bx = HALL_X + int(HALL_W * (k + 1) / 4) - 2 + rng.randint(-8, 8)
-    bridges.append(bx)
-    floor[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = True
-    owner[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = north_hall["id"]
-    reserved[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = False
-wings["chasm"] += [north_hall, south_hall]
 
-courts_hall = carve(48, 134, 24, 20, "courts", "room", "hall")
-wings["courts"].append(courts_hall)
-caverns_gate = carve(262, 104, 24, 18, "caverns", "room")
-wings["caverns"].append(caverns_gate)
-
-fx0, fy0, fx1, fy1 = WING["fortress"][1]
-gatehouse = carve(fx0 + 2, fy0 + 26, 18, 22, "fortress", "gatehouse")
-wings["fortress"].append(gatehouse)
-
-dx0, dy0, dx1, dy1 = WING["descent"][1]
+def link(a, b, axis, at, w=TRACE_W, tag="way", door=False):
+    """A straight way from room a to room b, its middle on line `at` (x for
+    a way down, "v"; y for one across, "h"): across the nearest gap between
+    them that is rock all the way."""
+    lo = at - w // 2
+    ra_all, rb_all = _owned(a["id"], axis, lo, w), _owned(b["id"], axis, lo, w)
+    best = None
+    for ra in ra_all:
+        for rb in rb_all:
+            if abs(rb - ra) < 2:
+                continue
+            s, e = min(ra, rb) + 1, max(ra, rb)
+            gap = (floor[s:e, lo:lo + w] if axis == "v" else floor[lo:lo + w, s:e])
+            if gap.any():
+                continue
+            if best is None or e - s < best[2]:
+                best = (ra, rb, e - s)
+    if best is None:
+        print("  no straight way", tag, a["id"], b["id"], axis, at)
+        return None
+    ra, rb, _ = best
+    step = 1 if rb > ra else -1
+    # the squares the way is carved in, from a's side to b's, each w across
+    if step > 0:
+        along = list(range(ra, rb - w + 2))
+    else:
+        along = list(range(ra - w + 1, rb - 1, -1))
+    path = [(lo, p) if axis == "v" else (p, lo) for p in along]
+    rec = _carve_way(a, b, w, path, tag)
+    rec["door"] = door
+    if door:
+        # where its columns run: the rock between the two rooms (the door
+        # plans read it here - this way's path starts inside the die)
+        rec["door_end"] = "a"
+        rec["span"] = (min(ra, rb) + 1, max(ra, rb))
+        rec["near_hub"] = rec["span"][1] if step < 0 else rec["span"][0]
+    return rec
 
 
 def ring(x, y, w, h, t, kind):
@@ -577,175 +616,161 @@ def ring(x, y, w, h, t, kind):
     return place(m, x, y, "descent", kind, "ring")
 
 
-outer = ring(dx0 + 3, dy0 + 4, 82, 180, 9, "outer ring")
-inner = ring(dx0 + 22, dy0 + 25, 44, 138, 8, "inner ring")
-heart = carve(dx0 + 37, dy0 + 82, 14, 24, "descent", "heart")
+def block(wing, box, cols, rows, shape="rect", gap=8, kind="room"):
+    """cols x rows rooms filling box evenly, symmetric within it; each row
+    joined across, the middle column(s) joining the rows."""
+    x0, y0, x1, y1 = box
+    cw = (x1 - x0 - gap * (cols - 1)) // cols
+    ch = (y1 - y0 - gap * (rows - 1)) // rows
+    ox = x0 + ((x1 - x0) - (cols * cw + gap * (cols - 1))) // 2
+    oy = y0 + ((y1 - y0) - (rows * ch + gap * (rows - 1))) // 2
+    cells = {}
+    for i in range(cols):
+        for j in range(rows):
+            m = SHAPES[shape](cw, ch)
+            if not wallable(m):
+                print("  not wallable:", wing, shape, cw, ch)
+            cells[(i, j)] = place(m, ox + i * (cw + gap), oy + j * (ch + gap), wing, kind, shape)
+            cells[(i, j)]["mid_x"] = ox + i * (cw + gap) + cw // 2
+            cells[(i, j)]["mid_y"] = oy + j * (ch + gap) + ch // 2
+    wings[wing] += list(cells.values())
+    spine = {cols // 2} if cols % 2 else {cols // 2 - 1, cols // 2}
+    for (i, j), r in cells.items():
+        if (i + 1, j) in cells:
+            link(r, cells[(i + 1, j)], "h", r["mid_y"], tag=wing)
+        if (i, j + 1) in cells and i in spine:
+            link(r, cells[(i, j + 1)], "v", r["mid_x"], tag=wing)
+    return cells
+
+
+# THE DIE
+hub = place(shape_octa(112, 106), 214, 172, "hub", "hub", "octa")
+# NW AND W: the courts - pillared halls above, plazas below
+courts_n = block("courts", (34, 34, 182, 142), 3, 2, "hall")
+courts_w = block("courts", (34, 156, 182, 294), 3, 2, "octa")
+# SW: the crypt, the skeletons' cells
+crypt = block("crypt", (34, 308, 182, 416), 5, 3)
+# NE AND E: the caverns' cache, and the arena
+caves = block("caverns", (358, 34, 506, 142), 3, 2)
+arena = place(shape_octa(148, 138), 358, 156, "caverns", "arena", "octa")
+wings["caverns"].append(arena)
+# N: THE CHASM - a row above, the north bank, the rift and its three bridges,
+# the south bank, a row below
+HALL_X, HALL_W = 196, 148
+chasm_top = block("chasm", (196, 34, 344, 64), 4, 1)
+north_hall = carve(HALL_X, 72, HALL_W, 12, "chasm", "bank")
+RIFT_TOP = north_hall["y"] + north_hall["h"]          # first cliff row
+RIFT_ROWS = 9                                         # 2 of cliff, 7 of dark
+south_hall = carve(HALL_X, RIFT_TOP + RIFT_ROWS, HALL_W, 12, "chasm", "bank")
+reserved[RIFT_TOP:RIFT_TOP + RIFT_ROWS, HALL_X:HALL_X + HALL_W] = True
+chasm_open[RIFT_TOP:RIFT_TOP + RIFT_ROWS, HALL_X:HALL_X + HALL_W] = True
+bridges = [MID_X - 52, MID_X - 2, MID_X + 48]         # 4 wide: their middles 50 either side of the middle
+for bx in bridges:
+    floor[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = True
+    owner[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = north_hall["id"]
+    reserved[RIFT_TOP:RIFT_TOP + RIFT_ROWS, bx:bx + 4] = False
+wings["chasm"] += [north_hall, south_hall]
+# the row below stops 22 short of the die, and the fortress starts 22 past
+# it - the die's pins up and down are crypt doors, which need the length
+chasm_low = block("chasm", (196, 113, 344, 150), 4, 1)
+for k in (0, 3):       # the banks from the outer rooms; the bridges in the middle
+    link(chasm_top[(k, 0)], north_hall, "v", chasm_top[(k, 0)]["mid_x"], tag="chasm")
+    link(south_hall, chasm_low[(k, 0)], "v", chasm_low[(k, 0)]["mid_x"], tag="chasm")
+# S: THE FORTRESS - a memory array of halls
+halls = block("fortress", (196, 300, 344, 416), 4, 3)
+gatehouse = halls[(0, 1)]
+# SE: THE DESCENT - two rings and the ladder at the heart
+outer = ring(358, 308, 148, 108, 12, "outer ring")
+inner = ring(386, 332, 92, 60, 11, "inner ring")
+heart = carve(MID_X * 2 - 108 - 13, 352, 26, 20, "descent", "heart")
 wings["descent"] += [outer, inner, heart]
+DESCENT_X = MID_X * 2 - 108      # the descent's middle line: the mirror of the courts'
+for (a, b) in ((outer, inner), (inner, heart)):
+    link(a, b, "v", DESCENT_X, tag="descent:down")
+for (a, b) in ((heart, inner), (inner, outer)):
+    link(a, b, "v", DESCENT_X, tag="descent:up")
 
-kx0, ky0, kx1, ky1 = WING["crypt"][1]
-crypt_grid = {}
-kcw, kch = (kx1 - kx0 - 4) // 4, (ky1 - ky0 - 2) // 2
+# THE DIE'S PINS: two a side, each with its mirror. Up and down they are the
+# crypt doors (pillar, door, pillar), as the hub's ways out always were.
+# The die's top and bottom are flat only 40 cells across (its corners step
+# twice), so its pins up and down stand 12 either side of the middle.
+PIN_X = [MID_X - 12, MID_X + 12]
+for k, x in enumerate(PIN_X):
+    link(hub, chasm_low[(1 + k, 0)], "v", x, w=DOOR_W, tag="entry:chasm%d" % (k + 1), door=True)
+    link(hub, halls[(1 + k, 0)], "v", x, w=DOOR_W, tag="entry:fortress%d" % (k + 1), door=True)
+PIN_Y = [MID_Y - 24, MID_Y + 24]
+for k, y in enumerate(PIN_Y):
+    link(hub, courts_w[(2, k)], "h", y, tag="entry:courts%d" % (k + 1))
+    link(hub, arena, "h", y, tag="entry:caverns%d" % (k + 1))
+# BETWEEN THE BLOCKS, on mirrored lines
+TOP_Y = chasm_top[(0, 0)]["mid_y"]
+link(courts_n[(2, 0)], chasm_top[(0, 0)], "h", TOP_Y, tag="courts")
+link(chasm_top[(3, 0)], caves[(0, 0)], "h", TOP_Y, tag="chasm")
+link(crypt[(4, 2)], halls[(0, 2)], "h", TH - TOP_Y, tag="crypt")
+link(halls[(3, 2)], outer, "h", TH - TOP_Y, tag="fortress")
+link(courts_n[(1, 1)], courts_w[(1, 0)], "v", 108, tag="courts")
+link(courts_w[(1, 1)], crypt[(2, 0)], "v", 108, tag="crypt")
+link(caves[(1, 1)], arena, "v", TW - 108, tag="caverns")
+link(arena, outer, "v", TW - 108, tag="descent")
 
-
-def crypt_room(i, j):
-    for _ in range(80):
-        w, h = rng.randint(kcw - 14, kcw - 9), rng.randint(kch - 14, kch - 10)
-        x = kx0 + 2 + i * kcw + (kcw - w) // 2
-        y = ky0 + 1 + j * kch + (kch - h) // 2
-        sh = rng.choice(["rect", "L", "plus", "ring", "rect"])
-        m = SHAPES[sh](w, h)
-        if m is not None and free_box(x, y, w, h, gap=8) and wallable(m):
-            crypt_grid[(i, j)] = place(m, x, y, "crypt", "crypt", sh)
-            return
-
-
-crypt_room(2, 0)       # the crypt's door room, under the hub
-wings["crypt"] += list(crypt_grid.values())
-rest = place(shape_rect(20, 16), 58, 196, "rest", "rest", "rect")
-
-# =============================================================================
-# THE HUB'S WAYS OUT, FIRST - the doors on the ones that leave up or down
-# =============================================================================
-
-
-def entry(name, target, sides_a, sides_b=None, w=DOOR_W, door=True, door_end="a"):
-    rec = None
-    for stub in ((16, 12, 10) if door else (6,)):
-        if door_end == "a":
-            rec = route(hub, target, w, sides_a=sides_a, sides_b=sides_b, stub=stub, turn=20)
-        else:
-            rec = route(hub, target, w, sides_a=sides_a, sides_b=sides_b, stub=6, stub_b=stub, turn=20)
-        if rec:
-            break
-    if not rec:
-        print("  no way into", name)
-        return None
-    rec["tag"] = "entry:" + name
-    rec["door"] = door
-    rec["door_end"] = door_end
-    return rec
+# THE PAD RING: a pad on each corner, the same margin every side, the rest
+# evenly between - every side its own mirror - and pad to pad all round.
+PADS_X = [int(round(RING + k * (TW - 2 * RING) / 18)) for k in range(19)]
+PADS_Y = [int(round(RING + k * (TH - 2 * RING) / 15)) for k in range(16)]
 
 
-entry("chasm", south_hall, "N", "S")
-entry("caverns", caverns_gate, "E", "S", door_end="b")
-entry("fortress", gatehouse, "S", "N")
-entry("crypt", crypt_grid.get((2, 0)), "S", "N")
-entry("courts", courts_hall, "W", "E", w=8, door=False)
-entry("descent", outer, "E", "W", w=8, door=False)
-if not route(hub, rest, 6, sides_a="SW", sides_b="NE", turn=30):
-    print("  no way to the rest room")
-
-# =============================================================================
-# THE ROOMS ROUND THEM
-# =============================================================================
-fill("chasm", (cx0, cy0, cx1, north_hall["y"] - 1), 6, ["rect", "L", "octa", "plus"], [3, 2, 2, 1],
-     wr=(16, 26), hr=(14, 22))
-fill("chasm", (cx0, south_hall["y"] + 12, cx1, cy1), 5, ["rect", "L", "octa"], [3, 2, 1],
-     wr=(16, 26), hr=(12, 18))
-arena = add_room("caverns", WING["caverns"][1], ["octa"], [1], "arena", wr=(38, 40), hr=(38, 40), square=True)
-if arena:
-    wings["caverns"].append(arena)
-fill("caverns", WING["caverns"][1], 9, ["cavern", "ring", "octa", "cavern"], [3, 1, 1, 2],
-     wr=(18, 28), hr=(16, 24))
-grid = {}
-cols, rows_ = 4, 3
-cw, ch = (fx1 - fx0 - 34) // cols, (fy1 - fy0 - 4) // rows_
-for i in range(cols):
-    for j in range(rows_):
-        for _ in range(80):
-            w, h = rng.randint(cw - 14, cw - 10), rng.randint(ch - 15, ch - 11)
-            x = fx0 + 32 + i * cw + (cw - w) // 2
-            y = fy0 + 2 + j * ch + (ch - h) // 2
-            sh = rng.choice(["rect", "rect", "hall", "octa"])
-            if sh == "hall" and (w < 26 or h < 20):
-                sh = "rect"
-            m = SHAPES[sh](w, h)
-            if m is not None and free_box(x, y, w, h, gap=8) and wallable(m):
-                grid[(i, j)] = place(m, x, y, "fortress", "room", sh)
-                break
-wings["fortress"] += list(grid.values())
-for i in range(4):
-    for j in range(2):
-        if (i, j) not in crypt_grid:
-            crypt_room(i, j)
-            if (i, j) in crypt_grid:
-                wings["crypt"].append(crypt_grid[(i, j)])
-fill("courts", WING["courts"][1], 11, ["rect", "hall", "octa", "plus", "L"], [3, 3, 2, 1, 1],
-     wr=(20, 30), hr=(18, 26))
-print("rooms:", {k: len(v) for k, v in wings.items()})
-
-# =============================================================================
-# EACH WING JOINED INSIDE ITSELF
-# =============================================================================
-join(list(wings["courts"]), widths=(6, 8, 8), box=WING["courts"][1])
-join([north_hall] + [r for r in wings["chasm"] if r["y"] < north_hall["y"]], widths=(4, 6, 6),
-     box=WING["chasm"][1])
-join([south_hall] + [r for r in wings["chasm"] if r["y"] > south_hall["y"]], widths=(4, 6, 6),
-     box=WING["chasm"][1])
-join(list(wings["caverns"]), widths=(4, 6, 6, 8), box=WING["caverns"][1])
-for (i, j), r in crypt_grid.items():
-    for (di, dj) in ((1, 0), (0, 1)):
-        o = crypt_grid.get((i + di, j + dj))
-        if o and not route(r, o, 4, sides_a="E" if di else "S", sides_b="W" if di else "N", turn=40,
-                           box=WING["crypt"][1]):
-            route(r, o, 4, box=WING["crypt"][1])
-for (i, j), r in grid.items():
-    for (di, dj) in ((1, 0), (0, 1)):
-        o = grid.get((i + di, j + dj))
-        if o:
-            route(r, o, 4, sides_a="E" if di else "S", sides_b="W" if di else "N", turn=40)
-west = [grid[k] for k in sorted(grid) if k[0] == 0]
-if west:
-    route(gatehouse, min(west, key=lambda r: abs(r["cy"] - gatehouse["cy"])), 6, sides_a="E", sides_b="W")
+def pad_wing(x, y):
+    if x < 190:
+        return "courts" if y < 300 else "crypt"
+    if x > 350:
+        return "caverns" if y < 300 else "descent"
+    return "chasm" if y < MID_Y else "fortress"
 
 
-def passage(a, b, x, y0, y1, kind):
-    rid = new_region()
-    floor[y0:y1, x:x + DOOR_W] = True
-    owner[y0:y1, x:x + DOOR_W] = rid
-    corridors.append({"id": rid, "a": a["id"], "b": b["id"], "w": DOOR_W, "tag": kind, "door": True,
-                      "door_end": "a", "path": [[x, yy] for yy in range(y0, y1 - DOOR_W + 1)]})
-
-
-passage(outer, inner, outer["x"] + 41 - 3, inner["y"] + inner["h"], outer["y"] + outer["h"] - 9, "descent:down")
-passage(inner, heart, heart["x"] + 7 - 3, inner["y"] + 8, heart["y"], "descent:heart")
-east = [grid[k] for k in sorted(grid) if k[0] == cols - 1]
-if east:
-    if not route(max(east, key=lambda r: r["cy"]), outer, 6, sides_a="E", sides_b="W"):
-        print("  the fortress does not reach the descent")
-
-# shortcuts: a lever in each wing's furthest room opens a gate back to the hub
-for name in ("courts", "chasm", "caverns"):
-    far = sorted(wings[name], key=lambda r: -dist(r, hub))
-    for f in far[:6]:
-        bb = (min(f["x"], hub["x"]) - 16, min(f["y"], hub["y"]) - 16, max(f["x"] + f["w"], hub["x"] + hub["w"]) + 16,
-              max(f["y"] + f["h"], hub["y"] + hub["h"]) + 16)
-        rec = route(f, hub, 4, turn=6, tag="shortcut:" + name, box=bb) or route(f, hub, 4, turn=6,
-                                                                                tag="shortcut:" + name)
-        if rec:
-            rec["lever_room"] = f["id"]
-            break
-    else:
-        print("  no shortcut for", name)
-
-# anything left on its own joins its nearest neighbour that is joined
-for _ in range(10):
-    lab, n = label(floor)
-    home = lab[hub["cy"], hub["cx"]]
-    lost = [r for r in rooms if lab[r["cy"], r["cx"]] != home]
-    if not lost:
-        break
-    a = lost[0]
-    found = sorted((r for r in rooms if lab[r["cy"], r["cx"]] == home), key=lambda r: dist(r, a))
-    for b in found[:8]:
-        if route(a, b, 4):
-            break
-    else:
-        print("  stranded:", a["id"], a["wing"])
-        break
+pads = {}
+for x in PADS_X:
+    for y in (RING, TH - RING):
+        pads[(x, y)] = None
+for y in PADS_Y:
+    for x in (RING, TW - RING):
+        pads[(x, y)] = None
+for k, (x, y) in enumerate(sorted(pads)):
+    r = place(shape_rect(16, 16), x - 8, y - 8, pad_wing(x, y), "pad", "rect")
+    r["pad"] = k
+    pads[(x, y)] = r
+    wings[r["wing"]].append(r)
+for row in (RING, TH - RING):
+    for x0_, x1_ in zip(PADS_X, PADS_X[1:]):
+        link(pads[(x0_, row)], pads[(x1_, row)], "h", row, w=BOND_W, tag="pads")
+for col in (RING, TW - RING):
+    for y0_, y1_ in zip(PADS_Y, PADS_Y[1:]):
+        link(pads[(col, y0_)], pads[(col, y1_)], "v", col, w=BOND_W, tag="pads")
+# four bond wires, each its own mirror: the pads over the courts' middle
+# column and the caverns', down; the pads under the crypt's and the descent's
+for x in (PADS_X[3], PADS_X[15]):
+    top_target = courts_n[(1, 0)] if x < MID_X else caves[(1, 0)]
+    low_target = crypt[(2, 2)] if x < MID_X else outer
+    link(pads[(x, RING)], top_target, "v", x, w=BOND_W, tag="pads")
+    link(pads[(x, TH - RING)], low_target, "v", x, w=BOND_W, tag="pads")
+# THE WAYSTONES (src/world/waystones.gd STONES, by hand, the same cells):
+# the Crossroads' where you arrive; each wing's in its heart, so a trip by
+# stone saves the walk in - the courts' and the caverns' each the other's
+# mirror, the crypt's and the descent's (by its ladder); the chasm's and the
+# fortress's on the middle line, on its bank and its middle link (no row of
+# the one mirrors a floor row of the other). No pack within WAYSTONE_CLEAR.
+WAYSTONE_CELLS = {
+    "crossroads": (hub["cx"] - 5, hub["cy"] + 3),
+    "chasm": (MID_X, 98), "fortress": (MID_X, 357),
+    "courts": (108, 164), "caverns": (TW - 108, 164),
+    "crypt": (102, 365), "descent": (TW - 102, 365),
+}
+WAYSTONE_CLEAR = 18
+rest = None
+for k_ in wings:
+    wings[k_] = list({r["id"]: r for r in wings[k_]}.values())
+print("rooms:", {k: len(v) for k, v in wings.items()}, "pads:", len(pads))
 lab, n = label(floor)
 print("corridors:", len(corridors), "floor pieces:", n)
-
 # =============================================================================
 # THE WALLS - every loop of the floor solved, the doors' columns held apart
 # =============================================================================
@@ -789,6 +814,17 @@ for c in corridors:
     if not c.get("door"):
         continue
     w = c["w"]
+    if c.get("span"):
+        x0 = c["path"][0][0]
+        ylo, yhi = c["span"]
+        left = find_edge("W", x0, ylo, yhi)
+        right = find_edge("E", x0 + w, ylo, yhi)
+        if not left or not right:
+            print("  no columns for the door of", c["tag"])
+            continue
+        door_plans.append({"corridor": c, "left": left, "right": right, "ylo": ylo, "yhi": yhi,
+                           "near_hub": c["near_hub"]})
+        continue
     if c["tag"].startswith("descent"):
         run = c["path"]
     elif c.get("door_end") == "b":
@@ -1068,7 +1104,13 @@ monsters = []
 taken = []
 turn, rturn = {}, {}
 odd_turn = 0
-crypt_far = max(wings["crypt"], key=lambda r: dist(r, hub)) if wings["crypt"] else None
+# the Elite's room: the crypt's furthest in, of its own rooms - not a pad of
+# the ring outside them
+crypt_cells = [r for r in wings["crypt"] if r["kind"] != "pad"]
+crypt_far = max(crypt_cells, key=lambda r: dist(r, hub)) if crypt_cells else None
+
+
+odd_rooms = sorted([r for r in wings["chasm"] if r["kind"] == "room"], key=lambda r: (r["cells"], r["id"]))[:4]
 
 
 def spots_in(rid, n, spacing=10):
@@ -1081,6 +1123,8 @@ def spots_in(rid, n, spacing=10):
     for k in order:
         x, y = int(xs[k]), int(ys[k])
         if math.hypot(x - hubx, y - huby) < SAFE or math.hypot(x - hx, y - hy) < 22:
+            continue
+        if any(math.hypot(x - a, y - b) < WAYSTONE_CLEAR for (a, b) in WAYSTONE_CELLS.values()):
             continue
         if any(math.hypot(x - a, y - b) < spacing for (a, b) in taken + out):
             continue
@@ -1111,9 +1155,13 @@ def add_pack(room, land, kind, at):
 for r in rooms:
     if r["kind"] in ("hub", "rest", "heart", "gatehouse"):
         continue
+    # THE PAD RING (0.134.9): every other pad holds a pack - the ring is a
+    # way round as much as a place to fight
+    if r["kind"] == "pad" and r["pad"] % 2:
+        continue
     if r["wing"] == "crypt":
         rec = "Elite" if r is crypt_far else ("Warband" if r["cells"] > 420 else "Patrol")
-        for at in spots_in(r["id"], 2 if r["cells"] > 520 else 1):
+        for at in spots_in(r["id"], 2 if r["cells"] > 900 else 1):
             add_pack(r, "plain", rec, at)
             rec = "Patrol"
         continue
@@ -1122,20 +1170,24 @@ for r in rooms:
         for i, at in enumerate(spots_in(r["id"], 14 if r["kind"] == "outer ring" else 8, spacing=22)):
             add_pack(r, "dark", ["Hunters", "Nest", "Swarm", "Coven", "Splitters"][i % 5], at)
         continue
-    if tier == 2 and odd_turn < 4 and r["cells"] < 380 and r["kind"] == "room":
-        kind = ["Sparks", "Ooze"][odd_turn % 2]
-        for at in spots_in(r["id"], 1):
-            add_pack(r, "electric" if kind == "Sparks" else "poison", kind, at)
-        odd_turn += 1
-        continue
     lands = LANDS[tier]
     land = lands[turn.get(tier, 0) % len(lands)]
     turn[tier] = turn.get(tier, 0) + 1
     area = r["cells"]
-    count = 3 if r["kind"] == "arena" else (1 if area < 420 else (2 if area < 800 else (3 if area < 1200 else 4)))
+    # twice the old floor, about twice the old monsters (0.134.9): a pack to
+    # a small room, two to a big one
+    count = 3 if r["kind"] == "arena" else (1 if area < 900 else 2)
     if r["kind"] == "bank":
-        count = 4
+        count = 2
     for i, at in enumerate(spots_in(r["id"], count)):
+        # the chasm's four smallest rooms: its Sparks and its Ooze first, then
+        # the room's own (0.134.9 - the chip has no room small enough to hold
+        # them alone, as the old map's did)
+        if i == 0 and r in odd_rooms:
+            odd = ["Sparks", "Ooze"][odd_turn % 2]
+            odd_turn += 1
+            add_pack(r, "electric" if odd == "Sparks" else "poison", odd, at)
+            continue
         if r["kind"] == "arena" and i == 0:
             rec = "Champion"
         elif area >= 800 and i == 0 and land != "fire":
@@ -1181,7 +1233,7 @@ def near_back_wall(rid):
     return out
 
 
-light_rooms = [hub, rest] + [r for r in rooms if r["kind"] in ("arena", "heart", "gatehouse")]
+light_rooms = [hub] + ([rest] if rest else []) + [r for r in rooms if r["kind"] in ("arena", "heart", "gatehouse")]
 light_rooms += sorted((r for r in rooms if r not in light_rooms and r["kind"] not in ("outer ring", "inner ring")),
                       key=lambda r: -r["cells"])
 lights = 0
@@ -1279,6 +1331,7 @@ build = {
     "monsters": monsters,
     "packs": packs,
     "arrival": arrival, "ladder": ladder,
+    "waystones": {k: [c[0] * TILE + 8, c[1] * TILE + 8] for k, c in WAYSTONE_CELLS.items()},
     "nav": {"outlines": outlines, "obstructions": obstructions},
     "rooms": [{k: r[k] for k in ("id", "wing", "kind", "shape", "x", "y", "w", "h", "cx", "cy", "cells")} for r in rooms],
     "corridors": [{k: c[k] for k in ("id", "a", "b", "w", "tag")} for c in corridors],

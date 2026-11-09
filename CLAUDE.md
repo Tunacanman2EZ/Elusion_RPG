@@ -2595,15 +2595,15 @@ folder's MAPS_PLAN.txt; this is what was built.
   and the API's copy. Changing the scene in the editor is lost the next
   build - change the plan. `tools/maps/` has a `.gdignore`: Godot never
   imports or exports it.
-- **The plan.** THE CROSSROADS (52 x 34 cells, you arrive in its middle) and
-  a wing a tier off it: the courts (light, wind; pillared halls) west; the
-  chasm (water, ice, the electric and poison oddities) north, two long halls
-  either side of a rift crossed by three bridges; the caverns (earth, its
-  arena and Champion pack) north-east; the fortress (fire) south-east, a
-  gatehouse and a grid; the descent (dark) east, two rings of halls and the
-  ladder at its heart; the crypt (skeletons) south-west. 385 x 322 cells,
-  four times the old map; 282 monsters in 89 packs, one land a room, none
-  within 400 px of the arrival.
+- **The plan** (until 0.134.9; now the microchip, below). THE CROSSROADS (52
+  x 34 cells, you arrive in its middle) and a wing a tier off it: the courts
+  (light, wind; pillared halls) west; the chasm (water, ice, the electric
+  and poison oddities) north, two long halls either side of a rift crossed
+  by three bridges; the caverns (earth, its arena and Champion pack)
+  north-east; the fortress (fire) south-east, a gatehouse and a grid; the
+  descent (dark) east, two rings of halls and the ladder at its heart; the
+  crypt (skeletons) south-west. 385 x 322 cells, four times the old map; 282
+  monsters in 89 packs, one land a room, none within 400 px of the arrival.
 - **Walls that fit (`tools/maps/walls.py`).** Every edge between floor and
   dark gets its crypt piece: the back wall on a top edge, the front wall on
   a bottom, a 9 px column on each side, the four corners where two meet. The
@@ -2647,6 +2647,56 @@ folder's MAPS_PLAN.txt; this is what was built.
 - **The backdrop stacks its runs (`mapbackdrop.gd` `_stacked()`).** Rows of
   runs, one above another with the same ends, are one rectangle: the new
   map was 2,667 rectangles in rows, a few hundred stacked.
+
+### The Big Field is a microchip (0.134.9)
+
+The owner, 9 Nov: "more land we need this map to be 2x larger so we can
+have more enemies and tides actually matter", then "get rid of long walk
+ways anc connect all the areas", "build it like a microchip design", "make
+sure walkways are symetrical" and "we do not need so many walkways". The
+approved picture is the commit folder's bigfield_microchip.png. Folded into
+0.134.9, which had not shipped. The three steps above are unchanged.
+
+- **The chip.** 540 x 450 cells, twice the old floor. The die (the
+  Crossroads, an octagon; you arrive in it) in the middle, six wing blocks
+  round it in a 3 x 2 grid - the courts north-west, the chasm north, the
+  caverns north-east (its arena beside the die), the crypt south-west, the
+  fortress south, the descent south-east (its rings and the ladder). Every
+  block is a grid of rooms linked comb-style: a spine and short links, no
+  long walkways, left and right halves mirrored. A ring of 66 pads runs
+  round the edge (`RING`, `PADS_X`, `PADS_Y`), each pad its nearest wing's,
+  every other one holding a pack; bond wires join it to the blocks.
+- **Ways in.** The die's pins up and down (`PIN_X`) are the 4 crypt doors,
+  to the chasm and the fortress; left and right (`PIN_Y`) are open. No spike
+  gates: every wing is a short walk off the die, and with the doors shut
+  nothing is closed off.
+- **Monsters.** 536 in 152 packs (was 282 in 89): a pack to a room, two to
+  one of 900 cells or more, three to an arena, two to a chasm bank. The
+  chasm's four smallest rooms open with its Sparks and Ooze; the crypt's
+  Elite is in its furthest room of its own (never a pad). 92 Skeleton
+  Soldiers and 7 Elites in all.
+- **Waystones.** The Crossroads' by the arrival, each wing's in its heart
+  (a trip by stone saves the walk in): the courts' and the caverns' mirrored,
+  the crypt's and the descent's (by the ladder), the chasm's and the
+  fortress's on the middle line. `WAYSTONE_CELLS` in bigfield.py, written to
+  the build file's `"waystones"`; `src/world/waystones.gd` `STONES` carries
+  the same pixels by hand. No pack within `WAYSTONE_CLEAR` (18 cells).
+- **Lands.WINGS** says where: the caverns east, the fortress south, the
+  descent south-east.
+- **gamedata.json.** Only the Big Field's spawns and the `placed_count`
+  they change were rewritten (the sandbox has no editor for the export);
+  the export in the editor gives the same.
+- **Your map starts again.** The area is a new size, so WorldMap drops the
+  Big Field's saved fog on load (its different-size rule).
+- **What the tests ask now.** Not "the further, the harder" (the chasm and
+  the fortress sit nearest, in the middle column): every wing under 4,000 px
+  from the arrival on average, the courts nearer than the descent. The
+  swell's monsters are checked by the room they stand in (pads lie outside
+  a wing's box). The zoomed-out chunk check counts chunks that touch the
+  view, not chunks shown (a chunk between SHOW_MARGIN and HIDE_MARGIN keeps
+  what it was). The waystone check reads the arrival from the build file.
+- **Also:** the Crowned room's victory teleporter now hears a player step
+  off it too (`body_exited`, buildcrowned.gd and boss.tscn).
 
 ### The Field is built from a plan too (0.94.2)
 
@@ -7665,6 +7715,19 @@ copy of it five seconds later). The Descent keeps its X and its pinwheel
   (glow, body, core, rings running out of the eye, a flare at the eye and
   each wall, 0.3 s fade). `end()` puts it out. Each game turns its own
   wheel at its own player, as every other shape is cast at its own player.
+- **It ends with the Trap** (0.134.9). It was stepped only in the Trap, so a
+  wheel turning when the Crowned fell under a quarter stood frozen through
+  the Tear until it died - the owner's screenshot: "pinwheelbeam just froze
+  there until boss died". `_step_wheel()` now runs whatever the phase and
+  burns only in the Trap; leaving it, `_wheel_out()` fades a turning wheel
+  (WHEEL_FADE, 0.3 s) and drops one still warning.
+- **And no X anywhere in the room** (the same 0.134.9). The owner, after:
+  "i thought we got rid of x laser" - "final boss room". The floor's own
+  waves cross every laser into an X from LASER_TWO_FROM (descentlands.gd
+  `_send_queued()`), and the Crowned's lands run at env_floor 4. The lands'
+  `crosses` (true: the Descent) is set off by crownedfight.gd, so a laser
+  there comes alone. `_test_the_crowned_falls_apart()`: one beam in the
+  room, two crossed in the Descent.
 - `wheels` counts them. `_test_the_crowned_falls_apart()`: the Trap's first
   laser is the wheel, five arms, you mid-gap; still and harmless through
   the warning; creeps at SLOW and lunges at FAST where you stand; eases;

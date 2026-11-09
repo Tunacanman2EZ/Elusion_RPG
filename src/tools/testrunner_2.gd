@@ -1314,8 +1314,11 @@ func _test_the_big_field() -> void:
 		for dd in ds:
 			total += float(dd)
 		means.append(total / maxf(ds.size(), 1.0))
-	check("every tier has its wing, and harder the further you go: the courts' the nearest, the descent's the furthest",
-		[1, 2, 3, 4, 5].all(func(t): return by_tier.has(t)) and means[0] == means.min() and means[4] == means.max(),
+	# THE CHIP (0.134.9) trades "the further, the harder" for every wing a short
+	# walk off the die: the chasm and the fortress sit nearest, in the middle
+	# column. What stays: the courts nearer than the descent.
+	check("every tier has its wing, each a short walk off the die (under 4,000 px on average), the courts' nearer than the descent's",
+		[1, 2, 3, 4, 5].all(func(t): return by_tier.has(t)) and means.max() < 4000.0 and means[0] < means[4],
 		means.map(func(m): return int(m)))
 	var kinds: Array = []
 	for enemy in enemies:

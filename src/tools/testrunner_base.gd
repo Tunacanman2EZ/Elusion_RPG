@@ -1588,13 +1588,13 @@ const BIG_FIELD_TIERS := {"courts": 1, "chasm": 2, "caverns": 3, "fortress": 4, 
 # Every monster placed; the skeletons among them (the crypt's Patrols and
 # Warbands, the caverns' Patrols; an Elite in the crypt's furthest room and
 # the fortress's Elite packs).
-const BIG_FIELD_MONSTERS := 282
-const BIG_FIELD_SOLDIERS := 40
-const BIG_FIELD_ELITES := 6
+const BIG_FIELD_MONSTERS := 536
+const BIG_FIELD_SOLDIERS := 92
+const BIG_FIELD_ELITES := 7
 # The crypt doors (one a wing behind it, two down the descent) and the
 # shortcuts' spike gates, each with its lever in its wing's far room.
-const BIG_FIELD_DOORS := 6
-const BIG_FIELD_GATES := 3
+const BIG_FIELD_DOORS := 4
+const BIG_FIELD_GATES := 0
 
 # =============================================================================
 # THE BIG FIELD, DRESSED (0.61.0)

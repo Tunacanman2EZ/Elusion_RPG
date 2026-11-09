@@ -242,6 +242,10 @@ func step(delta: float, share: float) -> void:
 			_step_trap(delta, me)
 		4:
 			_step_tear(delta, me)
+	# Stepped whatever the phase, so a wheel the Trap left fades out (0.134.9:
+	# stepped only in the Trap, it stood frozen through the Tear until the
+	# Crowned died - the owner's screenshot, "pinwheelbeam just froze there").
+	_step_wheel(delta, me)
 	if phase >= 2:
 		_step_lies(delta)
 	var rift: Node = fight.get("rift") if fight != null else null
@@ -273,6 +277,7 @@ func enter(next: int) -> void:
 		_tell_rift_flood(0.0)
 	if last == 3:
 		_clear_horde()
+		_wheel_out()
 	if last == 4:
 		knit_all()
 	if lands != null:
@@ -589,7 +594,6 @@ func _step_trap(delta: float, me: Node2D) -> void:
 		_laser_left = TRAP_LASER_GAP
 		cast_lasers(str(LASER_SHAPES[lasers_cast % LASER_SHAPES.size()]), me)
 		lasers_cast += 1
-	_step_wheel(delta, me)
 
 
 func cast_lasers(shape: String, me: Node2D) -> void:
@@ -637,6 +641,18 @@ func begin_wheel(me: Node2D) -> void:
 		_wheel_view.z_index = LandsScript.AIR_Z
 		_wheel_view.draw.connect(_draw_wheel)
 		add_child(_wheel_view)
+
+
+func _wheel_out() -> void:
+	"""The Trap over: a wheel still warning is gone, one turning fades now."""
+	if wheel_t < 0.0:
+		return
+	if wheel_t < WHEEL_WARN:
+		wheel_t = -1.0
+		if _wheel_view != null:
+			_wheel_view.queue_redraw()
+		return
+	wheel_t = maxf(wheel_t, WHEEL_WARN + WHEEL_SECONDS - WHEEL_FADE)
 
 
 func wheel_end(arm: int) -> Vector2:
@@ -695,7 +711,8 @@ func _step_wheel(delta: float, me: Node2D) -> void:
 		var want: float = wheel_target(me.global_position) if me != null else wheel_dir * WHEEL_SLOW / 200.0
 		wheel_spin = move_toward(wheel_spin, want, WHEEL_EASE * delta)
 		wheel_angle = wrapf(wheel_angle + wheel_spin * delta, -PI, PI)
-		if me != null and lands != null:
+		# It burns only in the Trap; fading out after it, it is only light.
+		if me != null and lands != null and phase == 3:
 			_wheel_hit_left -= delta
 			var arm: int = wheel_touches(me.global_position) if _wheel_hit_left <= 0.0 else -1
 			if arm >= 0:

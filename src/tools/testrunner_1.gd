@@ -5124,9 +5124,9 @@ func _test_the_big_field_is_dressed() -> void:
 	_check_dressed_map(BIG_FIELD,
 		"THE BIG FIELD, DRESSED - every edge walled in the crypt's own pieces, end to end, its doors and gates in place (0.61.0, 0.94.0)",
 		{"pieces": 2000, "edges": 5000, "doors": BIG_FIELD_DOORS, "levers": BIG_FIELD_GATES, "spikes": 2 * BIG_FIELD_GATES,
-		"gates_words": "%d shortcuts back to the hub: each a spike gate, its lever in its wing's far room",
-		"lands": BIG_FIELD_LANDS, "behind": ["crypt", "chasm", "caverns"],
-		"behind_words": "  and with the doors shut, the crypt, the chasm and the caverns are closed off behind them"})
+		"gates_words": "%d spike gates: the chip needs no shortcut, every wing a short walk off the die (0.134.9)",
+		"lands": BIG_FIELD_LANDS, "behind": [],
+		"behind_words": "  and with the doors shut, nothing is closed off: the die's doors are the quick way in, never the only one"})
 
 
 func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> void:
@@ -5361,8 +5361,10 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 			behind[(want["lands"] as Dictionary).get(land, land)] = true
 	check("the doors open and the gates up, a player can walk from where they arrive to every monster",
 		stranded.is_empty(), stranded.slice(0, 4))
+	# An empty "behind" (the Big Field's chip, 0.134.9) asks that nothing is.
 	check(str(want["behind_words"]),
-		(want["behind"] as Array).all(func(w): return behind.has(w)), behind.keys())
+		(want["behind"] as Array).all(func(w): return behind.has(w))
+		and (not (want["behind"] as Array).is_empty() or behind.is_empty()), behind.keys())
 
 	var dark: CanvasModulate = null
 	for n in area.find_children("*", "CanvasModulate", true, false):

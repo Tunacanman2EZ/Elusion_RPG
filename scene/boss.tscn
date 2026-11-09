@@ -356,3 +356,4 @@ light_spots = PackedVector2Array(-767, 258, -767, 17, -674, -218, -400, -218, -1
 [connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
 [connection signal="body_entered" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_exited"]

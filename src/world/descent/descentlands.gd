@@ -276,6 +276,10 @@ var _air: Node2D = null
 var _queue: Array = []
 # What share of FAKEABLE hazards are illusions (0: none - the Descent).
 var false_share: float = 0.0
+# Whether a deep floor's laser is crossed into an X (LASER_TWO_FROM). The
+# Descent's are; the Crowned's room has none (0.134.9 - the owner, there:
+# "i thought we got rid of x laser"; crownedfight.gd sets it off).
+var crosses: bool = true
 # What a hazard made this step (a puddle, a blast), joined after it.
 var _born: Array = []
 var reactions: Dictionary = {}
@@ -676,7 +680,7 @@ func _send_queued(delta: float, me: Node2D) -> void:
 		var kind: String = str(item[1])
 		if kind == "laser":
 			var beam: Dictionary = spawn_env("laser", me)
-			if env_floor >= LASER_TWO_FROM:
+			if env_floor >= LASER_TWO_FROM and crosses:
 				_cross(beam, spawn_env("laser", me))
 		else:
 			spawn_env(kind, me)

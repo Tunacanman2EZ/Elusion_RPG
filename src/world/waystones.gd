@@ -43,19 +43,19 @@ const TRAVEL_GROUP := &"waystone_travel"
 # Where the stones stand, and the areas they can be reached from.
 const AREA := "bigfield"
 const FROM := ["elusion", "field", "bigfield"]
-# Each where its wing begins: the furthest point along the walk from the
-# Crossroads into the wing that is clear of walls and at least 250 px from
-# any monster the plan places (worked out from tools/maps/bigfield_build.json).
+# Each in its wing's heart (0.134.9, the chip), clear of walls and at least
+# 250 px from any monster the plan places: tools/maps/bigfield.py's
+# WAYSTONE_CELLS, which the build file's "waystones" carries in pixels.
 # The Crossroads' stands within the map's reveal (WorldMap.SEEN_RADIUS) of the
 # arrival, so it is lit the moment you arrive.
 const STONES := [
-	{"id": "crossroads", "place": "The Crossroads", "at": Vector2(1776, 2448)},
-	{"id": "courts", "place": "The Courts", "at": Vector2(1336, 2280)},
-	{"id": "chasm", "place": "The Chasm", "at": Vector2(2152, 1432)},
-	{"id": "caverns", "place": "The Caverns", "at": Vector2(4296, 2104)},
-	{"id": "fortress", "place": "The Fortress", "at": Vector2(2504, 3528)},
-	{"id": "descent", "place": "The Descent", "at": Vector2(4760, 2552)},
-	{"id": "crypt", "place": "The Crypt", "at": Vector2(1544, 3896)},
+	{"id": "crossroads", "place": "The Crossroads", "at": Vector2(4232, 3640)},
+	{"id": "courts", "place": "The Courts", "at": Vector2(1736, 2632)},
+	{"id": "chasm", "place": "The Chasm", "at": Vector2(4328, 1576)},
+	{"id": "caverns", "place": "The Caverns", "at": Vector2(6920, 2632)},
+	{"id": "fortress", "place": "The Fortress", "at": Vector2(4328, 5720)},
+	{"id": "descent", "place": "The Descent", "at": Vector2(7016, 5848)},
+	{"id": "crypt", "place": "The Crypt", "at": Vector2(1640, 5848)},
 ]
 const CHANNEL_SECONDS := 3.0
 const MOVE_SLACK := 6.0
