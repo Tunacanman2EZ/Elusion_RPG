@@ -5147,6 +5147,21 @@ func _test_the_crowned_falls_apart() -> void:
 	check("  a storm falls on the land: every circle on dry floor - the lava's edge as it will be when it lands (%d rings, not %d)" % [ahead, int(phases.get("lava_depth"))],
 		ahead > int(phases.get("lava_depth")) and Phases.STORM_MARGIN >= LandsScript.METEOR_R
 		and (phases.call("dry_rect", ahead) as Rect2).grow(-LandsScript.METEOR_R).encloses(on_land), [on_land, ahead])
+	# LIGHTER ON A PHONE (0.134.7, "my phone started getting hot ... it was
+	# flooding with stuff"): the rift's void is not worked out under the dry
+	# floor, and a storm's circles do not walk each other every step.
+	phases.call("step", 0.016, 0.7)
+	var rift_node: Node = fight.get("rift")
+	var whole: Rect2 = phases.call("solid_floor")
+	var lands_code: String = _code_src("res://src/world/descent/descentlands.gd")
+	var react_body: String = _func_body(lands_code, "func _react(")
+	check("  lighter on a phone: the rift skips the dry floor (%s) - the void is drawn only past it - and a storm's circles do not walk each other"
+		% str(whole),
+		whole.size.x > 100.0 and whole == (phases.call("dry_rect", int(phases.get("lava_depth"))) as Rect2).grow(-2.0)
+		and rift_node != null and rift_node.get("solid") == whole
+		and FileAccess.get_file_as_string("res://src/world/crowned/riftvoid.gdshader").contains("uniform vec4 solid")
+		and react_body.contains("for other in fuel") and not react_body.contains("for other in hazards:\n\t\t\t\tif bool(other[\"done\"]) or is_same")
+		and LandsScript.FIRE_ACTS_ON == ["gas", "hail", "bubble", "puddle"], [whole, rift_node.get("solid") if rift_node != null else null])
 	body.global_position = (phases.call("dry_rect", 0) as Rect2).position + Vector2(4, 4)
 	lands.set("hazards", [])
 	phases.call("begin_storm")
@@ -5367,6 +5382,8 @@ func _test_the_crowned_falls_apart() -> void:
 		holes == torn_now * (Phases.TEAR_PER * Phases.FLOOR_PER) * (Phases.TEAR_PER * Phases.FLOOR_PER) and int(phases.get("falls")) == 1 and int(fell[1]) == Element.Type.DARK
 		and not bool(phases.call("fell_in", body.global_position + Vector2(0, 10)))
 		and floor_rect.has_point(body.global_position) and int(boss.get("crown_land")) != land_was)
+	check("  and with a hole open the rift is worked out everywhere again, so it shows through",
+		(phases.call("solid_floor") as Rect2).size == Vector2.ZERO and (fight.get("rift") as Node).get("solid") == Rect2())
 	# ---- the lying room ------------------------------------------------------------------
 	var lies_were: int = int(phases.get("lies"))
 	for k in 6:

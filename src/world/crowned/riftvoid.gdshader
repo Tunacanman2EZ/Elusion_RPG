@@ -16,6 +16,11 @@ uniform vec4 cloud_colour[14];
 uniform int clouds = 14;
 uniform float star_cell = 160.0;
 uniform float star_share = 0.49;
+// SOLID (0.134.7): where the floor is whole for certain (x, y, w, h in the
+// world; no size: nowhere). The world is drawn over it, so a pixel there
+// is the plain indigo and works out no cloud or star - most of the screen,
+// most of the fight. A phone ran this for every pixel, under the floor.
+uniform vec4 solid = vec4(0.0);
 
 varying vec2 world;
 
@@ -31,26 +36,30 @@ void vertex() {
 
 void fragment() {
 	vec3 c = vec3(0.06, 0.035, 0.11);
-	for (int k = 0; k < clouds; k++) {
-		vec4 spot = cloud_spot[k];
-		vec2 off = world - spot.xy;
-		float d2 = dot(off, off);
-		if (d2 < spot.z) {
-			// Inside the outer disc: one mix for each of the four it is in
-			// (sizes 1, 0.8, 0.6, 0.4 of the outer, squared).
-			float rings = 1.0 + step(d2, spot.z * 0.64) + step(d2, spot.z * 0.36) + step(d2, spot.z * 0.16);
-			c = mix(c, cloud_colour[k].rgb, 1.0 - pow(0.965, rings));
+	bool under_floor = solid.z > 0.0 && world.x > solid.x && world.y > solid.y
+			&& world.x < solid.x + solid.z && world.y < solid.y + solid.w;
+	if (!under_floor) {
+		for (int k = 0; k < clouds; k++) {
+			vec4 spot = cloud_spot[k];
+			vec2 off = world - spot.xy;
+			float d2 = dot(off, off);
+			if (d2 < spot.z) {
+				// Inside the outer disc: one mix for each of the four it is in
+				// (sizes 1, 0.8, 0.6, 0.4 of the outer, squared).
+				float rings = 1.0 + step(d2, spot.z * 0.64) + step(d2, spot.z * 0.36) + step(d2, spot.z * 0.16);
+				c = mix(c, cloud_colour[k].rgb, 1.0 - pow(0.965, rings));
+			}
 		}
-	}
-	vec2 cell = floor(world / star_cell);
-	if (hash12(cell) < star_share) {
-		vec2 at = (cell + 0.05 + vec2(hash12(cell + 17.0), hash12(cell + 41.0)) * 0.9) * star_cell;
-		float n = floor(hash12(cell + 73.0) * 15.0);
-		float radius = 1.0 + mod(n, 3.0) * 0.4;
-		float speed = 1.3 + mod(n, 5.0) * 0.4;
-		float glimmer = 0.35 + 0.35 * sin(clock * speed + hash12(cell + 97.0) * 6.2831853);
-		if (distance(world, at) < radius) {
-			c = mix(c, vec3(0.9, 0.85, 1.0), glimmer);
+		vec2 cell = floor(world / star_cell);
+		if (hash12(cell) < star_share) {
+			vec2 at = (cell + 0.05 + vec2(hash12(cell + 17.0), hash12(cell + 41.0)) * 0.9) * star_cell;
+			float n = floor(hash12(cell + 73.0) * 15.0);
+			float radius = 1.0 + mod(n, 3.0) * 0.4;
+			float speed = 1.3 + mod(n, 5.0) * 0.4;
+			float glimmer = 0.35 + 0.35 * sin(clock * speed + hash12(cell + 97.0) * 6.2831853);
+			if (distance(world, at) < radius) {
+				c = mix(c, vec3(0.9, 0.85, 1.0), glimmer);
+			}
 		}
 	}
 	COLOR = vec4(c, 1.0);

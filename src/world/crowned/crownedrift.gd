@@ -83,6 +83,16 @@ var _cloud_now := PackedVector4Array()
 var intensity: float = 1.0
 # How far the Sealing's lava is in (0 none, 1 the most), and as shown.
 var flood: float = 0.0
+# Where the floor is whole for certain (crownedphases.gd solid_floor()): the
+# void is not worked out under it (riftvoid.gdshader SOLID). No size: all of it.
+var solid: Rect2 = Rect2():
+	set(value):
+		if value == solid:
+			return
+		solid = value
+		if _void != null and is_instance_valid(_void):
+			(_void.material as ShaderMaterial).set_shader_parameter(&"solid",
+				Vector4(value.position.x, value.position.y, value.size.x, value.size.y))
 var flood_shown: float = 0.0
 # Cracks racing across: {"pts", "along" (distance to each point), "t", "forks"}.
 var zips: Array = []

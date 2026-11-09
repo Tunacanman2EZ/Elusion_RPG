@@ -7727,6 +7727,47 @@ on its side - 19.5:9, 20:9 - had black bars down both sides.
   computer, set at start, the bars pinned with the hotbar, where they were at
   16:9, and the same distance from the hotbar at 20:9 and 21.6:9.
 
+### The Crowned's fight, cooler on a phone (0.134.8)
+
+The owner, on 0.134.7 in a browser on his phone: "my phone started getting
+hot still too much going on", "it was fllooding with stuff", and "1500
+frames over budget". zz/stormbench (sandbox only): the Crowned's room with a
+storm kept going, phone lighting, the lands' and phases' step clocked, draw
+calls counted, the render timed.
+
+| a storm going on | lands, a step | draws a frame |
+|---|---|---|
+| alone, before | 0.36 ms | 216 |
+| alone, after | 0.13 ms | 140 |
+| four players, before | 2.35 ms | 491 |
+| four players, after | 0.24 ms | 293 |
+
+- **Only what can be set off is looked at** (descentlands.gd `_react()`,
+  `FIRE_ACTS_ON`). Every live spark and lit scorch walked every hazard each
+  step for the four kinds fire acts on (gas, hail, bubble, puddle) - a
+  storm's seventy circles walking each other, the cost growing with the
+  square of the storm. The kinds are found once a step; a storm has none.
+  The Descent's mixes react exactly as before (`_test_the_mixes_react()`).
+- **Fewer draws a circle**: a falling meteor's tail is one fading polygon,
+  not six circles (nine draws to four); a scorch's three flames one triangle
+  list, not three polygons (five to three); the hunting wheel's four layers
+  of five arms one triangle list, layer by layer across the arms, and two
+  rings an arm (47 draws to 18). The Godot 4 canvas draws each circle, arc
+  and polygon on its own; `RenderingServer.canvas_item_add_triangle_array()`
+  on the same canvas item keeps its place among them.
+- **The rift is not worked out under the floor** (riftvoid.gdshader
+  `solid`, crownedrift.gd `solid`, crownedphases.gd `solid_floor()`, set
+  each step): the void lies behind the whole room, so every pixel ran its
+  fourteen clouds and its stars under floor tiles that hide it. Over the
+  dry floor (the lava's `dry_rect()`, 2 px in) it is now plain indigo; with
+  a Tear hole open it is worked out everywhere again. In the sandbox the
+  room's render fell from about 25 to 18 ms a frame - and a phone on its
+  side, wider since 0.134.7, has more of it.
+- Nothing about the fight changed: the same storm, the same wheel, the same
+  look (meteor_storm frames compared before and after).
+  `_test_the_crowned_falls_apart()`: "lighter on a phone" and "with a hole
+  open the rift is worked out everywhere again".
+
 ### Phones move the world 60 times a second (the same 0.134.6)
 
 The owner: "physics are costing me when pcs and phones can easily handle what

@@ -244,7 +244,23 @@ func step(delta: float, share: float) -> void:
 			_step_tear(delta, me)
 	if phase >= 2:
 		_step_lies(delta)
+	var rift: Node = fight.get("rift") if fight != null else null
+	if rift != null:
+		rift.set("solid", solid_floor())
 	queue_redraw()
+
+
+func solid_floor() -> Rect2:
+	"""Where the floor is whole for certain - the lava's dry floor, unless
+	the Tear has a hole open in it: the rift is not worked out under it
+	(crownedrift.gd `solid`, riftvoid.gdshader SOLID; 0.134.7, "my phone
+	started getting hot")."""
+	if ground == null:
+		return Rect2()
+	for piece in tears:
+		if bool((tears[piece] as Dictionary).get("open", false)):
+			return Rect2()
+	return dry_rect(lava_depth).grow(-2.0)
 
 
 func enter(next: int) -> void:
@@ -717,17 +733,31 @@ func _draw_wheel() -> void:
 	var flicker: float = 0.88 + 0.12 * sin(wheel_t * 41.0)
 	var body := Color(colour.lightened(0.15), 0.55 * fade * flicker)
 	var core := Color(colour.lightened(0.5), 0.9 * fade)
+	# Every arm's four layers in one draw, layer by layer across the arms so
+	# each lies where it did (0.134.7: it was nine draws an arm, and a phone
+	# was getting hot).
+	var layers := [[WHEEL_HALF * 3.2, Color(colour, 0.16 * fade)], [WHEEL_HALF * 2.0, body],
+		[WHEEL_HALF * 0.9, core], [3.0, Color(1.0, 1.0, 1.0, 0.95 * fade)]]
+	var ends: Array = []
 	for arm in WHEEL_ARMS:
-		var end: Vector2 = wheel_end(arm)
-		v.draw_line(eye, end, Color(colour, 0.16 * fade), WHEEL_HALF * 3.2)
-		v.draw_line(eye, end, body, WHEEL_HALF * 2.0)
-		v.draw_line(eye, end, core, WHEEL_HALF * 0.9)
-		v.draw_line(eye, end, Color(1.0, 1.0, 1.0, 0.95 * fade), 3.0)
+		ends.append(wheel_end(arm))
+	var points := PackedVector2Array()
+	var colours := PackedColorArray()
+	for layer in layers:
+		var half: float = float(layer[0]) / 2.0
+		var paint: Color = layer[1]
+		for end in ends:
+			var across: Vector2 = ((end as Vector2) - eye).normalized().orthogonal() * half
+			points.append_array([eye + across, end + across, end - across, eye + across, end - across, eye - across])
+			colours.append_array([paint, paint, paint, paint, paint, paint])
+	RenderingServer.canvas_item_add_triangle_array(v.get_canvas_item(), PackedInt32Array(), points, colours)
+	for arm in WHEEL_ARMS:
+		var end: Vector2 = ends[arm]
 		# Pulses running out along it, so it reads as pouring from the eye.
 		var length: float = eye.distance_to(end)
 		var dir: Vector2 = (end - eye) / maxf(length, 1.0)
-		for k in 4:
-			var at: float = fmod(wheel_t * 420.0 + float(k) * length / 4.0, maxf(length, 1.0))
+		for k in 2:
+			var at: float = fmod(wheel_t * 420.0 + float(k) * length / 2.0, maxf(length, 1.0))
 			v.draw_arc(eye + dir * at, WHEEL_HALF * 0.75, 0.0, TAU, 12, Color(1.0, 1.0, 1.0, 0.35 * fade), 1.5)
 		v.draw_circle(end, WHEEL_HALF * 0.9, Color(colour, 0.45 * fade))
 	v.draw_circle(eye, WHEEL_HALF * (1.3 + 0.15 * sin(wheel_t * 18.0)), Color(colour, 0.6 * fade))

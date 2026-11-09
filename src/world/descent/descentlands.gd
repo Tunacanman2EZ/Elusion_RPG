@@ -185,6 +185,9 @@ const SCORCH_LIFE := 3.0
 const RUBBLE_LIFE := 4.0
 const SHADE_LIFE := 3.5
 # What each land's laser leaves where it burned ("" - nothing: wind blows).
+# What a spark or a lit scorch acts on (_react()): the cloud it explodes, the
+# hail it melts, the water that puts it out.
+const FIRE_ACTS_ON := ["gas", "hail", "bubble", "puddle"]
 const TRAIL_FOR := {Element.Type.FIRE: "scorch", Element.Type.ICE: "ice", Element.Type.WATER: "puddle",
 	Element.Type.WIND: "", Element.Type.LIGHT: "flare", Element.Type.EARTH: "rubble", Element.Type.DARK: "shade"}
 # Each land's effect, for a laser.
@@ -1495,13 +1498,22 @@ func _patch(kind: String, at: Vector2) -> Dictionary:
 
 func _react(me: Node2D) -> void:
 	"""AND THEY REACT (0.128.0): what one hazard does to another this step."""
+	# ONLY WHAT CAN BE SET OFF IS LOOKED AT (0.134.7). Every live spark and
+	# scorch used to walk every hazard each step for the few kinds fire
+	# acts on - a storm's seventy circles walked each other, 2.3 ms a step at
+	# four players, most of a phone's frame. The kinds it acts on are found
+	# once a step; a storm has none, so the walk is empty.
+	var fuel: Array = []
+	for other in hazards:
+		if str(other["k"]) in FIRE_ACTS_ON and not bool(other["done"]):
+			fuel.append(other)
 	for hz in hazards:
 		if bool(hz["done"]):
 			continue
 		var kind: String = str(hz["k"])
 		var p: Vector2 = hz["p"]
-		if kind == "spark" or (kind == "scorch" and float(hz["t"]) >= float(hz["w"])):
-			for other in hazards:
+		if (kind == "spark" or (kind == "scorch" and float(hz["t"]) >= float(hz["w"]))) and not fuel.is_empty():
+			for other in fuel:
 				if bool(other["done"]) or is_same(other, hz):
 					continue
 				var near: float = p.distance_to(other["p"])
@@ -1663,11 +1675,17 @@ func _draw_floor_hazards() -> void:
 						draw_circle(Vector2.ZERO, r, Color(0.12, 0.05, 0.02, 0.55 * fade))
 						draw_arc(Vector2.ZERO, r, 0.0, TAU, 20, Color(1.0, 0.45, 0.1, 0.7 * fade), 1.5)
 						draw_set_transform(p, 0.0, Vector2.ONE)
+						# Its three flames in one draw, not three (0.134.7: a
+						# storm left fifty scorches, a phone drew each in five).
+						var flames := PackedVector2Array()
+						var flame_colours := PackedColorArray()
 						for k in 3:
 							var x: float = (float(k) - 1.0) * r * 0.55
 							var lick: float = 5.0 + 4.0 * absf(sin(t * 9.0 + float(k) * 2.1 + p.x * 0.1))
-							draw_colored_polygon(PackedVector2Array([Vector2(x - 3.0, 1.0), Vector2(x + 3.0, 1.0),
-								Vector2(x, 1.0 - lick)]), Color(1.0, 0.55 + 0.2 * float(k % 2), 0.15, 0.85 * fade))
+							flames.append_array([Vector2(x - 3.0, 1.0), Vector2(x + 3.0, 1.0), Vector2(x, 1.0 - lick)])
+							var flame := Color(1.0, 0.55 + 0.2 * float(k % 2), 0.15, 0.85 * fade)
+							flame_colours.append_array([flame, flame, flame])
+						RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), PackedInt32Array(), flames, flame_colours)
 					"rubble":
 						draw_circle(Vector2.ZERO, r, Color(0.35, 0.26, 0.18, 0.5 * fade))
 						draw_set_transform(p, 0.0, Vector2.ONE)
@@ -1712,10 +1730,13 @@ func _draw_air() -> void:
 					var from := Vector2(-110.0, -300.0)
 					var at: Vector2 = p + from * (1.0 - fall * fall)
 					var back: Vector2 = from.normalized()
-					for k in range(6, 0, -1):
-						var behind: Vector2 = at + back * float(k) * 7.0
-						var fade: float = 1.0 - float(k) / 7.0
-						_air.draw_circle(behind, 3.0 + 4.0 * fade, Color(1.0, 0.35 + 0.3 * fade, 0.08, 0.15 + 0.45 * fade))
+					# The tail in one draw, fading as it goes (0.134.7: it was six
+					# circles, and a storm has twenty meteors in the air).
+					var side: Vector2 = back.orthogonal()
+					var tail_end: Vector2 = at + back * 44.0
+					_air.draw_polygon(PackedVector2Array([at + side * 7.0, tail_end + side * 2.5, tail_end - side * 2.5, at - side * 7.0]),
+						PackedColorArray([Color(1.0, 0.62, 0.08, 0.6), Color(1.0, 0.35, 0.08, 0.0),
+							Color(1.0, 0.35, 0.08, 0.0), Color(1.0, 0.62, 0.08, 0.6)]))
 					_air.draw_circle(at, 9.0, Color(1.0, 0.45, 0.1, 0.45))
 					_air.draw_circle(at, 6.5, Color(1.0, 0.65, 0.2, 0.95))
 					_air.draw_circle(at + back * 1.5, 3.2, Color(1.0, 0.95, 0.7, 1.0))
