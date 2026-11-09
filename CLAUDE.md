@@ -7258,7 +7258,8 @@ and 3 (the ending, tuning) are still to come.
 - **The room** (`scene/boss.tscn`) is written by `src/tools/buildcrowned.gd`
   now, as the Endless is: the underground floor, the crypt's walls laid end
   to end all round (1,048 x 826; the half `[101, 101, 101]`, middles 391 at
-  the back and 390 at the front, twelve tall side pieces and one short),
+  the back and 390 at the front, twelve tall side pieces and one short -
+  846 x 768 since 0.134.7, "The Crowned's room, a quarter smaller"),
   candelabras, lanterns and bones, the ladder up to the Field and its
   arrival, the victory teleporter. Built round the Crowned: `ORIGIN` puts
   `ysortworld/enemies/bossenemy` at (-400, 100), where gamedata.json has it,
@@ -7365,7 +7366,9 @@ hazards are - nothing new on the wire. Its header has the numbers.
   lava TileMapLayer, its front glowing a second before it comes; lava burns.
 - **3, the Trap (to 25%)**: the Endless's swarm in the room (HORDE_CROWD 300,
   HORDE_PHONE 150 on a phone, recoloured to a new land every few seconds),
-  and an X of lasers every TRAP_LASER_GAP (descentlands.gd `cross_lasers()`).
+  and an X of lasers every TRAP_LASER_GAP (descentlands.gd `cross_lasers()`;
+  since 0.134.7 the Crowned's hunting wheel instead - "The Crowned's hunting
+  wheel, not an X").
   Each game has its own horde.
 - **4, the Tear**: TEAR_COUNT pieces (64 px) crack every TEAR_GAP - one under
   you - and fall into the rift for TEAR_OPEN; fall through and you are hurt
@@ -7412,7 +7415,9 @@ hazards are - nothing new on the wire. Its header has the numbers.
     PULSE_ON, off PULSE_OFF, PULSES times - `beam_on()`), an X that bursts
     where it crosses (X_BLAST_R), and GHOSTS faint lines of where a turning
     or moving beam will sweep while it warns (`ghost_lines()`). The Trap
-    casts them in turn (crownedphases.gd `cast_lasers()`, LASER_SHAPES).
+    casts them in turn (crownedphases.gd `cast_lasers()`, LASER_SHAPES) -
+    since 0.134.7 its own hunting wheel in place of the X and the
+    pinwheel, which the Descent keeps.
     Not built from that list yet: the healer's beam clashing with a boss
     laser, light bouncing off walls or ice, his own laser sounds.
   - then, of a rift tear: "we need it to zip accross the screen ... looks
@@ -7589,6 +7594,138 @@ notices would have signed out everybody online at 90 s.
 - **Deploy order: either.** An older game ignores `missing` and reads the
   left-out part as empty - as before, but it is no longer signed out; this
   game against an older server never sees a `missing`.
+
+### The Sealing's meteors come as a storm (0.134.7)
+
+The owner: "i want it to flood meteors in the map instead of dropping a few
+remember with 4 people the game balance is rough". It was one meteor at your
+feet every two seconds, sometimes two (METEOR_GAP, METEOR_SECOND - gone).
+crownedphases.gd A STORM, NOT A FEW:
+
+- Every `STORM_GAP_LEAST` 6.5 to `STORM_GAP_MOST` 9.5 s (random, so it
+  cannot be counted; the first `STORM_FIRST` 2 s into the Sealing), a storm
+  of `STORM_SECONDS` 3.5: meteors at `STORM_RATE` 7 a second, each the
+  lands' meteor as before (warning circle, fireball, scorch).
+  `STORM_AIMED` 0.3 of them at you, the rest anywhere on `storm_floor()` -
+  the floor the lava has left (`dry_rect()`), `STORM_MARGIN` in.
+- **Heavier with a party**: `storm_rate_for()` adds `STORM_PARTY_SHARE` 0.5
+  for each other player fighting the Crowned (bossenemy.gd
+  `fight_targets()`, counted when the storm begins), up to
+  `STORM_PARTY_MOST` 4: 7, 10.5, 14, 17.5 a second. The boss's health
+  already grew with its party; now its hazards do. Each game drops its own
+  storm for its own player (no wire), so four players each dodge one two
+  and a half times as thick.
+- `storms` and `storm_meteors` count them; `_test_the_crowned_falls_apart()`
+  holds a storm's first second, the party rate, the dry floor and the gap.
+  Filmed: meteor_storm_0134_7.mp4 in the commit folder.
+- **On the land, not the lava** (the owner, of the first clip: "lets keep
+  them on the land not the lava"). `STORM_MARGIN` 42 is a warning circle's
+  radius (METEOR_R 38) and a little, so no circle reaches the lava;
+  `storm_floor()` is the floor dry when the meteor LANDS - the deeper of the
+  lava now and `lava_depth_at(phase_clock + METEOR_WARN)`; the ones aimed
+  at you are pulled onto it when you stand at its edge; and the lava
+  swallows a scorch it rises over (`_lava_swallows()`). The suite checks
+  40 meteors aimed at a player in the corner, all on the land.
+- **When the Crowned's acts are sequenced** (the plan agreed next: one act
+  at a time, in a random order), a storm is one act.
+
+### The Crowned's hunting wheel, not an X (the same 0.134.7)
+
+The owner, of the Trap's X of lasers: "i do not really like it". He chose
+"The Crowned's gaze" (one thick beam from its eye, turning after you
+slower than a walk) and saw it filmed, then: "a pinwheel laser might be
+even cooler", and of three pinwheels the one that hunts you - "5 beams".
+The gaze was never shipped; the wheel took its place. crownedphases.gd THE
+HUNTING WHEEL; LASER_SHAPES is `["wheel", "sweep", "cage", "pulse"]` - the
+wheel first in every Trap, and the lands' thin pinwheel left out (a weaker
+copy of it five seconds later). The Descent keeps its X and its pinwheel
+(descentlands.gd `cross_lasers()`, `pinwheel()`).
+
+- **`WHEEL_ARMS` 5 thick beams** from the eye (`wheel_eye()`: the boss plus
+  `WHEEL_EYE`), each to the room's wall (`wheel_end(arm)`), `wheel_gap()`
+  apart, turning together. `begin_wheel()` opens it with you in the middle
+  of a gap, in the Crowned's land (`crown_land`, dark in the Trap).
+- **`WHEEL_WARN` 1 s still**: a bright thread and a faint band as wide as
+  the beam on every arm, the eye gathering. Then `WHEEL_SECONDS` 6 of fire.
+- **It hunts.** `wheel_coming()` is how far the arm coming round at you
+  still has to turn; `wheel_target()` sets the pace from it: `WHEEL_SLOW`
+  40 px a second where you stand while that arm is a whole gap away,
+  rising to `WHEEL_FAST` 80 as it closes - it creeps, then lunges - held to
+  `WHEEL_TURN_MOST` 1.4 rad a second close in. Both are under a walk (90),
+  so a player who moves with their gap is never caught; one who stands
+  still is crossed by every arm.
+- **It turns back** every `WHEEL_FLIP_LEAST` 1.5 to `WHEEL_FLIP_MOST` 3 s at
+  random, easing through a stop (`WHEEL_EASE` 1.6 rad a second each
+  second): the slowing is the tell, and no two wheels run alike.
+- **An arm on you** (`wheel_touches()`, `WHEEL_HALF` 13 + `WHEEL_SLACK` 6)
+  hits `WHEEL_TIMES` 0.8 of a hazard's hit (the lands' `_env_hit()`, the
+  dark land's effect) every `WHEEL_TICK` 0.6 (the lands' TOUCH_GAP); a hit
+  another hazard's touch held off is tried again next frame, not lost.
+- Drawn by its own top-level `_wheel_view` at the lands' AIR_Z, all in code
+  (glow, body, core, rings running out of the eye, a flare at the eye and
+  each wall, 0.3 s fade). `end()` puts it out. Each game turns its own
+  wheel at its own player, as every other shape is cast at its own player.
+- `wheels` counts them. `_test_the_crowned_falls_apart()`: the Trap's first
+  laser is the wheel, five arms, you mid-gap; still and harmless through
+  the warning; creeps at SLOW and lunges at FAST where you stand; eases;
+  turns back; burns in an arm every tick, misses in a gap; every arm
+  reaches the wall; ends. Filmed: crowned_wheel_0134_7.mp4 in the commit
+  folder.
+
+### The Crowned's room, a quarter smaller (the same 0.134.7)
+
+The owner: "lets reduce the size of the map a bit i think that would help a
+tiny bit", and when the plan was offered again, yes. buildcrowned.gd SMALLER:
+one 101 run off each half of the back and front walls (`WALL_HALF`
+`[101, 101]`) and one tall piece off each side wall (eleven and one short):
+846 x 768 walls where they were 1,048 x 826, a floor (`FLOOR`, the fight's
+`room_rect`) of 818 x 704 where it was 1,020 x 762 - a quarter less floor,
+near enough the same shape. `ORIGIN` (-823, -284) keeps the Crowned at
+(-400, 100), so gamedata.json and the server are unchanged. The ladder, the
+arrival and the front candelabras, lanterns and bones keep their distance
+from the front wall, the lights theirs from the sides (`LIGHT_SPOTS`), the
+victory teleporter its from the back. Rebuilt with the builder, so every
+piece is still his crypt art; the node ids were carried over from the old
+scene by name.
+
+- Everything in the fight reads the room: the lava's rings, the Tear's
+  pieces (now six by five), the storm's dry floor, the wheel's beams to the
+  walls, the decoys, the edge spots - nothing else changed for it.
+- **A row or a column of the Tear on an odd span takes the ends too**
+  (crownedphases.gd `cut_pattern()`): every other piece, but on five pieces
+  the three with a gap between, not the two - a short floor still cracks
+  across.
+- Tests: `_test_the_crowned_remade()` holds 53 wall pieces and the 818 x 704
+  floor; `_test_the_crowned_falls_apart()` the 53 walls the lying room
+  shimmers, and its storm check now measures where thirty meteors fall (a
+  second's six was too few to say, in a smaller room).
+
+### A phone on its side fills its screen (the same 0.134.7)
+
+The owner: "mobile also doesnt fill screen when i tilt". project.godot keeps
+the aspect (16:9, every .tscn offset placed against 1280 x 720), so a phone
+on its side - 19.5:9, 20:9 - had black bars down both sides.
+
+- **A phone keeps the height** (settings.gd `aspect_for()`, set in `_ready()`
+  from `on_phone()`): the game is still 720 tall and a wider screen is a
+  wider view. Upright, keep_height letterboxes as before. A computer keeps
+  the aspect: nothing there moves.
+- **The bars are pinned to the bottom right**, as the hotbar is
+  (characterhud.tscn: health, mana and stamina anchored to the corner, the
+  same spots at 16:9). They sat at fixed offsets from the left, so a wider
+  screen pulled the hotbar away from them. The food chip copies the stamina
+  bar's anchors and goes with it. testrunner_5's "clear of the health and
+  magic bars" reads the anchor now.
+- **Checked at phone width** (1688 x 780, the low render resolution, touch
+  on): login, character select, the world, inventory, equipment, stats, map,
+  chat, friends, players, party, guild, kills, kingdom, controls, options,
+  bank, the touch menu, the Healer's Run and the Mage's Stand. Windows sit
+  by their own anchors (centred, or by the edge they belong to); the
+  minigames keep their pictures' shape, centred, their counters at the
+  screen's edges.
+- `_test_a_phone_on_its_side_fills_it()`: the aspect for a phone and a
+  computer, set at start, the bars pinned with the hotbar, where they were at
+  16:9, and the same distance from the hotbar at 20:9 and 21.6:9.
 
 ### Phones move the world 60 times a second (the same 0.134.6)
 

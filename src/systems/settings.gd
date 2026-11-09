@@ -426,6 +426,7 @@ func _ready() -> void:
 	# THE KEYS (0.8.0), before any scene asks the InputMap for one.
 	keys.setup()
 	load_settings()
+	get_tree().root.content_scale_aspect = aspect_for(on_phone())
 	# AFTER the file: the screen and the mode are applied, so the remembered
 	# spot is on the right screen. Then the watch, which notices drags.
 	_place_window_at_launch()
@@ -1166,6 +1167,20 @@ static func on_phone() -> bool:
 	"""A phone or a tablet: the browser build on Android or iOS (Godot's
 	web_android and web_ios), or a mobile build."""
 	return OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+
+
+# A PHONE ON ITS SIDE FILLS ITS SCREEN (0.134.7). The owner: "mobile also
+# doesnt fill screen when i tilt". project.godot keeps the aspect (above,
+# WINDOW_SIZES), so a phone on its side - 19.5:9, 20:9, wider than the game's
+# 16:9 - had black bars down both sides. On a phone the HEIGHT is kept
+# instead: the game is still 720 units tall, every .tscn offset still lands
+# top to bottom, and a wider screen is a wider view of the world. What sits
+# on the right is anchored to the right (the bars, the hotbar, the touch
+# pad), what sits in the middle to the middle. Held upright, a phone is
+# narrower than 16:9 and keep_height draws it as before, with bars above and
+# below. A computer keeps the aspect, so nothing there moves.
+static func aspect_for(phone: bool) -> Window.ContentScaleAspect:
+	return Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT if phone else Window.CONTENT_SCALE_ASPECT_KEEP
 
 
 static func apply_physics_rate(rate: String) -> void:

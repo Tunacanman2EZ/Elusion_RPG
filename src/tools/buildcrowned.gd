@@ -32,42 +32,52 @@
 #
 # THE WALLS ARE LAID AS THE ENDLESS'S ARE (one piece end to end with the next,
 # the left half the right's mirror; an error rather than a piece over
-# another): 1,048 wide - the three-run half (303) each side, and middles of
-# 391 at the back and 390 at the front, because the back right corner is
-# drawn a pixel narrower than the left - and 826 tall, twelve tall side
-# pieces and one short down each side.
+# another): 846 wide - the two-run half (202) each side, and middles of 391
+# at the back and 390 at the front, because the back right corner is drawn a
+# pixel narrower than the left - and 768 tall, eleven tall side pieces and
+# one short down each side.
+#
+# SMALLER (0.134.7). The owner: "lets reduce the size of the map a bit i
+# think that would help a tiny bit"; then, of the plan, the room about a
+# fifth smaller. It was 1,048 x 826 (a three-run half, twelve tall side
+# pieces): one run off each half and one tall piece off each side make the
+# floor 818 x 704 where it was 1,020 x 762 - a quarter less floor, the same
+# shape near enough. The Crowned still stands at (-400, 100), so the server's
+# gamedata.json is unchanged; the room is rebuilt round it (ORIGIN), the
+# ladder, the arrival and the lights kept as far from their walls as they
+# were.
 extends Node
 
 const OUT := "res://scene/boss.tscn"
 const TILESET := "res://scene/world/underground.tres"
 const TILE := 16
-const WIDE := 1048
-const TALL := 832
-const COLS := 66
-const ROWS := 52
-# The room's top-left in the world: the Crowned's (-400, 100) is (524, 413) in.
-const ORIGIN := Vector2(-924, -313)
-const BOSS_AT := Vector2(524, 413)
+const WIDE := 846
+const TALL := 774
+const COLS := 53
+const ROWS := 49
+# The room's top-left in the world: the Crowned's (-400, 100) is (423, 384) in.
+const ORIGIN := Vector2(-823, -284)
+const BOSS_AT := Vector2(423, 384)
 const WALL_BACK := 28.0
-const WALL_FRONT := 826.0
+const WALL_FRONT := 768.0
 const SIDE_LEFT := 4.5
-const SIDE_RIGHT := 1043.5
-const WALL_HALF := [101, 101, 101]
+const SIDE_RIGHT := 841.5
+const WALL_HALF := [101, 101]
 const BACK_MIDDLE := [17, 26, 51, 51, 101, 51, 51, 26, 17]
 const FRONT_MIDDLE := [17, 26, 51, 101, 101, 51, 26, 17]
 const WALL_PIECES := {101: "res://scene/crypt/wallrun4.tscn", 51: "res://scene/crypt/wallrun2.tscn",
 	26: "res://scene/crypt/wallrun1.tscn", 17: "res://scene/crypt/pillar.tscn"}
 const AMBIENCE := Color(0.46, 0.44, 0.56)
-const ARRIVAL := Vector2(524, 708)
-const LADDER := Vector2(524, 768)
-const VICTORY := Vector2(524, 170)
+const ARRIVAL := Vector2(423, 650)
+const LADDER := Vector2(423, 710)
+const VICTORY := Vector2(423, 170)
 # The floor inside the walls, in the room's own pixels.
-const FLOOR := Rect2(14, 34, 1020, 762)
+const FLOOR := Rect2(14, 34, 818, 704)
 # The seven crown lights, in crownedfight.gd's CROWN_ORDER (light, wind,
 # water, ice, earth, fire, dark): up the left side, along the back, down the
 # right.
-const LIGHT_SPOTS := [Vector2(56, 600), Vector2(56, 330), Vector2(250, 66), Vector2(524, 66),
-	Vector2(798, 66), Vector2(992, 330), Vector2(992, 600)]
+const LIGHT_SPOTS := [Vector2(56, 542), Vector2(56, 301), Vector2(149, 66), Vector2(423, 66),
+	Vector2(697, 66), Vector2(790, 301), Vector2(790, 542)]
 
 var _root: Node2D = null
 
@@ -272,19 +282,20 @@ func _decorate(props: Node) -> void:
 	"""Candelabras by the ladder and either side of the crown at the back,
 	lanterns down the sides between the crowns, the crypt's bones in the
 	corners - all at the edges, out of the fight."""
-	for x in [130.0, 386.0, 662.0, 918.0]:
+	var middle: float = WIDE / 2.0
+	for x in [130.0, middle - 138.0, middle + 138.0, WIDE - 130.0]:
 		_place("res://scene/crypt/candelabra.tscn", props, ORIGIN + Vector2(x, 46))
-	_place("res://scene/crypt/candelabra.tscn", props, ORIGIN + Vector2(470, 760))
-	_place("res://scene/crypt/candelabra.tscn", props, ORIGIN + Vector2(578, 760))
-	for y in [180.0, 466.0, 740.0]:
+	_place("res://scene/crypt/candelabra.tscn", props, ORIGIN + Vector2(middle - 54.0, WALL_FRONT - 66.0))
+	_place("res://scene/crypt/candelabra.tscn", props, ORIGIN + Vector2(middle + 54.0, WALL_FRONT - 66.0))
+	for y in [180.0, 437.0, WALL_FRONT - 86.0]:
 		_place("res://scene/crypt/lantern.tscn", props, ORIGIN + Vector2(36, y))
 		_place("res://scene/crypt/lantern.tscn", props, ORIGIN + Vector2(WIDE - 36, y))
 	_place("res://scene/crypt/skullpile.tscn", props, ORIGIN + Vector2(80, 86))
 	_place("res://scene/crypt/skullpile.tscn", props, ORIGIN + Vector2(WIDE - 80, 86))
-	_place("res://scene/crypt/bones.tscn", props, ORIGIN + Vector2(120, 770))
-	_place("res://scene/crypt/ribcage.tscn", props, ORIGIN + Vector2(WIDE - 130, 770))
-	_place("res://scene/crypt/skullcandles.tscn", props, ORIGIN + Vector2(200, 770))
-	_place("res://scene/crypt/skullcandles.tscn", props, ORIGIN + Vector2(WIDE - 200, 770))
+	_place("res://scene/crypt/bones.tscn", props, ORIGIN + Vector2(120, WALL_FRONT - 56.0))
+	_place("res://scene/crypt/ribcage.tscn", props, ORIGIN + Vector2(WIDE - 130, WALL_FRONT - 56.0))
+	_place("res://scene/crypt/skullcandles.tscn", props, ORIGIN + Vector2(200, WALL_FRONT - 56.0))
+	_place("res://scene/crypt/skullcandles.tscn", props, ORIGIN + Vector2(WIDE - 200, WALL_FRONT - 56.0))
 
 
 # =============================================================================

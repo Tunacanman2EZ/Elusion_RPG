@@ -2916,9 +2916,9 @@ func _test_the_crowned_remade() -> void:
 			walls += 1
 	var floor_rect: Rect2 = fight_node.get("room_rect") if fight_node != null else Rect2()
 	check("the Crowned's room is built by buildcrowned.gd: walled all round, the fight's node with its floor and seven lights, the Crowned where the server has it",
-		fight_node != null and fight_node.get_script() == Fight and walls == 59
+		fight_node != null and fight_node.get_script() == Fight and walls == 53
 		and (fight_node.get("light_spots") as PackedVector2Array).size() == 7
-		and floor_rect.size.x > 1000.0 and floor_rect.size.y > 700.0
+		and floor_rect.size == Vector2(818, 704)
 		and boss_node != null and boss_node.position == Vector2(-400, 100)
 		and floor_rect.has_point(boss_node.position), [walls, floor_rect])
 	room.free()
@@ -2928,8 +2928,10 @@ func _test_the_crowned_remade() -> void:
 	var widths_front: int = 0
 	for w in Builder.wall_widths(Builder.FRONT_MIDDLE):
 		widths_front += int(w)
-	check("  its walls end to end: the back 997 between its corners, the front 996, each the same read either way",
-		widths_back == 997 and widths_front == 996
+	# A quarter smaller since 0.134.7 (buildcrowned.gd SMALLER): 818 x 704 of
+	# floor where it was 1,020 x 762, one run off each half of the walls.
+	check("  its walls end to end: the back 795 between its corners, the front 794, each the same read either way",
+		widths_back == 795 and widths_front == 794
 		and Builder.wall_widths(Builder.BACK_MIDDLE) == _reversed(Builder.wall_widths(Builder.BACK_MIDDLE))
 		and Builder.wall_widths(Builder.FRONT_MIDDLE) == _reversed(Builder.wall_widths(Builder.FRONT_MIDDLE)))
 	check("  the crowns in the bands' order, CROWN_SECONDS each, round again",
@@ -5091,12 +5093,88 @@ func _test_the_crowned_falls_apart() -> void:
 		and is_equal_approx(float(lands.get("false_share")), Phases.LIE_SHARE))
 	lands.set("false_share", 0.0)
 	lands.set("hazards", [])
-	phases.set("_meteor_left", 0.0)
-	phases.call("step", 0.016, 0.7)
+	# A STORM, NOT A FEW (0.134.7): "i want it to flood meteors in the map".
+	phases.set("_storm_wait", 0.0)
+	phases.set("_storm_left", 0.0)
+	# Its own numbers, so which meteors are aimed is the same every run.
+	(phases.get("_rng") as RandomNumberGenerator).seed = 2026
+	var storms_were: int = int(phases.get("storms"))
+	var dropped_were: int = int(phases.get("storm_meteors"))
+	for i in 63:
+		phases.call("step", 0.016, 0.7)
+	var dropped: int = int(phases.get("storm_meteors")) - dropped_were
+	var storms_now: int = int(phases.get("storms"))
+	# Where they fall, over thirty of them - a second's six is too few to say
+	# (the smaller room of 0.134.7 put four of six by chance within 60 px).
+	lands.set("hazards", [])
+	for i in 30:
+		phases.call("_drop_storm_meteor", body)
 	var meteors: int = 0
+	var flung: int = 0
+	var farthest: float = 0.0
+	var inside: bool = true
+	# The lava moves while the storm falls, so each meteor is held to the
+	# whole floor here; storm_floor() is checked against the lava below.
+	var storm_floor: Rect2 = phases.call("dry_rect", 0)
 	for hz in lands.get("hazards"):
-		if str(hz["k"]) == "meteor" and (hz["p"] as Vector2).distance_to(body.global_position) < 60.0:
+		if str(hz["k"]) != "meteor":
+			continue
+		farthest = maxf(farthest, (hz["p"] as Vector2).distance_to(body.global_position))
+		if (hz["p"] as Vector2).distance_to(body.global_position) < 60.0:
 			meteors += 1
+		else:
+			flung += 1
+			inside = inside and storm_floor.grow(0.5).has_point(hz["p"])
+	check("  a storm of meteors, not a few: %d in its first second (%.0f a second alone); of thirty, %d across the floor - the farthest %.0f px from you - %d at you" % [
+		dropped, Phases.storm_rate_for(1), flung, farthest, meteors],
+		storms_now == storms_were + 1 and dropped >= 6 and dropped <= 8 and flung >= 12 and meteors >= 4 and farthest >= 150.0 and inside,
+		[dropped, flung, meteors, farthest, inside])
+	check("  heavier with a party: half as many again for each other player, four counted (%.1f, %.1f, %.1f a second)" % [
+		Phases.storm_rate_for(2), Phases.storm_rate_for(4), Phases.storm_rate_for(9)],
+		is_equal_approx(Phases.storm_rate_for(2), Phases.STORM_RATE * 1.5) and is_equal_approx(Phases.storm_rate_for(4), Phases.STORM_RATE * 2.5)
+		and is_equal_approx(Phases.storm_rate_for(9), Phases.storm_rate_for(4)) and is_equal_approx(Phases.storm_rate_for(0), Phases.STORM_RATE))
+	for i in 200:
+		phases.call("step", 0.016, 0.7)
+	var waiting: float = float(phases.get("_storm_wait"))
+	# ON THE LAND, NOT THE LAVA (0.134.7): "lets keep them on the land not
+	# the lava" - every circle on dry floor, where the lava will be when it
+	# lands, the ones at you too.
+	var clock_was: float = float(phases.get("phase_clock"))
+	phases.set("phase_clock", Phases.LAVA_RISE * 2.0)
+	phases.set("lava_depth", Phases.lava_depth_at(Phases.LAVA_RISE * 2.0))
+	var ahead: int = Phases.lava_depth_at(Phases.LAVA_RISE * 2.0 + LandsScript.METEOR_WARN)
+	var on_land: Rect2 = phases.call("storm_floor")
+	check("  a storm falls on the land: every circle on dry floor - the lava's edge as it will be when it lands (%d rings, not %d)" % [ahead, int(phases.get("lava_depth"))],
+		ahead > int(phases.get("lava_depth")) and Phases.STORM_MARGIN >= LandsScript.METEOR_R
+		and (phases.call("dry_rect", ahead) as Rect2).grow(-LandsScript.METEOR_R).encloses(on_land), [on_land, ahead])
+	body.global_position = (phases.call("dry_rect", 0) as Rect2).position + Vector2(4, 4)
+	lands.set("hazards", [])
+	phases.call("begin_storm")
+	for i in 40:
+		phases.call("_drop_storm_meteor", body)
+	var off_land: int = 0
+	for hz in lands.get("hazards"):
+		if str(hz["k"]) == "meteor" and not on_land.grow(0.5).has_point(hz["p"]):
+			off_land += 1
+	check("  even the ones aimed at you, stood in the corner where the lava comes: none of 40 off the land (%d)" % off_land,
+		off_land == 0 and (lands.get("hazards") as Array).size() >= 40, off_land)
+	lands.set("hazards", [])
+	var near_wall: Dictionary = lands.call("spawn_env", "meteor", body)
+	near_wall["k"] = "scorch"
+	near_wall["p"] = (phases.call("dry_rect", 0) as Rect2).position + Vector2(4, 4)
+	var mid: Dictionary = lands.call("spawn_env", "meteor", body)
+	mid["k"] = "scorch"
+	mid["p"] = (phases.call("dry_rect", 0) as Rect2).get_center()
+	phases.call("_lava_swallows")
+	check("  a scorch the lava rises over is swallowed; one on the land stays",
+		bool(near_wall["done"]) and not bool(mid["done"]))
+	lands.set("hazards", [])
+	phases.set("phase_clock", clock_was)
+	phases.set("_storm_left", 0.0)
+	phases.set("_storm_wait", 99.0)
+	check("  and it ends, the next one a random %.1f to %.1f seconds away" % [Phases.STORM_GAP_LEAST, Phases.STORM_GAP_MOST],
+		float(phases.get("_storm_left")) <= 0.0 and waiting > 0.0 and waiting <= Phases.STORM_GAP_MOST, waiting)
+	lands.set("hazards", [])
 	var meteor: Dictionary = lands.call("spawn_env", "meteor", body)
 	meteor["p"] = body.global_position
 	meteor["t"] = float(meteor["w"])
@@ -5106,8 +5184,8 @@ func _test_the_crowned_falls_apart() -> void:
 	var scorched: bool = false
 	for hz in lands.get("hazards"):
 		scorched = scorched or (str(hz["k"]) == "scorch" and (hz["p"] as Vector2) == body.global_position)
-	check("  meteors fall where you stand (%d near you) and strike as fire, leaving a scorch: %s" % [meteors, str(struck)],
-		meteors >= 1 and struck == [LandsScript.env_amount(4, 400, LandsScript.METEOR_TIMES), Element.Type.FIRE] and scorched)
+	check("  a meteor strikes as fire and leaves a scorch: %s" % str(struck),
+		struck == [LandsScript.env_amount(4, 400, LandsScript.METEOR_TIMES), Element.Type.FIRE] and scorched)
 	lands.set("hazards", [])
 	lands.set("false_share", 1.0)
 	var hits_were: int = (body.get("hits") as Array).size()
@@ -5122,7 +5200,8 @@ func _test_the_crowned_falls_apart() -> void:
 		and int((lands.get("reactions") as Dictionary).get("illusion", 0)) == illusions_were + 1 and not bool(lie.get("just", false)))
 	lands.set("false_share", Phases.LIE_SHARE)
 	lands.set("hazards", [])
-	phases.set("_meteor_left", 99.0)
+	phases.set("_storm_wait", 99.0)
+	phases.set("_storm_left", 0.0)
 	phases.set("phase_clock", Phases.LAVA_RISE * 3.0 + 0.05)
 	body.global_position = Vector2(floor_rect.position.x + 20.0, floor_rect.get_center().y)
 	lands.set("_touch_left", 0.0)
@@ -5174,11 +5253,81 @@ func _test_the_crowned_falls_apart() -> void:
 	for hz in lands.get("hazards"):
 		if str(hz["k"]) == "laser":
 			beams.append(hz)
-	check("  under a half: the Trap - the floor whole again, a horde from the Endless filling (%d of %d; %d on a phone) and an X of lasers"
-		% [alive, Phases.HORDE_CROWD, on_phone],
+	var wheel_from: Vector2 = phases.call("wheel_eye")
+	var at_me: float = (body.global_position - wheel_from).angle()
+	var gap: float = phases.call("wheel_gap")
+	var nearest: float = PI
+	for arm in Phases.WHEEL_ARMS:
+		nearest = minf(nearest, absf(wrapf(float(phases.get("wheel_angle")) + gap * float(arm) - at_me, -PI, PI)))
+	check("  under a half: the Trap - the floor whole again, a horde from the Endless filling (%d of %d; %d on a phone) and the Crowned's hunting wheel, %d arms, you mid-gap (%.2f from the nearest)"
+		% [alive, Phases.HORDE_CROWD, on_phone, Phases.WHEEL_ARMS, nearest],
 		int(phases.get("phase")) == 3 and floor_back and horde != null and horde.get_parent() == room.get_node("ysortworld/groundeffects")
 		and alive > 50 and alive <= Phases.HORDE_CROWD and on_phone == Phases.HORDE_PHONE
-		and beams.size() == 2 and (beams[1] as Dictionary).has("x_with") and beams[1]["p"] == beams[0]["p"])
+		and beams.is_empty() and int(phases.get("lasers_cast")) == 1 and is_equal_approx(float(phases.get("wheel_t")), 0.016)
+		and Phases.WHEEL_ARMS == 5 and absf(nearest - gap * 0.5) < 0.001 and int(phases.call("wheel_touches", body.global_position)) == -1)
+	# THE HUNTING WHEEL (0.134.7): still and harmless through the warning;
+	# the arm coming at you creeps from WHEEL_SLOW and lunges to WHEEL_FAST
+	# where you stand, both under a walk; it eases through a stop when it
+	# turns back; an arm on you burns every tick, a gap misses; every arm
+	# reaches the wall, and it ends.
+	var hits_at: int = int(lands.get("env_hits"))
+	phases.set("wheel_angle", at_me)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.1, 0.4)
+	var held_in_warning: bool = (int(lands.get("env_hits")) == hits_at and float(phases.get("wheel_spin")) == 0.0
+		and is_equal_approx(float(phases.get("wheel_angle")), at_me) and float(phases.get("wheel_t")) < Phases.WHEEL_WARN)
+	var reach: float = body.global_position.distance_to(wheel_from)
+	phases.set("wheel_dir", 1.0)
+	phases.set("wheel_angle", at_me - 0.02)
+	var lunge: float = float(phases.call("wheel_target", body.global_position))
+	phases.set("wheel_angle", at_me + 0.02)
+	var creep: float = float(phases.call("wheel_target", body.global_position))
+	var paced: bool = (lunge > 0.0 and creep > 0.0 and lunge * reach > Phases.WHEEL_FAST - 2.0 and lunge * reach <= Phases.WHEEL_FAST + 0.01
+		and creep * reach < Phases.WHEEL_SLOW + 2.0 and creep * reach >= Phases.WHEEL_SLOW - 0.01 and Phases.WHEEL_FAST < 90.0)
+	phases.set("wheel_t", Phases.WHEEL_WARN)
+	phases.set("wheel_spin", 0.0)
+	phases.set("wheel_angle", at_me + gap * 0.5)
+	phases.set("_wheel_flip_left", 99.0)
+	phases.call("step", 0.1, 0.4)
+	var spin_now: float = float(phases.get("wheel_spin"))
+	var eased: bool = spin_now > 0.0 and spin_now <= Phases.WHEEL_EASE * 0.1 + 0.0001
+	phases.set("_wheel_flip_left", 0.0)
+	phases.call("step", 0.016, 0.4)
+	var flipped: bool = (float(phases.get("wheel_dir")) == -1.0 and float(phases.get("_wheel_flip_left")) >= Phases.WHEEL_FLIP_LEAST - 0.02
+		and float(phases.get("wheel_spin")) < spin_now)
+	phases.set("wheel_angle", at_me)
+	phases.set("wheel_spin", 0.0)
+	phases.set("_wheel_hit_left", 0.0)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.016, 0.4)
+	var burned_once: bool = int(lands.get("env_hits")) == hits_at + 1
+	phases.set("wheel_angle", at_me)
+	phases.set("wheel_spin", 0.0)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.1, 0.4)
+	var ticked: bool = int(lands.get("env_hits")) == hits_at + 1
+	phases.set("wheel_angle", at_me)
+	phases.set("wheel_spin", 0.0)
+	phases.set("_wheel_hit_left", 0.005)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.016, 0.4)
+	ticked = ticked and int(lands.get("env_hits")) == hits_at + 2
+	phases.set("wheel_angle", at_me + gap * 0.5)
+	phases.set("wheel_spin", 0.0)
+	phases.set("_wheel_hit_left", 0.0)
+	lands.set("_touch_left", 0.0)
+	phases.call("step", 0.016, 0.4)
+	var missed: bool = int(lands.get("env_hits")) == hits_at + 2
+	var reaches_wall: bool = true
+	for arm in Phases.WHEEL_ARMS:
+		var end_at: Vector2 = phases.call("wheel_end", arm)
+		reaches_wall = reaches_wall and (phases.get("room") as Rect2).grow(1.0).has_point(end_at) and end_at.distance_to(wheel_from) > 50.0
+	phases.set("wheel_t", Phases.WHEEL_WARN + Phases.WHEEL_SECONDS - 0.01)
+	phases.call("step", 0.05, 0.4)
+	check("  the wheel hunts you: the coming arm creeps at %.1f and lunges at %.1f px a second where you stand (a walk is 90); still through the warning, eases to %.3f, turns back, burns in an arm every tick, misses in a gap, every arm to the wall, and ends"
+		% [creep * reach, lunge * reach, spin_now],
+		held_in_warning and paced and eased and flipped and burned_once and ticked and missed and reaches_wall
+		and float(phases.get("wheel_t")) < 0.0)
 	# ---- the Tear --------------------------------------------------------------------
 	lands.set("hazards", [])
 	phases.call("step", 0.016, 0.2)
@@ -5226,7 +5375,7 @@ func _test_the_crowned_falls_apart() -> void:
 	fight.call("flash_wash", Element.Type.WATER)
 	var wash: ColorRect = fight.get("_wash")
 	check("  the room lies: %d walls to shimmer, a lie every few seconds, the floor washed in the wrong land a moment" % (phases.call("_walls") as Array).size(),
-		(phases.call("_walls") as Array).size() == 59 and int(phases.get("lies")) == lies_were + 6
+		(phases.call("_walls") as Array).size() == 53 and int(phases.get("lies")) == lies_were + 6
 		and wash.color.a > Fight.WASH * 1.5)
 	# ---- the eyes shuffle -------------------------------------------------------------------
 	lands.set("hazards", [])
@@ -5542,3 +5691,47 @@ func _test_phones_move_the_world_lighter() -> void:
 	check("the readout's physics budget follows the rate (12.5 ms at 80, 16.7 at 60)",
 		_code_src("res://src/systems/perfoverlay.gd").contains("1000.0 / float(Engine.physics_ticks_per_second)"))
 	print("  phones move the world lighter: done")
+
+
+func _test_a_phone_on_its_side_fills_it() -> void:
+	# The owner: "mobile also doesnt fill screen when i tilt" (0.134.7). A
+	# phone keeps the game's HEIGHT, so a 20:9 screen on its side is a wider
+	# view and no black bars; a computer keeps the 16:9 it was laid out on
+	# (settings.gd "A PHONE ON ITS SIDE FILLS ITS SCREEN").
+	section("A phone on its side fills its screen (0.134.7)")
+	check("a phone keeps the height - wider shows more - and a computer keeps the 16:9 aspect",
+		Settings.aspect_for(true) == Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT
+		and Settings.aspect_for(false) == Window.CONTENT_SCALE_ASPECT_KEEP
+		and str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep")) == "keep")
+	check("  set when the game starts, from whether it is on a phone",
+		_func_body(_code_src("res://src/systems/settings.gd"), "func _ready(").contains("content_scale_aspect = aspect_for(on_phone())"))
+	# The bars sat at fixed spots from the left, so a wider phone pulled the
+	# hotbar (pinned right) away from them. Now they are pinned to the same
+	# corner: at 1280 exactly where they were, and at any width the same
+	# distance from the hotbar.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var holder: Control = hud.get_node("barcontainer") as Control
+	var hotbar: Control = hud.get_node("hotbar") as Control
+	var was := {"healthbar": Vector2(979, 611), "magicbar": Vector2(979, 644), "staminabar": Vector2(1099, 677)}
+	var pinned: bool = true
+	var unmoved: bool = true
+	var kept_together: bool = true
+	var seen: Array = []
+	for bar_name in was:
+		var bar: Control = holder.get_node(bar_name) as Control
+		pinned = pinned and bar.anchor_left == 1.0 and bar.anchor_right == 1.0 and bar.anchor_top == 1.0 and bar.anchor_bottom == 1.0
+		var at_16_9 := Vector2(1280.0 * bar.anchor_left + bar.offset_left, 720.0 * bar.anchor_top + bar.offset_top)
+		unmoved = unmoved and at_16_9.is_equal_approx(was[bar_name])
+		var gaps: Array = []
+		for width in [1280.0, 1558.0, 1732.0]:
+			var bar_x: float = holder.offset_left + width * bar.anchor_left + bar.offset_left
+			var hotbar_x: float = width * hotbar.anchor_right + hotbar.offset_right
+			gaps.append(hotbar_x - bar_x)
+		kept_together = kept_together and is_equal_approx(float(gaps[0]), float(gaps[1])) and is_equal_approx(float(gaps[0]), float(gaps[2]))
+		seen.append([bar_name, at_16_9, gaps[0]])
+	pinned = pinned and hotbar.anchor_left == 1.0 and hotbar.anchor_top == 1.0
+	hud.free()
+	check("the health, mana and stamina bars are pinned to the bottom right with the hotbar", pinned, seen)
+	check("  at 16:9 exactly where they always were", unmoved, seen)
+	check("  and at 20:9 or 21.6:9 the same distance from the hotbar as at 16:9", kept_together, seen)
+	print("  a phone on its side fills it: done")

@@ -250,6 +250,7 @@ func _run_all() -> void:
 	await _test_a_part_left_out_is_kept()
 	await _test_phones_move_the_world_lighter()
 	await _test_the_crowned_falls_apart()
+	await _test_a_phone_on_its_side_fills_it()
 	await _test_one_look_for_the_game()
 	await _test_the_gm_panel_tidied_and_live()
 	await _test_the_hud_bar_says_keys_and_what_is_open()

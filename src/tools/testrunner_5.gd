@@ -2369,7 +2369,8 @@ func _test_staff_panel() -> void:
 	var hp: Control = hud.get_node_or_null("barcontainer/healthbar") as Control
 	if frame != null and holder != null and hp != null:
 		var bar_right: float = screen_w + frame.offset_right
-		var readouts_left: float = holder.offset_left + hp.offset_left
+		# Pinned to the right since 0.134.7: where the anchor puts it at 16:9.
+		var readouts_left: float = holder.offset_left + screen_w * hp.anchor_left + hp.offset_left
 		check("and it stops clear of the health and magic bars", bar_right < readouts_left,
 			"bar ends at %.0f, the readouts begin at %.0f" % [bar_right, readouts_left])
 	else:
@@ -2582,6 +2583,8 @@ func _test_staff_panel() -> void:
 	# every .tscn in this project was placed against. "expand" would hand a
 	# wider monitor a wider viewport, and every hand-placed HUD element would
 	# land somewhere else.
+	# (A phone keeps the height instead, set when the game starts - settings.gd
+	# aspect_for(), _test_a_phone_on_its_side_fills_it().)
 	check("and the aspect is kept, so every .tscn offset still lands",
 		str(ProjectSettings.get_setting("display/window/stretch/aspect", "")) == "keep",
 		ProjectSettings.get_setting("display/window/stretch/aspect", ""))
