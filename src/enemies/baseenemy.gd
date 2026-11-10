@@ -3565,6 +3565,7 @@ func _die() -> void:
 	# that override authoritative: _has_animation("death" + dir) is false for
 	# both slime forms, so neither reaches this branch at all.
 	var death_anim: String = "death" + _facing_for_animation()
+	var burst: bool = false
 	if _has_animation(death_anim):
 		_dying = true
 		_stop_acting()
@@ -3573,9 +3574,8 @@ func _die() -> void:
 		if not is_instance_valid(self):
 			return
 	elif _bursts_on_death():
-		DeathBurst.spawn(self)
-
-	queue_free()
+		burst = true
+	_leave_world(burst)
 
 
 func _bursts_on_death() -> bool:
@@ -3583,6 +3583,100 @@ func _bursts_on_death() -> bool:
 	dies. Yes, unless its script shows a death of its own - poisonslime.gd
 	does, and says no."""
 	return true
+
+
+# A CROWD GOES IN TURNS (0.137.1). The owner's 16x readout: a 22.9 ms worst
+# physics tick against 12.5. Timed in the container, a monster's going was
+# 150 to 250 us - its DeathBurst 55 to 87, freeing it about 100 more at the
+# tick's end - and at 16x one blow kills thirty to fifty: a 26 ms tick. Now
+# each tick spends up to LEAVE_BUDGET_MS on bursts and frees (a burst as
+# timed, a free as LEAVE_FREE_USEC); a death past it goes on a later tick,
+# never fewer than one a tick. Meanwhile it stands where it fell, still on its
+# last frame (_wait_to_leave()): out of "enemies" (so nothing aims at it or
+# hits it - every attack asks the group), its bar hidden, its brain and attack
+# stopped. Its body is not taken out of the world early: that is most of a
+# free's cost, and doing it at once would put it back in this tick.
+# Everything that matters - the kill report, died, the slot - has already
+# happened in _die(). One death at a time goes at once, as before.
+const LEAVE_BUDGET_MS := 2.0
+const LEAVE_FREE_USEC := 100
+static var _leave_tick: int = -1
+static var _leave_spent_usec: int = 0
+static var _leaving: Array = []
+static var _leaving_waiting: bool = false
+var _leave_burst: bool = false
+
+
+func _leave_world(burst: bool) -> void:
+	"""Gone from the world: a DeathBurst first if `burst`, then freed - now,
+	or on a later tick once this one's LEAVE_BUDGET_MS is spent."""
+	if not is_inside_tree():
+		queue_free()
+		return
+	_leave_spend_reset()
+	if _leaving.is_empty() and _leave_spent_usec < int(LEAVE_BUDGET_MS * 1000.0):
+		_go_now(burst)
+		return
+	_wait_to_leave(burst)
+
+
+func _go_now(burst: bool) -> void:
+	var started: int = Time.get_ticks_usec()
+	if burst:
+		DeathBurst.spawn(self)
+	queue_free()
+	_leave_spent_usec += Time.get_ticks_usec() - started + LEAVE_FREE_USEC
+
+
+func _wait_to_leave(burst: bool) -> void:
+	_leave_burst = burst
+	_dying = true
+	set_physics_process(false)
+	velocity = Vector2.ZERO
+	is_attacking = false
+	if has_node("attacktimer"):
+		$attacktimer.stop()
+	remove_from_group(&"enemies")
+	var bar: CanvasItem = get_node_or_null("healthbar") as CanvasItem
+	if bar != null:
+		bar.visible = false
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	if sprite != null:
+		sprite.pause()
+	_leaving.append(get_instance_id())
+	if not _leaving_waiting:
+		_leaving_waiting = true
+		get_tree().physics_frame.connect(_leave_out.bind(get_tree()), CONNECT_ONE_SHOT)
+
+
+static func _leave_spend_reset() -> void:
+	var tick: int = Engine.get_physics_frames()
+	if tick != _leave_tick:
+		_leave_tick = tick
+		_leave_spent_usec = 0
+
+
+static func leaving_count() -> int:
+	return _leaving.size()
+
+
+static func _leave_out(tree: SceneTree) -> void:
+	_leaving_waiting = false
+	_leave_spend_reset()
+	var gone: int = 0
+	while not _leaving.is_empty() \
+			and (gone == 0 or _leave_spent_usec < int(LEAVE_BUDGET_MS * 1000.0)):
+		var monster: BaseEnemy = instance_from_id(_leaving.pop_front()) as BaseEnemy
+		if monster == null or monster.is_queued_for_deletion():
+			continue
+		if not monster.is_inside_tree():
+			monster.queue_free()
+			continue
+		monster._go_now(monster._leave_burst)
+		gone += 1
+	if not _leaving.is_empty() and is_instance_valid(tree):
+		_leaving_waiting = true
+		tree.physics_frame.connect(_leave_out.bind(tree), CONNECT_ONE_SHOT)
 
 
 # =============================================================================
@@ -3854,6 +3948,7 @@ func net_vanish() -> void:
 	Audio.play_at("enemy_death", global_position)
 	died.emit()
 	var death_anim: String = "death" + _facing_for_animation()
+	var burst: bool = false
 	if _has_animation(death_anim):
 		_dying = true
 		_stop_acting()
@@ -3862,8 +3957,8 @@ func net_vanish() -> void:
 		if not is_instance_valid(self):
 			return
 	elif _bursts_on_death():
-		DeathBurst.spawn(self)
-	queue_free()
+		burst = true
+	_leave_world(burst)
 
 
 func net_remove() -> void:

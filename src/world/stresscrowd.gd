@@ -34,6 +34,15 @@
 # it within a quarter second - not thinking - so a thousand new monsters are
 # not all awake for that quarter second.
 #
+# IN HOLDERS OF A FEW HUNDRED (0.137.1). Every copy went into its monster's
+# own parent - the Big Field's "enemies", 8,336 children at 16x - and a
+# monster dying there cost twice what it cost anywhere else: 48 killed in one
+# tick, 15.5 ms in the container against 8.6 outside it (zz/benchwave.gd,
+# sandbox only; the engine's own work at the tick's end, not this game's
+# scripts). Now copies go into Node2Ds of HOLDER_SIZE under that parent, at
+# its origin and y-sorted as it is, so they are drawn and sorted as before:
+# 8.7 ms. Off frees them too.
+#
 # Survives walking between areas (a static); always off after a restart.
 extends Node
 
@@ -89,6 +98,10 @@ var _copies_of: Dictionary = {}
 # The dead stay in _copies until a prune; one every PRUNE_EVERY deaths keeps the
 # list from growing through a long fight without a prune for each death.
 const PRUNE_EVERY := 256
+const HOLDER_SIZE := 256
+const HOLDER_META := &"stress_holder"
+# A parent's id -> its holders' ids, filled in turn.
+var _holders: Dictionary = {}
 var _deaths_since_prune: int = 0
 # Taken out of _copies and waiting their turn to be freed (0.135.3): one list,
 # however many switches, so a switch before the last one finished never drops
@@ -265,9 +278,10 @@ func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 			break
 	if far:
 		EnemySleeperScript.put_to_sleep(enemy)
+	var holder: Node2D = _holder_in(parent)
 	# Before add_child(): BaseEnemy._ready() reads its spot as home.
-	enemy.position = parent.to_local(spot)
-	parent.add_child(enemy)
+	enemy.position = holder.to_local(spot)
+	holder.add_child(enemy)
 	enemy.global_position = spot
 	enemy.reset_physics_interpolation()
 	if "spawn_position" in enemy:
@@ -278,6 +292,44 @@ func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 	(_copies_of[source] as Array).append(enemy.get_instance_id())
 	if enemy.has_signal("died"):
 		enemy.died.connect(_on_copy_died.bind(source), CONNECT_ONE_SHOT)
+
+
+func _holder_in(parent: Node2D) -> Node2D:
+	"""A holder under `parent` with room: the first with fewer than
+	HOLDER_SIZE in it, or a new one."""
+	var key: int = parent.get_instance_id()
+	var ids: Array = _holders.get(key, [])
+	for id in ids:
+		var holder: Node2D = instance_from_id(int(id)) as Node2D
+		if holder != null and holder.get_parent() == parent and not holder.is_queued_for_deletion() \
+				and holder.get_child_count() < HOLDER_SIZE:
+			return holder
+	var made := Node2D.new()
+	made.name = "stresscopies"
+	made.y_sort_enabled = parent.y_sort_enabled
+	made.set_meta(HOLDER_META, true)
+	parent.add_child(made, true)
+	ids.append(made.get_instance_id())
+	_holders[key] = ids
+	return made
+
+
+static func source_parent_of(copy: Node) -> Node:
+	"""Where the monster a copy copies stands: the copy's parent, or past
+	its holder."""
+	var parent: Node = copy.get_parent() if copy != null else null
+	if parent != null and parent.has_meta(HOLDER_META):
+		return parent.get_parent()
+	return parent
+
+
+func _free_holders() -> void:
+	for key in _holders:
+		for id in _holders[key]:
+			var holder: Node = instance_from_id(int(id)) as Node
+			if holder != null and not holder.is_queued_for_deletion():
+				holder.queue_free()
+	_holders = {}
 
 
 static func spread_for(times: int) -> float:
@@ -383,7 +435,8 @@ func _remove_all(generation: int) -> void:
 	for node in get_tree().get_nodes_in_group("enemies"):
 		if is_copy(node) and not listed.has(node.get_instance_id()) and (_area == null or _area.is_ancestor_of(node)):
 			going.append({"source": -1, "id": node.get_instance_id()})
-	await _free_by_the_clock(going, generation)
+	if await _free_by_the_clock(going, generation):
+		_free_holders()
 
 
 func _free_by_the_clock(going: Array, generation: int) -> bool:

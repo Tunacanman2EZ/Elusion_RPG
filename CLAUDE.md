@@ -2729,6 +2729,57 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### A crowd goes in turns, and the copies live in holders (0.137.1)
+
+The owner's 16x readout after Uncap: a 22.9 ms worst physics tick against
+12.5, "lets fix", then "lets fix" again for the rest. Timed in the
+container (zz/benchdie.gd, zz/benchwave.gd, zz/benchwalk.gd, sandbox only):
+a monster's going was 150 to 250 us - its DeathBurst 55 to 87, freeing it
+about 100 more in the tick's delete queue, its damage number 40 to 55 - and
+at 16x one blow kills thirty to fifty. And twice that among the 8,336
+children of the Big Field's "enemies" node.
+
+- **baseenemy.gd `_leave_world(burst)`**, the end of `_die()` and of
+  `net_vanish()` (after a death animation too): the burst and the free
+  now, while this tick's `LEAVE_BUDGET_MS` (2.0) lasts - a burst counted as
+  timed, a free as `LEAVE_FREE_USEC` (100), since it is paid at the tick's
+  end - else `_wait_to_leave()`: `_dying`, brain and attack timer stopped,
+  out of "enemies" (every attack, aim and the sleeper ask the group), its
+  bar hidden, its sprite paused on the frame the burst copies, queued. Its
+  body stays in the world until it goes: nothing hits a monster out of
+  "enemies", and taking the body out early would pay part of the free in
+  this tick after all (the first version did, by `set_deferred` of
+  `process_mode`). `_leave_out()` on the tree's
+  `physics_frame` goes on through the queue, never fewer than one a tick.
+  One death alone goes at once, as before.
+- **Everything that matters is not waited on**: the kill report, `died`,
+  the slot and the seat stay in `_die()` before it.
+- **Kept in the shape the suite reads**: `elif _bursts_on_death():` in
+  both deaths (testrunner_2's check).
+- **stresscrowd.gd, IN HOLDERS OF A FEW HUNDRED**: a copy goes into a
+  Node2D of `HOLDER_SIZE` (256) under its monster's parent
+  (`_holder_in()`, meta `HOLDER_META`, at the parent's origin, y-sorted as
+  the parent is - the scene already nests y-sorted nodes, ysortworld then
+  enemies), not into the parent itself. `source_parent_of(copy)` finds
+  the monster it copies; Off frees the holders after the copies. Why it
+  matters was measured, not reasoned: fresh monsters killed among the
+  8,336, 15.5 ms a tick; in a holder of a few hundred under the same node,
+  8.7; outside it, 8.6. Burst, removal and free timed one by one were the
+  same in both, so it is the engine's work around them.
+- **Measured**: benchwave, 48 put round a still player on the 16x field and
+  killed in one tick, 12 waves: 18.4 ms on average (15 to 27) -> 8.6.
+  Benchwalk, the stand-in walking the waystone route for 38 s with
+  everything within 140 px killed every half second (20 to 60 a time):
+  27 ticks over 12.5 ms -> 0; a killing tick about 23-27 ms -> 13 at most.
+- **A bench that times itself is a bench that lies.** benchwalk first
+  scanned all 8,336 monsters inside the window it timed (every tenth tick
+  and every slow one), which put 5 to 15 ms of "deferred calls" into
+  exactly the ticks it reported, and made a walk with nothing killed look
+  spiky (171 ticks over 10 ms). Measured cleanly it is 7 over 10 ms and 1
+  over 12.5 in 38 s. Keep a bench's own work outside what it times.
+- `_test_a_crowd_goes_in_turns()` (testrunner_11);
+  `_test_the_owner_stress_crowd()` (testrunner_2) holds the holders.
+
 ### Uncap: the readout's switch for the game's top speed (0.137.0)
 
 The owner asked whether the readout could switch low-processor mode; it

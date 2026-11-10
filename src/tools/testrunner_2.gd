@@ -1086,7 +1086,7 @@ func _test_the_owner_stress_crowd() -> void:
 	var unlike: Array = []
 	for copy in copies:
 		var source_name: String = str(copy.name).trim_prefix("stress_").rsplit("_", true, 1)[0]
-		var source: Node2D = copy.get_parent().get_node_or_null(source_name) as Node2D
+		var source: Node2D = Crowd.source_parent_of(copy).get_node_or_null(source_name) as Node2D
 		# A big slime pays nothing even as itself (it splits), so the
 		# check is that no copy pays - and that most of what they copy does.
 		if copy.call("get_enemy_id") != "" or source == null:
@@ -1103,6 +1103,20 @@ func _test_the_owner_stress_crowd() -> void:
 		if source == null or source.scene_file_path != copy.scene_file_path \
 				or not is_equal_approx(float(source.get("leash_range")), float(copy.get("leash_range"))):
 			unlike.append(copy.name)
+	# IN HOLDERS OF A FEW HUNDRED (0.137.1): not all in the monsters' own
+	# parent, where a death cost twice as much at 16x.
+	var holders: Dictionary = {}
+	for copy in copies:
+		var holder: Node = (copy as Node).get_parent()
+		holders[holder] = int(holders.get(holder, 0)) + 1
+	var held_right: bool = not holders.is_empty()
+	for holder in holders:
+		var under: Node2D = (holder as Node).get_parent() as Node2D
+		held_right = held_right and (holder as Node).has_meta(Crowd.HOLDER_META) and under != null \
+			and Crowd.source_parent_of(copies[0]) != null and int(holders[holder]) <= Crowd.HOLDER_SIZE \
+			and (holder as Node2D).position == Vector2.ZERO and (holder as Node2D).y_sort_enabled == under.y_sort_enabled
+	check("  in holders of at most %d under the monsters' own parent, at its origin and y-sorted as it is (%d holders)"
+		% [Crowd.HOLDER_SIZE, holders.size()], held_right and holders.size() >= copies.size() / Crowd.HOLDER_SIZE)
 	var grew_over_frames: bool = false
 	var counts: Array = first_frames.map(func(f): return int(f[0]))
 	for i in range(1, counts.size()):
@@ -1121,7 +1135,7 @@ func _test_the_owner_stress_crowd() -> void:
 	var space: PhysicsDirectSpaceState2D = area.get_world_2d().direct_space_state
 	for copy in copies:
 		var source_name: String = str(copy.name).trim_prefix("stress_").rsplit("_", true, 1)[0]
-		var source: Node2D = copy.get_parent().get_node_or_null(source_name) as Node2D
+		var source: Node2D = Crowd.source_parent_of(copy).get_node_or_null(source_name) as Node2D
 		if source == null:
 			continue
 		var ray := PhysicsRayQueryParameters2D.create(source.global_position, (copy as Node2D).global_position, Crowd.WALL_MASK)
@@ -1203,9 +1217,12 @@ func _test_the_owner_stress_crowd() -> void:
 		await get_tree().process_frame
 		off_frames += 1
 	await _crowd_settles_down(crowd, 0)
-	check("3x is two of each, back to 2x takes the extra away, and Off takes them all",
+	await get_tree().process_frame
+	var holders_left: int = area.find_children("stresscopies*", "Node2D", true, false).size()
+	check("3x is two of each, back to 2x takes the extra away, and Off takes them all - and their holders",
 		at_three >= int(authored * 2 * 0.99) and back_to_two <= authored and back_to_two >= int(authored * 0.99)
-		and int(crowd.call("copy_count")) == 0 and _copy_nodes().is_empty(), [at_three, back_to_two, crowd.call("copy_count")])
+		and int(crowd.call("copy_count")) == 0 and _copy_nodes().is_empty() and holders_left == 0,
+		[at_three, back_to_two, crowd.call("copy_count"), holders_left])
 	# FREED HERE, NOT QUEUED (0.135.3): queued, every copy went at the end of
 	# one frame - the owner's 301 ms hitch switching 16x off.
 	check("  Off frees them a few a frame, inside the clock - %d copies over %d frames, none left queued for one big frame"

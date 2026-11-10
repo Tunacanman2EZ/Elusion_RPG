@@ -375,6 +375,72 @@ func _test_the_readout_uncaps() -> void:
 	print("  (uncap: done)")
 
 
+func _test_a_crowd_goes_in_turns() -> void:
+	section("A CROWD GOES IN TURNS - deaths' bursts and frees on a budget a tick, the rest a tick or two on (0.137.1)")
+	# The owner's 16x readout: a 22.9 ms worst physics tick. A blow killing
+	# forty made forty bursts and freed forty in one tick.
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var packed := load("res://scene/enemy/firesprite.tscn") as PackedScene
+	var crowd: Array = []
+	for i in 40:
+		var e: BaseEnemy = packed.instantiate()
+		e.position = Vector2(-61000 + (i % 8) * 40, -61000 + floorf(i / 8.0) * 40)
+		world.add_child(e)
+		crowd.append(e)
+	var deaths: Array = [0]
+	for e in crowd:
+		(e as BaseEnemy).died.connect(func() -> void: deaths[0] += 1)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	for e in crowd:
+		(e as BaseEnemy).take_damage(100000, 0)
+	var gone_now: int = crowd.filter(func(e: Node) -> bool: return e.is_queued_for_deletion()).size()
+	var waiting: Array = crowd.filter(func(e: Node) -> bool: return not e.is_queued_for_deletion())
+	check("forty killed in one tick: every death counted at once (died, the kill report, the slot)",
+		deaths[0] == 40, deaths[0])
+	check("  but only some go that tick - the rest wait their turn",
+		gone_now >= 1 and gone_now < 40 and BaseEnemy.leaving_count() == waiting.size(),
+		[gone_now, BaseEnemy.leaving_count()])
+	var still: bool = not waiting.is_empty()
+	for e in waiting:
+		var m := e as BaseEnemy
+		var bar: CanvasItem = m.get_node_or_null("healthbar") as CanvasItem
+		still = still and m.visible and not m.is_in_group(&"enemies") and m._dying \
+			and not m.is_physics_processing() and (bar == null or not bar.visible)
+	check("  one waiting stands where it fell - out of \"enemies\", its bar hidden, nothing of it running",
+		still)
+	var last: BaseEnemy = waiting[waiting.size() - 1] if not waiting.is_empty() else null
+	var sprite: AnimatedSprite2D = last.get_node_or_null("animatedsprite2d") as AnimatedSprite2D if last != null else null
+	var timer: Timer = last.get_node_or_null("attacktimer") as Timer if last != null else null
+	check("  nothing aims at it, its frame holds for the burst, and it attacks no more",
+		last != null and not last.can_be_aimed_at() and sprite != null and not sprite.is_playing()
+		and (timer == null or timer.is_stopped()) and not last.is_attacking)
+	var ticks: int = 0
+	while BaseEnemy.leaving_count() > 0 and ticks < 40:
+		await get_tree().physics_frame
+		ticks += 1
+	await get_tree().process_frame
+	var bursts: int = world.get_children().filter(func(c: Node) -> bool: return c is DeathBurst).size()
+	var left: int = crowd.filter(func(e: Variant) -> bool: return is_instance_valid(e)).size()
+	check("  every one gone a few ticks on, each with its burst",
+		left == 0 and bursts == 40 and ticks <= 8, [left, bursts, ticks])
+	var lone: BaseEnemy = packed.instantiate()
+	lone.position = Vector2(-60000, -60000)
+	world.add_child(lone)
+	await get_tree().physics_frame
+	lone.take_damage(100000, 0)
+	check("one death alone goes at once, as before", lone.is_queued_for_deletion() and BaseEnemy.leaving_count() == 0)
+	var src: String = _code_src("res://src/enemies/baseenemy.gd")
+	check("both deaths - this game's and a mirror's - leave through the budget",
+		_func_body(src, "func _die(").contains("_leave_world(burst)")
+		and _func_body(src, "func net_vanish(").contains("_leave_world(burst)")
+		and not _func_body(src, "func _die(").contains("queue_free()"))
+	world.free()
+	print("  (a crowd goes in turns: done)")
+
+
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 	"""Cells in a range that are not in that range's chunk."""
 	const Ground := preload("res://src/world/groundchunks.gd")
