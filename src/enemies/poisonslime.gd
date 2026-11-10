@@ -835,7 +835,6 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	var parent: Node = get_parent()
 	if parent == null:
 		parent = get_tree().current_scene
-	parent.call_deferred("add_child", slime)
 
 	# position after the deferred add, for the same reason projectiles do:
 	# the node must be in the tree before global_position means anything.
@@ -846,8 +845,6 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# not push them out, because move_and_slide() only resists moving INTO a
 	# wall; it has no opinion about already being in one.
 	var safe_position: Vector2 = clamp_to_navigation(at_position)
-
-	slime.call_deferred("set", "global_position", safe_position)
 
 	# AND spawn_position explicitly, because _ready() already ran.
 	#
@@ -863,11 +860,64 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# marching through the walls to the top-left corner of the map, where they
 	# idled forever - emptying the encounter.
 	#
-	# Deferred calls run in the order they are queued, so this lands after the
-	# position above and records the real home.
-	slime.call_deferred("set", "spawn_position", safe_position)
+	# (Since 0.135.1 _born() does all three, in this order, as each comes out.)
+	_queue_birth(get_tree(), parent, slime, safe_position)
 
-	slime.call_deferred("reset_physics_interpolation")
+
+# =============================================================================
+# BIRTHS SPREAD OVER FRAMES (0.135.1)
+# =============================================================================
+# The owner's readout in the Big Field at 16x: a hitch of 25 to 33 ms each
+# time a few larges went at once, +140 to +184 nodes in that frame. A small
+# slime costs about 0.2 ms to add (its _enter_tree and _ready; 0.5 in the 16x
+# field) and every large's four came out together, every twin too, all in one
+# frame. Now every birth goes into one queue, the area's: the first comes
+# out where the old deferred add did (the end of this frame), and each frame
+# adds them until BIRTH_BUDGET_MS is spent - never fewer than one - so a pile
+# of splits is spread over a few frames, not stacked in one. Same spots, same
+# count, same order; the server's books never hear the difference. One whose
+# area has gone before its turn is freed, never left loose.
+const BIRTH_BUDGET_MS := 2.0
+static var _births: Array = []
+static var _births_waiting: bool = false
+
+
+static func _queue_birth(tree: SceneTree, parent: Node, slime: Node, at: Vector2) -> void:
+	_births.append([parent, slime, at])
+	if not _births_waiting:
+		_births_waiting = true
+		_births_out.call_deferred(tree)
+
+
+static func births_queued() -> int:
+	return _births.size()
+
+
+static func _births_out(tree: SceneTree) -> void:
+	_births_waiting = false
+	var started: int = Time.get_ticks_usec()
+	while not _births.is_empty():
+		var entry: Array = _births.pop_front()
+		_born(entry[0], entry[1], entry[2])
+		if Time.get_ticks_usec() - started >= int(BIRTH_BUDGET_MS * 1000.0):
+			break
+	if not _births.is_empty() and is_instance_valid(tree):
+		_births_waiting = true
+		tree.process_frame.connect(_births_out.bind(tree), CONNECT_ONE_SHOT)
+
+
+static func _born(parent: Variant, slime: Node, at: Vector2) -> void:
+	"""Into the world: added, then its spot, its home (see AND spawn_position
+	explicitly, above) and a fresh start for its picture's interpolation."""
+	if not is_instance_valid(slime):
+		return
+	if not is_instance_valid(parent) or not (parent as Node).is_inside_tree():
+		slime.free()
+		return
+	(parent as Node).add_child(slime)
+	(slime as Node2D).global_position = at
+	slime.set("spawn_position", at)
+	slime.reset_physics_interpolation()
 
 
 func can_be_aimed_at() -> bool:

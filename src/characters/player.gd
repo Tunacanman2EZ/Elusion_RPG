@@ -1395,11 +1395,7 @@ func _spawn_floating_label(amount: int, type: int, element: int = Element.Type.N
 		push_warning("Player: FLOATING_LABEL_SCENE not loaded")
 		return
 
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	lbl.global_position = global_position + Vector2(0, -30)
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
@@ -1459,13 +1455,9 @@ func show_notice(message: String) -> void:
 		push_warning("Player: FLOATING_LABEL_SCENE not loaded")
 		return
 
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-
 	# higher than damage numbers (-30) and the level-up popup (-40) so a
 	# refusal never lands on top of a number that appeared the same frame.
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	lbl.global_position = global_position + Vector2(0, -52)
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
@@ -1477,10 +1469,7 @@ func show_notice(message: String) -> void:
 func _spawn_levelup_popup() -> void:
 	if FLOATING_LABEL_SCENE == null:
 		return
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	lbl.global_position = global_position + Vector2(0, -40)
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
@@ -1495,10 +1484,7 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 	# moment than a routine skill-up, worth treating that way.
 	if FLOATING_LABEL_SCENE == null:
 		return
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	lbl.global_position = global_position + Vector2(0, -45)
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
@@ -1516,10 +1502,7 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 	if FLOATING_LABEL_SCENE == null:
 		return
 	var display: String = SKILL_DISPLAY_NAMES.get(skill_code, skill_code.capitalize())
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	lbl.global_position = global_position + Vector2(0, -35)
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
@@ -2067,10 +2050,7 @@ func show_status_word(word: String, element: int) -> void:
 	in the element's colour, through the same floating text as a notice."""
 	if word == "" or FLOATING_LABEL_SCENE == null:
 		return
-	var lbl = FLOATING_LABEL_SCENE.instantiate()
-	if lbl == null:
-		return
-	_label_container().add_child(lbl)
+	var lbl = FloatingLabel.take(_label_container())
 	# Between the damage number (-30) and a notice (-52).
 	lbl.global_position = global_position + Vector2(0, -42)
 	lbl.reset_physics_interpolation()

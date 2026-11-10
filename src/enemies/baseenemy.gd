@@ -3828,11 +3828,10 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 
 	# damage numbers go to the FloatingLabels container (always-on-top,
 	# not y-sorted) if it exists, else fall back to the scene root.
-	var lbl: Node = FLOATING_LABEL_SCENE.instantiate()
 	var container: Node = get_tree().get_first_node_in_group("floatinglabels")
 	if container == null:
 		container = get_tree().current_scene
-	container.add_child(lbl)
+	var lbl: Node = FloatingLabel.take(container)
 	lbl.global_position = global_position + Vector2(0, -30)
 	# Damage numbers streak from the world origin without this — see
 	# spawn_projectile_node() for the mechanism.

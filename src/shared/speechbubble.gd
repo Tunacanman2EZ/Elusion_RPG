@@ -124,6 +124,10 @@ func _process(delta: float) -> void:
 	if lines.is_empty():
 		_fading = 0.0
 		return
+	# Faded and finished, called once more before it goes (0.135.1: the
+	# suite's last step read past the last line).
+	if line_index >= lines.size():
+		return
 	var letters: int = str(lines[line_index]).length()
 	if label.visible_characters < letters and label.visible_characters >= 0:
 		_shown += delta * TYPE_RATE

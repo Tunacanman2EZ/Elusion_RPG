@@ -152,6 +152,18 @@ static var _spawn_index: int = 0
 # can linger longer (or shorter) than the default numeric lifetime.
 var _active_lifetime: float = 1.0
 
+# REUSED, NOT MADE AGAIN (0.135.1). One hit, one number - and at 16x a swing
+# through twenty monsters was twenty new nodes, 55 to 68 us each to make and
+# add and 15 more to free (measured in the container). Now a number that has
+# had its time is hidden, stopped, its text cleared and kept in _spare; the
+# next take() hands it out again, moved to the end of its container so the
+# newest is still the last child, as a new one was. Spares are kept up to
+# SPARE_MAX; past that a number goes as it always did.
+const SPARE_MAX := 256
+const SCENE_PATH := "res://scene/ui/floatinglabel.tscn"
+static var _spare: Array = []
+static var _scene: PackedScene = null
+
 
 # =============================================================================
 # LIFECYCLE
@@ -169,7 +181,7 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 
 	if _elapsed >= _active_lifetime:
-		queue_free()
+		_retire()
 		return
 
 	_velocity.y += gravity * delta
@@ -181,6 +193,63 @@ func _process(delta: float) -> void:
 		modulate.a = 1.0 - fade_progress
 	else:
 		modulate.a = 1.0
+
+
+# =============================================================================
+# REUSED, NOT MADE AGAIN
+# =============================================================================
+
+static func take(container: Node) -> FloatingLabel:
+	"""A number to show, in `container`: a spare if there is one, else a new
+	one. Either way it is in the container and fresh - shown, running, white,
+	its size and tilt reset - ready for the caller's position and show_*()."""
+	while not _spare.is_empty():
+		var old: Variant = _spare.pop_back()
+		if not is_instance_valid(old) or (old as Node).is_queued_for_deletion():
+			continue
+		var lbl := old as FloatingLabel
+		if not lbl.is_inside_tree():
+			lbl.free()
+			continue
+		if lbl.get_parent() != container:
+			lbl.reparent(container, false)
+		else:
+			container.move_child(lbl, -1)
+		lbl._fresh()
+		return lbl
+	if _scene == null:
+		_scene = load(SCENE_PATH) as PackedScene
+	var made := _scene.instantiate() as FloatingLabel
+	container.add_child(made)
+	return made
+
+
+static func spares() -> int:
+	return _spare.size()
+
+
+func _fresh() -> void:
+	visible = true
+	set_process(true)
+	modulate = Color.WHITE
+	scale = Vector2.ONE
+	rotation = 0.0
+	_elapsed = 0.0
+	_velocity = Vector2.ZERO
+	if label != null:
+		label.modulate = Color.WHITE
+
+
+func _retire() -> void:
+	"""Its time is up: kept for the next take(), or gone past SPARE_MAX."""
+	if _spare.size() >= SPARE_MAX:
+		queue_free()
+		return
+	visible = false
+	set_process(false)
+	if label != null:
+		label.text = ""
+	_spare.append(self)
 
 
 # =============================================================================

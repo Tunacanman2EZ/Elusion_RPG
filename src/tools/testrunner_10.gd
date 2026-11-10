@@ -1334,6 +1334,94 @@ func _was_park_proxies() -> void:
 # The owner approved waystones with the speed plan, then their picture: "yes
 # looks good". Seven in the Big Field, lit once explored, a pin and a row on
 # the map, three seconds standing still, from town too. See waystones.gd.
+func _test_splits_come_out_over_frames() -> void:
+	section("A PILE OF SPLITS COMES OUT OVER A FEW FRAMES, NOT ONE (0.135.1)")
+	# The owner's 16x readout: a 25-33 ms hitch whenever a few larges went at once.
+	var holder := Node2D.new()
+	add_child(holder)
+	var larges: Array = []
+	for i in 30:
+		var large: PoisonSlime = (load("res://scene/enemy/windslimelarge.tscn") as PackedScene).instantiate()
+		large.position = Vector2(-40000 + i * 300, -40000)
+		holder.add_child(large)
+		larges.append(large)
+	await get_tree().process_frame
+	var before: int = holder.get_child_count()
+	for large in larges:
+		large.call("_split_into_smalls")
+	check("30 larges split at once: their 120 smalls are queued, none added on the spot",
+		PoisonSlime.births_queued() == 120 and holder.get_child_count() == before,
+		[PoisonSlime.births_queued(), holder.get_child_count() - before])
+	await get_tree().process_frame
+	var first: int = holder.get_child_count() - before
+	var frames: int = 1
+	while PoisonSlime.births_queued() > 0 and frames < 120:
+		await get_tree().process_frame
+		frames += 1
+	var smalls: Array = holder.get_children().filter(_is_small_slime)
+	var off_ring: Array = []
+	for small in smalls:
+		var home: Vector2 = (small as Node2D).global_position
+		var nearest: float = INF
+		for large in larges:
+			if is_instance_valid(large):
+				nearest = minf(nearest, home.distance_to((large as Node2D).global_position))
+		if absf(nearest - float(larges[0].get("split_radius"))) > 2.0 or home.distance_to(small.get("spawn_position")) > 0.5:
+			off_ring.append(small.name)
+	check("  the first frame takes some, not all (%d of 120), the rest over %d frames - BIRTH_BUDGET_MS a frame"
+		% [first, frames], first >= 1 and first < 120 and frames >= 2 and smalls.size() == 120, [first, frames, smalls.size()])
+	check("  every one where it always came out - on its large's ring, that spot its home", off_ring.is_empty(), off_ring.slice(0, 3))
+	# One whose area goes before its turn is freed, never left loose.
+	var gone := Node2D.new()
+	add_child(gone)
+	var orphan: PoisonSlime = (load("res://scene/enemy/windslime.tscn") as PackedScene).instantiate()
+	PoisonSlime._queue_birth(get_tree(), gone, orphan, Vector2.ZERO)
+	gone.free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  one whose area went before its turn is freed, not left loose", not is_instance_valid(orphan)
+		and PoisonSlime.births_queued() == 0)
+	holder.free()
+
+
+func _test_numbers_are_reused() -> void:
+	section("A DAMAGE NUMBER IS REUSED, NOT MADE AGAIN (0.135.1)")
+	var box := Node2D.new()
+	add_child(box)
+	var first: FloatingLabel = FloatingLabel.take(box)
+	first.modulate = Color(0.2, 0.4, 1.0)
+	first.show_number(37, FloatingLabel.Type.DAMAGE, 0.5)
+	var spares_before: int = FloatingLabel.spares()
+	first._process(first._active_lifetime + 0.1)
+	check("a number that has had its time is kept, hidden and stopped, its text cleared - not freed",
+		is_instance_valid(first) and not first.visible and not first.is_processing() and first.label.text == ""
+		and FloatingLabel.spares() == spares_before + 1)
+	var other: FloatingLabel = FloatingLabel.take(box)
+	other.show_number(5, FloatingLabel.Type.DAMAGE)
+	var again: FloatingLabel = FloatingLabel.take(box)
+	check("  the next one is a spare (one was kept), handed out fresh: shown, running, white, the newest child",
+		FloatingLabel.spares() == spares_before and (other == first or again == first)
+		and first.visible and first.is_processing() and first.modulate == Color.WHITE
+		and box.get_child(box.get_child_count() - 1) == again)
+	again.show_text("Chilled", FloatingLabel.Type.NOTICE)
+	check("  and it shows what it is given, as a new one would", again.label.text == "Chilled" and again.visible)
+	var elsewhere := Node2D.new()
+	add_child(elsewhere)
+	again._process(again._active_lifetime + 0.1)
+	var moved: FloatingLabel = FloatingLabel.take(elsewhere)
+	check("  a spare from another container moves to the one asking", moved.get_parent() == elsewhere)
+	box.free()
+	elsewhere.free()
+	var after: FloatingLabel = FloatingLabel.take(self)
+	check("  spares freed with their area are passed over, never handed out", is_instance_valid(after)
+		and after.get_parent() == self)
+	after.free()
+
+
+func _is_small_slime(node: Node) -> bool:
+	return node is PoisonSlime and bool(node.get("is_small"))
+
+
 func _test_the_map_key() -> void:
 	section("THE MAP'S KEY - each monster colour, what it is, how many you can see (0.135.0)")
 	# The owner: "time to improve map colored grid on right side explaining monsters".

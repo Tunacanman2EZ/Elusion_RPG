@@ -2729,6 +2729,41 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### Splits over frames, numbers reused (0.135.1)
+
+The owner, after 0.135.0 took the 16x Big Field from 36 to 86 fps: "if we
+can make the game even faster im about it", then "lets do it long as
+everything is perfect". The plan, with what was measured, is the commit
+folder's PERF_PLAN.txt.
+
+- **Births spread over frames (poisonslime.gd, BIRTHS SPREAD OVER
+  FRAMES).** Every slime birth (a split's smalls, a twin) goes into one
+  static queue; the first batch comes out where the old deferred add did,
+  then each frame adds them until `BIRTH_BUDGET_MS` (2 ms) is spent, never
+  fewer than one. `_born()` adds it, then sets its spot, its home and
+  resets its interpolation, as the deferred calls did. One whose parent
+  went before its turn is freed. Benched in the 16x field, ten larges
+  splitting together: the worst frame 122 to 152 ms before, 40 to 48 after.
+  `_test_splits_come_out_over_frames()` (testrunner_10).
+- **Damage numbers reused (floatinglabel.gd, REUSED, NOT MADE AGAIN).**
+  `FloatingLabel.take(container)` hands out a spare (moved to the end of
+  its container, so the newest is still the last child) or makes one; a
+  number that has had its time is hidden, stopped and its text cleared
+  into `_spare` (up to `SPARE_MAX`), not freed. Every spawn in player.gd
+  and BaseEnemy goes through it. Made, shown and freed: 64 us; taken,
+  shown and kept: 10. `_test_numbers_are_reused()` (testrunner_10).
+- **Not done: a cheaper monster start.** A monster's own setup is about
+  0.2 ms; its health number is 40% of that (`_wire_health_readout`: the
+  label's add_child 40-60 us, its layout 25). Laying it out before adding
+  it and skipping unchanged sizes drew the same pixels, but three bench
+  rounds put the gain inside the container's noise, so it was left out.
+- **Still to look at:** in the frames right after a pile of splits the
+  physics pairs jump (1,600 to 4,500 at 16x; 12,900 at 1x for a tick),
+  and those frames stay slow (30-40 ms in the container) while the adds
+  themselves take 2 ms. Something in a new small's first ticks.
+- **speechbubble.gd:** a call after it had faded read past its last line
+  (a SCRIPT ERROR in `_test_the_shopkeeper_talks`); it returns now.
+
 ### The Field is built from a plan too (0.94.2)
 
 The owner, 28 Oct: "work on the next map field", then candidate B ("sounds
