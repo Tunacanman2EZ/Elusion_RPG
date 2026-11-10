@@ -343,11 +343,14 @@ func _respawner_resume() -> void:
 
 
 func _respawners(root: Node) -> Array:
+	"""The respawners under root, by their group (enemyrespawner.gd GROUP).
+	Not a walk of every node in the scene (0.135.4): the owner's profiler at
+	the Big Field's load, 3,136 calls of it."""
 	var found: Array = []
-	for child in root.get_children():
-		if child.has_method("resume_authority") and child.has_method("adopt"):
-			found.append(child)
-		found.append_array(_respawners(child))
+	for node in root.get_tree().get_nodes_in_group(&"enemy_respawners"):
+		if (node == root or root.is_ancestor_of(node)) and node.has_method("resume_authority") \
+				and node.has_method("adopt"):
+			found.append(node)
 	return found
 
 

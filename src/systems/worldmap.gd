@@ -256,79 +256,88 @@ func _build(area: String) -> bool:
 	#
 	# The span is the tile's region divided by the grid, per source, and the
 	# tileset hands both numbers over.
-	var cells: Array = []          # [layer_index, Vector2i cell, Vector2i span]
+	# BUILT FROM EACH LAYER'S USED RECT, NOT A RECORD A CELL (0.135.4). The
+	# Big Field's picture took 176 ms of its load on the owner's PC (his
+	# profiler, 9 Nov; 267 in the container): every one of its 140,000 cells
+	# looked its source up, worked its span out and was kept as a small array,
+	# and the bounds were merged a cell at a time. Now each source's span is
+	# worked out once; a layer whose every source is one cell takes its bounds
+	# from get_used_rect() - the same rectangle - and is painted cell by cell
+	# with no lookups; only a layer with a wider source (elusion's water) still
+	# goes a cell at a time. The same picture to the pixel, the same bounds.
 	var bounds := Rect2i()
 	var first := true
-
+	var plan: Array = []            # per layer: [used cells, their spans - empty when every one is 1x1]
 	for index in layers.size():
 		var layer = layers[index]
 		var grid: Vector2i = Vector2i(16, 16)
 		if layer.tile_set != null and layer.tile_set.tile_size.x > 0:
 			grid = layer.tile_set.tile_size
-
-		for cell in layer.get_used_cells():
-			var span: Vector2i = Vector2i.ONE
-			if layer.tile_set != null:
-				var source = layer.tile_set.get_source(layer.get_cell_source_id(cell))
+		var spans_of: Dictionary = {}
+		var any_wide: bool = false
+		if layer.tile_set != null:
+			for n in layer.tile_set.get_source_count():
+				var source_id: int = layer.tile_set.get_source_id(n)
+				var source = layer.tile_set.get_source(source_id)
+				var span: Vector2i = Vector2i.ONE
 				if source is TileSetAtlasSource:
 					var region: Vector2i = (source as TileSetAtlasSource).texture_region_size
-					# HOW MANY GRID CELLS THIS TILE COVERS — a count, so the
-					# discarded remainder is the point rather than a rounding
-					# loss. A 32x32 region on a 16x16 grid spans 2x2; a region
-					# that is not a whole multiple of the grid still occupies
-					# whole cells, and the floor is the honest answer.
 					@warning_ignore("integer_division")
 					span = Vector2i(maxi(1, region.x / maxi(1, grid.x)),
 									maxi(1, region.y / maxi(1, grid.y)))
-			cells.append([index, cell, span])
-
-			# THE BOUNDS COVER WHAT IS PAINTED, not what is placed. A 2x2 tile
-			# on the last cell of a row reaches one further than get_used_rect()
-			# reports, and cropping to that rect would shave the far edge off
-			# every coastline in the game.
-			var covered := Rect2i(cell, span)
-			if first:
-				bounds = covered
+				spans_of[source_id] = span
+				if span != Vector2i.ONE:
+					any_wide = true
+		var used: Array[Vector2i] = layer.get_used_cells()
+		var spans: Array = []
+		if used.is_empty():
+			plan.append([used, spans])
+			continue
+		if not any_wide:
+			var rect: Rect2i = layer.get_used_rect()
+			bounds = rect if first else bounds.merge(rect)
+			first = false
+		else:
+			for cell in used:
+				var span: Vector2i = spans_of.get(layer.get_cell_source_id(cell), Vector2i.ONE)
+				spans.append(span)
+				var covered := Rect2i(cell, span)
+				bounds = covered if first else bounds.merge(covered)
 				first = false
-			else:
-				bounds = bounds.merge(covered)
+		plan.append([used, spans])
 	if first:
 		return false
-
 	if bounds.size.x * bounds.size.y > MAX_AREA_TILES:
 		push_error("WorldMap: '%s' covers %d x %d tiles, past the %d ceiling — "
 			% [area, bounds.size.x, bounds.size.y, MAX_AREA_TILES]
 			+ "a stray tile at an extreme coordinate will do this. Not mapped.")
 		return false
-
 	var image: Image = Image.create_empty(
 		bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
-
-	# IN SCENE ORDER, so later layers paint over earlier ones — which is the
-	# same order they are drawn in the world. Trees end up on top of the ground
-	# they stand on, for the same reason they do on screen. `cells` was
-	# collected in that order above, so walking it in order is enough.
 	var palette: Array = []
 	for layer in layers:
 		palette.append(COLOURS.get(String(layer.name).to_lower(), COLOUR_UNKNOWN))
-
-	for entry in cells:
-		var colour: Color = palette[entry[0]]
-		var cell: Vector2i = entry[1]
-		var span: Vector2i = entry[2]
-		for dy in span.y:
-			for dx in span.x:
-				var px: int = cell.x + dx - bounds.position.x
-				var py: int = cell.y + dy - bounds.position.y
-				if px < 0 or py < 0 or px >= bounds.size.x or py >= bounds.size.y:
-					continue
-				image.set_pixel(px, py, colour)
-
-	# THE GRID, for turning a world position into a map pixel. The first layer
-	# that has a tileset decides it: every root layer in a given scene shares
-	# one grid, which is what makes them line up in the world in the first
-	# place.
+	var ox: int = bounds.position.x
+	var oy: int = bounds.position.y
+	for index in plan.size():
+		var colour: Color = palette[index]
+		var used: Array = plan[index][0]
+		var spans: Array = plan[index][1]
+		if spans.is_empty():
+			for cell in used:
+				image.set_pixel(cell.x - ox, cell.y - oy, colour)
+			continue
+		for k in used.size():
+			var cell: Vector2i = used[k]
+			var span: Vector2i = spans[k]
+			for dy in span.y:
+				for dx in span.x:
+					var px: int = cell.x + dx - ox
+					var py: int = cell.y + dy - oy
+					if px < 0 or py < 0 or px >= bounds.size.x or py >= bounds.size.y:
+						continue
+					image.set_pixel(px, py, colour)
 	var tile: Vector2i = Vector2i(16, 16)
 	for layer in layers:
 		if layer.tile_set != null and layer.tile_set.tile_size.x > 0:

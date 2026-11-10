@@ -2729,6 +2729,25 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### A quicker Big Field load (0.135.4)
+
+The owner's profiler, the frame he walked into the Big Field.
+
+- **worldmap.gd `_build()`, BUILT FROM EACH LAYER'S USED RECT:** every one
+  of 140,000 cells looked its source up, worked its span out and was kept as
+  a small array, the bounds merged a cell at a time - 176 ms on his PC, 267
+  in the container. Now spans are worked out once a source; a layer of 1x1
+  sources takes its bounds from get_used_rect() and paints with no lookups;
+  a layer with a wider source (elusion's water) still goes a cell at a time.
+  267 ms to 19.6. Checked by building every area's picture both ways
+  (zz/mapbuild.gd, sandbox only): the same to the pixel, the same origin,
+  size and tile - so nobody's saved map resets.
+- **monstersync.gd `_respawners()`:** walked every node in the scene (3,136
+  calls); now the respawners' own group, `enemy_respawners`.
+- **Not changed:** each monster's start-up at the load (BaseEnemy._ready 79
+  ms for 536; its health number 45 of it). Measured before (0.135.1): the
+  safe changes drew the same pixels but the gain was in the noise.
+
 ### Copies freed a few a frame, none left behind; wider copies; a lighter readout (0.135.3)
 
 The owner: "lets do it" (the next speed-up), then a screenshot after
