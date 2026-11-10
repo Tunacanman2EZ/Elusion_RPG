@@ -153,10 +153,10 @@ func _on_scene_changed() -> void:
 		return
 	if scene.get_node_or_null("mapbackdrop") == null:
 		MapBackdrop.add_to(scene)
-	# The Big Field's floor in chunks, the ones in view now and the rest a few
-	# a frame - here, before the ground's own deferred build of every cell
-	# (0.135.5). An area whose ground has no chunks gets nothing. See
-	# groundchunks.gd.
+	# The floor in chunks, the ones in view now and the rest a few a frame -
+	# here, before the layer's own deferred build of every cell: the Big
+	# Field's (0.135.5), the town's floor and water (0.137.3). An area whose
+	# layers have no chunks gets nothing. See groundchunks.gd.
 	if scene.get_node_or_null(GroundChunks.NODE_NAME) == null:
 		GroundChunks.add_to(scene)
 	# Far-away enemies stop thinking until the player comes near; see
@@ -180,6 +180,11 @@ func _on_scene_changed() -> void:
 		PropChunks.add_to(scene)
 	# The Big Field's waystones (0.118.0); every other area gets none. See
 	# waystones.gd.
+	# The owner's GM panel, built with the area rather than on its first open
+	# (characterhud.gd prepare_owner_panel(), 0.137.4).
+	var hud: Node = scene.get_node_or_null(^"hudcontrol")
+	if hud != null and hud.has_method(&"prepare_owner_panel"):
+		hud.call(&"prepare_owner_panel")
 	if scene.get_node_or_null(Waystones.NODE_NAME) == null:
 		Waystones.add_to(scene)
 	# AND THE SERVER HEARS WHERE YOU ARE NOW, not at your next step - see

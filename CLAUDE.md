@@ -2729,6 +2729,90 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The town's floor and water in chunks (0.137.3)
+
+The owner: "time to refine town now", then "chunking its important
+everything is fast so it works on low end phones etc i need my game to be
+extremely fast and optimized to perfection". Measured first (zz/townprobe.gd,
+zz/townarrive.gd, sandbox only): the town is light - 196 nodes, 2,812 floor
+and 1,544 water cells, 18 props, no lights. Arriving there was 35-50 ms in
+the container: the HUD's setup 17-30 (the same in every area), the floor
+and water's build about 7, the rest under 10. Its props are too few to
+chunk (propchunks.gd is for the Big Field's 12,000).
+
+- **groundchunks.gd**: `LAYERS` (ground, water) - each root layer with
+  ranges gets a helper of its own (`helper_name()`: groundchunks,
+  groundchunks_water); `add_to()` returns the first. `CHUNK_CELLS_SMALL`
+  (16): at 64 the whole town was two chunks.
+- **Not the layer's modulate**: a chunk is a child of its layer and takes
+  its tint from it; `COPIED` had `modulate`, which drew the town's floor
+  (tinted 0.41) at 0.17. The Big Field's ground is untinted, so it never
+  showed. Rendered before and after (xvfb, opengl3): every pixel the same
+  but the water's animation frame.
+- **scene/elusion.tscn**: ground (21 chunks) and water (44) set again chunk
+  by chunk, with `metadata/chunk_size` and `metadata/chunk_ranges` - the
+  same cells; only their order changed (done on the file's own bytes).
+- **Painting the town afterwards**: the editor keeps the cells in the order
+  set, so new ones go on the end and the ranges stop fitting. The floor
+  then loads whole (the log says so) and
+  `_test_the_town_floor_in_chunks()` fails, naming the fix:
+  **src/tools/chunkfloor.gd** - open the scene, File > Run it in the script
+  editor, save.
+- **Measured**: the arrival frame a few ms less in the container (noisy;
+  the floor and water were 7 ms of it), the rest spread over the next few
+  frames at `BUDGET_MS`. Small here; on a slow phone several times that.
+- `_test_the_town_floor_in_chunks()` (testrunner_11).
+
+### Copies killed together come back by the clock (0.137.3)
+
+The owner's next 16x readout: 2 hitches in 52,659 frames - "27 ms, scripts
+13.3 ms, +221 nodes" and a second later "32 ms, physics 23.1 ms (one tick),
++395 nodes". Copies killed together have the same wait, so they came back in
+one frame (built in the timers, after the readout's own `_process` - so
+"scripts", and their nodes counted in the next frame) and thought for the
+first time in one tick. In the container (zz/benchrespawn.gd, sandbox only)
+30 killed came back as one frame of +474 to +510 nodes, 27-33 ms against
+7-10.
+
+- **stresscrowd.gd, BACK BY THE CLOCK TOO**: `_on_copy_died()` puts the
+  source on `_due`; `_bring_back()` builds them while this frame's
+  `BUILD_MS` lasts (`_spent_frame`, `_spent_usec` - shared, since every
+  copy's own wait ends in the same frame and the first attempt built one
+  per wait, all of them in one frame), the rest on the next frames, each
+  checked still wanted (`_alive_copies_of()`). `due_count()` for the
+  suite.
+- **Born asleep far away**: the rebuild passed no player spots, so every
+  copy came back awake and thought until the sleeper's next pass. It
+  passes `_player_spots()` now, as the first fill does.
+- **Measured**: 30 back over 5-6 frames, the worst 14-19 ms (+50 to +150
+  nodes a frame).
+- `_test_the_owner_stress_crowd()`: forty killed together come back over
+  several frames, never all in one.
+
+### The GM panel built with the area, and a key's work named (0.137.3)
+
+The owner's next readout (Big Field, 1x): one hitch in 72,901 frames - 44 ms,
+"waiting 43.3 ms (... not the game's code)", +435 nodes - then "opened gm
+panel". Measured (zz/gmopen.gd, zz/gmparts.gd, zz/gmshow.gd, sandbox only):
+the GM panel is 432 nodes; built it was instantiate 4-8 ms, _ready 40-52
+(its five tabs 34 of it), first frame 26-58 - the first open in each area,
+since it goes with the HUD.
+
+- **characterhud.gd `prepare_owner_panel()`**: the owner's HUD builds it,
+  hidden, when AreaRegistry asks as the area arrives (`_on_scene_changed`,
+  the "hudcontrol" node) - inside the load the readout sets apart, so the
+  owner's loads are that much longer and nobody else's at all. Opening it
+  is then `visible`: 1 ms and its frame drawn.
+- **perfoverlay.gd, A KEY OR CLICK IN THE FRAME**: what a key or click does
+  runs before a frame's clocked parts, so it was filed under waiting, "not
+  the game's code" - it was the panel being built. `_input` notes each
+  press (`is_press()`: a key or button going down, not a repeat or a move),
+  each frame carries `pressed`, and a waiting spike with one says "with a
+  key or click in it" (the panel row: "after a key or click").
+- Tried and dropped: the tabs' theme set before building them - inside
+  the noise (47-74 ms either way).
+- `_test_the_gm_panel_comes_with_the_area()` (testrunner_11).
+
 ### The readout back from another window (0.137.2)
 
 The owner's readout after 0.137.1: physics worst 7.79 ms (it was 22.9) -

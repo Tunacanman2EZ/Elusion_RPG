@@ -29,11 +29,24 @@
 # tiles collide from their chunk. The ground keeps every cell for what reads
 # it - the world map, BulletZone, the scorch marks, the tests - and the
 # editor still shows it whole.
+#
+# THE TOWN TOO, AND ITS WATER (0.137.3). The owner: "chunking its important
+# everything is fast so it works on low end phones". Any of LAYERS at a
+# scene's root that carries ranges gets a helper of its own (NODE_NAME, and
+# NODE_NAME_water for the water). The town's are CHUNK_CELLS_SMALL (16) a
+# side - at 64 the whole town was two chunks - laid out by
+# src/tools/chunkfloor.gd. NOT ITS MODULATE: a chunk is a child of its layer,
+# so it is tinted by the layer's own already; copied, the town's floor (0.41
+# grey) was drawn at 0.17. The Big Field's ground is untinted, so nothing
+# there changes.
 extends Node
 
 const NODE_NAME := "groundchunks"
 # A chunk's side, in cells.
 const CHUNK_CELLS := 64
+const CHUNK_CELLS_SMALL := 16
+# The root layers that may come in chunks.
+const LAYERS: Array[StringName] = [&"ground", &"water"]
 # On the ground, from the builder: the side used, and the ranges.
 const SIZE_META := &"chunk_size"
 const RANGES_META := &"chunk_ranges"
@@ -44,7 +57,7 @@ const BUDGET_MS := 2.0
 const VIEW_MARGIN := 128.0
 # What the ground draws and collides with, given to each chunk.
 const COPIED := ["texture_filter", "texture_repeat", "material", "use_parent_material",
-	"light_mask", "visibility_layer", "modulate", "self_modulate", "collision_enabled",
+	"light_mask", "visibility_layer", "self_modulate", "collision_enabled",
 	"use_kinematic_bodies", "collision_visibility_mode", "navigation_enabled",
 	"navigation_visibility_mode", "rendering_quadrant_size", "physics_quadrant_size",
 	"occlusion_enabled", "x_draw_order_reversed", "y_sort_enabled", "y_sort_origin"]
@@ -62,19 +75,28 @@ var _seen: Rect2i = Rect2i()
 
 
 static func add_to(scene: Node) -> Node:
-	"""The floor's helper for `scene`, or null when its ground has no chunks."""
+	"""A helper for each of `scene`'s LAYERS that comes in chunks. Returns the
+	first made (the ground's, when it has chunks), or null for none."""
 	if scene == null or not scene.is_inside_tree():
 		return null
-	var layer: TileMapLayer = scene.get_node_or_null(^"ground") as TileMapLayer
-	if layer == null or not layer.has_meta(RANGES_META) or not layer.enabled:
-		return null
-	var helper := (load("res://src/world/groundchunks.gd") as GDScript).new() as Node
-	helper.name = NODE_NAME
-	if not bool(helper.call("take", layer)):
-		helper.free()
-		return null
-	scene.add_child(helper)
-	return helper
+	var first: Node = null
+	for layer_name in LAYERS:
+		var layer: TileMapLayer = scene.get_node_or_null(NodePath(layer_name)) as TileMapLayer
+		if layer == null or not layer.has_meta(RANGES_META) or not layer.enabled:
+			continue
+		var helper := (load("res://src/world/groundchunks.gd") as GDScript).new() as Node
+		helper.name = helper_name(layer_name)
+		if not bool(helper.call("take", layer)):
+			helper.free()
+			continue
+		scene.add_child(helper)
+		if first == null:
+			first = helper
+	return first
+
+
+static func helper_name(layer_name: StringName) -> String:
+	return NODE_NAME if layer_name == &"ground" else "%s_%s" % [NODE_NAME, layer_name]
 
 
 static func chunk_of(cell: Vector2i, size: int = CHUNK_CELLS) -> Vector2i:

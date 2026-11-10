@@ -399,7 +399,58 @@ func _on_copy_died(source: int) -> void:
 		_deaths_since_prune = 0
 		_prune()
 	if alive.size() < multiplier - 1:
-		_build_copy(source)
+		_due.append(source)
+		if not _bringing_back:
+			_bring_back(generation)
+
+
+# BACK BY THE CLOCK TOO (0.137.3). The owner's 16x readout: "27 ms - scripts
+# 13.3 ms, +221 nodes", then "32 ms - physics 23.1 ms, +395 nodes". Copies
+# killed together have the same wait, so they came back in one frame, and
+# thought for the first time in one tick. In the container 30 killed came
+# back as one 30 ms frame of +474 to +510 nodes. Now each frame builds those
+# due until BUILD_MS is spent (never fewer than one), and a copy built far
+# from every player is born asleep - with no spots it never was.
+var _due: Array = []
+var _bringing_back: bool = false
+# This frame's building, shared by every copy due: they come back from their
+# own waits one after another in the same frame.
+var _spent_frame: int = -1
+var _spent_usec: int = 0
+
+
+func due_count() -> int:
+	return _due.size()
+
+
+func _bring_back(generation: int) -> void:
+	_bringing_back = true
+	while not _due.is_empty():
+		var frame: int = Engine.get_process_frames()
+		if frame != _spent_frame:
+			_spent_frame = frame
+			_spent_usec = 0
+		if _spent_usec >= int(BUILD_MS * 1000.0):
+			await get_tree().process_frame
+			if not is_instance_valid(self) or not is_inside_tree() or generation != _generation:
+				_due.clear()
+				break
+			continue
+		var started: int = Time.get_ticks_usec()
+		var source: int = int(_due.pop_front())
+		if _alive_copies_of(source) < multiplier - 1:
+			_build_copy(source, _player_spots())
+		_spent_usec += Time.get_ticks_usec() - started
+	_bringing_back = false
+
+
+func _alive_copies_of(source: int) -> int:
+	var alive: int = 0
+	for id in _copies_of.get(source, []):
+		var node: Object = instance_from_id(int(id))
+		if node != null and is_instance_valid(node) and not (node as Node).is_queued_for_deletion():
+			alive += 1
+	return alive
 
 
 func _prune() -> void:

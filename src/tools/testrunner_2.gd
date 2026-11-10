@@ -1170,6 +1170,33 @@ func _test_the_owner_stress_crowd() -> void:
 	check("a copy killed comes back, after the wait its monster would take",
 		after_kill == copies.size() - 1 and int(crowd.call("copy_count")) == copies.size(),
 		[copies.size(), after_kill, crowd.call("copy_count")])
+	# BACK BY THE CLOCK TOO (0.137.3): forty killed together are not forty
+	# built in one frame when their wait ends.
+	var pack: Array = []
+	for copy in copies:
+		if pack.size() < 40 and is_instance_valid(copy) and not str(copy.scene_file_path).contains("slime"):
+			pack.append(copy)
+	for copy in pack:
+		copy.call("_die")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var pack_gone: int = int(crowd.call("copy_count"))
+	var most_in_a_frame: int = 0
+	var back_frames: int = 0
+	var waited: int = Time.get_ticks_msec()
+	var before: int = pack_gone
+	while int(crowd.call("copy_count")) < copies.size() and Time.get_ticks_msec() - waited < 3000:
+		await get_tree().process_frame
+		var now_count: int = int(crowd.call("copy_count"))
+		if now_count > before:
+			most_in_a_frame = maxi(most_in_a_frame, now_count - before)
+			back_frames += 1
+		before = now_count
+	check("  %d killed together come back a few a frame, inside the clock - %d frames, at most %d in one"
+		% [pack.size(), back_frames, most_in_a_frame],
+		pack.size() == 40 and pack_gone == copies.size() - 40 and int(crowd.call("copy_count")) == copies.size()
+		and back_frames >= 2 and most_in_a_frame < pack.size() and int(crowd.call("due_count")) == 0,
+		[pack_gone, crowd.call("copy_count"), back_frames, most_in_a_frame])
 
 	# A player at the arrival: the copies built far from it start asleep, the
 	# way the sleeper would put them; any built near it start awake.

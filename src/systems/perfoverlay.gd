@@ -144,6 +144,11 @@ var _last_load_msec: int = -100000
 # twice after the game comes back.
 const HOLD_SETTLE_MSEC := 2100
 var _held_before: bool = false
+# A KEY OR CLICK IN THE FRAME (0.137.4). What a key or a click does - a window
+# opening - runs before the frame's own clocked parts, so it was filed under
+# waiting, "not the game's code": the owner's 44 ms spike was the GM panel
+# being built. Each press is noted here, and a spike with one in it says so.
+var _press_usec: int = 0
 var _unheld_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
@@ -359,9 +364,11 @@ func _process(delta: float) -> void:
 	if _current_scene_id() != _scene_id:
 		_scene_id = _current_scene_id()
 		mark_load()
+	var ended_from: int = _frame_start_usec
 	var parts: Dictionary = clocked_frame(Time.get_ticks_usec())
 	if not parts.is_empty():
 		parts["held"] = held
+		parts["pressed"] = _press_usec > 0 and _press_usec >= ended_from
 		parts["fps"] = fps
 		parts["nodes"] = (nodes - _prev_nodes) if _prev_nodes > 0 else 0
 		parts["area"] = AreaRegistry.current_area_id()
@@ -454,6 +461,21 @@ func _process(delta: float) -> void:
 	_panel.show_data(panel_data(now_msec))
 
 
+func _input(event: InputEvent) -> void:
+	if is_press(event):
+		_press_usec = Time.get_ticks_usec()
+
+
+static func is_press(event: InputEvent) -> bool:
+	"""A key, a button or a finger going down - what can make the game do
+	something at once."""
+	if event is InputEventKey:
+		return (event as InputEventKey).pressed and not (event as InputEventKey).echo
+	if event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton:
+		return event.is_pressed()
+	return false
+
+
 func held_for_frame(held_now: bool, now_msec: int) -> bool:
 	"""Whether the frame that just ended was held: held now, or held when it
 	began (BACK FROM ANOTHER WINDOW above). Called once a frame."""
@@ -539,6 +561,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 		_spikes.push_front({
 			"ms": ms, "physics": physics, "worst_tick": worst_tick, "ticks": ticks,
 			"scripts": scripts, "drawing": drawing, "nodes": int(sample.get("nodes", 0)),
+			"pressed": bool(sample.get("pressed", false)),
 			"area": str(sample.get("area", AreaRegistry.current_area_id())),
 			"at": int(sample.get("at", Time.get_ticks_msec())),
 		})
@@ -597,8 +620,12 @@ func spike_text(spike: Dictionary, now_msec: int) -> String:
 		"drawing":
 			what = "drawing %.1f ms (the graphics card - a new effect's first draw)" % float(cause["ms"])
 		_:
-			what = "waiting %.1f ms (the screen's refresh, the graphics driver or another program - not the game's code)" \
-				% float(cause["ms"])
+			if bool(spike.get("pressed", false)):
+				what = "waiting %.1f ms, with a key or click in it (what that did - a window opening, say - counts here)" \
+					% float(cause["ms"])
+			else:
+				what = "waiting %.1f ms (the screen's refresh, the graphics driver or another program - not the game's code)" \
+					% float(cause["ms"])
 	var area: String = str(spike["area"])
 	var where: String = (" in " + AreaRegistry.display_name(area)) if area != "" else ""
 	var nodes: int = int(spike["nodes"])
@@ -714,6 +741,8 @@ func _panel_spike(spike: Dictionary, now_msec: int, worst: bool = false) -> Dict
 	var what: String = "%s %.1f ms" % [kind, float(cause["ms"])]
 	if kind == "physics":
 		what += ", %d tick%s" % [int(spike["ticks"]), "" if int(spike["ticks"]) == 1 else "s"]
+	elif kind == "waiting" and bool(spike.get("pressed", false)):
+		what += " after a key or click"
 	var nodes: int = int(spike["nodes"])
 	return {
 		"ms": float(spike["ms"]),

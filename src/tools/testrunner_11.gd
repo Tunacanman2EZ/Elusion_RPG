@@ -486,6 +486,130 @@ func _test_the_readout_back_from_another_window() -> void:
 	print("  (back from another window: done)")
 
 
+func _test_the_town_floor_in_chunks() -> void:
+	section("THE TOWN'S FLOOR AND WATER IN CHUNKS - for low-end phones, the same picture (0.137.3)")
+	# The owner: "chunking its important everything is fast so it works on
+	# low end phones".
+	const Ground := preload("res://src/world/groundchunks.gd")
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	var fits: Array = []
+	for layer_name in [&"ground", &"water"]:
+		var layer: TileMapLayer = town.get_node(NodePath(layer_name))
+		var ranges: PackedInt32Array = layer.get_meta(Ground.RANGES_META, PackedInt32Array())
+		var size: int = int(layer.get_meta(Ground.SIZE_META, 0))
+		if size != Ground.CHUNK_CELLS_SMALL or not Ground.ranges_fit(ranges, layer.tile_map_data.size()) \
+				or _strays(layer.tile_map_data, ranges, size) != 0:
+			fits.append(layer_name)
+	check("the town's ground and water keep their chunks (%d cells a side) and every cell is in its own" % Ground.CHUNK_CELLS_SMALL
+		+ " - painted since? open scene/elusion.tscn, File > Run src/tools/chunkfloor.gd, save", fits.is_empty(), fits)
+	var ground: TileMapLayer = town.get_node("ground")
+	var water: TileMapLayer = town.get_node("water")
+	var tints: Array = [ground.modulate, water.modulate]
+	var cells_of := func(layer: TileMapLayer) -> Array:
+		var out: Array = []
+		for cell in layer.get_used_cells():
+			out.append([cell, layer.get_cell_source_id(cell), layer.get_cell_atlas_coords(cell)])
+		return out
+	var whole: Array = [cells_of.call(ground), cells_of.call(water)]
+	for list in whole:
+		(list as Array).sort()
+	var hud: Node = town.get_node_or_null("hudcontrol")
+	if hud != null:
+		town.remove_child(hud)
+		hud.free()
+	var kept_canvas: Transform2D = get_viewport().canvas_transform
+	var camera := Camera2D.new()
+	town.add_child(camera)
+	add_child(town)
+	camera.make_current()
+	_aim(camera, (town.get_node("playerspawn") as Node2D).global_position)
+	var first: Node = Ground.add_to(town)
+	var helpers: Array = [town.get_node_or_null(Ground.NODE_NAME), town.get_node_or_null("%s_water" % Ground.NODE_NAME)]
+	check("as the town arrives it gets a helper for each, the ground's first",
+		first != null and first == helpers[0] and helpers[1] != null and not ground.enabled and not water.enabled)
+	var frames: int = 0
+	while frames < 200 and (helpers[0] == null or helpers[1] == null
+			or int(helpers[0].call("made_count")) < int(helpers[0].call("chunk_count"))
+			or int(helpers[1].call("made_count")) < int(helpers[1].call("chunk_count"))):
+		await get_tree().process_frame
+		frames += 1
+	var same: bool = helpers[0] != null and helpers[1] != null
+	var untinted: bool = same
+	for i in 2:
+		if helpers[i] == null:
+			continue
+		var cells: Array = []
+		for layer: TileMapLayer in helpers[i].call("chunk_layers"):
+			cells.append_array(cells_of.call(layer))
+			untinted = untinted and layer.modulate == Color.WHITE
+		cells.sort()
+		same = same and cells == whole[i]
+	check("  all made a few frames on (%d), the same cells as before" % frames, same and frames < 200)
+	check("  a chunk is tinted by its layer, not twice over (the town's floor is 0.41 grey)",
+		untinted and ground.modulate == tints[0] and water.modulate == tints[1]
+		and not Ground.COPIED.has("modulate"))
+	town.free()
+	get_viewport().canvas_transform = kept_canvas
+	print("  (the town's floor in chunks: done)")
+
+
+func _test_the_gm_panel_comes_with_the_area() -> void:
+	section("THE GM PANEL BUILT WITH THE AREA, AND A KEY'S WORK NAMED IN THE READOUT (0.137.4)")
+	# The owner's readout: one 44 ms spike, "waiting ... not the game's code",
+	# +435 nodes - "opened gm panel".
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var none_yet: bool = hud.owner_panel == null
+	hud.prepare_owner_panel()
+	var built: Control = hud.owner_panel
+	check("the owner's HUD builds the GM panel when the area asks (none before), hidden",
+		none_yet and built != null and built.get_parent() == hud and not built.visible)
+	hud._toggle_owner_panel()
+	check("  opening it is then only showing it - the same panel", hud.owner_panel == built and built.visible)
+	hud._toggle_owner_panel()
+	hud.queue_free()
+	Api.is_owner = false
+	var player_hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(player_hud)
+	await get_tree().process_frame
+	player_hud.prepare_owner_panel()
+	check("  nobody else gets one", player_hud.owner_panel == null)
+	player_hud.queue_free()
+	Api.is_owner = was_owner
+	await get_tree().process_frame
+	check("  AreaRegistry asks for it as an area arrives",
+		_func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(").contains("prepare_owner_panel"))
+
+	# ---- the readout names a key or click in a spike -------------------------
+	var key := InputEventKey.new()
+	key.pressed = true
+	var echo := InputEventKey.new()
+	echo.pressed = true
+	echo.echo = true
+	var click := InputEventMouseButton.new()
+	click.pressed = true
+	click.button_index = MOUSE_BUTTON_LEFT
+	check("a key or a click going down is a press; a held key's repeat and a mouse move are not",
+		PerfOverlay.is_press(key) and PerfOverlay.is_press(click) and not PerfOverlay.is_press(echo)
+		and not PerfOverlay.is_press(InputEventMouseMotion.new()))
+	var at: int = Time.get_ticks_msec()
+	var keyed := {"ms": 44.0, "physics": 0.4, "worst_tick": 0.3, "ticks": 1, "scripts": 0.2, "drawing": 0.1,
+		"nodes": 435, "area": "bigfield", "at": at, "pressed": true}
+	var plain: Dictionary = keyed.duplicate()
+	plain["pressed"] = false
+	check("  a spike with one in it says so, row and panel; one without blames the screen as before",
+		PerfOverlay.spike_text(keyed, at).contains("with a key or click in it")
+		and str(PerfOverlay._panel_spike(keyed, at)["cause"]).ends_with("after a key or click")
+		and PerfOverlay.spike_text(plain, at).contains("not the game's code")
+		and not str(PerfOverlay._panel_spike(plain, at)["cause"]).contains("key"))
+	check("  and each frame notes whether a press came in it",
+		_func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _process(").contains("parts[\"pressed\"] = _press_usec > 0"))
+	print("  (the GM panel with the area: done)")
+
+
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 	"""Cells in a range that are not in that range's chunk."""
 	const Ground := preload("res://src/world/groundchunks.gd")

@@ -582,6 +582,19 @@ func _toggle_owner_panel() -> void:
 	owner_panel.visible = not owner_panel.visible
 
 
+# THE GM PANEL BUILT WITH THE AREA (0.137.4). The owner's readout: one 44 ms
+# hitch in 72,901 frames - "opened gm panel". Building it (432 nodes, five
+# tabs) was 47-86 ms in the container, the first time it opened in each
+# area, since it goes with the HUD. AreaRegistry asks for it as the area
+# arrives, inside the load the readout already sets apart; opening it is then
+# only showing it. The owner alone - nobody else ever builds it.
+func prepare_owner_panel() -> void:
+	if not Api.is_owner or owner_panel != null:
+		return
+	owner_panel = OWNER_PANEL_SCENE.instantiate()
+	add_child(owner_panel)
+
+
 func toggle_item_spawner() -> void:
 	# The owner's item menu (itemspawner.gd). Owner-gated here as a courtesy,
 	# like the GM panel; the server refuses everyone else regardless.
