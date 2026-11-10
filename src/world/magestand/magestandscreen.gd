@@ -146,7 +146,7 @@ var mouse_held: Callable = Callable(self, "_mouse_held")
 # The best this session (step 4 keeps it on the server).
 static var best: int = 0
 var _held: Node = null
-var _held_mode: int = Node.PROCESS_MODE_INHERIT
+var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
 
 

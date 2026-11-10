@@ -621,7 +621,7 @@ class PadButton extends Control:
 		ring.place(box, pixel)
 		queue_redraw()
 
-	func place_floating(zone: Rect2, socket: Rect2, art_pixels: int, art_pixel_size: float,
+	func place_floating(zone: Rect2, _socket: Rect2, art_pixels: int, art_pixel_size: float,
 			screen_per_unit: float = 1.0) -> void:
 		"""The whole of `zone` answers; a socket of `socket`'s size is drawn
 		under the thumb."""

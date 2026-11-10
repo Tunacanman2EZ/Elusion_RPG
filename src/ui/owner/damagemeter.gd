@@ -894,16 +894,16 @@ func _draw_players(chosen: Array) -> void:
 func _draw_hit_by(record: Dictionary) -> void:
 	"""WHAT HIT ME (0.85.0): the third table, or nothing for a fight from
 	before it was kept."""
-	var rows: Array = FightLog.hit_by_rows(record, HIT_ROWS)
-	_hit_grid.visible = not rows.is_empty()
-	if rows.is_empty():
+	var hit_rows: Array = FightLog.hit_by_rows(record, HIT_ROWS)
+	_hit_grid.visible = not hit_rows.is_empty()
+	if hit_rows.is_empty():
 		return
 	for i in HIT_COLUMNS.size():
 		_hit_grid.add_child(_compare_cell(HIT_COLUMNS[i], HEAD))
 		(_hit_grid.get_child(_hit_grid.get_child_count() - 1) as Control).tooltip_text = HIT_TIPS[i]
 	var stripe: bool = false
 	var last_id: int = -1
-	for r in rows:
+	for r in hit_rows:
 		var p: Dictionary = r[0]
 		if int(p["id"]) != last_id:
 			stripe = not stripe

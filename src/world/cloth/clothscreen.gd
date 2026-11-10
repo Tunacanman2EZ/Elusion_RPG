@@ -119,7 +119,7 @@ var _banner: String = ""
 var _banner_left: float = 0.0
 var _flash_left: float = 0.0
 var _held: Node = null
-var _held_mode: int = Node.PROCESS_MODE_INHERIT
+var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
 var _paid: bool = false
 var _busy: bool = false
@@ -458,7 +458,10 @@ func _process(delta: float) -> void:
 			if not mouse and not space:
 				_wait_release = false
 			run.set("steer", way if on else Vector2.ZERO)
-			run.set("aim", world_from_screen(mouse_at.call()) if on and _by_mouse else null)
+			var aim: Variant = null
+			if on and _by_mouse:
+				aim = world_from_screen(mouse_at.call())
+			run.set("aim", aim)
 			run.set("cut_held", on and not _wait_release and (space or (mouse and _by_mouse)))
 	_fit_frame()
 	Pad.lay_minigame_stick(stick, touch and playing(), stick_zone(),

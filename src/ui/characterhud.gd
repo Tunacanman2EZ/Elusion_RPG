@@ -1031,9 +1031,9 @@ var minigames_card: Control = null
 func toggle_nav_menu(toggle_name: String) -> void:
 	# ON A TOUCH SCREEN MENU OPENS THE GRID of everything on the bar.
 	if toggle_name == "menubutton" and touch_menu != null and bool(touch_menu.call("is_folded")):
-		var was_open: bool = touch_menu.visible
+		var grid_was_open: bool = touch_menu.visible
 		close_nav_menus()
-		if not was_open:
+		if not grid_was_open:
 			touch_menu.call("open")
 		return
 	var menu: Control = _nav_menu(toggle_name)

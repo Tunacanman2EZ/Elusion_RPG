@@ -483,7 +483,6 @@ var _left: float = READY_SECONDS
 var _to_spawn: int = 0
 var _group_in: float = 0.0
 var _cast_in: float = 0.0
-var _rocks: Dictionary = {}
 var _comet_count: int = 0
 
 # THE STAR: "" none; "dropping" onto the field; "lying" there to be claimed;
@@ -1156,6 +1155,7 @@ static func wave_hit(n: int) -> float:
 
 
 func land() -> int:
+	@warning_ignore("integer_division")
 	return int(RunScript.LANDS[((maxi(1, wave) - 1) / LAND_WAVES) % RunScript.LANDS.size()])
 
 
@@ -1687,6 +1687,7 @@ func pick(index: int) -> bool:
 
 func time_text() -> String:
 	var whole: int = int(run_seconds)
+	@warning_ignore("integer_division")
 	return "%d:%02d" % [whole / 60, whole % 60]
 
 

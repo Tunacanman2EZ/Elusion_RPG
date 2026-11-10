@@ -739,9 +739,9 @@ func _draw_wheel() -> void:
 		var share: float = wheel_t / WHEEL_WARN
 		var tell: Color = colour.lightened(0.5)
 		for arm in WHEEL_ARMS:
-			var end: Vector2 = wheel_end(arm)
-			v.draw_line(eye, end, Color(colour, 0.06 + 0.1 * share), WHEEL_HALF * 2.0)
-			v.draw_line(eye, end, Color(tell, 0.45 + 0.45 * share), 1.5 + 2.0 * share)
+			var tip: Vector2 = wheel_end(arm)
+			v.draw_line(eye, tip, Color(colour, 0.06 + 0.1 * share), WHEEL_HALF * 2.0)
+			v.draw_line(eye, tip, Color(tell, 0.45 + 0.45 * share), 1.5 + 2.0 * share)
 		v.draw_circle(eye, 4.0 + 12.0 * share, Color(colour, 0.25 + 0.35 * share))
 		v.draw_circle(eye, 2.0 + 5.0 * share, Color(1.0, 1.0, 1.0, 0.5 + 0.4 * share))
 		return
@@ -763,20 +763,20 @@ func _draw_wheel() -> void:
 	for layer in layers:
 		var half: float = float(layer[0]) / 2.0
 		var paint: Color = layer[1]
-		for end in ends:
-			var across: Vector2 = ((end as Vector2) - eye).normalized().orthogonal() * half
-			points.append_array([eye + across, end + across, end - across, eye + across, end - across, eye - across])
+		for tip in ends:
+			var across: Vector2 = ((tip as Vector2) - eye).normalized().orthogonal() * half
+			points.append_array([eye + across, tip + across, tip - across, eye + across, tip - across, eye - across])
 			colours.append_array([paint, paint, paint, paint, paint, paint])
 	RenderingServer.canvas_item_add_triangle_array(v.get_canvas_item(), PackedInt32Array(), points, colours)
 	for arm in WHEEL_ARMS:
-		var end: Vector2 = ends[arm]
+		var tip: Vector2 = ends[arm]
 		# Pulses running out along it, so it reads as pouring from the eye.
-		var length: float = eye.distance_to(end)
-		var dir: Vector2 = (end - eye) / maxf(length, 1.0)
+		var length: float = eye.distance_to(tip)
+		var dir: Vector2 = (tip - eye) / maxf(length, 1.0)
 		for k in 2:
 			var at: float = fmod(wheel_t * 420.0 + float(k) * length / 2.0, maxf(length, 1.0))
 			v.draw_arc(eye + dir * at, WHEEL_HALF * 0.75, 0.0, TAU, 12, Color(1.0, 1.0, 1.0, 0.35 * fade), 1.5)
-		v.draw_circle(end, WHEEL_HALF * 0.9, Color(colour, 0.45 * fade))
+		v.draw_circle(tip, WHEEL_HALF * 0.9, Color(colour, 0.45 * fade))
 	v.draw_circle(eye, WHEEL_HALF * (1.3 + 0.15 * sin(wheel_t * 18.0)), Color(colour, 0.6 * fade))
 	v.draw_circle(eye, WHEEL_HALF * 0.6, Color(1.0, 1.0, 1.0, 0.9 * fade))
 

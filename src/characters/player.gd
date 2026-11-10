@@ -72,7 +72,7 @@ var _nameplate_tag: String = ""
 # has one now — see the note beside it — so the constant is written as what it
 # means. The literal 0/1/2/3 in the popup calls further down this file are the
 # same workaround and can go the same way as each is next touched.
-const NOTICE_LABEL_TYPE: int = FloatingLabel.Type.NOTICE
+const NOTICE_LABEL_TYPE: FloatingLabel.Type = FloatingLabel.Type.NOTICE
 
 # how long an IDENTICAL notice is suppressed for, in milliseconds.
 const NOTICE_REPEAT_COOLDOWN_MS: int = 750
@@ -1475,7 +1475,7 @@ func _spawn_levelup_popup() -> void:
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
-		lbl.show_text("LEVEL UP!\n%d" % level, 3, 2.0, 1.5)
+		lbl.show_text("LEVEL UP!\n%d" % level, FloatingLabel.Type.LEVELUP, 2.0, 1.5)
 
 
 func _spawn_defense_tier_popup(tier_name: String) -> void:
@@ -1490,7 +1490,7 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
-		lbl.show_text("DEFENCE TIER\n%s" % tier_name, 3, 2.0, 1.5)
+		lbl.show_text("DEFENCE TIER\n%s" % tier_name, FloatingLabel.Type.LEVELUP, 2.0, 1.5)
 
 
 func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
@@ -1508,7 +1508,7 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
-		lbl.show_text("%s %d" % [display, new_level], 4, 1.2, 0.9)
+		lbl.show_text("%s %d" % [display, new_level], FloatingLabel.Type.SKILLUP, 1.2, 0.9)
 
 
 # =============================================================================

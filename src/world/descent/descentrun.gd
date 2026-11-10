@@ -887,6 +887,7 @@ func _room_cleared() -> void:
 	# THE WARD FULL AGAIN for the next room (0.115.0).
 	fill_ward()
 	if stood:
+		@warning_ignore("integer_division")
 		Boons.ward = Boons.ward_most / 2
 	match room_kind:
 		"gold":

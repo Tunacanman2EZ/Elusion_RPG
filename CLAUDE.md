@@ -2729,6 +2729,35 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### No warnings as the game loads (0.135.7)
+
+The owner, testing 0.135.6: "we have 41 errors in godot fix" - the
+debugger's Errors tab, all yellow GDScript warnings from loading scripts.
+
+- **How to list them, file and line.** A headless run and the suite never
+  show these: GDScript prints its load warnings only with a debugger
+  attached. Godot's local debugger does: load every script under `src/`
+  from a small scene and run it as `yes c | godot --headless --path . -d
+  <scene>` (the `c` answers the debugger if anything breaks). Each comes
+  as `WARNING: ...` with `at: GDScript::reload (res://...:line)` under it.
+- **Found 69 in the game's scripts, all fixed, none a bug:** integer
+  division meant as such (minutes from seconds, every third wave) marked
+  `@warning_ignore("integer_division")` before the statement, as the house
+  style already did - before the whole statement, so for a line inside a
+  multi-line dictionary or call, the line it starts on; locals or
+  parameters named like a function, a member or a built-in property or
+  signal renamed within their function (`is_clear`, `start_at`,
+  `hit_rows`, `still_trading`, `font_px`, `wanted_at`, `redness`,
+  `trail_gap`, `tip`, `now_hidden`, `grid_was_open`, `_socket`); plain
+  numbers for an enum named (`FloatingLabel.Type.LEVELUP` / `SKILLUP`,
+  `NOTICE_LABEL_TYPE` typed, `_held_mode: Node.ProcessMode` in the three
+  minigame screens, `_wisps(shape: CPUParticles2D.EmissionShape)`); a
+  `Vector2 if ... else null` written as an if; two class variables nothing
+  used (healerrun's `_goal_paid`, magestand's `_rocks`) and one local
+  removed.
+- **Left: 36 in the suite's own scripts** (testrunner*.gd), which a game
+  never loads.
+
 ### The walls measured; a cheaper node hook; the map key scrolls (0.135.6)
 
 The owner: "lets get it done" (the walls, after the floor).

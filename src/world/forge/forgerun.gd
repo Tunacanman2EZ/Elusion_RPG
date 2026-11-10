@@ -551,6 +551,7 @@ func alive_cap() -> int:
 
 
 func spawn_count() -> int:
+	@warning_ignore("integer_division")
 	return 1 + floods / 3
 
 
@@ -570,11 +571,13 @@ func health_scale() -> float:
 static func schedule() -> Dictionary:
 	var phases: Array = []
 	for k in SLICES:
+		@warning_ignore("integer_division")
 		phases.append({
 			"seconds": snappedf(maxf(HEAT_FASTEST, HEAT_SECONDS * pow(HEAT_QUICKER, k)), 0.01),
 			"gap": snappedf(maxf(SPAWN_FASTEST, SPAWN_EVERY * pow(SPAWN_QUICKER, k)), 0.001),
 			"count": 1 + k / 3,
 		})
+	@warning_ignore("integer_division")
 	return {
 		"sprite_scenes": [SPRITE],
 		"phases": phases,
@@ -1401,6 +1404,7 @@ func knock_out(player: Node) -> bool:
 
 static func clock_text(seconds: float) -> String:
 	var s: int = int(seconds)
+	@warning_ignore("integer_division")
 	return "%d:%02d" % [s / 60, s % 60]
 
 
@@ -1622,6 +1626,7 @@ class Essence extends Node2D:
 		add_child(art)
 
 	func _process(_delta: float) -> void:
+		@warning_ignore("integer_division")
 		visible = left > 3.0 or int(Time.get_ticks_msec() / 150) % 2 == 0
 		queue_redraw()
 

@@ -410,11 +410,11 @@ static func portrait_of(scene_path: String) -> Texture2D:
 	_portraits[scene_path] = picture
 	return picture
 
-func _label(id: String, text: String, size: int, colour: Color) -> Label:
+func _label(id: String, text: String, font_px: int, colour: Color) -> Label:
 	var label := Label.new()
 	label.name = id
 	label.text = text
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", font_px)
 	label.add_theme_color_override("font_color", colour)
 	return label
 
@@ -594,6 +594,7 @@ func left_now() -> int:
 	"""Seconds of the wait still left, counted down from the server's word."""
 	if not _known:
 		return 0
+	@warning_ignore("integer_division")
 	return maxi(0, ready_in - int((Time.get_ticks_msec() - _said_at_msec) / 1000))
 
 
@@ -601,7 +602,9 @@ static func wait_text(seconds: int) -> String:
 	"""'Back in 13h 20m' - how the card says a wait (the server's words)."""
 	if seconds < 60:
 		return "Back in under a minute"
+	@warning_ignore("integer_division")
 	var hours: int = seconds / 3600
+	@warning_ignore("integer_division")
 	var minutes: int = (seconds % 3600) / 60
 	if hours > 0 and minutes > 0:
 		return "Back in %dh %dm" % [hours, minutes]
@@ -723,6 +726,7 @@ func _on_go() -> void:
 func _paint_healer() -> void:
 	healer_box.visible = bool(shows_healer_run.call())
 	var in_town: bool = str(area_now.call()) == TOWN
+	@warning_ignore("integer_division")
 	var wait_left: int = maxi(0, healer_wait - int((Time.get_ticks_msec() - _healer_said_msec) / 1000)) \
 		if _healer_known else 0
 	var none_left: bool = _healer_known and healer_left <= 0 and wait_left > 0
@@ -837,12 +841,14 @@ func _shows_descent() -> bool:
 # only inside it. The status says the best time the server keeps. Inside,
 # Leave asks twice while the chest holds loot - the next Go empties it.
 static func best_text(seconds: int) -> String:
+	@warning_ignore("integer_division")
 	return "" if seconds <= 0 else "best %d:%02d" % [seconds / 60, seconds % 60]
 
 
 func forge_left_now() -> int:
 	if not _forge_known:
 		return 0
+	@warning_ignore("integer_division")
 	return maxi(0, forge_wait - int((Time.get_ticks_msec() - _forge_said_msec) / 1000))
 
 
@@ -926,6 +932,7 @@ func _shows_mage_stand() -> bool:
 func _paint_cloth() -> void:
 	cloth_box.visible = bool(shows_cloth.call())
 	var in_town: bool = str(area_now.call()) == TOWN
+	@warning_ignore("integer_division")
 	var wait_left: int = maxi(0, cloth_wait - int((Time.get_ticks_msec() - _cloth_said_msec) / 1000)) \
 		if _cloth_known else 0
 	var none_left: bool = _cloth_known and cloth_left <= 0 and wait_left > 0

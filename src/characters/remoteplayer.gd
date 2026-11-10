@@ -914,13 +914,13 @@ static func pet_parts(item_id: String) -> Dictionary:
 	return part
 
 
-func set_hidden_indoors(hidden: bool) -> void:
+func set_hidden_indoors(now_hidden: bool) -> void:
 	"""Hidden while inside a house this game's player is outside of (shop.gd,
 	0.112.1): the body and everything on it, and the pet that follows it."""
-	indoors_hidden = hidden
-	visible = not hidden
+	indoors_hidden = now_hidden
+	visible = not now_hidden
 	if _pet != null and is_instance_valid(_pet):
-		_pet.visible = not hidden
+		_pet.visible = not now_hidden
 
 
 func _build_pet() -> void:

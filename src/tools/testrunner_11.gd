@@ -46,6 +46,7 @@ func _test_the_floor_comes_in_chunks() -> void:
 	var size: int = int(ground.get_meta(Ground.SIZE_META, 0))
 	var data: PackedByteArray = ground.tile_map_data
 	var cells_total: int = ground.get_used_cells().size()
+	@warning_ignore("integer_division")
 	check("the Big Field's ground keeps its chunks' ranges (%d chunks of %d cells), and they fit its %d cells"
 		% [ranges.size() / 4, size, cells_total], size == Ground.CHUNK_CELLS and Ground.ranges_fit(ranges, data.size()))
 	check("  every cell in its own chunk's range", _strays(data, ranges, size) == 0, _strays(data, ranges, size))
@@ -94,6 +95,7 @@ func _test_the_floor_comes_in_chunks() -> void:
 		var key := Vector2i(ranges[i], ranges[i + 1])
 		if Vector2(key - at_arrival).length() > Vector2(far - at_arrival).length():
 			far = key
+	@warning_ignore("integer_division")
 	var far_middle: Vector2 = ground.to_global(ground.map_to_local(far * size + Vector2i(size / 2, size / 2)))
 	var far_waiting: bool = not _chunk_made(helper, far)
 	_aim(camera, far_middle)

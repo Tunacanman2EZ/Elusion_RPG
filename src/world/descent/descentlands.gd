@@ -1077,14 +1077,14 @@ func _leave_trail(hz: Dictionary) -> void:
 	var p: Vector2 = hz["p"]
 	var heading: float = float(hz["a"])
 	var curve: float = beam_curve(hz)
-	var gap: float = LASER_TRAIL_STEP * (2.0 if kind == "flare" else 1.0)
+	var trail_gap: float = LASER_TRAIL_STEP * (2.0 if kind == "flare" else 1.0)
 	var rect: Rect2 = (run.get("room_rect") if run != null else Rect2(0, 0, 640, 360)).grow(-8.0)
-	var s: float = -floor(LASER_TRAIL_REACH / gap) * gap
+	var s: float = -floor(LASER_TRAIL_REACH / trail_gap) * trail_gap
 	while s <= LASER_TRAIL_REACH + 0.01:
 		var at: Vector2 = _arc_point(p, heading, curve, s)
 		if rect.has_point(at):
 			_born.append(trail_patch(kind, at))
-		s += gap
+		s += trail_gap
 
 
 func trail_patch(kind: String, at: Vector2) -> Dictionary:
@@ -1190,7 +1190,6 @@ func cage(me: Node2D, land: int) -> Array:
 	var longest: float = 0.0
 	var reaches: Array = []
 	for k in 4:
-		var side := Vector2.from_angle(PI / 2.0 * float(k)).round()
 		# Held inside the room: a side by a wall starts at the wall.
 		var room_left: float = [rect.end.x - centre.x, rect.end.y - centre.y, centre.x - rect.position.x, centre.y - rect.position.y][k]
 		var reach: float = clampf(room_left, CAGE_STOP, CAGE_REACH)
@@ -1769,8 +1768,8 @@ func _draw_air() -> void:
 					for ghost in ghost_lines(hz):
 						_air.draw_polyline(ghost, Color(colour * 1.2, 0.18 * k), 1.0)
 					_air.draw_polyline(line, Color(colour * 1.3, flick), 1.0 + 2.0 * k)
-					for end in ends:
-						_air.draw_circle(end, 2.0 + 3.0 * k, Color(colour * 1.4, 0.9))
+					for tip in ends:
+						_air.draw_circle(tip, 2.0 + 3.0 * k, Color(colour * 1.4, 0.9))
 					for m in riding.size():
 						_draw_mote(e, riding[m], m, t, 0.45 * k, line)
 				else:
@@ -1780,9 +1779,9 @@ func _draw_air() -> void:
 						_draw_design(e, line, t, fade, int(hz.get("seed", 0)))
 					else:
 						_air.draw_polyline(line, Color(colour * 1.3, 0.45 * fade), 2.0)
-					for end in ends:
-						_air.draw_circle(end, 9.0, Color(colour * 1.5, 0.6 * fade))
-						_air.draw_circle(end, 4.0, Color(1.0, 1.0, 1.0, fade))
+					for tip in ends:
+						_air.draw_circle(tip, 9.0, Color(colour * 1.5, 0.6 * fade))
+						_air.draw_circle(tip, 4.0, Color(1.0, 1.0, 1.0, fade))
 			"burst":
 				var bb: float = clampf(t / float(hz["life"]), 0.0, 1.0)
 				var tint: Color = Element.colour_for(int(hz.get("e", 0)))

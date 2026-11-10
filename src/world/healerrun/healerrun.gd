@@ -569,9 +569,9 @@ class Beam extends Node2D:
 			_one(float(side[0]), float(side[1]), LASER_HALF * 0.6 * pulse, maxi(1, layers - 2), 0.0)
 		_one(0.0, 0.0, half * pulse, layers, red)
 
-	func _one(x: float, tilt: float, wide: float, layers: int, red: float) -> void:
+	func _one(x: float, tilt: float, wide: float, layers: int, redness: float) -> void:
 		"""One beam from (x, 0) up, leaning `tilt`: its layers, a little
-		faded, and its heart - red and strong when `red` (its share of the
+		faded, and its heart - redness and strong when `redness` (its share of the
 		width), else white."""
 		draw_set_transform(Vector2(x, 0.0), tilt, Vector2.ONE)
 		var reach: float = length / maxf(0.2, cos(tilt))
@@ -580,11 +580,11 @@ class Beam extends Node2D:
 			var w: float = wide * (0.45 + 0.55 * float(i + 1) / float(layers))
 			colour.a = (0.3 + 0.35 * (1.0 - float(i) / float(maxi(1, layers)))) * WHITE_FADE
 			draw_rect(Rect2(-w, -reach, w * 2.0, reach), colour)
-		if red > 0.0:
+		if redness > 0.0:
 			var heart: Color = LASER_HEART
 			heart.a = 1.0
-			draw_rect(Rect2(-wide * red - 1.0, -reach, (wide * red + 1.0) * 2.0, reach), Color(heart, 0.45))
-			draw_rect(Rect2(-wide * red, -reach, wide * red * 2.0, reach), heart)
+			draw_rect(Rect2(-wide * redness - 1.0, -reach, (wide * redness + 1.0) * 2.0, reach), Color(heart, 0.45))
+			draw_rect(Rect2(-wide * redness, -reach, wide * redness * 2.0, reach), heart)
 			draw_rect(Rect2(-1.0, -reach, 2.0, reach), Color(1.0, 0.75, 0.7, 0.95))
 		else:
 			draw_rect(Rect2(-wide * 0.3, -reach, wide * 0.6, reach), Color(0.9, 1.0, 0.95, 0.85 * WHITE_FADE))
@@ -791,7 +791,6 @@ var _boss_shots: float = 0.0
 var _boss_fired: int = 0
 var _boss_adds_in: float = BOSS_ADDS_SECONDS
 var enraged: bool = false
-var _goal_paid: bool = false
 var _boss_casts: int = 0
 # Where she was when the run ended (for result_text()).
 var _fell_in: int = State.RUNNING
@@ -1262,6 +1261,7 @@ func gold_now() -> int:
 	var passed: int = mini(waves_done, TIERS * WAVES_PER_TIER)
 	var gold: int = 0
 	for i in passed:
+		@warning_ignore("integer_division")
 		gold += int(table[mini(i / per, table.size() - 1)])
 	for k in mini(bosses_beaten, bosses.size()):
 		gold += int(bosses[k])
@@ -1319,6 +1319,7 @@ func rank() -> int:
 func heat() -> int:
 	"""How far the run is in: HEAT_PER_TIER a tier, and one more half way
 	through one - 0 to 5. The next tier starts hotter than the last ended."""
+	@warning_ignore("integer_division")
 	return tier * HEAT_PER_TIER + (1 if wave_in_tier >= WAVES_PER_TIER / 2 else 0)
 
 
@@ -1335,6 +1336,7 @@ static func fire_gap(base: float, at_rank: int) -> float:
 
 
 static func group_extra(at_rank: int) -> int:
+	@warning_ignore("integer_division")
 	return at_rank / 3
 
 
@@ -1369,6 +1371,7 @@ func land() -> int:
 
 func time_text() -> String:
 	var whole: int = int(run_seconds)
+	@warning_ignore("integer_division")
 	return "%d:%02d" % [whole / 60, whole % 60]
 
 
@@ -1982,6 +1985,7 @@ func spawn_wave(kind: String, share: float = 1.0) -> Array:
 			var count: int = _sized(8 + crowd(), share)
 			for i in count:
 				var side: float = -1.0 if i % 2 == 0 else 1.0
+				@warning_ignore("integer_division")
 				var f := _foe("sprite", Vector2(side * (PATH_HALF + 16.0), -HALF.y - 10.0 - float(i / 2) * 34.0))
 				f.side = side
 				f.path = "arc"
@@ -2208,6 +2212,7 @@ func _foe_move(f: Foe, delta: float, r: int, colour: Color) -> void:
 				f.shoot_in -= delta
 				if f.shoot_in <= 0.0:
 					if f.kind == "mage":
+						@warning_ignore("integer_division")
 						_fan(f.position, colour, 5 + r / 3, 0.7, bullet_speed(r) * 0.9)
 						f.shoot_in = fire_gap(1.8, r)
 					else:
@@ -2241,8 +2246,10 @@ func _elite_move(f: Foe, delta: float, r: int) -> void:
 	f.shoot_in = fire_gap(ELITE_CAST, r)
 	var from: Vector2 = f.position + Vector2(0.0, -10.0)
 	if f.casts % 2 == 1:
+		@warning_ignore("integer_division")
 		_signature(from, r, f.colour, f.casts / 2)
 	elif f.kind == "mage":
+		@warning_ignore("integer_division")
 		_fan(from, f.colour, 7 + r / 3, 0.9, bullet_speed(r) * 0.9)
 	else:
 		_fan(from, f.colour, 3, 0.25, bullet_speed(r) * 1.6)
@@ -2267,6 +2274,7 @@ func _fan(from: Vector2, colour: Color, count: int, spread: float, speed: float)
 	var aim: float = ((healer.position + HITBOX_AT) - from).angle()
 	for k in count:
 		var share: float = 0.0 if count == 1 else float(k) / float(count - 1) - 0.5
+		@warning_ignore("integer_division")
 		field.spawn(from, aim + share * spread, speed, colour, k == count / 2)
 
 
@@ -2877,6 +2885,7 @@ func _boss_step(delta: float) -> void:
 				field.spawn(from, turn + TAU * k / n, bullet_speed(r) * 0.7, colour)
 			_boss_shots = 0.7 * pace
 		1:
+			@warning_ignore("integer_division")
 			_fan(from, colour, 7 + r / 2 + (2 if enraged else 0), 0.9, bullet_speed(r))
 			_boss_shots = 0.5 * pace
 		2:
@@ -3011,10 +3020,12 @@ func _lay_terrain() -> void:
 	var want_top: int = floori(top / TILE)
 	while _painted_top > want_top:
 		_painted_top -= 1
+		@warning_ignore("integer_division")
 		for c in range(-int(PATH_HALF) / TILE, int(PATH_HALF) / TILE):
 			floor_layer.set_cell(Vector2i(c, _painted_top), 1, Vector2i(_rng.randi_range(1, 4), _rng.randi_range(1, 3)))
 	var want_bottom: int = floori(bottom / TILE)
 	while _painted_bottom > want_bottom:
+		@warning_ignore("integer_division")
 		for c in range(-int(PATH_HALF) / TILE, int(PATH_HALF) / TILE):
 			floor_layer.erase_cell(Vector2i(c, _painted_bottom))
 		_painted_bottom -= 1

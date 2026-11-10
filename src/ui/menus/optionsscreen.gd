@@ -1040,6 +1040,7 @@ func _on_account_delete_go() -> void:
 		# THE FIRST PRESS ONLY ARMS IT.
 		_delete_armed_until = now + DELETE_ARM_MSEC
 		account_delete_go.text = "Sure? Press again to delete"
+		@warning_ignore("integer_division")
 		_account_say("Press again within %d seconds to delete your account for good." % (DELETE_ARM_MSEC / 1000),
 			ACCOUNT_BAD)
 		return

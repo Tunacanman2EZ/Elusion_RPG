@@ -462,6 +462,7 @@ func _on_run(from_id: int, data: Dictionary) -> void:
 					run.call("apply_event", event)
 	if data.get("h") is Array:
 		for hit in data["h"]:
+			@warning_ignore("integer_division")
 			if hit is Array and (hit as Array).size() == 3 and int(hit[1]) / BATCH_SPAN == key:
 				run.call("strike_remote", int(hit[0]), int(hit[1]), float(hit[2]))
 	if data.get("me") is Array:

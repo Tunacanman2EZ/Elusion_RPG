@@ -214,9 +214,9 @@ func _check_trading_open() -> void:
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
 	# An older server, or no answer, says nothing about trading: leave it on and
 	# let the server's own answer to an offer speak.
-	var trading: bool = not res.get("ok", false) or bool(data.get("trade", true))
-	offer_button.disabled = not trading
-	if not trading:
+	var still_trading: bool = not res.get("ok", false) or bool(data.get("trade", true))
+	offer_button.disabled = not still_trading
+	if not still_trading:
 		_set_notice(TRADING_OFF_TEXT, true)
 
 

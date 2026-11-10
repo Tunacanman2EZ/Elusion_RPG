@@ -1409,7 +1409,7 @@ func _make_dark() -> void:
 	add_child(_dark)
 
 
-func _wisps(count: int, shape: int, at_scale: float) -> CPUParticles2D:
+func _wisps(count: int, shape: CPUParticles2D.EmissionShape, at_scale: float) -> CPUParticles2D:
 	"""The shot's wisps (turretprojectile.gd _make_trail()): single pixels that
 	rise and fade, added so they glow."""
 	var p := CPUParticles2D.new()

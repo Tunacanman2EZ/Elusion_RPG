@@ -103,6 +103,7 @@ func _label(text: String, font_size: int) -> Label:
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", COLOUR)
 	label.add_theme_color_override("font_outline_color", OUTLINE)
+	@warning_ignore("integer_division")
 	label.add_theme_constant_override("outline_size", maxi(4, font_size / 4))
 	add_child(label)
 	return label
@@ -219,8 +220,8 @@ func _on_screen(body: Node2D, body_at: Vector2, point: Vector2) -> Vector2:
 	if camera == null or not camera.is_inside_tree() or not camera.is_current() or not body.has_method("camera_centre"):
 		return body.get_canvas_transform() * point
 	var view: Vector2 = get_viewport().get_visible_rect().size
-	var wanted: Vector2 = body_at + (camera.global_position - body.global_position) + camera.offset
-	var centre: Vector2 = body.call("camera_centre", camera, wanted, view)
+	var wanted_at: Vector2 = body_at + (camera.global_position - body.global_position) + camera.offset
+	var centre: Vector2 = body.call("camera_centre", camera, wanted_at, view)
 	return (point - centre) * camera.zoom + view / 2.0
 
 

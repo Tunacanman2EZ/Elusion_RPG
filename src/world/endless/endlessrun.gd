@@ -299,6 +299,7 @@ static func stage_touch(stage_number: int) -> int:
 
 
 static func elites_at(stage_number: int) -> int:
+	@warning_ignore("integer_division")
 	return 0 if stage_number < 2 else 1 + stage_number / 2
 
 
@@ -409,6 +410,7 @@ func crowd_now() -> int:
 
 static func clock_text(seconds: float) -> String:
 	var s: int = int(seconds)
+	@warning_ignore("integer_division")
 	return "%02d:%02d" % [s / 60, s % 60]
 
 
@@ -539,12 +541,12 @@ func raise_spikes(near: Node2D) -> Node2D:
 	if near == null:
 		return null
 	var direction: Vector2 = Vector2.RIGHT.rotated(_spike_rng.randf() * TAU)
-	var start: Vector2 = Targets.body_point(near) - direction * SPIKE_LEAD \
+	var start_at: Vector2 = Targets.body_point(near) - direction * SPIKE_LEAD \
 		+ direction.orthogonal() * _spike_rng.randf_range(-SPIKE_MISS, SPIKE_MISS)
 	var first: int = -1
 	var count: int = 0
 	for i in SPIKE_COUNT:
-		if in_arena(start + direction * SpikePath.SPACING * i):
+		if in_arena(start_at + direction * SpikePath.SPACING * i):
 			if first < 0:
 				first = i
 			count += 1
@@ -562,7 +564,7 @@ func raise_spikes(near: Node2D) -> Node2D:
 	path.set("damage", stage_touch(stage) * SPIKE_HIT)
 	path.set("target", near)
 	container.add_child(path)
-	path.global_position = start + direction * SpikePath.SPACING * first
+	path.global_position = start_at + direction * SpikePath.SPACING * first
 	path.reset_physics_interpolation()
 	return path
 

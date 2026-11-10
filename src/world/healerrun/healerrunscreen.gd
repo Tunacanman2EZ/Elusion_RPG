@@ -113,7 +113,7 @@ var result_line: Label = null
 var again_button: Button = null
 # The character standing in the world while this is up, and how it ran before.
 var _held: Node = null
-var _held_mode: int = Node.PROCESS_MODE_INHERIT
+var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
 # A hit is seen: the screen flashes red (HIT_FLASH), from the lives counted last.
 var _lives_seen: int = -1

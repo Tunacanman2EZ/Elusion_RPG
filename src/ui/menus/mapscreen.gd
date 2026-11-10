@@ -349,6 +349,7 @@ func refresh(area: String = "") -> void:
 		var key: Array = [_area, WorldMap.map_size(_area)]
 		if _picture == null or _built_for != key:
 			var big: Image = sharpen(image, MAX_SHARPEN)
+			@warning_ignore("integer_division")
 			_sharp = maxi(1, big.get_width() / maxi(1, image.get_width()))
 			# Mipmaps, for drawing it smaller than it is without dropping rows.
 			big.generate_mipmaps()

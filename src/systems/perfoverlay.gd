@@ -515,7 +515,9 @@ func spike_text(spike: Dictionary, now_msec: int) -> String:
 		what = "drawing %.1f ms (the graphics card - a new effect's first draw)" % drawing
 	else:
 		what = "waiting %.1f ms (nothing of the game's - the computer busy elsewhere)" % waiting
+	@warning_ignore("integer_division")
 	var seconds: int = maxi(0, (now_msec - int(spike["at"])) / 1000)
+	@warning_ignore("integer_division")
 	var ago: String = ("%d s ago" % seconds) if seconds < 120 else ("%d min ago" % (seconds / 60))
 	var area: String = str(spike["area"])
 	var where: String = (" in " + AreaRegistry.display_name(area)) if area != "" else ""

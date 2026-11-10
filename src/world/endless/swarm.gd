@@ -590,12 +590,12 @@ func _edge_spot_from(rng: RandomNumberGenerator, avoid: PackedVector2Array) -> V
 			_: spot = Vector2(inner.end.x, rng.randf_range(inner.position.y, inner.end.y))
 		if _kept_out(spot):
 			continue
-		var clear: bool = true
+		var is_clear: bool = true
 		for point in avoid:
 			if spot.distance_to(point) < SPAWN_CLEAR:
-				clear = false
+				is_clear = false
 				break
-		if clear:
+		if is_clear:
 			return spot
 	return Vector2.INF
 
