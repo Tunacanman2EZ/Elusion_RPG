@@ -2073,7 +2073,6 @@ func _wire_healthbar() -> void:
 	bar.max_value = max_hp
 	bar.step      = 1
 	bar.value     = _bar_displayable(bar, hp)
-	_wire_health_readout(bar)
 	_paint_bar_shown()
 
 
@@ -2082,13 +2081,98 @@ func _wire_healthbar() -> void:
 # no bar and no number. Measured on the Big Field, the bars were 42 of 186
 # draw calls at 1x and 179 of 433 at 4x. Hurt, or fighting (engaged), it
 # shows, as before.
+#
+# THE NUMBER WITH THE BAR (0.135.5). The readout - a Label, three theme
+# overrides, laid out twice - was built in every monster's _ready(), though a
+# monster at full health and after nobody shows no bar to put it on. The
+# owner's profiler entering the Big Field (9 Nov): _wire_healthbar() 45 ms of
+# BaseEnemy._ready()'s 78, 536 monsters. Now it is built the first time the bar
+# shows - hurt, or fighting - which for most of a field is never: a monster's
+# birth 216-250 us down to 147-165 in the container, the Big Field's load
+# 45-90 ms less.
+#
+# ON A BUDGET, because a crowd turns on you at once: 200 monsters engaged in
+# one frame built 200 numbers in it, a 24-50 ms frame in the container
+# against 6.5. Each frame builds numbers until READOUT_BUDGET_MS is spent
+# (never fewer than one from the queue); the rest wait a frame or two, the
+# bar showing meanwhile. One at a time is built at once, as before.
+const READOUT_BUDGET_MS := 1.0
+static var _readout_frame: int = -1
+static var _readout_spent_usec: int = 0
+static var _readouts_due: Array = []
+static var _readouts_waiting: bool = false
+var _readout_built: bool = false
+var _readout_queued: bool = false
+
+
 func _paint_bar_shown() -> void:
 	var bar: CanvasItem = get_node_or_null("healthbar") as CanvasItem
 	if bar == null:
 		return
 	var shown: bool = hp < max_hp or engaged
+	if shown and not _readout_built:
+		_ask_for_readout()
 	if bar.visible != shown:
 		bar.visible = shown
+
+
+func _ask_for_readout() -> void:
+	if _readout_built or _readout_queued or not is_inside_tree():
+		return
+	_readout_spend_reset()
+	if _readouts_due.is_empty() and _readout_spent_usec < int(READOUT_BUDGET_MS * 1000.0):
+		var started: int = Time.get_ticks_usec()
+		ensure_health_readout()
+		_readout_spent_usec += Time.get_ticks_usec() - started
+		return
+	_readout_queued = true
+	_queue_readout(get_tree(), get_instance_id())
+
+
+static func _readout_spend_reset() -> void:
+	var frame: int = Engine.get_process_frames()
+	if frame != _readout_frame:
+		_readout_frame = frame
+		_readout_spent_usec = 0
+
+
+static func _queue_readout(tree: SceneTree, id: int) -> void:
+	_readouts_due.append(id)
+	if not _readouts_waiting:
+		_readouts_waiting = true
+		tree.process_frame.connect(_readouts_out.bind(tree), CONNECT_ONE_SHOT)
+
+
+static func readouts_queued() -> int:
+	return _readouts_due.size()
+
+
+static func _readouts_out(tree: SceneTree) -> void:
+	_readouts_waiting = false
+	_readout_spend_reset()
+	var built: int = 0
+	while not _readouts_due.is_empty() \
+			and (built == 0 or _readout_spent_usec < int(READOUT_BUDGET_MS * 1000.0)):
+		var monster: BaseEnemy = instance_from_id(_readouts_due.pop_front()) as BaseEnemy
+		if monster == null or not monster.is_inside_tree():
+			continue
+		var started: int = Time.get_ticks_usec()
+		monster._readout_queued = false
+		monster.ensure_health_readout()
+		_readout_spent_usec += Time.get_ticks_usec() - started
+		built += 1
+	if not _readouts_due.is_empty() and is_instance_valid(tree):
+		_readouts_waiting = true
+		tree.process_frame.connect(_readouts_out.bind(tree), CONNECT_ONE_SHOT)
+
+
+func ensure_health_readout() -> void:
+	"""The number on the bar, built now if it is not yet: by the bar as it
+	first shows, and by anything that copies the bar (crowneddecoy.gd)."""
+	if _readout_built or not is_inside_tree():
+		return
+	_readout_built = true
+	_wire_health_readout(get_node_or_null("healthbar") as Range)
 
 
 func _bar_displayable(bar: Range, amount: float) -> float:

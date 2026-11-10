@@ -115,6 +115,7 @@ const StressCrowd := preload("res://src/world/stresscrowd.gd")
 const Swell := preload("res://src/world/swell.gd")
 const MonsterSync := preload("res://src/world/monstersync.gd")
 const PropChunks := preload("res://src/world/propchunks.gd")
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 const Waystones := preload("res://src/world/waystones.gd")
 
 
@@ -152,6 +153,12 @@ func _on_scene_changed() -> void:
 		return
 	if scene.get_node_or_null("mapbackdrop") == null:
 		MapBackdrop.add_to(scene)
+	# The Big Field's floor in chunks, the ones in view now and the rest a few
+	# a frame - here, before the ground's own deferred build of every cell
+	# (0.135.5). An area whose ground has no chunks gets nothing. See
+	# groundchunks.gd.
+	if scene.get_node_or_null(GroundChunks.NODE_NAME) == null:
+		GroundChunks.add_to(scene)
 	# Far-away enemies stop thinking until the player comes near; see
 	# enemysleeper.gd.
 	if scene.get_node_or_null(EnemySleeper.NODE_NAME) == null:

@@ -121,6 +121,9 @@ static func cover(area: Node) -> Array[Rect2]:
 		var layer: TileMapLayer = found
 		if not layer.visible or layer.tile_set == null:
 			continue
+		# A chunk of the floor (groundchunks.gd) is its ground's cells again.
+		if layer.has_meta(&"ground_chunk"):
+			continue
 		var to_area: Transform2D = _transform_to(layer, area)
 		var drawn: Dictionary = {}
 		for cell in layer.get_used_cells():

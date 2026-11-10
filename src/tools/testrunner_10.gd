@@ -1425,6 +1425,90 @@ func _test_numbers_are_reused() -> void:
 	after.free()
 
 
+func _test_the_number_comes_with_the_bar() -> void:
+	section("A MONSTER'S NUMBER IS BUILT AS ITS BAR FIRST SHOWS (0.135.5)")
+	# The owner's profiler entering the Big Field: the readout, built in every
+	# monster's _ready(), was 45 ms of BaseEnemy._ready()'s 78.
+	var packed: PackedScene = load("res://scene/enemy/skeleton.tscn")
+	var monster: BaseEnemy = packed.instantiate() as BaseEnemy
+	add_child(monster)
+	await get_tree().process_frame
+	var bar: Range = monster.get_node_or_null("healthbar") as Range
+	if bar == null:
+		check("a monster to test the number on", false)
+		monster.free()
+		return
+	check("a monster at full health and after nobody has no number on its hidden bar",
+		not bar.visible and bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) == null)
+	monster.hp = monster.max_hp - 7
+	monster._refresh_health_display()
+	var label: Label = bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) as Label
+	check("  hurt, the bar shows with the number on it - the real health, laid out at its size",
+		bar.visible and label != null and label.text == "%d / %d" % [monster.max_hp - 7, monster.max_hp]
+		and label.has_theme_font_size_override("font_size"))
+	monster.hp = monster.max_hp
+	monster._refresh_health_display()
+	monster.hp = monster.max_hp - 3
+	monster._refresh_health_display()
+	check("  healed and hurt again, the same one number, never a second",
+		_labels_on(bar) == 1 and bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) == label
+		and label.text == "%d / %d" % [monster.max_hp - 3, monster.max_hp])
+	monster.free()
+	var fighter: BaseEnemy = packed.instantiate() as BaseEnemy
+	add_child(fighter)
+	await get_tree().process_frame
+	fighter.engaged = true
+	var fighter_bar: Range = fighter.get_node_or_null("healthbar") as Range
+	check("  fighting at full health, the bar shows with its number too",
+		fighter_bar.visible and fighter_bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) != null)
+	fighter.free()
+	var copied: BaseEnemy = packed.instantiate() as BaseEnemy
+	add_child(copied)
+	await get_tree().process_frame
+	copied.ensure_health_readout()
+	copied.ensure_health_readout()
+	var copied_bar: Range = copied.get_node_or_null("healthbar") as Range
+	check("  asked for by what copies a bar (the Crowned's decoys), built once, the bar left hidden",
+		_labels_on(copied_bar) == 1 and not copied_bar.visible)
+	copied.free()
+	var crowd: Array = []
+	for k in 3:
+		var one: BaseEnemy = packed.instantiate() as BaseEnemy
+		add_child(one)
+		crowd.append(one)
+	await get_tree().process_frame
+	# This frame's budget, spent: as if a crowd had just turned at once.
+	BaseEnemy._readout_spend_reset()
+	BaseEnemy._readout_spent_usec = int(BaseEnemy.READOUT_BUDGET_MS * 1000.0)
+	for one in crowd:
+		(one as BaseEnemy).engaged = true
+	var waiting: bool = BaseEnemy.readouts_queued() == 3
+	for one in crowd:
+		waiting = waiting and ((one as Node).get_node("healthbar") as CanvasItem).visible \
+			and _labels_on((one as Node).get_node("healthbar")) == 0
+	check("  a crowd turning at once past this frame's budget: every bar shows now, the numbers wait their turn",
+		waiting, BaseEnemy.readouts_queued())
+	(crowd[1] as Node).free()
+	for k in 4:
+		await get_tree().process_frame
+	check("  a frame or two on, each has its number - one freed meanwhile passed over - and the queue is empty",
+		BaseEnemy.readouts_queued() == 0 and _labels_on((crowd[0] as Node).get_node("healthbar")) == 1
+		and _labels_on((crowd[2] as Node).get_node("healthbar")) == 1)
+	(crowd[0] as Node).free()
+	(crowd[2] as Node).free()
+	check("  the Crowned's decoy asks before it copies the bar",
+		_func_body(_code_src("res://src/world/crowned/crowneddecoy.gd"), "func dress(").find("ensure_health_readout")
+		< _func_body(_code_src("res://src/world/crowned/crowneddecoy.gd"), "func dress(").find("their_bar.duplicate()"))
+
+
+func _labels_on(node: Node) -> int:
+	var count: int = 0
+	for child in node.get_children():
+		if child is Label:
+			count += 1
+	return count
+
+
 func _note_small_entered(node: Node, into: Array) -> void:
 	if node is PoisonSlime:
 		into.append((node as Node2D).global_position)

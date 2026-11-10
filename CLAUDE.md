@@ -2729,6 +2729,76 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The Big Field's floor in chunks (the same 0.135.5)
+
+The owner, after the load profile: "build it". Most of the frame he walked
+into the Big Field in was not scripts but the floor: the "ground"
+TileMapLayer's 135,926 cells, built all at once at the end of that frame.
+
+- **Measured** (container, zz/benchload.gd, sandbox only): the rest of the
+  load frame 281 ms with the ground, 75 with it switched off; hidden only
+  140; collision off or bigger quadrants, no change. Each cell is one of
+  the twelve floor tiles at random (bigfield.py's hash), so no repeating
+  picture could stand in.
+- **src/world/groundchunks.gd** (new, preloaded, no class_name), added by
+  AreaRegistry on scene_changed - which fires right after the area is
+  added, before the ground's own deferred build: switches the ground off
+  (`enabled = false`; its cells stay for the world map, BulletZone, the
+  scorch marks and the tests, and the editor shows it whole), makes a
+  TileMapLayer for each 64x64-cell chunk the arrival's view touches, then
+  the rest nearest first, `BUDGET_MS` (2) a frame, never fewer than one;
+  any chunk the view reaches first is made at once, in _process or on
+  frame_pre_draw. Each is built with `update_internals()`, so it is drawn
+  in the frame that asked and its cost lands in the budget. A chunk takes
+  the ground's tile set and drawing settings (`COPIED`) and sits ahead of
+  the ground's other children, so the scorch marks stay on top.
+- **No copy of the data.** Godot keeps a layer's cells in the order they
+  were set, through saving and loading; buildbigfield.gd now calls
+  `GroundChunks.order_by_chunks(ground)` after `_paint()`, which sets the
+  cells again chunk by chunk and keeps each chunk's byte range in
+  `metadata/chunk_ranges` (x, y, start, end; `chunk_size` 64). The saved
+  bigfield.tscn was reordered in place (the ground's data line and the two
+  meta lines only). **clear() alone does not reset the order** - a cell
+  set again keeps its old place until the layer updates - so it is
+  clear() then update_internals(). A ground edited by hand since it was
+  built fails `ranges_fit()` and is left as it was, with a warning:
+  rebuild the map.
+- **Measured after:** the load frame ~500-530 ms to ~295-320 in the
+  container; 63 chunks, made over ~55 frames; no frame after the load
+  worse than before. The floor drawn both ways (zz/floorshot.gd, opengl3)
+  is the same to the pixel at four spots. mapbackdrop.gd skips chunk
+  layers; worldmap.gd only reads the area's direct children already.
+- `_test_the_floor_comes_in_chunks()` - in **testrunner_11.gd**, a new
+  part (testrunner_10 passed 250 KB).
+- **Left:** the 4,500 wall pieces, about 95 ms of the load in the
+  container.
+
+### A monster's health number built as its bar first shows (0.135.5)
+
+The owner's profiler after 0.135.4, the frame he walked into the Big Field:
+BaseEnemy._ready 78 ms for 536 monsters, _wire_healthbar() 45 of it.
+
+- **baseenemy.gd, THE NUMBER WITH THE BAR:** the readout (a Label, three
+  theme overrides, laid out now and again deferred) was built in every
+  monster's _ready(), though the bar is hidden at full health and after
+  nobody (0.117.0). Now `_paint_bar_shown()` asks for it the first time the
+  bar shows; `ensure_health_readout()` builds it. A monster's birth 216-250
+  us to 147-165 (zz/benchborn.gd); the Big Field's load 45-90 ms less
+  (zz/benchload.gd, sandbox only). The 0.135.1 attempt made the label
+  cheaper and was lost in the noise; not making it at all is not.
+- **ON A BUDGET:** built in tree a number costs more (70-150 us in the
+  container), and 200 monsters engaged in one frame made a 24-50 ms frame
+  against 6.5 (zz/benchengage.gd). One at a time is built at once while
+  READOUT_BUDGET_MS (1.0) lasts this frame; past it they queue
+  (`_readouts_due`, instance ids) and each process_frame builds until the
+  budget is spent, never fewer than one. The bar shows at once either way.
+  That frame is now 5-7 ms.
+- **crowneddecoy.gd** calls `ensure_health_readout()` before duplicating
+  the Crowned's bar, since it copies the label's text by child index.
+- **Measured:** the rest of the load is the map, not scripts - the floor
+  (now in chunks, section above) and the 4,500 wall pieces, about 95 ms.
+  The settings node_added hook is about 1 us a node (3 ms at the load).
+
 ### A quicker Big Field load (0.135.4)
 
 The owner's profiler, the frame he walked into the Big Field.

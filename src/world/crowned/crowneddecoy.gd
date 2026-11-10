@@ -73,6 +73,9 @@ func dress(boss: Node2D, seconds: float) -> void:
 	# kept at its numbers.
 	var their_bar: Range = boss.get_node_or_null("healthbar") as Range
 	if their_bar != null:
+		# Its number with it: built only as a bar first shows (0.135.5).
+		if boss.has_method(&"ensure_health_readout"):
+			boss.call(&"ensure_health_readout")
 		_bar = their_bar.duplicate() as Range
 		_bar.name = "healthbar"
 		add_child(_bar)

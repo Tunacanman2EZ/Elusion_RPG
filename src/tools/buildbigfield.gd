@@ -50,6 +50,7 @@
 extends Node
 
 const PropChunks := preload("res://src/world/propchunks.gd")
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 const OUT := "res://scene/bigfield.tscn"
@@ -96,6 +97,9 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 	ground.tile_set = tiles
 	_own(ground, _root)
 	_paint(ground, plan)
+	# Its cells chunk by chunk, each chunk's range kept on it: the game draws
+	# the floor a chunk at a time (groundchunks.gd, 0.135.5).
+	GroundChunks.order_by_chunks(ground)
 	var nav := NavigationRegion2D.new()
 	nav.name = "navigationregion2d"
 	nav.navigation_polygon = _nav_polygon(plan)

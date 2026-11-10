@@ -300,11 +300,13 @@ func _ready() -> void:
 	# and sets min/max/value. It never touches the BAR's geometry, so the size
 	# and position fix has to happen here.
 	#
-	# It does add one child to the bar — the health readout label — and that
-	# label's counter-scale is computed from bar.scale, which the next line is
-	# about to change. BaseEnemy re-lays it out deferred for exactly this
-	# reason; see _wire_health_readout(). Nothing to do here but be aware that
-	# the bar now has a child worth not clobbering.
+	# It may add one child to the bar — the health readout label, built in
+	# there when the bar shows at once (0.135.5: otherwise as it first shows,
+	# long after this) — and that label's counter-scale is computed from
+	# bar.scale, which the next line is about to change. BaseEnemy re-lays it
+	# out deferred for exactly this reason; see _wire_health_readout().
+	# Nothing to do here but be aware that the bar may have a child worth not
+	# clobbering.
 	_fit_healthbar_to_form()
 
 	# frame-accurate firing, same as bushsniper.gd.
