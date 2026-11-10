@@ -675,7 +675,7 @@ func _test_the_whole_map() -> void:
 	var map_src: String = _code_src("res://src/ui/menus/mapscreen.gd")
 	check("every landmark has its pin, walked or not; monsters only on ground seen",
 		not _func_body(map_src, "func _collect_landmarks(").contains("is_seen")
-		and _func_body(map_src, "func _draw_monsters(").contains("WorldMap.is_seen(")
+		and _func_body(map_src, "func _gather_one(").contains("WorldMap.is_seen(")
 		and _func_body(map_src, "func refresh(").contains("WorldMap.fog_image(_area, true)"))
 
 	WorldMap._terrain.erase(_MAP_AREA)

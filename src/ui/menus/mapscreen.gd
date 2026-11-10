@@ -259,6 +259,21 @@ func _ready() -> void:
 
 	if markers != null:
 		markers.draw.connect(_draw_markers)
+		# The monsters' own layer, under the pins and the arrow (see
+		# MONSTER_PASS_MS).
+		monster_layer = Control.new()
+		monster_layer.name = "mapmonsters"
+		monster_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		monster_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+		for r in MONSTER_REGIONS * MONSTER_REGIONS:
+			var region := Control.new()
+			region.name = "region%d" % r
+			region.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			region.set_anchors_preset(Control.PRESET_FULL_RECT)
+			region.draw.connect(_draw_monsters.bind(region, r))
+			monster_layer.add_child(region)
+		markers.add_sibling(monster_layer)
+		markers.get_parent().move_child(monster_layer, markers.get_index())
 	# A window resized by hand fits the picture again.
 	if view != null:
 		view.resized.connect(_on_view_resized)
@@ -295,6 +310,7 @@ func _process(delta: float) -> void:
 	if visible and markers != null:
 		_update_hover()
 		markers.queue_redraw()
+		_gather_monsters(MONSTER_PASS_MS, delta)
 	_explored_left -= delta
 	if visible and _explored_stale and _explored_left <= 0.0:
 		_say_explored()
@@ -367,6 +383,11 @@ func refresh(area: String = "") -> void:
 	_fill_key()
 	_say_explored()
 	_collect_landmarks()
+	# Every monster at once as the map opens; a slice a frame after.
+	_pass_list = []
+	_pass_at = 0
+	_pass_wait = 0.0
+	_gather_monsters(GATHER_ALL_MS)
 
 
 func _say_explored() -> void:
@@ -447,6 +468,7 @@ func _layout() -> void:
 	view.mouse_default_cursor_shape = Control.CURSOR_MOVE if _zoom > 1.001 else Control.CURSOR_ARROW
 	if markers != null:
 		markers.queue_redraw()
+	_redraw_regions(true)
 
 
 func _draw_ground() -> void:
@@ -656,7 +678,6 @@ func _draw_markers() -> void:
 	# would if the three were one function.
 	if markers == null or _area == "" or not WorldMap.has_map(_area):
 		return
-	_draw_monsters()
 	_draw_landmarks()
 	_draw_party()
 	_draw_arrow()
@@ -703,30 +724,144 @@ static func shows_monster(enemy: Node) -> bool:
 	return not (enemy as BaseEnemy)._death_resolved
 
 
-func _draw_monsters() -> void:
-	if not is_inside_tree():
+func _draw_monsters(region: Control, r: int) -> void:
+	"""One region's dots from the last pass - drawn again only when they
+	changed or the view moved."""
+	if _area == "" or not WorldMap.has_map(_area) or r >= _dot_px.size():
 		return
-	var counts: Dictionary = {}
-	var bosses: int = 0
-	for enemy in get_tree().get_nodes_in_group(&"enemies"):
-		if not shows_monster(enemy):
-			continue
-		# NOT THROUGH THE FOG: a monster on ground you have not explored would
-		# draw the map you have not found yet, one cluster at a time.
-		var where: Vector2 = (enemy as Node2D).global_position
-		if not WorldMap.is_seen(_area, WorldMap.tile_at(_area, where)):
-			continue
-		var at: Variant = _on_map(where)
-		if at == null:
-			continue
-		var radius: float = BOSS_RADIUS if enemy is BossEnemy else MONSTER_RADIUS
-		markers.draw_circle(at, radius + 1.0, MONSTER_EDGE)
-		markers.draw_circle(at, radius, monster_colour(enemy))
-		var element: int = int(enemy.call("current_element")) if enemy.has_method("current_element") else Element.Type.NONE
-		counts[element] = int(counts.get(element, 0)) + 1
-		if enemy is BossEnemy:
-			bosses += 1
-	_count_key(counts, bosses)
+	var spots: Array = _dot_px[r]
+	var colours: Array = _dot_colours[r]
+	var bosses: Array = _dot_boss[r]
+	for i in spots.size():
+		var at: Vector2 = _offset + (spots[i] as Vector2) * _fit
+		var radius: float = BOSS_RADIUS if bosses[i] else MONSTER_RADIUS
+		region.draw_circle(at, radius + 1.0, MONSTER_EDGE)
+		region.draw_circle(at, radius, colours[i])
+
+
+# DRAWN WHEN THEY MOVE, GATHERED A SLICE A FRAME (0.135.8). The owner's
+# readout with the map open over the Big Field at 16x: 17 fps, scripts
+# 52-57 ms every frame - each of 8,611 monsters looked up and drawn twice,
+# every frame the map was open. Now they are gathered a slice a frame until
+# MONSTER_PASS_MS is spent, a pass every MONSTER_PASS_GAP (in one frame at
+# 1x; about a quarter of a second at 16x); each pass's dots, the same dots
+# as before, go to monster_layer, a grid of MONSTER_REGIONS x
+# MONSTER_REGIONS layers, and only a region whose dots changed is drawn
+# again: the sleeping crowd's stand still. Moving or zooming the map draws
+# them all. The arrow, the pins and your party still move every frame, and
+# opening the map gathers every monster at once (GATHER_ALL_MS).
+const MONSTER_PASS_MS := 1.5
+const MONSTER_PASS_GAP := 0.1
+const MONSTER_REGIONS := 4
+const GATHER_ALL_MS := 1.0e6
+var monster_layer: Control = null
+var _pass_list: Array = []
+var _pass_at: int = 0
+var _pass_wait: float = 0.0
+var _pass_px: Array = []
+var _pass_colours: Array = []
+var _pass_boss: Array = []
+var _pass_counts: Dictionary = {}
+var _pass_bosses: int = 0
+# The last finished pass, a region at a time: what monster_layer draws.
+var _dot_px: Array = []
+var _dot_colours: Array = []
+var _dot_boss: Array = []
+# Regions drawn again as the last pass ended, for the suite.
+var regions_redrawn: int = 0
+
+
+func _gather_monsters(budget_ms: float, delta: float = 0.0) -> bool:
+	"""Gathers monsters until `budget_ms` is spent. True when a pass ended."""
+	if not is_inside_tree() or _area == "":
+		return false
+	if _pass_at == 0 and _pass_list.is_empty():
+		_pass_wait -= delta
+		if _pass_wait > 0.0:
+			return false
+		_start_pass()
+	var started: int = Time.get_ticks_usec()
+	var limit: int = int(budget_ms * 1000.0)
+	var bounds := Vector2(WorldMap.map_size(_area))
+	while _pass_at < _pass_list.size():
+		var enemy: Variant = _pass_list[_pass_at]
+		_pass_at += 1
+		if is_instance_valid(enemy) and shows_monster(enemy):
+			_gather_one(enemy, bounds)
+		if (_pass_at & 31) == 0 and Time.get_ticks_usec() - started >= limit:
+			return false
+	_finish_pass()
+	return true
+
+
+func _start_pass() -> void:
+	_pass_list = get_tree().get_nodes_in_group(&"enemies")
+	_pass_at = 0
+	_pass_px = []
+	_pass_colours = []
+	_pass_boss = []
+	for r in MONSTER_REGIONS * MONSTER_REGIONS:
+		# Plain Arrays: a Packed one inside an Array is handed out as a copy,
+		# and an append to it is lost.
+		_pass_px.append([])
+		_pass_colours.append([])
+		_pass_boss.append([])
+	_pass_counts = {}
+	_pass_bosses = 0
+
+
+func _gather_one(enemy: Node, bounds: Vector2) -> void:
+	# NOT THROUGH THE FOG: a monster on ground you have not explored would
+	# draw the map you have not found yet, one cluster at a time.
+	var where: Vector2 = (enemy as Node2D).global_position
+	if not WorldMap.is_seen(_area, WorldMap.tile_at(_area, where)):
+		return
+	var pixel: Vector2 = WorldMap.pixel_for(where, _area)
+	if pixel.x < 0.0 or pixel.y < 0.0 or pixel.x > bounds.x or pixel.y > bounds.y:
+		return
+	var element: int = int(enemy.call("current_element")) if enemy.has_method("current_element") else Element.Type.NONE
+	var boss: bool = enemy is BossEnemy
+	_pass_counts[element] = int(_pass_counts.get(element, 0)) + 1
+	if boss:
+		_pass_bosses += 1
+	var r: int = mini(int(pixel.x / maxf(bounds.x, 1.0) * MONSTER_REGIONS), MONSTER_REGIONS - 1) \
+		+ MONSTER_REGIONS * mini(int(pixel.y / maxf(bounds.y, 1.0) * MONSTER_REGIONS), MONSTER_REGIONS - 1)
+	(_pass_px[r] as Array).append(pixel)
+	(_pass_colours[r] as Array).append(Element.colour_for(element))
+	(_pass_boss[r] as Array).append(boss)
+
+
+func _finish_pass() -> void:
+	"""The pass's dots to the regions - each drawn again only if it changed."""
+	regions_redrawn = 0
+	var everything: bool = _dot_px.size() != _pass_px.size()
+	for r in _pass_px.size():
+		var changed: bool = everything or _dot_px[r] != _pass_px[r] or _dot_colours[r] != _pass_colours[r] \
+			or _dot_boss[r] != _pass_boss[r]
+		if changed and monster_layer != null and r < monster_layer.get_child_count():
+			(monster_layer.get_child(r) as CanvasItem).queue_redraw()
+			regions_redrawn += 1
+	_dot_px = _pass_px
+	_dot_colours = _pass_colours
+	_dot_boss = _pass_boss
+	_count_key(_pass_counts, _pass_bosses)
+	_pass_list = []
+	_pass_at = 0
+	_pass_wait = MONSTER_PASS_GAP
+
+
+func _redraw_regions(_all: bool) -> void:
+	if monster_layer == null:
+		return
+	for region in monster_layer.get_children():
+		(region as CanvasItem).queue_redraw()
+
+
+func dots_drawn() -> int:
+	var n: int = 0
+	for spots in _dot_px:
+		n += (spots as Array).size()
+	return n
 
 
 # =============================================================================

@@ -1,5 +1,6 @@
 # testrunner_11.gd - part 11 of the suite (testrunner.gd says how it is
-# split; part 10 passed 250 KB): _test_the_floor_comes_in_chunks.
+# split; part 10 passed 250 KB): _test_the_floor_comes_in_chunks,
+# _test_the_map_draws_monsters_when_they_move.
 extends "res://src/tools/testrunner_10.gd"
 
 
@@ -164,6 +165,97 @@ func _test_the_floor_comes_in_chunks() -> void:
 		and _code_src("res://src/world/mapbackdrop.gd").contains("layer.has_meta(&\"ground_chunk\")"))
 	await get_tree().process_frame
 	print("  (the Big Field's floor in chunks: done)")
+
+
+# =============================================================================
+# THE MAP'S MONSTERS, GATHERED OVER FRAMES (0.135.8)
+# =============================================================================
+# The owner's readout with the map open over the Big Field at 16x: 17 fps,
+# scripts 52-57 ms a frame - every monster looked up and drawn every frame.
+func _test_the_map_draws_monsters_when_they_move() -> void:
+	section("THE MAP'S MONSTERS - gathered a slice a frame, drawn again only where they moved (0.135.8)")
+	const MapScript := preload("res://src/ui/menus/mapscreen.gd")
+	const AREA := "zz_suite_monster_map"
+	WorldMap._terrain[AREA] = {"image": Image.create_empty(40, 20, false, Image.FORMAT_RGBA8),
+		"origin": Vector2i.ZERO, "size": Vector2i(40, 20), "tile": Vector2i(16, 16)}
+	var seen := PackedByteArray()
+	seen.resize(100)
+	seen.fill(255)
+	# The first tile is not explored.
+	seen[0] = 254
+	WorldMap._seen[AREA] = seen
+	var map: Control = (load("res://scene/ui/menus/mapscreen.tscn") as PackedScene).instantiate()
+	add_child(map)
+	await get_tree().process_frame
+	map.set("_area", AREA)
+	(map.get_node("%mapview") as Control).size = Vector2(400, 300)
+	map.call("_layout")
+	map.set("_pass_wait", 0.0)
+	map.call("_gather_monsters", MapScript.GATHER_ALL_MS)
+	var before: int = int(map.call("dots_drawn"))
+	var box := Node2D.new()
+	add_child(box)
+	var packed: PackedScene = load("res://scene/enemy/firesprite.tscn")
+	var monsters: Array = []
+	for k in 40:
+		var one: Node2D = packed.instantiate()
+		one.process_mode = Node.PROCESS_MODE_DISABLED
+		one.position = Vector2(40 + (k % 10) * 60, 40 + floori(k / 10.0) * 60)
+		box.add_child(one)
+		monsters.append(one)
+	var fogged: Node2D = packed.instantiate()
+	fogged.process_mode = Node.PROCESS_MODE_DISABLED
+	fogged.position = Vector2(8, 8)
+	box.add_child(fogged)
+	var layer: Control = map.get("monster_layer")
+	var markers: Control = map.get_node("%mapmarkers")
+	map.set("_pass_wait", 0.0)
+	map.call("_gather_monsters", MapScript.GATHER_ALL_MS)
+	check("every monster on explored ground is a dot - 40 more - and none through the fog",
+		int(map.call("dots_drawn")) == before + 40, [before, map.call("dots_drawn")])
+	var map_src: String = _code_src("res://src/ui/menus/mapscreen.gd")
+	check("  on a layer of their own under the pins, in %d regions; the pins' layer, drawn every frame, draws none"
+		% (MapScript.MONSTER_REGIONS * MapScript.MONSTER_REGIONS),
+		layer != null and layer.get_parent() == markers.get_parent() and layer.get_index() < markers.get_index()
+		and layer.get_child_count() == MapScript.MONSTER_REGIONS * MapScript.MONSTER_REGIONS
+		and not _func_body(map_src, "func _draw_markers(").contains("_draw_monsters"))
+	# A slice a frame: with no time left a pass stops at each 32 and goes on next frame.
+	var total: int = get_tree().get_nodes_in_group(&"enemies").size()
+	map.set("_pass_wait", 0.0)
+	var calls: int = 1
+	var first_stop: bool = not bool(map.call("_gather_monsters", 0.0))
+	var stopped_at: int = int(map.get("_pass_at"))
+	while not bool(map.call("_gather_monsters", 0.0)) and calls < 100:
+		calls += 1
+	calls += 1
+	check("  gathered a slice at a time: with no time to spare, %d monsters over %d frames, 32 a frame"
+		% [total, calls], first_stop and stopped_at == 32 and calls == ceili(total / 32.0), [stopped_at, calls])
+	check("  nothing moved: not one region drawn again", int(map.get("regions_redrawn")) == 0,
+		map.get("regions_redrawn"))
+	(monsters[0] as Node2D).position += Vector2(12, 0)
+	map.set("_pass_wait", 0.0)
+	map.call("_gather_monsters", MapScript.GATHER_ALL_MS)
+	check("  one moved: only its region drawn again", int(map.get("regions_redrawn")) == 1, map.get("regions_redrawn"))
+	# One freed between two slices is passed over.
+	map.set("_pass_wait", 0.0)
+	map.call("_gather_monsters", 0.0)
+	(monsters[39] as Node).free()
+	while not bool(map.call("_gather_monsters", 0.0)):
+		pass
+	check("  one freed in the middle of a pass is passed over, not drawn", int(map.call("dots_drawn")) == before + 39,
+		map.call("dots_drawn"))
+	var key: Control = map.get("key_panel")
+	key.visible = true
+	map.set("_pass_wait", 0.0)
+	map.call("_gather_monsters", MapScript.GATHER_ALL_MS)
+	check("  and the key counts what the pass found", (map.get("key_total") as Label).text == str(before + 39),
+		(map.get("key_total") as Label).text)
+	box.free()
+	map.free()
+	WorldMap._terrain.erase(AREA)
+	WorldMap._seen.erase(AREA)
+	await get_tree().process_frame
+	print("  (the map's monsters gathered over frames: done)")
 
 
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:

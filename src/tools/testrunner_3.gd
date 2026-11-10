@@ -2782,8 +2782,8 @@ func _test_parties() -> void:
 	var dead: bool = fire._death_resolved
 	check("the map draws every monster alive on explored ground as a dot in its element's colour, and your party in this area with their names",
 		MapScript.monster_colour(fire) == Element.colour_for(fire.current_element()) and MapScript.shows_monster(fire)
-		and not dead and _func_body(map_src, "func _draw_markers(").contains("_draw_monsters()")
-		and _func_body(map_src, "func _draw_monsters(").contains("WorldMap.is_seen(_area, WorldMap.tile_at(_area, where))")
+		and not dead and _func_body(map_src, "func _ready(").contains("region.draw.connect(_draw_monsters.bind(region, r))")
+		and _func_body(map_src, "func _gather_one(").contains("WorldMap.is_seen(_area, WorldMap.tile_at(_area, where))")
 		and _func_body(map_src, "func _draw_markers(").contains("_draw_party()")
 		and _func_body(map_src, "func _draw_party(").contains("Party.is_member(who)"))
 	fire._death_resolved = true

@@ -2729,6 +2729,39 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The map's monsters, gathered over frames (0.135.8)
+
+The owner's readout with the map open over the Big Field at 16x: 17 fps,
+frame 58.8 ms, scripts 52-57 ms EVERY frame, physics 0.4 ms. The map's
+marker layer was drawn every frame while open, and `_draw_monsters()` in it
+looked up and drew every one of 8,611 monsters each time (about 3 ms at
+1x, so nobody saw it before the stress test).
+
+- **mapscreen.gd:** the monsters have their own layer, `monster_layer`
+  ("mapmonsters", under `%mapmarkers`), a grid of `MONSTER_REGIONS` x
+  `MONSTER_REGIONS` (4 x 4) Controls. `_gather_monsters()` runs from
+  `_process` a slice at a time until `MONSTER_PASS_MS` (1.5) is spent -
+  the clock asked every 32 - a pass every `MONSTER_PASS_GAP` (0.1 s); at 1x
+  a pass is one frame, at 16x about a quarter of a second.
+  `_finish_pass()` hands each region its dots and redraws only the regions
+  whose dots changed (`regions_redrawn`), so the sleeping crowd's stand
+  still; `_layout()` (a pan or zoom) redraws them all. Opening the map
+  gathers everything at once (`GATHER_ALL_MS`). The arrow, pins and party
+  stay on the marker layer, every frame.
+- **The same picture:** every dot as before, same colours and sizes, the
+  same fog rule (`_gather_one()`); the map drawn both ways with the Big
+  Field's monsters held still is the same to the pixel (zz/mapkeyshot.gd).
+- **A trap met on the way:** a Packed array kept inside an Array is handed
+  out as a copy - `(arr[i] as PackedVector2Array).append(x)` appends to the
+  copy and is lost. The regions' lists are plain Arrays.
+- **Measured** (container, headless, 8,576 monsters, all explored,
+  zz/benchmapopen.gd): frames with the map open 75 ms -> the 6.9 ms floor,
+  worst 8-13; opening the map 100-130 ms -> 145-190 (it gathers all and
+  draws every region once).
+- `_test_the_map_draws_monsters_when_they_move()` (testrunner_11); the two
+  older text checks (testrunner_3 `_test_parties`, testrunner_9
+  `_test_the_whole_map`) now read `_gather_one()`.
+
 ### No warnings as the game loads (0.135.7)
 
 The owner, testing 0.135.6: "we have 41 errors in godot fix" - the
