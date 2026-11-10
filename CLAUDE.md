@@ -2763,6 +2763,27 @@ chunk (propchunks.gd is for the Big Field's 12,000).
   frames at `BUDGET_MS`. Small here; on a slow phone several times that.
 - `_test_the_town_floor_in_chunks()` (testrunner_11).
 
+### The boss areas: the Arena's floor in chunks, the Crowned's room left whole (0.137.4)
+
+The owner: "time to work on boss see if we can refine the area". Measured
+(zz/areaprobe2.gd, zz/lightcost.gd, sandbox only), without the HUD: the
+Crowned's room (boss.tscn) ~400 nodes, 2,544 floor cells, 71 props, 22
+lights; the Boss Arena (bossarena.tscn) 1,232 floor cells, 55 props, 7
+lights; arriving in either 13-17 ms in the container, like the town. The
+lights (none with shadows) cost nothing measurable: the room drawn by a
+software renderer at 42.8 ms a frame with them, 42.6 without.
+
+- **bossarena.tscn**: its ground (8 chunks of 16) laid out as the town's
+  is, on the file's own bytes; the same cells, the same picture (rendered
+  before and after: only the lights' flicker differs, by 2 levels at most).
+- **NOT THE CROWNED'S ROOM**: its lava phase erases floor cells and puts
+  them back (crownedphases.gd `_take()`, `_give_back()`), and an edit to a
+  ground in chunks reaches no chunk - the lava would have stayed under the
+  floor. Caught by reading every `erase_cell`/`set_cell` before shipping;
+  groundchunks.gd and chunkfloor.gd now say so, and the test checks the
+  room's floor is whole while its lava edits it.
+- `_test_the_town_floor_in_chunks()` checks the Arena's floor too.
+
 ### Copies killed together come back by the clock (0.137.3)
 
 The owner's next 16x readout: 2 hitches in 52,659 frames - "27 ms, scripts

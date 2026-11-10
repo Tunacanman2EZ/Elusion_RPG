@@ -8,8 +8,10 @@
 # before chunks (the log says "chunk ranges do not fit"), and the suite's
 # _test_the_town_floor_in_chunks() fails. Nothing breaks; it is only slower.
 #
-# HOW. Open the scene (scene/elusion.tscn), open this file in the script
-# editor, File > Run (Ctrl+Shift+X), then save the scene (Ctrl+S). A layer
+# HOW. Open the scene (scene/elusion.tscn, or scene/bossarena.tscn), open
+# this file in the script editor, File > Run (Ctrl+Shift+X), then save the
+# scene (Ctrl+S). Never on a floor the game edits while it runs (the
+# Crowned's room, the Forge): see groundchunks.gd. A layer
 # keeps the chunk size it had; a new one gets CHUNK_CELLS_SMALL. The same
 # cells, the same picture - only their order and the ranges change.
 #
@@ -23,7 +25,7 @@ const GroundChunks := preload("res://src/world/groundchunks.gd")
 func _run() -> void:
 	var scene: Node = get_scene()
 	if scene == null:
-		print("chunkfloor: open the scene first (scene/elusion.tscn).")
+		print("chunkfloor: open the scene first (scene/elusion.tscn or scene/bossarena.tscn).")
 		return
 	var done: int = 0
 	for layer_name in GroundChunks.LAYERS:

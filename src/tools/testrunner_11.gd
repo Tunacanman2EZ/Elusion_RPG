@@ -502,6 +502,23 @@ func _test_the_town_floor_in_chunks() -> void:
 			fits.append(layer_name)
 	check("the town's ground and water keep their chunks (%d cells a side) and every cell is in its own" % Ground.CHUNK_CELLS_SMALL
 		+ " - painted since? open scene/elusion.tscn, File > Run src/tools/chunkfloor.gd, save", fits.is_empty(), fits)
+	# THE BOSS ARENA TOO (0.137.3), painted by hand (chunkfloor.gd after). NOT
+	# THE CROWNED'S ROOM: its lava phase takes cells out of the ground and puts
+	# them back (crownedphases.gd _take(), _give_back()), and an edit to a
+	# ground in chunks never reaches the chunks that draw it.
+	var arena: Node = (load("res://scene/bossarena.tscn") as PackedScene).instantiate()
+	var arena_floor: TileMapLayer = arena.get_node("ground")
+	var arena_ranges: PackedInt32Array = arena_floor.get_meta(Ground.RANGES_META, PackedInt32Array())
+	var arena_fits: bool = int(arena_floor.get_meta(Ground.SIZE_META, 0)) == Ground.CHUNK_CELLS_SMALL \
+		and Ground.ranges_fit(arena_ranges, arena_floor.tile_map_data.size()) \
+		and _strays(arena_floor.tile_map_data, arena_ranges, Ground.CHUNK_CELLS_SMALL) == 0
+	arena.free()
+	var crowned: Node = (load("res://scene/boss.tscn") as PackedScene).instantiate()
+	var crowned_whole: bool = not (crowned.get_node("ground") as TileMapLayer).has_meta(Ground.RANGES_META)
+	crowned.free()
+	check("  and the Boss Arena's floor, every cell in its own chunk - but not the Crowned's room, whose lava edits its floor",
+		arena_fits and crowned_whole and _code_src("res://src/world/crowned/crownedphases.gd").contains("ground.erase_cell("),
+		[arena_fits, crowned_whole])
 	var ground: TileMapLayer = town.get_node("ground")
 	var water: TileMapLayer = town.get_node("water")
 	var tints: Array = [ground.modulate, water.modulate]

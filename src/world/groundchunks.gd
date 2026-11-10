@@ -38,7 +38,12 @@
 # src/tools/chunkfloor.gd. NOT ITS MODULATE: a chunk is a child of its layer,
 # so it is tinted by the layer's own already; copied, the town's floor (0.41
 # grey) was drawn at 0.17. The Big Field's ground is untinted, so nothing
-# there changes.
+# there changes. The Boss Arena's floor too (0.137.4).
+#
+# NOT A FLOOR THE GAME EDITS. The chunks are copies of the ground's cells as
+# it arrived: a cell set or erased on the ground later reaches no chunk. The
+# Crowned's room (its lava takes floor cells out and puts them back,
+# crownedphases.gd) and the Forge (forgerun.gd) stay whole for that reason.
 extends Node
 
 const NODE_NAME := "groundchunks"
