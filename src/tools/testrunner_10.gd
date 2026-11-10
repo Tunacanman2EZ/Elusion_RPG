@@ -1335,7 +1335,7 @@ func _was_park_proxies() -> void:
 # looks good". Seven in the Big Field, lit once explored, a pin and a row on
 # the map, three seconds standing still, from town too. See waystones.gd.
 func _test_splits_come_out_over_frames() -> void:
-	section("A PILE OF SPLITS COMES OUT OVER A FEW FRAMES, NOT ONE (0.135.1)")
+	section("A PILE OF SPLITS COMES OUT OVER A FEW FRAMES, NOT ONE, EACH AT ITS SPOT (0.135.1, 0.135.2)")
 	# The owner's 16x readout: a 25-33 ms hitch whenever a few larges went at once.
 	var holder := Node2D.new()
 	add_child(holder)
@@ -1347,6 +1347,8 @@ func _test_splits_come_out_over_frames() -> void:
 		larges.append(large)
 	await get_tree().process_frame
 	var before: int = holder.get_child_count()
+	var entered_at: Array = []
+	holder.child_entered_tree.connect(_note_small_entered.bind(entered_at))
 	for large in larges:
 		large.call("_split_into_smalls")
 	check("30 larges split at once: their 120 smalls are queued, none added on the spot",
@@ -1371,6 +1373,11 @@ func _test_splits_come_out_over_frames() -> void:
 	check("  the first frame takes some, not all (%d of 120), the rest over %d frames - BIRTH_BUDGET_MS a frame"
 		% [first, frames], first >= 1 and first < 120 and frames >= 2 and smalls.size() == 120, [first, frames, smalls.size()])
 	check("  every one where it always came out - on its large's ring, that spot its home", off_ring.is_empty(), off_ring.slice(0, 3))
+	# PLACED, THEN ADDED (0.135.2): a body added at (0, 0) and moved after was in
+	# the physics world there for a moment, a pile of splits all on one spot.
+	var at_origin: Array = entered_at.filter(_near_origin)
+	check("  each is at its spot the moment it enters the world, never at the origin first (%d entered)" % entered_at.size(),
+		entered_at.size() == 120 and at_origin.is_empty(), at_origin.size())
 	# One whose area goes before its turn is freed, never left loose.
 	var gone := Node2D.new()
 	add_child(gone)
@@ -1416,6 +1423,15 @@ func _test_numbers_are_reused() -> void:
 	check("  spares freed with their area are passed over, never handed out", is_instance_valid(after)
 		and after.get_parent() == self)
 	after.free()
+
+
+func _note_small_entered(node: Node, into: Array) -> void:
+	if node is PoisonSlime:
+		into.append((node as Node2D).global_position)
+
+
+func _near_origin(at: Vector2) -> bool:
+	return at.length() < 100.0
 
 
 func _is_small_slime(node: Node) -> bool:

@@ -914,6 +914,13 @@ static func _born(parent: Variant, slime: Node, at: Vector2) -> void:
 	if not is_instance_valid(parent) or not (parent as Node).is_inside_tree():
 		slime.free()
 		return
+	# PLACED, THEN ADDED (0.135.2). Added first and moved after, a slime's body
+	# went into the physics world at the scene's (0, 0) - every one of a pile
+	# of splits stacked on the same spot - and the pairs that made (3,321 at
+	# the peak for ten larges at once, against 98 placed first) cost the
+	# frames while the queue drained, 30 to 40 ms each in the container.
+	if parent is Node2D:
+		(slime as Node2D).position = (parent as Node2D).to_local(at)
 	(parent as Node).add_child(slime)
 	(slime as Node2D).global_position = at
 	slime.set("spawn_position", at)

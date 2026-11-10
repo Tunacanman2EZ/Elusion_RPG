@@ -1364,6 +1364,12 @@ func _test_the_big_field() -> void:
 # disables the ones more than SLEEP_DISTANCE away and wakes them inside
 # WAKE_DISTANCE. Measured in the Big Field: 87 of 128 asleep where you arrive,
 # physics 2.1 ms a frame against 3.3 with the sleeper off.
+func _note_entered_at(node: Node, into: Array) -> void:
+	"""child_entered_tree: where a monster is as it enters the world."""
+	if node is BaseEnemy:
+		into.append((node as Node2D).global_position)
+
+
 func _processing_nodes(root: Node) -> Array:
 	"""Every node under (and with) root with a process flag on."""
 	var found: Array = []
@@ -1484,6 +1490,8 @@ func _test_far_enemies_sleep() -> void:
 	var light_id: int = light.get_instance_id()
 	light.free()
 	var before: int = arena.get_child_count()
+	var entered_at: Array = []
+	arena.child_entered_tree.connect(_note_entered_at.bind(entered_at))
 	await respawner._respawn_after(entry, 0.0)
 	var back: Node = arena.get_child(arena.get_child_count() - 1) if arena.get_child_count() > before else null
 	check("  and the replacement chases from 250 too, not its scene's own 500",
@@ -1492,6 +1500,10 @@ func _test_far_enemies_sleep() -> void:
 	check("  and its home is where it came back, not the world origin",
 		back != null and (back.get("spawn_position") as Vector2).distance_to((back as Node2D).global_position) < 1.0,
 		back.get("spawn_position") if back else "nothing came back")
+	# PLACED BEFORE IT IS ADDED (0.135.2): never in the world at (0, 0).
+	check("  and it is at its spot the moment it enters the world, never the origin first",
+		back != null and entered_at.size() >= 1 and (entered_at[0] as Vector2).distance_to((back as Node2D).global_position) < 1.0,
+		entered_at)
 	arena.free()
 	print("  sleep beyond %d px, wake inside %d px, every %.2f s"
 		% [int(Sleeper.SLEEP_DISTANCE), int(Sleeper.WAKE_DISTANCE), Sleeper.CHECK_SECONDS])

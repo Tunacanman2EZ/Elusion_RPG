@@ -309,6 +309,10 @@ func _respawn_after(entry: Dictionary, delay: float) -> void:
 	var kept: Dictionary = entry.get("kept", {})
 	for property in kept:
 		enemy.set(property, kept[property])
+	# PLACED BEFORE IT IS ADDED (0.135.2): a body added where the scene left it
+	# (0, 0) is in the physics world there for a moment - see poisonslime.gd,
+	# PLACED, THEN ADDED.
+	enemy.position = (parent as Node2D).to_local(spawn_position) if parent is Node2D else spawn_position
 	parent.add_child(enemy)
 	enemy.global_position = spawn_position
 

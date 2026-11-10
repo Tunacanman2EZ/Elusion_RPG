@@ -775,9 +775,14 @@ func build_mirror(r: Dictionary) -> BaseEnemy:
 	if props is Dictionary:
 		e.net_apply_props(props)
 	e.set_meta(&"net_origin", str(r.get("o", "")))
-	_container(str(r.get("pp", ""))).add_child(e)
-	e.net_set_mirror(true)
 	var at := Vector2(float(r.get("x", 0.0)), float(r.get("y", 0.0)))
+	# PLACED BEFORE IT IS ADDED (0.135.2): a body added at the scene's (0, 0)
+	# is in the physics world there for a moment - poisonslime.gd, PLACED,
+	# THEN ADDED. A leader's split sent its smalls here all at once.
+	var holder: Node = _container(str(r.get("pp", "")))
+	e.position = (holder as Node2D).to_local(at) if holder is Node2D else at
+	holder.add_child(e)
+	e.net_set_mirror(true)
 	e.global_position = at
 	if props is Dictionary:
 		e.spawn_position = Vector2(float(props.get("hx", at.x)), float(props.get("hy", at.y)))

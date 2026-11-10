@@ -2729,6 +2729,33 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### A monster is placed before it is added (0.135.2)
+
+The owner: "lets dig in then have to build it fast and strong".
+
+- **What it was.** `_born()` (and before it the deferred add) added a new
+  small slime to the world first and moved it to its spot after. Its body
+  went into the physics world where the scene left it, (0, 0), and every
+  one of a pile of splits stacked on that one spot: collision pairs 3,321
+  at the peak for ten larges at once, against 98 placed first, and frames
+  of 30 to 40 ms while the queue drained (zz/benchpairs.gd, sandbox only).
+  Older than 0.135.1 - the deferred add did the same.
+- **The fix, everywhere a monster body is added.** Its position is set
+  (in its parent's space) before add_child: poisonslime.gd `_born()`,
+  enemyrespawner.gd's respawn, monstersync.gd's mirror (a leader's split
+  arrives on a follower as its smalls, all at once). descentrun,
+  endlessrun, forgerun, stresscrowd and swell already did. Everything
+  after the add is as it was (global_position, spawn_position, the
+  interpolation reset). Shots were measured too - forty in a frame, no
+  burst - and left alone.
+- **Measured** (16x Big Field, ten larges splitting together, worst frame):
+  122-152 ms before 0.135.1, 46-47 in 0.135.1, 20-22 now. What is left in
+  those frames is forty new monsters awake in a 16x crowd.
+- **Tests.** `_test_splits_come_out_over_frames()` and
+  `_test_far_enemies_sleep()`'s respawn record where each monster is the
+  moment it enters the tree (child_entered_tree): its spot, never the
+  origin. The first fails on 0.135.1's slime (all 120 at the origin).
+
 ### Splits over frames, numbers reused (0.135.1)
 
 The owner, after 0.135.0 took the 16x Big Field from 36 to 86 fps: "if we
@@ -2757,10 +2784,9 @@ folder's PERF_PLAN.txt.
   label's add_child 40-60 us, its layout 25). Laying it out before adding
   it and skipping unchanged sizes drew the same pixels, but three bench
   rounds put the gain inside the container's noise, so it was left out.
-- **Still to look at:** in the frames right after a pile of splits the
-  physics pairs jump (1,600 to 4,500 at 16x; 12,900 at 1x for a tick),
-  and those frames stay slow (30-40 ms in the container) while the adds
-  themselves take 2 ms. Something in a new small's first ticks.
+- **Then (0.135.2):** in the frames right after a pile of splits the
+  physics pairs jumped (to 3,321 for ten larges at once) while the adds
+  themselves took 2 ms - see the next section.
 - **speechbubble.gd:** a call after it had faded read past its last line
   (a SCRIPT ERROR in `_test_the_shopkeeper_talks`); it returns now.
 
