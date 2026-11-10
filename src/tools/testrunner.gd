@@ -237,6 +237,7 @@ func _run_all() -> void:
 	await _test_the_readout_panel()
 	await _test_the_readout_uncaps()
 	await _test_a_crowd_goes_in_turns()
+	await _test_the_readout_back_from_another_window()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

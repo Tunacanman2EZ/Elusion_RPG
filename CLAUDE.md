@@ -2729,6 +2729,31 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The readout back from another window (0.137.2)
+
+The owner's readout after 0.137.1: physics worst 7.79 ms (it was 22.9) -
+and "158 ms 1 s ago - waiting 149.9 ms" with fps "worst 15", nothing
+happening in the game; "lets figure it out and fix it". Not the Copy press
+(the spike was in the text Copy took, so before it). 15 is
+`Settings.BACKGROUND_FPS`: he had been in another window.
+
+- **The cause**: `_process()` measures the frame that just ENDED
+  (`clocked_frame()`), but judged it by `Settings.held_reason()` NOW. The
+  focus comes back between frames, so the background's last frame - 66 ms
+  at 15 fps, plus Windows' switch - was judged not held: a spike. And the
+  fps monitor, redone once a second over the second before, kept reading
+  15 after the game came back. Reproduced in the container
+  (zz/backprobe.gd, sandbox only: focus out, then in on `process_frame`,
+  as the OS does): a 67 ms spike and worst fps 40; after, neither.
+- **perfoverlay.gd `held_for_frame(held_now, now_msec)`**: a frame is held
+  if it is now or was when it began (`_held_before`); the hold's end
+  (`_unheld_msec`) keeps the worst fps out for `HOLD_SETTLE_MSEC` (2100,
+  two of the monitor's seconds), as `FPS_SETTLE_MSEC` does after a load.
+  Both reset when the readout is switched on.
+- `_test_the_readout_back_from_another_window()` (testrunner_11): a
+  158 ms return frame and a monitor reading 15 count nothing; a real slow
+  frame after still counts, and its fps.
+
 ### A crowd goes in turns, and the copies live in holders (0.137.1)
 
 The owner's 16x readout after Uncap: a 22.9 ms worst physics tick against

@@ -132,6 +132,19 @@ var _loads: int = 0
 var _last_load_ms: float = 0.0
 var _last_load_area: String = ""
 var _last_load_msec: int = -100000
+# BACK FROM ANOTHER WINDOW (0.137.2). The owner's readout: "158 ms 1 s ago -
+# waiting 149.9 ms" and fps "worst 15", with nothing happening in the game.
+# The frame measured here is the one that just ENDED, and it was judged by
+# whether the game is held NOW: coming back from another window, the last
+# frame of the background (held at BACKGROUND_FPS, plus the switch itself)
+# counted as a spike, and the fps monitor, an average over a second, read
+# the background's 15 as the worst. Now a frame is held if it began held,
+# and the worst fps waits HOLD_SETTLE_MSEC after a hold ends: the monitor
+# is redone once a second over the second before, so it can read held frames
+# twice after the game comes back.
+const HOLD_SETTLE_MSEC := 2100
+var _held_before: bool = false
+var _unheld_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
 # THE WORST STAYS (0.134.4): the owner's "frame worst 6080.90" had scrolled
@@ -272,6 +285,8 @@ func set_shown(on: bool) -> void:
 		_last_load_ms = 0.0
 		_last_load_area = ""
 		_last_load_msec = -100000
+		_held_before = false
+		_unheld_msec = -100000
 		_worst_frame_ms = 0.0
 		_spikes.clear()
 		_worst_spike = {}
@@ -335,7 +350,7 @@ func _process(delta: float) -> void:
 	var fps: float = Performance.get_monitor(Performance.TIME_FPS)
 	# A HELD FRAME IS NOT A RESULT (0.69.2): neither its rate nor its length
 	# says anything about the game, so it goes into no worst and no count.
-	var held: bool = Settings.held_reason() != ""
+	var held: bool = held_for_frame(Settings.held_reason() != "", Time.get_ticks_msec())
 	var ticks: int = Engine.get_physics_frames() - _last_physics_frames
 	_last_physics_frames = Engine.get_physics_frames()
 	_busy_ms_sum += _process_ms() + _physics_ms() * float(maxi(ticks, 0))
@@ -439,6 +454,16 @@ func _process(delta: float) -> void:
 	_panel.show_data(panel_data(now_msec))
 
 
+func held_for_frame(held_now: bool, now_msec: int) -> bool:
+	"""Whether the frame that just ended was held: held now, or held when it
+	began (BACK FROM ANOTHER WINDOW above). Called once a frame."""
+	var held: bool = held_now or _held_before
+	if _held_before and not held_now:
+		_unheld_msec = now_msec
+	_held_before = held_now
+	return held
+
+
 func _current_scene_id() -> int:
 	var scene: Node = get_tree().current_scene if is_inside_tree() else null
 	return scene.get_instance_id() if scene != null else 0
@@ -485,6 +510,7 @@ func _count_sample(sample: Dictionary) -> void:
 	var held: bool = bool(sample.get("held", false))
 	var fps: float = float(sample.get("fps", 0.0))
 	if not held and fps > 0.0 and at - _last_load_msec > FPS_SETTLE_MSEC \
+			and at - _unheld_msec > HOLD_SETTLE_MSEC \
 			and (_worst_fps <= 0.0 or fps < _worst_fps):
 		_worst_fps = fps
 	_note_frame(float(sample.get("ms", 0.0)) / 1000.0, held, sample)

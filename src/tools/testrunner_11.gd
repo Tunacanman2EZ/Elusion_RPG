@@ -441,6 +441,51 @@ func _test_a_crowd_goes_in_turns() -> void:
 	print("  (a crowd goes in turns: done)")
 
 
+func _test_the_readout_back_from_another_window() -> void:
+	section("THE READOUT BACK FROM ANOTHER WINDOW - the background's last frame and its fps are not counted (0.137.2)")
+	# The owner's readout: "158 ms 1 s ago - waiting 149.9 ms", fps "worst
+	# 15" - the background rate - with nothing happening in the game.
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var clock: Array = [100000]
+	var frame := func(ms: float, held_now: bool, fps: float) -> void:
+		clock[0] += int(ms)
+		var at: int = int(clock[0])
+		PerfOverlay.push_sample({"ms": ms, "held": PerfOverlay.held_for_frame(held_now, at), "fps": fps,
+			"physics": 1.0, "worst_tick": 1.0, "ticks": 1, "scripts": 2.0, "drawing": 1.0,
+			"nodes": 0, "area": "bigfield", "at": at})
+	for k in 120:
+		frame.call(16.0, false, 60.0)
+	for k in 30:
+		frame.call(66.7, true, 15.0)
+	# Back: the frame that ends now began in the background - and the window
+	# switch made it long - and the monitor still says 15 for a while.
+	frame.call(158.0, false, 15.0)
+	for k in 150:
+		frame.call(16.0, false, 15.0 if k < 100 else 60.0)
+	PerfOverlay.flush_samples()
+	check("the frame the game comes back in is the background's - no spike, no worst frame",
+		PerfOverlay._hitches == 0 and PerfOverlay._worst_frame_ms < 25.0,
+		[PerfOverlay._hitches, PerfOverlay._worst_frame_ms])
+	check("  and the fps monitor's second of the background is no worst fps", is_equal_approx(PerfOverlay._worst_fps, 60.0),
+		PerfOverlay._worst_fps)
+	for k in 60:
+		frame.call(16.0, false, 60.0)
+	frame.call(40.0, false, 50.0)
+	for k in 6:
+		frame.call(16.0, false, 60.0)
+	PerfOverlay.flush_samples()
+	check("  but a real slow frame afterwards still counts, and its fps", PerfOverlay._hitches == 1
+		and is_equal_approx(PerfOverlay._worst_fps, 50.0), [PerfOverlay._hitches, PerfOverlay._worst_fps])
+	check("  each frame judged by whether it began held, in the readout's own frame",
+		_func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _process(").contains("held_for_frame(Settings.held_reason()"))
+	PerfOverlay.set_shown(false)
+	if shown_before:
+		PerfOverlay.set_shown(true)
+	print("  (back from another window: done)")
+
+
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 	"""Cells in a range that are not in that range's chunk."""
 	const Ground := preload("res://src/world/groundchunks.gd")
