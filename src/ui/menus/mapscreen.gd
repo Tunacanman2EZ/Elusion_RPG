@@ -741,6 +741,8 @@ func _draw_monsters() -> void:
 # party's ring and your arrow. Shown only where monsters are.
 
 const KEY_WIDTH := 172.0
+# Between the counts and the key's scroll bar, while it shows.
+const KEY_BAR_GAP := 8
 # By where they stand in the Big Field, first wing to last; physical last.
 const KEY_ORDER := [Element.Type.LIGHT, Element.Type.WIND, Element.Type.WATER, Element.Type.ICE,
 	Element.Type.LIGHTNING, Element.Type.POISON, Element.Type.EARTH, Element.Type.FIRE,
@@ -788,9 +790,27 @@ func _build_key() -> void:
 	look.set_content_margin_all(8)
 	key_panel.add_theme_stylebox_override("panel", look)
 	row.add_child(key_panel)
+	# THE KEY SCROLLS RATHER THAN STRETCH THE WINDOW (0.135.6). At Largest
+	# text in the tallest fonts its rows stood 754 px tall, past a 1280 x 720
+	# screen. In here it is as tall as the map beside it, and scrolls only
+	# when its text is too big for that.
+	var scroller := ScrollContainer.new()
+	scroller.name = "keyscroll"
+	scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroller.mouse_filter = Control.MOUSE_FILTER_PASS
+	key_panel.add_child(scroller)
+	# A gap before the bar, only while there is one: the counts stood
+	# against it.
+	var rows := MarginContainer.new()
+	rows.name = "keyrows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroller.add_child(rows)
+	var bar: VScrollBar = scroller.get_v_scroll_bar()
+	bar.visibility_changed.connect(_key_bar_shown.bind(rows, bar))
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 3)
-	key_panel.add_child(list)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_child(list)
 	var head := HBoxContainer.new()
 	head.add_child(_key_label("Monsters", 14, KEY_TEXT))
 	key_total = _key_label("0", 14, KEY_TEXT)
@@ -813,6 +833,10 @@ func _build_key() -> void:
 	var note := _key_label("Seen on ground you have explored.", 10, KEY_SOFT)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(note)
+
+
+func _key_bar_shown(rows: MarginContainer, bar: VScrollBar) -> void:
+	rows.add_theme_constant_override("margin_right", KEY_BAR_GAP if bar.visible else 0)
 
 
 func _key_label(text: String, font_size: int, colour: Color) -> Label:

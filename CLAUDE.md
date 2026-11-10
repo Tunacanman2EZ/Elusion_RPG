@@ -2729,6 +2729,33 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The walls measured; a cheaper node hook; the map key scrolls (0.135.6)
+
+The owner: "lets get it done" (the walls, after the floor).
+
+- **The walls, measured, not changed.** 4,500 pieces, 18,847 of the Big
+  Field's 27,811 nodes (a Node2D, its Sprite2D, a StaticBody2D and its
+  shape each). Without them the load frame is ~88 ms shorter in the
+  container; their bodies about half of that, their pictures little.
+  Flattened (each piece one Sprite2D, each chunk one body holding every
+  piece's shapes - the same look and shapes, prototyped in
+  zz/benchflat.gd) it was only ~30 ms of ~400, instantiation a little
+  slower - not worth rebuilding the whole map. The bigger lever, walls
+  coming in a chunk at a time as the floor does, would mean far walls
+  missing for a second and the map file without them: the owner's call.
+- **settings.gd `_on_node_added()`, THE WORLD'S NODES FIRST:** every node
+  entering the tree asked `get_value("projectile_brightness")` - three
+  lookups by a string - 23-30 ms over the Big Field's 27,811 in the
+  container. A Node2D is sorted out first now, and the slider's state is
+  `_projectile_dim`, kept by `_apply_projectile_brightness()` (which
+  load_settings() runs for every key). 12-18 ms.
+- **mapscreen.gd, THE KEY SCROLLS:** at Largest text in Fell or Tiny5 the
+  0.135.0 key stood 754 px tall, past a 1280 x 720 screen - the suite's
+  window check failed, but only after `_test_text_size_and_font` (as in the
+  full run; alone it passed, the fonts not yet loaded). The key's rows are
+  in a ScrollContainer (`keyscroll`) as tall as the map, with
+  `KEY_BAR_GAP` (8) before the bar while it shows. Normal text: unchanged.
+
 ### The Big Field's floor in chunks (the same 0.135.5)
 
 The owner, after the load profile: "build it". Most of the frame he walked

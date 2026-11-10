@@ -392,6 +392,8 @@ var _veil_tween: Tween = null
 # PROJECTILE BRIGHTNESS: whether anything has ever been dimmed, so at the
 # default nothing is touched at all; and every material set, to reset them.
 var _projectiles_touched: bool = false
+# The slider below 1, as _apply_projectile_brightness() last heard it.
+var _projectile_dim: bool = false
 var _projectile_materials: Dictionary = {}
 
 # True while load() is applying the file, so the whole startup does not emit
@@ -1421,6 +1423,7 @@ func _dim_materials_under(node: Node, want: float) -> void:
 func _apply_projectile_brightness(want: float) -> void:
 	"""The slider moved: every projectile flying now, and every material one
 	has been drawn with, at the new brightness."""
+	_projectile_dim = want < 1.0
 	if want < 1.0:
 		_projectiles_touched = true
 	if not _projectiles_touched or not is_inside_tree():
@@ -1706,26 +1709,34 @@ func _apply_font_style(style: String) -> void:
 func _on_node_added(node: Node) -> void:
 	# Cheap for everything else: a few type checks. This fires for every node
 	# that enters the tree, and nearly all of them are none of these.
+	#
+	# THE WORLD'S NODES FIRST, AND NO LOOKUP BY NAME (0.135.6). The Big Field
+	# adds 27,811 nodes as you arrive, nearly all Node2D - walls, props,
+	# monsters - and each asked get_value("projectile_brightness"): three
+	# lookups by a string, 23 ms over the field in the container. Now a Node2D
+	# is sorted out first, and the slider's state is _projectile_dim, kept by
+	# _apply_projectile_brightness().
+	if node is Node2D:
+		if node is Light2D or node is CanvasModulate:
+			_apply_lighting_to(node, str(get_value("lighting")))
+		elif node is Camera2D:
+			# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
+			# builds a new player with a new camera carrying the 3.0 its .tscn
+			# was saved with, so without this the zoom would reset itself at
+			# every doorway.
+			_apply_camera_zoom_to(node as Camera2D, float(get_value("camera_zoom")))
+		elif (_projectiles_touched or _projectile_dim) and is_projectile(node):
+			# A PROJECTILE, dimmed once it is ready (_dim_projectile()).
+			# Nothing at all happens here until the slider has been moved.
+			_projectiles_touched = true
+			_dim_projectile_by_id.call_deferred(node.get_instance_id())
+		return
 	if node is Control or node is PopupMenu:
 		# TEXT THAT ARRIVES AFTER THE SETTING DID: every window, every line of
 		# chat, every tooltip built after the player chose a size.
 		_scale_text_of(node, text_factor())
 		if node is LineEdit or node is TextEdit:
 			_no_text_menu(node)
-	elif node is Light2D or node is CanvasModulate:
-		_apply_lighting_to(node, str(get_value("lighting")))
-	elif node is Node2D and (_projectiles_touched or float(get_value("projectile_brightness")) < 1.0) \
-			and is_projectile(node):
-		# A PROJECTILE, dimmed once it is ready (_dim_projectile()). Nothing
-		# at all happens here until the slider has been moved.
-		_projectiles_touched = true
-		_dim_projectile_by_id.call_deferred(node.get_instance_id())
-	elif node is Camera2D:
-		# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
-		# builds a new player with a new camera carrying the 3.0 its .tscn was
-		# saved with, so without this the zoom would reset itself at every
-		# doorway.
-		_apply_camera_zoom_to(node as Camera2D, float(get_value("camera_zoom")))
 
 
 static func _no_text_menu(node: Node) -> void:
