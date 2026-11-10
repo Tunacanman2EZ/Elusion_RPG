@@ -1862,6 +1862,21 @@ func _test_the_readout_counts_a_crowd() -> void:
 	var text: String = PerfOverlay.readout()
 	var want: String = "%d here   %d awake   %d asleep" % [counts.x, counts.x - counts.y, counts.y]
 	check("  and says so: \"%s\"" % want, text.contains("monsters") and text.contains(want), text)
+	# COUNTED A SLICE A FRAME (0.135.3): at 16x every count was 8 ms of one frame.
+	PerfOverlay._count_round = []
+	PerfOverlay._count_at = 0
+	PerfOverlay._counted = PackedInt32Array()
+	PerfOverlay._count_some(0.0)
+	var first_slice: int = PerfOverlay._count_at
+	var round_size: int = PerfOverlay._count_round.size()
+	var calls: int = 1
+	while PerfOverlay._counted.is_empty() and calls < 200:
+		PerfOverlay._count_some(PerfOverlay.SAMPLE_INTERVAL / 4.0)
+		calls += 1
+	check("  a slice a frame (%d of %d first), a round over SAMPLE_INTERVAL, its totals what counting them all says"
+		% [first_slice, round_size], first_slice >= 1 and first_slice < round_size and calls >= 3
+		and PerfOverlay._counted.size() == 4 and PerfOverlay._counted[0] == PerfOverlay.monster_counts().x
+		and PerfOverlay._counted[1] == PerfOverlay.monster_counts().y, [first_slice, round_size, calls, PerfOverlay._counted])
 	check("the physics tick against its own budget - 80 ticks a second is 12.50 ms",
 		text.contains("physics") and text.contains("ms a tick") and text.contains("budget %.2f" % (1000.0 / float(Engine.physics_ticks_per_second)))
 		and Engine.physics_ticks_per_second == 80, text)
@@ -3359,6 +3374,28 @@ func _test_shared_monsters_lead() -> void:
 	link.sent_world.clear()
 	sync.tick_lead()
 	check("  and nothing at all when nothing did", link.sent_world.is_empty(), link.sent_world)
+
+	# NEW ONES AS THEY ARRIVE, NOT A WALK OF EVERY MONSTER (0.135.3).
+	var newcomer: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	newcomer.position = Vector2(-20060, -20000)
+	world.get_node("enemies").add_child(newcomer)
+	sync.tick_lead()
+	check("a monster that arrives is numbered on the next tick - the tree said so, no walk of every monster",
+		newcomer.net_id > 0 and newcomer._net_sync == sync
+		and _func_body(_code_src("res://src/world/monstersync.gd"), "func tick_lead(").contains("_register_new(")
+		and not _func_body(_code_src("res://src/world/monstersync.gd"), "func tick_lead(").contains("_register_all("),
+		newcomer.net_id)
+	var unheard: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	unheard.position = Vector2(-20100, -20060)
+	world.get_node("enemies").add_child(unheard)
+	sync.set("_arrived", [])
+	var sweeps: int = 0
+	while unheard.net_id < 0 and sweeps <= sync.SWEEP_TICKS + 1:
+		sync.tick_lead()
+		sweeps += 1
+	check("  and one it never heard arrive is found by the sweep, a slice a tick (%d ticks here)" % sweeps,
+		unheard.net_id > 0 and sweeps <= sync.SWEEP_TICKS + 1, [unheard.net_id, sweeps])
+	link.sent_world.clear()
 
 	var arrow: Node = (load("res://scene/projectiles/arrow.tscn") as PackedScene).instantiate()
 	arrow.shoot_vector(Vector2(3, 4))

@@ -1149,6 +1149,15 @@ func _test_the_swell() -> void:
 	fighting.set("engaged", false)
 	land[0] = 0
 	await swell.call("check")
+	# FREED HERE, BUILD_MS A FRAME (0.135.3): gone from the world as check()
+	# returns, not queued for one big frame at its end (a stir's end was a
+	# 30 ms hitch at 1x).
+	var still_here: Array = []
+	for e in holder.get_children():
+		if str(e.get_meta(&"net_origin", "")).contains("#swell"):
+			still_here.append(e.name)
+	check("  a stir over frees its monsters as it goes, inside the clock - none left queued for the frame's end",
+		still_here.is_empty(), still_here)
 	await get_tree().process_frame
 	check("  out of its fight, it goes too; nothing stirring, none at all", _swell_origins(holder, SwellScript).is_empty(),
 		_swell_origins(holder, SwellScript))

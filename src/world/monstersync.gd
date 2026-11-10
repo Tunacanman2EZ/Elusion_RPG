@@ -182,6 +182,8 @@ func _ready() -> void:
 			_containers[str(root.get_path_to(e.get_parent()))] = true
 	if get_tree().current_scene != null:
 		_respawner_nodes = _respawners(get_tree().current_scene)
+	if not get_tree().node_added.is_connected(_on_node_added):
+		get_tree().node_added.connect(_on_node_added)
 	_listen(true)
 	if link == null or not link.shares():
 		_become(Role.LEAD)
@@ -206,6 +208,8 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	_listen(false)
+	if get_tree().node_added.is_connected(_on_node_added):
+		get_tree().node_added.disconnect(_on_node_added)
 
 
 func _listen(on: bool) -> void:
@@ -381,7 +385,7 @@ func _process(delta: float) -> void:
 
 func tick_lead() -> void:
 	"""(Leader.) Number anything new, and tell the others what changed."""
-	_register_all(true)
+	_register_new(true)
 	if _sending():
 		_send_delta()
 	else:
@@ -400,28 +404,70 @@ func _all_enemies() -> Array:
 	if not is_inside_tree():
 		return found
 	for node in get_tree().get_nodes_in_group("enemies"):
-		# NOT THE OWNER'S STRESS COPIES (stresscrowd.gd): this game's alone -
-		# never numbered, so no other game and not the server's books hear of
-		# them.
-		# A DESCENT PARTY'S (0.126.0, descentrun.gd PARTY_MARK) are the run's -
-		# worth nothing like a stress copy, but shared with the party.
-		if is_instance_valid(node) and node is BaseEnemy and not node.is_queued_for_deletion() \
-				and (not node.has_meta(&"stress_copy") or node.has_meta(&"party_copy")):
+		if _shared(node):
 			found.append(node)
 	return found
 
 
+func _shared(node: Variant) -> bool:
+	"""A monster the others hear of."""
+	# NOT THE OWNER'S STRESS COPIES (stresscrowd.gd): this game's alone -
+	# never numbered, so no other game and not the server's books hear of
+	# them.
+	# A DESCENT PARTY'S (0.126.0, descentrun.gd PARTY_MARK) are the run's -
+	# worth nothing like a stress copy, but shared with the party.
+	return is_instance_valid(node) and node is BaseEnemy and not (node as Node).is_queued_for_deletion() \
+		and (not (node as Node).has_meta(&"stress_copy") or (node as Node).has_meta(&"party_copy"))
+
+
 func _register_all(announce: bool) -> void:
 	for e in _all_enemies():
-		if e.net_id >= 0 and _enemies.get(e.net_id) == e:
-			continue
-		# DEAD IS DEAD, even while it is still on screen: a large slime says
-		# it died as its split begins and stands flashing a moment before its
-		# smalls appear. Numbered again it would be a second monster at its
-		# spot - on every follower's screen, and to the server's books.
-		if e._death_resolved or e.has_meta(&"net_dead"):
-			continue
-		_number(e, announce)
+		_register_one(e, announce)
+
+
+func _register_one(e: BaseEnemy, announce: bool) -> void:
+	if e.net_id >= 0 and _enemies.get(e.net_id) == e:
+		return
+	# DEAD IS DEAD, even while it is still on screen: a large slime says
+	# it died as its split begins and stands flashing a moment before its
+	# smalls appear. Numbered again it would be a second monster at its
+	# spot - on every follower's screen, and to the server's books.
+	if e._death_resolved or e.has_meta(&"net_dead"):
+		return
+	_number(e, announce)
+
+
+# NEW ONES AS THEY ARRIVE, NOT A WALK OF EVERY MONSTER (0.135.3). tick_lead()
+# ran _register_all() ten times a second - every monster in the area walked
+# for the few new ones. The owner's profiler in the Big Field at 16x (9 Nov):
+# _all_enemies() 5.9 ms of a 35 ms frame, 8,700 monsters. Now the tree says
+# every node it adds (node_added) and a monster among them waits in _arrived
+# for the next tick; and a slow sweep looks at a slice of the area each tick
+# (round in SWEEP_TICKS ticks, five seconds) for any that came another way -
+# what the walk would have found, a little later at worst.
+const SWEEP_TICKS := 50
+var _arrived: Array = []
+var _sweep: Array = []
+var _sweep_at: int = 0
+
+
+func _on_node_added(node: Node) -> void:
+	if node is BaseEnemy:
+		_arrived.append(node)
+
+
+func _register_new(announce: bool) -> void:
+	var batch: Array = _arrived
+	_arrived = []
+	if _sweep_at >= _sweep.size():
+		_sweep = get_tree().get_nodes_in_group("enemies")
+		_sweep_at = 0
+	var upto: int = mini(_sweep_at + maxi(1, ceili(float(_sweep.size()) / float(SWEEP_TICKS))), _sweep.size())
+	batch.append_array(_sweep.slice(_sweep_at, upto))
+	_sweep_at = upto
+	for node in batch:
+		if _shared(node) and (node as Node).is_inside_tree():
+			_register_one(node, announce)
 
 
 func _number(e: BaseEnemy, announce: bool) -> void:

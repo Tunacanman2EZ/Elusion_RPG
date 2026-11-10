@@ -2729,6 +2729,76 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### Copies freed a few a frame, none left behind; wider copies; a lighter readout (0.135.3)
+
+The owner: "lets do it" (the next speed-up), then a screenshot after
+switching 16x off: one 301 ms frame, -76,338 nodes.
+
+- **Why.** stresscrowd.gd `_free_by_the_clock()` timed `queue_free()`,
+  which only marks a node (a microsecond); the freeing came at the end of
+  the frame, all of it at once. Thousands fitted in BUILD_MS. Now each
+  copy is `free()`d inside the clock (80-340 us a monster). swell.gd's
+  check() had the same: every one of a land's extra monsters queued in one
+  frame when a stir ended - a 30-33 ms hitch at 1x for every player, now
+  7 ms; freed BUILD_MS a frame, as they are built.
+- **Two leaks found on the way.** (1) A copy's twin and a copy's split's
+  smalls are copies too (the stress_copy meta) but no list had them: Off
+  left them standing for good (60 in the bench). `_remove_all()` now takes
+  every copy in the area. (2) A switch while the last was still freeing
+  dropped the rest of it. Now one list, `_going`, every switch adds to it,
+  and one freeing runs at a time (`_freeing`).
+- **Measured** (16x, switching Off): 344-438 ms worst frame and 60 copies
+  left, before; one frame over 25 ms (37), every copy gone in 3.2 s, now.
+- **What the physics of a 16x fight is.** Benched (zz/benchparts.gd): a
+  tick 8-9 ms, the monsters' own code 2.5 of it (move_and_slide 0.6,
+  neighbour queries 0.2, sight rays 0.04); with their brains off it drops
+  to 1.5. Not the hurtboxes watching (no change), not the navigation
+  agents (no change), not the 4,887 wall pieces (no change). It is the
+  bodies: monsters collide with each other (layer 4 in their mask, so a
+  pack lines up), and 16x stacks 16 copies within 20-56 px - about 1,500
+  pairs. That is the stress test's density, not the game's; left as it is.
+- **Tests.** `_test_the_owner_stress_crowd()`: Off frees the copies over
+  several frames, none left queued, every copy node gone (not only the
+  list's count). `_test_the_swell()`: a stir over leaves none queued.
+- **The copies spread wider as the crowd grows** (stresscrowd.gd, WIDER AS
+  THE CROWD GROWS): `spread_for(multiplier)` is SPREAD_MAX times the square
+  root of multiplier / 2 - the same room per monster as at 2x - up to
+  SPREAD_WIDEST (160): 56, 79, 112, 158 px at 2x, 4x, 8x, 16x; the spot even
+  over the ring's area; a spot that will not fit tries closer, down to
+  SPREAD_MAX by the last try. 16x fight pairs about 1,600 to 1,050.
+- **The readout counts a slice a frame** (perfoverlay.gd, COUNTED A SLICE A
+  FRAME): its monster rows counted all 8,700 monsters twice every time it
+  wrote itself, five times a second - 8.7 ms of one frame in the container,
+  the readout making the hitches it reported. Now `_count_some()` counts a
+  round a share a frame (0.46 ms a frame at 60 fps) and the rows show the
+  last whole round's; hidden or just switched on, they count at once.
+- **Measured, not it:** the bullet field's step (0.45 ms for 1,000 bullets),
+  the monsters' own `_process` (0.06 ms for 236 awake). The rest of a 16x
+  frame's "process" wants the editor's profiler on the owner's PC.
+- **Asked, not done:** monsters passing through each other (steering only,
+  no bumping) - 16x physics about 20-25% less a tick, pairs 1,550 to 50 -
+  waits on the owner's verdict from a clip (they line up in corridors
+  today, by design).
+- **Then the owner's profiler** (editor Debugger > Profiler, Self, a 35 ms
+  spike frame at 16x: process 24.8 ms, scripts 30.4) named three:
+  - **monstersync.gd, NEW ONES AS THEY ARRIVE:** `tick_lead()` ran
+    `_register_all()` ten times a second, a walk of every monster for the
+    few new ones (`_all_enemies` 5.9 ms). Now `node_added` puts each new
+    monster in `_arrived` for the next tick (`_register_new()`), and a sweep
+    looks at a slice of the area a tick (`SWEEP_TICKS`, 50: five seconds
+    round) for any that came another way. `_shared()` is the old filter;
+    `_register_one()` the old per-monster rule. 16x: 6.1 ms a tick to 0.22.
+  - **stresscrowd.gd, EACH SOURCE'S OWN, FOR A DEATH:** a copy dying pruned
+    and counted every copy (`_prune` 4.4 + `_on_copy_died` 2.2 ms). Now
+    `_copies_of` (source -> its copies' ids) is kept with `_copies`
+    (`_index()` after bulk changes); a death looks at its own few, and a
+    full prune runs every `PRUNE_EVERY` (256) deaths.
+  - **enemysleeper.gd, A SLOW FRAME DOES NOT MAKE THE NEXT ONE SLOWER:**
+    `round_share()` counts the frame's delta at most `SHARE_DELTA` (1/60 s),
+    so a 35 ms frame no longer looks at twice the monsters (3.1 ms). Under
+    60 fps a round takes a little longer than CHECK_SECONDS. Also
+    `_never_sleeps()` asks the group by StringName.
+
 ### A monster is placed before it is added (0.135.2)
 
 The owner: "lets dig in then have to build it fast and strong".

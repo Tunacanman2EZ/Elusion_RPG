@@ -47,9 +47,17 @@ const AREAS := ["res://scene/bigfield.tscn", "res://scene/field.tscn"]
 # "a x16 stress test that ran smooth"), with the seats (BaseEnemy, SEATS) and
 # the sleeper's spread pass that make it run.
 const MULTIPLIERS := [1, 2, 3, 4, 6, 8, 12, 16]
-# How far from the monster it copies a copy stands, in px.
+# How far from the monster it copies a copy stands, in px: at 2x.
 const SPREAD_MIN := 20.0
 const SPREAD_MAX := 56.0
+# WIDER AS THE CROWD GROWS (0.135.3). Sixteen of each monster in the same 56 px
+# was denser than any crowd a game meets: monsters bump each other, and the
+# physics of a 16x fight was mostly copies stacked on copies (about 1,500
+# collision pairs). The spread now grows with the square root of the
+# multiplier - the same room per monster as at 2x - up to SPREAD_WIDEST, and
+# the spot is even over the ring's area, not bunched at its middle. A spot
+# that will not fit tries closer in, down to SPREAD_MAX by the last try.
+const SPREAD_WIDEST := 160.0
 # Nothing new within this of where players arrive - the Big Field's own rule.
 const ARRIVAL_CLEAR := 400.0
 # What a copy may not be on the far side of from its monster: the walls,
@@ -71,6 +79,22 @@ var refill_seconds_override: float = -1.0
 var _area: Node = null
 var _sources: Array = []      # one per authored monster: what to copy, and where
 var _copies: Array = []       # [{source index, node id}] - what this has put in
+# EACH SOURCE'S OWN, FOR A DEATH (0.135.3): source index -> its copies' node
+# ids. A copy dying pruned and counted every copy in the area - the owner's
+# profiler at 16x: _prune() 4.4 ms and _on_copy_died() 2.2 ms for one death,
+# and in a fight they die all the time. Now a death looks at its own source's
+# few. Kept with _copies: added to as one is built, rebuilt (_index()) when
+# _copies is changed in bulk.
+var _copies_of: Dictionary = {}
+# The dead stay in _copies until a prune; one every PRUNE_EVERY deaths keeps the
+# list from growing through a long fight without a prune for each death.
+const PRUNE_EVERY := 256
+var _deaths_since_prune: int = 0
+# Taken out of _copies and waiting their turn to be freed (0.135.3): one list,
+# however many switches, so a switch before the last one finished never drops
+# the rest of it.
+var _going: Array = []
+var _freeing: bool = false
 var _generation: int = 0
 
 
@@ -150,6 +174,7 @@ func apply() -> void:
 		else:
 			kept.append(entry)
 	_copies = kept
+	_index()
 	if not await _free_by_the_clock(going, generation):
 		return
 	var spots: Array[Vector2] = _player_spots()
@@ -248,8 +273,17 @@ func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 	if "spawn_position" in enemy:
 		enemy.set("spawn_position", spot)
 	_copies.append({"source": source, "id": enemy.get_instance_id()})
+	if not _copies_of.has(source):
+		_copies_of[source] = []
+	(_copies_of[source] as Array).append(enemy.get_instance_id())
 	if enemy.has_signal("died"):
 		enemy.died.connect(_on_copy_died.bind(source), CONNECT_ONE_SHOT)
+
+
+static func spread_for(times: int) -> float:
+	"""How far out a copy may stand at this multiplier (WIDER AS THE CROWD
+	GROWS)."""
+	return minf(SPREAD_MAX * sqrt(maxf(float(times), 2.0) / 2.0), SPREAD_WIDEST)
 
 
 func _spot_near(entry: Dictionary) -> Variant:
@@ -257,9 +291,12 @@ func _spot_near(entry: Dictionary) -> Variant:
 	clear of where players arrive; null when eight tries find none."""
 	var home: Vector2 = entry["home"]
 	var map: RID = entry["map"]
+	var widest: float = spread_for(multiplier)
 	for attempt in 8:
 		var angle: float = randf() * TAU
-		var spot: Vector2 = home + Vector2.from_angle(angle) * randf_range(SPREAD_MIN, SPREAD_MAX)
+		var reach: float = lerpf(widest, SPREAD_MAX, float(attempt) / 7.0)
+		var out: float = sqrt(randf_range(SPREAD_MIN * SPREAD_MIN, reach * reach))
+		var spot: Vector2 = home + Vector2.from_angle(angle) * out
 		if map.is_valid():
 			var floor_at: Vector2 = NavigationServer2D.map_get_closest_point(map, spot)
 			if floor_at.distance_to(spot) > 1.5:
@@ -299,12 +336,17 @@ func _on_copy_died(source: int) -> void:
 	await get_tree().create_timer(wait).timeout
 	if not is_instance_valid(self) or not is_inside_tree() or generation != _generation:
 		return
-	_prune()
-	var have: int = 0
-	for entry in _copies:
-		if int(entry["source"]) == source:
-			have += 1
-	if have < multiplier - 1:
+	var alive: Array = []
+	for id in _copies_of.get(source, []):
+		var node: Object = instance_from_id(int(id))
+		if node != null and is_instance_valid(node) and not (node as Node).is_queued_for_deletion():
+			alive.append(id)
+	_copies_of[source] = alive
+	_deaths_since_prune += 1
+	if _deaths_since_prune >= PRUNE_EVERY:
+		_deaths_since_prune = 0
+		_prune()
+	if alive.size() < multiplier - 1:
 		_build_copy(source)
 
 
@@ -315,25 +357,64 @@ func _prune() -> void:
 		if node != null and is_instance_valid(node) and not (node as Node).is_queued_for_deletion():
 			alive.append(entry)
 	_copies = alive
+	_index()
+
+
+func _index() -> void:
+	"""_copies_of again, from _copies."""
+	_copies_of = {}
+	for entry in _copies:
+		var source: int = int(entry["source"])
+		if not _copies_of.has(source):
+			_copies_of[source] = []
+		(_copies_of[source] as Array).append(int(entry["id"]))
 
 
 func _remove_all(generation: int) -> void:
 	var going: Array = _copies
 	_copies = []
+	_copies_of = {}
+	# AND THE ONES THIS NEVER PUT IN (0.135.3): a copy's twin and a copy's
+	# split's smalls are copies too (poisonslime.gd), and no list here had
+	# them, so Off left every one standing.
+	var listed: Dictionary = {}
+	for entry in going + _going:
+		listed[int(entry["id"])] = true
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if is_copy(node) and not listed.has(node.get_instance_id()) and (_area == null or _area.is_ancestor_of(node)):
+			going.append({"source": -1, "id": node.get_instance_id()})
 	await _free_by_the_clock(going, generation)
 
 
 func _free_by_the_clock(going: Array, generation: int) -> bool:
 	"""Take these copies away, BUILD_MS a frame. False when the switch moved
-	or the area went while it was at it."""
+	or the area went while it was at it.
+
+	FREED HERE, NOT QUEUED (0.135.3). queue_free() only marks a node, a
+	microsecond; the freeing is at the end of the frame, all of it at once.
+	So the clock counted the marks, thousands fitted in BUILD_MS, and the
+	frame that freed them was the owner's 301 ms hitch switching 16x off
+	(-76,338 nodes in one frame). free() is the real cost, inside the clock:
+	a monster is 80 to 340 us of it."""
+	_going.append_array(going)
+	# ONE AT A TIME: a second switch while the first is freeing waits for it
+	# (its own copies are on the same list).
+	while _freeing:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return false
+	_freeing = true
 	var started: int = Time.get_ticks_usec()
-	for entry in going:
+	while not _going.is_empty():
+		var entry: Dictionary = _going.pop_front()
 		var node: Object = instance_from_id(int(entry["id"]))
-		if node != null and is_instance_valid(node):
-			(node as Node).queue_free()
+		if node != null and is_instance_valid(node) and not (node as Node).is_queued_for_deletion():
+			(node as Node).free()
 		if Time.get_ticks_usec() - started >= int(BUILD_MS * 1000.0):
 			await get_tree().process_frame
-			if generation != _generation or not is_inside_tree():
+			if not is_inside_tree():
+				_freeing = false
 				return false
 			started = Time.get_ticks_usec()
-	return true
+	_freeing = false
+	return generation == _generation

@@ -1134,7 +1134,7 @@ func _test_the_owner_stress_crowd() -> void:
 		by_arrival == null and in_field != null, [by_arrival, in_field])
 	check("  never numbered for other games or the server's books, and in no respawner's census",
 		shared_or_census.is_empty()
-		and _func_body(_code_src("res://src/world/monstersync.gd"), "func _all_enemies(").contains("has_meta(&\"stress_copy\")")
+		and _func_body(_code_src("res://src/world/monstersync.gd"), "func _shared(").contains("has_meta(&\"stress_copy\")")
 		and _func_body(_code_src("res://src/world/enemyrespawner.gd"), "func _ready(").contains("has_meta(&\"stress_copy\")"),
 		shared_or_census.slice(0, 4))
 	check("  and a big slime's copy splits into copies, worth nothing either",
@@ -1184,15 +1184,33 @@ func _test_the_owner_stress_crowd() -> void:
 	check("  copies built far from every player start asleep (%d), none far off awake" % born_asleep,
 		born_asleep * 2 > authored and far_awake.is_empty(), far_awake.slice(0, 4))
 	stand_in.free()
+	# WIDER AS THE CROWD GROWS (0.135.3): the same room per monster as at 2x.
+	check("  the spread grows with the square root of the multiplier, to SPREAD_WIDEST: 2x %d, 4x %d, 8x %d, 16x %d px"
+		% [Crowd.spread_for(2), Crowd.spread_for(4), Crowd.spread_for(8), Crowd.spread_for(16)],
+		is_equal_approx(Crowd.spread_for(2), Crowd.SPREAD_MAX) and Crowd.spread_for(4) > Crowd.SPREAD_MAX
+		and Crowd.spread_for(16) > Crowd.spread_for(8) and Crowd.spread_for(16) <= Crowd.SPREAD_WIDEST)
 	var at_three: int = int(crowd.call("copy_count"))
 	Crowd.set_multiplier(2, get_tree())
 	await _crowd_settles_down(crowd, authored)
 	var back_to_two: int = int(crowd.call("copy_count"))
+	var copies_before: int = _copy_nodes().size()
 	Crowd.set_multiplier(1, get_tree())
+	await get_tree().process_frame
+	var after_one: Array = _copy_nodes()
+	var queued: Array = after_one.filter(_is_queued)
+	var off_frames: int = 1
+	while not _copy_nodes().is_empty() and off_frames < 600:
+		await get_tree().process_frame
+		off_frames += 1
 	await _crowd_settles_down(crowd, 0)
 	check("3x is two of each, back to 2x takes the extra away, and Off takes them all",
 		at_three >= int(authored * 2 * 0.99) and back_to_two <= authored and back_to_two >= int(authored * 0.99)
-		and int(crowd.call("copy_count")) == 0, [at_three, back_to_two, crowd.call("copy_count")])
+		and int(crowd.call("copy_count")) == 0 and _copy_nodes().is_empty(), [at_three, back_to_two, crowd.call("copy_count")])
+	# FREED HERE, NOT QUEUED (0.135.3): queued, every copy went at the end of
+	# one frame - the owner's 301 ms hitch switching 16x off.
+	check("  Off frees them a few a frame, inside the clock - %d copies over %d frames, none left queued for one big frame"
+		% [copies_before, off_frames], copies_before > 100 and after_one.size() > 0 and after_one.size() < copies_before
+		and queued.is_empty() and off_frames >= 2, [copies_before, after_one.size(), queued.size(), off_frames])
 	var elsewhere := Node2D.new()
 	world.add_child(elsewhere)
 	var other: Node = Crowd.add_to(elsewhere)
@@ -1364,6 +1382,19 @@ func _test_the_big_field() -> void:
 # disables the ones more than SLEEP_DISTANCE away and wakes them inside
 # WAKE_DISTANCE. Measured in the Big Field: 87 of 128 asleep where you arrive,
 # physics 2.1 ms a frame against 3.3 with the sleeper off.
+func _copy_nodes() -> Array:
+	"""The stress copies in the world, by their mark."""
+	return get_tree().get_nodes_in_group("enemies").filter(_is_stress_copy)
+
+
+func _is_stress_copy(node: Node) -> bool:
+	return is_instance_valid(node) and node.has_meta(&"stress_copy")
+
+
+func _is_queued(node: Node) -> bool:
+	return node.is_queued_for_deletion()
+
+
 func _note_entered_at(node: Node, into: Array) -> void:
 	"""child_entered_tree: where a monster is as it enters the world."""
 	if node is BaseEnemy:
@@ -1729,7 +1760,11 @@ func _test_a_big_fight_is_cheap() -> void:
 	check("a frame looks at its share of a round: at 60 fps, 393 of 5,888",
 		Sleeper.round_share(5888, 1.0 / 60.0) == 393, Sleeper.round_share(5888, 1.0 / 60.0))
 	check("  never none while any are left, never more than there are, none of none",
-		Sleeper.round_share(3, 0.0001) == 1 and Sleeper.round_share(10, 2.0) == 10 and Sleeper.round_share(0, 0.1) == 0)
+		Sleeper.round_share(3, 0.0001) == 1 and Sleeper.round_share(1, 2.0) == 1
+		and Sleeper.round_share(0, 0.1) == 0)
+	# A SLOW FRAME DOES NOT MAKE THE NEXT ONE SLOWER (0.135.3).
+	check("  a slow frame looks at no more than a 60 fps frame's share: a 35 ms one, 393 of 5,888, not 825",
+		Sleeper.round_share(5888, 0.035) == 393, Sleeper.round_share(5888, 0.035))
 	# ONLY ITS OWN MONSTERS IN THE ROUND (0.117.1). The sleeper's round is every
 	# node in "enemies" in the tree, and on the owner's PC an earlier section
 	# still had ten there - a quarter of the round reached 8 of these 40, not
@@ -1751,13 +1786,17 @@ func _test_a_big_fight_is_cheap() -> void:
 		far_ones.append(far_one_node)
 	var round_sleeper: Node = Sleeper.add_to(round_holder)
 	round_sleeper.call("player_jumped")
-	round_sleeper._process(Sleeper.CHECK_SECONDS / 4.0)
+	# At 60 fps (A SLOW FRAME DOES NOT MAKE THE NEXT ONE SLOWER, 0.135.3): a
+	# round is CHECK_SECONDS of 60 fps frames.
+	var frames_a_round: int = roundi(Sleeper.CHECK_SECONDS * 60.0)
+	for i in frames_a_round / 4:
+		round_sleeper._process(1.0 / 60.0)
 	var after_one: int = far_ones.filter(func(n): return n.has_meta(&"asleep")).size()
-	for i in 3:
-		round_sleeper._process(Sleeper.CHECK_SECONDS / 4.0)
+	for i in frames_a_round - frames_a_round / 4:
+		round_sleeper._process(1.0 / 60.0)
 	var after_four: int = far_ones.filter(func(n): return n.has_meta(&"asleep")).size()
 	check("  a quarter of the round in a quarter of its time, and all of it in all of it",
-		after_one == 10 and after_four == 40, [after_one, after_four])
+		after_one >= 9 and after_one <= 12 and after_four == 40, [after_one, after_four])
 	round_holder.free()
 	for other in set_aside:
 		if is_instance_valid(other):

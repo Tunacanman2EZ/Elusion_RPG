@@ -242,6 +242,9 @@ func set_shown(on: bool) -> void:
 		_busy_frames = 0
 		_busy_ms = 0.0
 		_last_physics_frames = Engine.get_physics_frames()
+		_count_round = []
+		_count_at = 0
+		_counted = []
 		_pending.clear()
 		_load_after_left = 0
 		_scene_id = _current_scene_id()
@@ -297,6 +300,7 @@ func is_shown() -> bool:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	_count_some(delta)
 
 	# Sampled every frame even though it is DRAWN five times a second — a
 	# minimum that only looks every 200ms will miss the frame that stuttered,
@@ -581,8 +585,53 @@ func fight_counts() -> Vector2i:
 	return Vector2i(fighting, waiting)
 
 
+# COUNTED A SLICE A FRAME (0.135.3). The rows below counted every monster in
+# the area, twice, each time the readout wrote itself - five times a second.
+# At 16x, 8,700 monsters: 8 ms of one frame in the container (monster_counts
+# 3.6, fight_counts 4.5), the readout making the very hitches it reports. Now
+# one pass over a round of them, a share a frame - that frame's part of
+# SAMPLE_INTERVAL, as the sleeper spreads its pass - and the rows show the
+# last whole round's totals. Before the first round (just switched on), or
+# asked with the readout hidden, they count at once, as before. monster_counts() and fight_counts() still count
+# everything at once for whoever asks.
+var _count_round: Array = []
+var _count_at: int = 0
+var _count_part: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])   # here, asleep, fighting, waiting
+var _counted: PackedInt32Array = PackedInt32Array()                  # the last whole round's
+
+
+func _count_some(delta: float) -> void:
+	if _count_at >= _count_round.size():
+		if not _count_round.is_empty():
+			_counted = _count_part.duplicate()
+		_count_round = get_tree().get_nodes_in_group("enemies")
+		_count_at = 0
+		_count_part = PackedInt32Array([0, 0, 0, 0])
+		if _count_round.is_empty():
+			_counted = PackedInt32Array([0, 0, 0, 0])
+			return
+	var share: int = clampi(ceili(float(_count_round.size()) * delta / SAMPLE_INTERVAL), 1, _count_round.size())
+	var upto: int = mini(_count_at + share, _count_round.size())
+	for i in range(_count_at, upto):
+		var node: Variant = _count_round[i]
+		if not is_instance_valid(node) or not (node as Node).is_inside_tree():
+			continue
+		_count_part[0] += 1
+		if (node as Node).has_meta(&"asleep"):
+			_count_part[1] += 1
+			continue
+		var monster := node as BaseEnemy
+		if monster == null or not monster.engaged:
+			continue
+		if monster.waiting_turn:
+			_count_part[3] += 1
+		else:
+			_count_part[2] += 1
+	_count_at = upto
+
+
 func _fight_text() -> String:
-	var counts: Vector2i = fight_counts()
+	var counts: Vector2i = fight_counts() if _counted.is_empty() or not visible else Vector2i(_counted[2], _counted[3])
 	if counts.x + counts.y == 0:
 		return "nobody"
 	return "%s fighting   %s waiting their turn   (%d seats a player)" % [
@@ -590,7 +639,7 @@ func _fight_text() -> String:
 
 
 func _monsters_text() -> String:
-	var counts: Vector2i = monster_counts()
+	var counts: Vector2i = monster_counts() if _counted.is_empty() or not visible else Vector2i(_counted[0], _counted[1])
 	if counts.x == 0:
 		return "none here"
 	return "%s here   %s awake   %s asleep" % [

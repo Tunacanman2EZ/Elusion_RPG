@@ -130,12 +130,20 @@ func _process(delta: float) -> void:
 	_round_at = upto
 
 
+# A SLOW FRAME DOES NOT MAKE THE NEXT ONE SLOWER (0.135.3). The share was the
+# frame's part of CHECK_SECONDS, so a 35 ms frame looked at twice a 16 ms
+# frame's monsters - the owner's profiler at 16x: _look_at() 3.1 ms in one -
+# and made the next frame slow too. The part is counted at most SHARE_DELTA
+# now; under 60 fps a round just takes a little longer than CHECK_SECONDS.
+const SHARE_DELTA := 1.0 / 60.0
+
+
 static func round_share(count: int, delta: float) -> int:
 	"""How many of a round of `count` monsters one frame of `delta` seconds
 	looks at: its part of CHECK_SECONDS, never none while any are left."""
 	if count <= 0:
 		return 0
-	return clampi(ceili(float(count) * delta / CHECK_SECONDS), 1, count)
+	return clampi(ceili(float(count) * minf(delta, SHARE_DELTA) / CHECK_SECONDS), 1, count)
 
 
 func player_jumped() -> bool:
@@ -240,7 +248,7 @@ static func _never_sleeps(enemy: Node) -> bool:
 	# A BOSS FIGHTS WHOEVER IS IN ITS ROOM. The arenas are small enough that
 	# this never comes up today, and a boss frozen mid-pattern by a player
 	# stepping back is not a thing worth finding out about later.
-	return enemy.is_in_group("unpushable")
+	return enemy.is_in_group(&"unpushable")
 
 
 static func put_to_sleep(enemy: Node) -> void:

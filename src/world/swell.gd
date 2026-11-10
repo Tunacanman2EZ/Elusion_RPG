@@ -145,7 +145,13 @@ func check() -> void:
 	var stirring: int = land()
 	var want: int = size() if stirring != 0 else 1
 	# TOO MANY: the stir over, another land's, or the size come down.
+	# FREED HERE, BUILD_MS A FRAME (0.135.3), as they are built: queued, every
+	# one of a land's went in one frame at the end of a stir (stresscrowd.gd,
+	# _free_by_the_clock(), has why).
+	var freeing: int = Time.get_ticks_usec()
 	for key in _copies.keys():
+		if not _copies.has(key):
+			continue
 		var entry: Dictionary = _copies[key]
 		if not _alive(entry):
 			_copies.erase(key)
@@ -155,8 +161,14 @@ func check() -> void:
 			continue
 		var node: Node = instance_from_id(int(entry["id"])) as Node
 		if node != null and not bool(node.get("engaged")) and not bool(node.get("_dying")):
-			node.queue_free()
+			node.free()
 			_copies.erase(key)
+			if Time.get_ticks_usec() - freeing >= int(BUILD_MS * 1000.0):
+				await get_tree().process_frame
+				if not is_instance_valid(self) or not is_inside_tree() or not _has_authority():
+					_busy = false
+					return
+				freeing = Time.get_ticks_usec()
 	# TOO FEW: one at each place, unless it was killed and its wait is not up.
 	if want > 1:
 		var spots: Array[Vector2] = _player_spots()
