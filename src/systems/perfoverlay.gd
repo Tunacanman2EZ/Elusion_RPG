@@ -23,6 +23,9 @@
 # and a CanvasLayer that are four lines to construct.
 extends CanvasLayer
 
+const PerfPanel := preload("res://src/systems/perfpanel.gd")
+const StressCrowdScript := preload("res://src/world/stresscrowd.gd")
+
 
 # How often the readout refreshes, in seconds.
 #
@@ -149,6 +152,14 @@ var _post_draw_usec: int = 0
 var _frame_start_usec_next: int = 0
 # The ticks of the frame running now, kept for its sample when it ends.
 var _last_parts: Dictionary = {}
+# THE PANEL (0.136.0, perfpanel.gd): the frames for its graph, oldest
+# overwritten, and the frames' parts added up since its last look.
+var _panel: Control = null
+var _graph := PackedFloat32Array()
+var _graph_at: int = 0
+var _graph_count: int = 0
+var _split_sums := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])   # ms, physics, scripts, drawing, ticks, frames
+var _split: Dictionary = {}
 
 
 func _ready() -> void:
@@ -167,7 +178,15 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_label.add_theme_constant_override("outline_size", 4)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# WRITTEN, NOT SHOWN (0.136.0): readout() and Copy read it; the panel is
+	# what is drawn.
+	_label.visible = false
 	add_child(_label)
+	_graph.resize(PerfPanel.GRAPH_FRAMES)
+	_panel = PerfPanel.new()
+	_panel.name = "panel"
+	_panel.text_source = readout
+	add_child(_panel)
 
 	visible = false
 	RenderingServer.frame_pre_draw.connect(_on_pre_draw)
@@ -267,6 +286,11 @@ func set_shown(on: bool) -> void:
 		_pre_draw_usec = 0
 		_post_draw_usec = 0
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
+		_graph.fill(0.0)
+		_graph_at = 0
+		_graph_count = 0
+		_split_sums.fill(0.0)
+		_split = {}
 	visible = on
 	_measure_render_time(on)
 
@@ -409,6 +433,7 @@ func _process(delta: float) -> void:
 	if not _worst_spike.is_empty():
 		rows.append(_row("worst", spike_text(_worst_spike, now_msec)))
 	_label.text = "\n".join(rows)
+	_panel.show_data(panel_data(now_msec))
 
 
 func _current_scene_id() -> int:
@@ -478,6 +503,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
 	var scripts: float = float(sample.get("scripts", _process_ms()))
 	var drawing: float = float(sample.get("drawing", 0.0))
+	_note_for_panel(ms, physics, scripts, drawing, ticks)
 	_worst_frame_ms = maxf(_worst_frame_ms, ms)
 	if ms > HITCH_MS:
 		_hitches += 1
@@ -495,37 +521,196 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	_worst_process_ms = maxf(_worst_process_ms, scripts + drawing)
 
 
-func spike_text(spike: Dictionary, now_msec: int) -> String:
-	"""One hitch: how long, how long ago, where, which part of the frame took
-	most of it, and the nodes made (or freed) that frame."""
+static func spike_cause(spike: Dictionary) -> Dictionary:
+	"""Which part of a hitch took most of it: "kind" (physics, scripts,
+	drawing or waiting - perfpanel.gd's colours) and its ms."""
 	var ms: float = float(spike["ms"])
-	var ticks: int = int(spike["ticks"])
 	var physics: float = float(spike["physics"])
 	var scripts: float = float(spike["scripts"])
 	var drawing: float = float(spike["drawing"])
 	var waiting: float = maxf(0.0, ms - physics - scripts - drawing)
 	var most: float = maxf(maxf(physics, scripts), maxf(drawing, waiting))
-	var what: String
 	if most == physics:
-		what = "physics %.1f ms, %d tick%s, the worst %.1f ms" % [physics, ticks, "" if ticks == 1 else "s",
-			float(spike["worst_tick"])]
-	elif most == scripts:
-		what = "scripts %.1f ms (the game's code, or a file loading)" % scripts
-	elif most == drawing:
-		what = "drawing %.1f ms (the graphics card - a new effect's first draw)" % drawing
-	else:
-		what = "waiting %.1f ms (nothing of the game's - the computer busy elsewhere)" % waiting
+		return {"kind": "physics", "ms": physics}
+	if most == scripts:
+		return {"kind": "scripts", "ms": scripts}
+	if most == drawing:
+		return {"kind": "drawing", "ms": drawing}
+	return {"kind": "waiting", "ms": waiting}
+
+
+func spike_ago(spike: Dictionary, now_msec: int) -> String:
 	@warning_ignore("integer_division")
 	var seconds: int = maxi(0, (now_msec - int(spike["at"])) / 1000)
 	@warning_ignore("integer_division")
-	var ago: String = ("%d s ago" % seconds) if seconds < 120 else ("%d min ago" % (seconds / 60))
+	return ("%d s ago" % seconds) if seconds < 120 else ("%d min ago" % (seconds / 60))
+
+
+func spike_text(spike: Dictionary, now_msec: int) -> String:
+	"""One hitch: how long, how long ago, where, which part of the frame took
+	most of it, and the nodes made (or freed) that frame.
+
+	WAITING IS THE FRAME LESS THE GAME'S OWN WORK (0.136.0, the owner: "im
+	not sure why it says outside of game"): physics, scripts and handing the
+	picture over are clocked; the rest of a frame is waiting - for the
+	screen's next refresh (vsync), the graphics driver or another program.
+	It said "the computer busy elsewhere", which was only the last of those."""
+	var ms: float = float(spike["ms"])
+	var ticks: int = int(spike["ticks"])
+	var cause: Dictionary = spike_cause(spike)
+	var what: String
+	match str(cause["kind"]):
+		"physics":
+			what = "physics %.1f ms, %d tick%s, the worst %.1f ms" % [float(cause["ms"]), ticks, "" if ticks == 1 else "s",
+				float(spike["worst_tick"])]
+		"scripts":
+			what = "scripts %.1f ms (the game's code, or a file loading)" % float(cause["ms"])
+		"drawing":
+			what = "drawing %.1f ms (the graphics card - a new effect's first draw)" % float(cause["ms"])
+		_:
+			what = "waiting %.1f ms (the screen's refresh, the graphics driver or another program - not the game's code)" \
+				% float(cause["ms"])
 	var area: String = str(spike["area"])
 	var where: String = (" in " + AreaRegistry.display_name(area)) if area != "" else ""
 	var nodes: int = int(spike["nodes"])
 	var made: String = ""
 	if nodes != 0:
 		made = "   %s%s nodes" % ["+" if nodes > 0 else "", _thousands(nodes)]
-	return "%.0f ms   %s%s - %s%s" % [ms, ago, where, what, made]
+	return "%.0f ms   %s%s - %s%s" % [ms, spike_ago(spike, now_msec), where, what, made]
+
+
+# =============================================================================
+# THE PANEL'S NUMBERS (0.136.0)
+# =============================================================================
+
+func _note_for_panel(ms: float, physics: float, scripts: float, drawing: float, ticks: int) -> void:
+	if _graph.size() != PerfPanel.GRAPH_FRAMES:
+		_graph.resize(PerfPanel.GRAPH_FRAMES)
+	_graph[_graph_at] = ms
+	_graph_at = (_graph_at + 1) % _graph.size()
+	_graph_count = mini(_graph_count + 1, _graph.size())
+	_split_sums[0] += ms
+	_split_sums[1] += physics
+	_split_sums[2] += scripts
+	_split_sums[3] += drawing
+	_split_sums[4] += float(ticks)
+	_split_sums[5] += 1.0
+
+
+func graph_frames() -> PackedFloat32Array:
+	"""The frames the graph shows, oldest first."""
+	var out := PackedFloat32Array()
+	var start: int = _graph_at - _graph_count
+	for i in _graph_count:
+		out.append(_graph[posmod(start + i, _graph.size())])
+	return out
+
+
+func split_now() -> Dictionary:
+	"""The frames since the last look, on average: physics, scripts, drawing,
+	waiting (the rest of the frame) and ticks - or the last look's, when no
+	frame has come since."""
+	var frames: float = _split_sums[5]
+	if frames > 0.0:
+		var ms: float = _split_sums[0] / frames
+		var physics: float = _split_sums[1] / frames
+		var scripts: float = _split_sums[2] / frames
+		var drawing: float = _split_sums[3] / frames
+		_split = {"physics": physics, "scripts": scripts, "drawing": drawing,
+			"waiting": maxf(0.0, ms - physics - scripts - drawing), "ticks": _split_sums[4] / frames, "ms": ms}
+		_split_sums.fill(0.0)
+	return _split
+
+
+func panel_data(now_msec: int) -> Dictionary:
+	var fps: float = Performance.get_monitor(Performance.TIME_FPS)
+	var counts: Vector2i = monster_counts() if _counted.is_empty() or not visible else Vector2i(_counted[0], _counted[1])
+	var fight: Vector2i = fight_counts() if _counted.is_empty() or not visible else Vector2i(_counted[2], _counted[3])
+	var game_mb: float = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
+	var video_mb: float = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
+	var gpu: float = gpu_ms()
+	var spikes: Array = []
+	for i in mini(_spikes.size(), PerfPanel.SPIKES_SHOWN):
+		spikes.append(_panel_spike(_spikes[i], now_msec))
+	var title_bits: PackedStringArray = []
+	var area: String = AreaRegistry.current_area_id()
+	if area != "":
+		title_bits.append(AreaRegistry.display_name(area))
+	if StressCrowdScript.multiplier > 1:
+		title_bits.append("%dx" % StressCrowdScript.multiplier)
+	var split: Dictionary = split_now()
+	var cap: String = _cap_short()
+	if cap != "":
+		title_bits.append(cap)
+	return {
+		"title": "  ·  ".join(title_bits),
+		"title_colour": PerfPanel.WARN if Settings.held_reason() != "" else PerfPanel.SOFT,
+		# The frames since the last look, as measured: the fps monitor is
+		# counted once a second, and just switched on it says 1.
+		"fps": fps if split.is_empty() or fps > 1.5 else 1000.0 / maxf(float(split.get("ms", 1000.0)), 0.001),
+		"frame_ms": float(split.get("ms", 1000.0 / maxf(fps, 0.001))),
+		"worst_ms": _worst_frame_ms,
+		"budget": TARGET_FRAME_MS,
+		"hitch_ms": HITCH_MS,
+		"graph": graph_frames(),
+		"hitches": "hitches   %s of %s frames over %.0f ms   (%.1f%%)" % [_thousands(_hitches), _thousands(_frames),
+			HITCH_MS, 100.0 * float(_hitches) / float(maxi(_frames, 1))],
+		"loads": "loads: " + ("none since switched on"
+			if _loads == 0 else "%s, the last %.0f ms into %s" % [_thousands(_loads), _last_load_ms,
+				AreaRegistry.display_name(_last_load_area) if _last_load_area != "" else "an area"]),
+		"split": split,
+		"ticks_line": "a physics tick %.2f ms (worst %.2f) of %.2f   ·   graphics card %s" % [_physics_ms(),
+			_worst_physics_ms, 1000.0 / float(Engine.physics_ticks_per_second),
+			("%.2f ms" % gpu) if gpu > 0.0 else "not measured"],
+		"world": [
+			["monsters", _thousands(counts.x)], ["awake", _thousands(counts.x - counts.y)],
+			["asleep", _thousands(counts.y)],
+			["after you", "nobody" if fight.x + fight.y == 0 else "%s + %s waiting" % [_thousands(fight.x), _thousands(fight.y)]],
+			["nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))],
+			["bodies", _thousands(int(Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)))],
+			["pairs", _thousands(int(Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)))],
+			["draws", _thousands(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))],
+			["memory", ("%.0f MB" % game_mb) if game_mb > 0.0 else "-"],
+			["graphics", ("%.0f MB" % video_mb) if video_mb > 0.0 else "-"],
+			["net", "%.2f req/s" % Api.requests_per_second()],
+		],
+		"spikes": spikes,
+		"worst_spike": _panel_spike(_worst_spike, now_msec, true) if not _worst_spike.is_empty() else {},
+	}
+
+
+func _panel_spike(spike: Dictionary, now_msec: int, worst: bool = false) -> Dictionary:
+	var cause: Dictionary = spike_cause(spike)
+	var kind: String = str(cause["kind"])
+	var what: String = "%s %.1f ms" % [kind, float(cause["ms"])]
+	if kind == "physics":
+		what += ", %d tick%s" % [int(spike["ticks"]), "" if int(spike["ticks"]) == 1 else "s"]
+	var nodes: int = int(spike["nodes"])
+	return {
+		"ms": float(spike["ms"]),
+		"ago": ("worst, " if worst else "") + spike_ago(spike, now_msec).trim_suffix(" ago"),
+		"kind": kind,
+		"cause": what,
+		"nodes": ("%s%s nodes" % ["+" if nodes > 0 else "", _thousands(nodes)]) if nodes != 0 else "",
+	}
+
+
+func _cap_short() -> String:
+	"""_cap_note(), in a few words for the panel's title."""
+	match Settings.held_reason():
+		"resting":
+			return "held at %d - the screen is resting" % Settings.BACKGROUND_FPS
+		"background":
+			return "held at %d - in the background" % Settings.BACKGROUND_FPS
+	var r: Dictionary = Settings.pacing_report()
+	if bool(r["overridden"]):
+		return "vsync ignored by the driver"
+	var caps: PackedStringArray = []
+	if str(r["vsync"]) != "off":
+		caps.append("vsync")
+	if int(r["cap"]) > 0:
+		caps.append("cap %d" % int(r["cap"]))
+	return "no cap" if caps.is_empty() else ", ".join(caps)
 
 
 func loads_text() -> String:

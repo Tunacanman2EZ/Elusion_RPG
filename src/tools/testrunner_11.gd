@@ -1,6 +1,6 @@
 # testrunner_11.gd - part 11 of the suite (testrunner.gd says how it is
 # split; part 10 passed 250 KB): _test_the_floor_comes_in_chunks,
-# _test_the_map_draws_monsters_when_they_move.
+# _test_the_map_draws_monsters_when_they_move, _test_the_readout_panel.
 extends "res://src/tools/testrunner_10.gd"
 
 
@@ -256,6 +256,80 @@ func _test_the_map_draws_monsters_when_they_move() -> void:
 	WorldMap._seen.erase(AREA)
 	await get_tree().process_frame
 	print("  (the map's monsters gathered over frames: done)")
+
+
+# =============================================================================
+# THE READOUT, REMADE AS A PANEL (0.136.0)
+# =============================================================================
+# The owner: "can we remake the entire screen for read out improve it", then
+# "build it" from readout_mock.png.
+func _test_the_readout_panel() -> void:
+	section("THE READOUT AS A PANEL - big numbers, a graph, where the frame goes, the world, spikes, Copy (0.136.0)")
+	const PanelScript := preload("res://src/systems/perfpanel.gd")
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var panel: Control = PerfOverlay.get_node_or_null("panel")
+	check("switched on, the panel is drawn and the old text is kept but not shown",
+		panel != null and panel.is_visible_in_tree() and not PerfOverlay._label.visible)
+	var now: int = Time.get_ticks_msec()
+	var plain := {"ms": 16.0, "held": false, "fps": 60.0, "scripts": 6.0, "drawing": 1.0,
+		"physics": 2.0, "worst_tick": 1.0, "ticks": 2, "nodes": 0, "area": "bigfield", "at": now}
+	for i in 10:
+		PerfOverlay.push_sample(plain.duplicate())
+	var waits := plain.duplicate()
+	waits["ms"] = 40.0
+	waits["at"] = now - 3000
+	PerfOverlay.push_sample(waits)
+	var busy := plain.duplicate()
+	busy["ms"] = 30.0
+	busy["scripts"] = 25.0
+	busy["nodes"] = 39
+	PerfOverlay.push_sample(busy)
+	PerfOverlay.flush_samples()
+	var frames: PackedFloat32Array = PerfOverlay.graph_frames()
+	check("every counted frame goes on the graph, oldest first - the last two the hitches",
+		frames.size() >= 12 and is_equal_approx(frames[frames.size() - 1], 30.0)
+		and is_equal_approx(frames[frames.size() - 2], 40.0), frames.slice(frames.size() - 3))
+	var split: Dictionary = PerfOverlay.split_now()
+	var parts: float = 0.0
+	for part in PanelScript.PARTS:
+		parts += float(split.get(part, 0.0))
+	check("  where the frame goes: physics, scripts, drawing and waiting add up to the frame, on average",
+		is_equal_approx(snappedf(parts, 0.001), snappedf(float(split.get("ms", -1.0)), 0.001))
+		and float(split.get("waiting", -1.0)) >= 0.0, split)
+	var data: Dictionary = PerfOverlay.panel_data(now)
+	var spikes: Array = data["spikes"]
+	check("  a spike says its cause by its part's colour - scripts for the busy one, waiting for the other",
+		spikes.size() == 2 and str(spikes[0]["kind"]) == "scripts" and str(spikes[0]["nodes"]) == "+39 nodes"
+		and str(spikes[1]["kind"]) == "waiting" and str((data["worst_spike"] as Dictionary)["ago"]).begins_with("worst"),
+		spikes)
+	check("  and the text says what waiting is: the screen's refresh, the driver or another program",
+		PerfOverlay.spike_text(PerfOverlay._spikes[1], now).contains("the screen's refresh, the graphics driver or another program"))
+	check("green within the budget, amber over it, red past a hitch",
+		PanelScript.tone(16.0) == PanelScript.GOOD and PanelScript.tone(20.0) == PanelScript.WARN and PanelScript.tone(30.0) == PanelScript.BAD)
+	check("  the world in a grid of eleven, the title says the area you are in and the cap",
+		(data["world"] as Array).size() == 11 and str(data["title"]).contains(PerfOverlay._cap_short())
+		and str(data["title"]).begins_with(AreaRegistry.display_name(AreaRegistry.current_area_id())), data["title"])
+	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
+	PerfOverlay._process(0.016)
+	var view: Vector2 = Vector2(1280, 720)
+	check("  it stays on the screen's left half, top to bottom inside it: %s" % [panel.size],
+		panel.position.x + panel.size.x <= view.x * 0.5 and panel.position.y + panel.size.y <= view.y, panel.size)
+	var copied: Array = []
+	panel.set("copy_to", copied.append)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	panel.call("_on_copy_input", click)
+	check("Copy puts the whole readout's text on the clipboard, and says Copied",
+		copied.size() == 1 and str(copied[0]) == PerfOverlay.readout() and str(copied[0]).contains("hitches")
+		and str(panel.get("_copy_word")) == "Copied", copied.size())
+	panel.set("copy_to", DisplayServer.clipboard_set)
+	PerfOverlay.set_shown(false)
+	if shown_before:
+		PerfOverlay.set_shown(true)
+	print("  (the readout as a panel: done)")
 
 
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:

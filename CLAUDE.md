@@ -2729,6 +2729,40 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The readout remade as a panel (0.136.0)
+
+The owner: "can we remake the entire screen for read out improve it";
+pictured first (readout_mock.png and READOUT_PLAN.txt in the commit
+folder), then "build it im not sure why it says outside of game etc".
+
+- **src/systems/perfpanel.gd** (new, preloaded by perfoverlay.gd, no
+  class_name): one Control, 392 px wide at (8, 8), drawn by its own
+  `_draw()` from `show_data()` - perfoverlay.gd's `panel_data()`, five
+  times a second. Title (area, the stress multiplier, `_cap_short()`) and
+  Copy; fps and ms a frame big in `tone()` (green within the budget and 5%,
+  amber to the 25 ms hitch, red past it), the worst; a graph of the last
+  `GRAPH_FRAMES` (186) frames, 2 px each, dashed at the budget and the
+  hitch; hitches and loads; WHERE THE FRAME GOES - one bar of physics,
+  scripts, drawing and waiting (`PARTS`, `PART_COLOURS`) averaged since
+  the last look (`split_now()`), a white mark at the budget when over;
+  the physics tick and the graphics card; THE WORLD, eleven cells; SPIKES,
+  the newest `SPIKES_SHOWN` (4) and the worst, each with its cause's
+  colour (`spike_cause()`).
+- **The text is kept.** `_label` is written as before but not shown:
+  `readout()` (the suite's checks) and Copy read it. Copy is a box drawn by
+  the panel over a plain Control (`copy`, the only thing that takes the
+  mouse) - the game's theme makes a Button 30 px tall - and `copy_to`
+  (DisplayServer.clipboard_set) is a seam.
+- **The frame in ms is measured, not 1000/fps:** the fps monitor counts
+  once a second and says 1 just after switching on.
+- **"Waiting" said "the computer busy elsewhere".** It is the frame less
+  the game's clocked work (physics, scripts, handing the picture over):
+  mostly the wait for the screen's next refresh under vsync - about 7 ms
+  of every 60 fps frame - and in a spike the driver or another program.
+  `spike_text()` says so now; the panel's legend reads "waiting: screen,
+  driver".
+- `_test_the_readout_panel()` (testrunner_11).
+
 ### The map's monsters, gathered over frames (0.135.8)
 
 The owner's readout with the map open over the Big Field at 16x: 17 fps,

@@ -234,6 +234,7 @@ func _run_all() -> void:
 	await _test_the_number_comes_with_the_bar()
 	await _test_the_floor_comes_in_chunks()
 	await _test_the_map_draws_monsters_when_they_move()
+	await _test_the_readout_panel()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
