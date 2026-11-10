@@ -1447,8 +1447,35 @@ func _apply_fps_cap() -> void:
 	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
 		bool(get_value("background_fps_limit")), current_screen_hz(),
 		bool(get_value("battery_saver")), on_phone(), _resting)
+	# Uncapped for the readout (set_uncapped()): no cap of the player's, the
+	# battery saver's or a phone's - but the background and rest holds stand.
+	if uncapped:
+		want = fps_cap_for(0, _focused, bool(get_value("background_fps_limit")), current_screen_hz(),
+			false, false, _resting)
 	if Engine.max_fps != want:
 		Engine.max_fps = want
+
+
+# UNCAPPED FOR THE READOUT (0.137.0). The owner, of the readout: a switch to
+# see the game's top speed without going to Options. Under V-Sync the frame
+# rate stops at the screen's (60), so fps can never say how much room is
+# left. While `uncapped`, V-Sync is off and nothing caps the frame rate -
+# never saved, never written to the options file, put back as it was when
+# switched off; the readout switches it off as it closes (PerfOverlay
+# set_shown()). The background and rest holds still stand, so a game left
+# uncapped behind another window does not run the computer flat out. In a
+# browser the page sets the pace, so the readout does not offer it there.
+var uncapped: bool = false
+
+
+func set_uncapped(on: bool) -> void:
+	if on == uncapped:
+		return
+	uncapped = on
+	var want_vsync: int = DisplayServer.VSYNC_DISABLED if on else vsync_mode_for(str(get_value("vsync")))
+	if DisplayServer.window_get_vsync_mode() != want_vsync:
+		DisplayServer.window_set_vsync_mode(want_vsync)
+	_apply_fps_cap()
 
 
 # =============================================================================
@@ -2251,7 +2278,7 @@ func _apply(key: String, value: Variant) -> void:
 			# the renderer rebuild its swapchain, and doing that once per
 			# launch to set it to the value it already had is a real change to
 			# how the first frames are presented in exchange for nothing.
-			var want_vsync: int = vsync_mode_for(str(value))
+			var want_vsync: int = DisplayServer.VSYNC_DISABLED if uncapped else vsync_mode_for(str(value))
 			if DisplayServer.window_get_vsync_mode() != want_vsync:
 				DisplayServer.window_set_vsync_mode(want_vsync)
 		"frame_cap":

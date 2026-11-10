@@ -33,6 +33,8 @@ const GRAPH_HEIGHT := 64.0
 const GRAPH_TOP_MS := 50.0
 const SPIKES_SHOWN := 4
 const COPY_RECT := Rect2(WIDTH - PAD - 56.0, 6.0, 56.0, 17.0)
+const TITLE_LINE := 12.0
+const UNCAP_RECT := Rect2(WIDTH - PAD - 56.0 - 6.0 - 66.0, 6.0, 66.0, 17.0)
 
 const BACK := Color(0.05, 0.045, 0.07, 0.86)
 const EDGE := Color(0.62, 0.50, 0.28)
@@ -60,10 +62,14 @@ const PART_NAMES := {
 
 # Where Copy sends the text (a seam for the suite), and where it gets it.
 var copy_to: Callable = DisplayServer.clipboard_set
+# Whether the game is uncapped now, and the switch (seams for the suite).
+var is_uncapped: Callable = func() -> bool: return Settings.uncapped
+var set_uncapped: Callable = Settings.set_uncapped
 var text_source: Callable = Callable()
 
 var _data: Dictionary = {}
 var _copy: Control = null
+var _uncap: Control = null
 var _copy_word: String = "Copy"
 var _copied_left: float = 0.0
 
@@ -94,6 +100,20 @@ func _ready() -> void:
 	_copy.mouse_entered.connect(queue_redraw)
 	_copy.mouse_exited.connect(queue_redraw)
 	add_child(_copy)
+	# UNCAP (0.137.0): V-Sync and the frame cap off while the readout is open
+	# - Settings.set_uncapped(). Not in a browser, where the page sets the pace.
+	_uncap = Control.new()
+	_uncap.name = "uncap"
+	_uncap.mouse_filter = Control.MOUSE_FILTER_STOP
+	_uncap.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_uncap.tooltip_text = "V-Sync and the frame cap off while the readout is open, to see the game's top speed.\nNothing is saved; closing the readout puts them back."
+	_uncap.position = UNCAP_RECT.position
+	_uncap.size = UNCAP_RECT.size
+	_uncap.gui_input.connect(_on_uncap_input)
+	_uncap.mouse_entered.connect(queue_redraw)
+	_uncap.mouse_exited.connect(queue_redraw)
+	_uncap.visible = not OS.has_feature("web")
+	add_child(_uncap)
 	set_process(false)
 
 
@@ -106,6 +126,18 @@ func copy_text() -> void:
 	_copied_left = 1.5
 	set_process(true)
 	queue_redraw()
+
+
+func toggle_uncapped() -> void:
+	set_uncapped.call(not bool(is_uncapped.call()))
+	queue_redraw()
+
+
+func _on_uncap_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		toggle_uncapped()
+		_uncap.accept_event()
 
 
 func _on_copy_input(event: InputEvent) -> void:
@@ -149,8 +181,16 @@ func _draw() -> void:
 	draw_rect(COPY_RECT, Color(EDGE, 0.45 if lit else 0.22))
 	draw_rect(COPY_RECT, EDGE, false, 1.0)
 	_text(font, COPY_RECT.position + Vector2(0, 13), _copy_word, 11, TEXT, HORIZONTAL_ALIGNMENT_CENTER, COPY_RECT.size.x)
-	_text(font, Vector2(PAD, 18), str(d.get("title", "")), 11, Color(d.get("title_colour", SOFT)),
-		HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 2.0 * PAD - 60.0)
+	if _uncap != null and _uncap.visible:
+		var on: bool = bool(is_uncapped.call())
+		var over: bool = Rect2(Vector2.ZERO, UNCAP_RECT.size).has_point(_uncap.get_local_mouse_position())
+		draw_rect(UNCAP_RECT, Color(WARN, 0.35) if on else Color(EDGE, 0.45 if over else 0.22))
+		draw_rect(UNCAP_RECT, WARN if on else EDGE, false, 1.0)
+		_text(font, UNCAP_RECT.position + Vector2(0, 13), "Uncapped" if on else "Uncap", 11, WARN if on else TEXT,
+			HORIZONTAL_ALIGNMENT_CENTER, UNCAP_RECT.size.x)
+	_text(font, Vector2(PAD, 32), str(d.get("title", "")), 10, Color(d.get("title_colour", SOFT)))
+	# Everything under the title's second line, TITLE_LINE lower.
+	draw_set_transform(Vector2(0, TITLE_LINE))
 
 	# ---- the big numbers ------------------------------------------------------------
 	var frame_ms: float = float(d.get("frame_ms", 0.0))
@@ -244,6 +284,7 @@ func _draw() -> void:
 	if not worst_spike.is_empty():
 		draw_line(Vector2(PAD, y - 1.0), Vector2(WIDTH - PAD, y - 1.0), Color(EDGE, 0.2), 1.0)
 		_spike_row(font, y + 10.0, worst_spike, budget, hitch)
+	draw_set_transform(Vector2.ZERO)
 
 
 func _spike_row(font: Font, y: float, spike: Dictionary, budget: float, hitch: float) -> void:
@@ -263,7 +304,7 @@ func _height_for(d: Dictionary) -> float:
 	var worst: float = 18.0 if not (d.get("worst_spike", {}) as Dictionary).is_empty() else 0.0
 	@warning_ignore("integer_division")
 	var world: float = 30.0 * float((cells + 3) / 4)
-	return 157.0 + 9.0 + 22.0 + 30.0 + 34.0 + 10.0 + 22.0 + world + 2.0 + 22.0 + 16.0 * float(spikes) + worst + 10.0
+	return TITLE_LINE + 157.0 + 9.0 + 22.0 + 30.0 + 34.0 + 10.0 + 22.0 + world + 2.0 + 22.0 + 16.0 * float(spikes) + worst + 10.0
 
 
 func _section(font: Font, y: float, title: String) -> float:

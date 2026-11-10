@@ -293,6 +293,9 @@ func set_shown(on: bool) -> void:
 		_split = {}
 	visible = on
 	_measure_render_time(on)
+	# NEVER LEFT UNCAPPED once the readout is gone (Settings.set_uncapped()).
+	if not on:
+		Settings.set_uncapped(false)
 
 
 func _measure_render_time(on: bool) -> void:
@@ -702,6 +705,8 @@ func _cap_short() -> String:
 			return "held at %d - the screen is resting" % Settings.BACKGROUND_FPS
 		"background":
 			return "held at %d - in the background" % Settings.BACKGROUND_FPS
+	if Settings.uncapped:
+		return "uncapped to test"
 	var r: Dictionary = Settings.pacing_report()
 	if bool(r["overridden"]):
 		return "vsync ignored by the driver"

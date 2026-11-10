@@ -2729,6 +2729,28 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### Uncap: the readout's switch for the game's top speed (0.137.0)
+
+The owner asked whether the readout could switch low-processor mode; it
+need not - the game never uses it (project.godot leaves it off, and no
+script turns it on), so every frame is drawn. What holds the frame rate is
+V-Sync (the screen's 60) and the frame cap; "explain", then "if you think
+its a good idea lets go for it".
+
+- **settings.gd `uncapped`, `set_uncapped()`:** V-Sync off and no cap - the
+  player's, the battery saver's or a phone's - while it lasts. Never saved;
+  switched off it puts V-Sync back from the setting and the cap through
+  `_apply_fps_cap()` (the old line kept word for word - the suite reads it -
+  and `if uncapped:` after it). The background and rest holds still stand.
+  The "vsync" setting's apply honours it, so choosing V-Sync in Options
+  meanwhile does not turn it back on.
+- **perfpanel.gd:** an Uncap box left of Copy (`UNCAP_RECT`, amber
+  "Uncapped" while on; hidden in a browser, where the page sets the pace);
+  the title moved to a second line (`TITLE_LINE`), so both buttons fit.
+- **perfoverlay.gd:** `set_shown(false)` always calls
+  `Settings.set_uncapped(false)`; `_cap_short()` says "uncapped to test".
+- `_test_the_readout_uncaps()` (testrunner_11).
+
 ### The readout remade as a panel (0.136.0)
 
 The owner: "can we remake the entire screen for read out improve it";

@@ -1,6 +1,7 @@
 # testrunner_11.gd - part 11 of the suite (testrunner.gd says how it is
 # split; part 10 passed 250 KB): _test_the_floor_comes_in_chunks,
-# _test_the_map_draws_monsters_when_they_move, _test_the_readout_panel.
+# _test_the_map_draws_monsters_when_they_move, _test_the_readout_panel,
+# _test_the_readout_uncaps.
 extends "res://src/tools/testrunner_10.gd"
 
 
@@ -330,6 +331,48 @@ func _test_the_readout_panel() -> void:
 	if shown_before:
 		PerfOverlay.set_shown(true)
 	print("  (the readout as a panel: done)")
+
+
+func _test_the_readout_uncaps() -> void:
+	section("UNCAP - V-Sync and the frame cap off while the readout is open, nothing saved (0.137.0)")
+	# The owner, after "explain": "if you think its a good idea lets go for it".
+	var cap_was: int = Engine.max_fps
+	var frame_cap_was: Variant = Settings.get_value("frame_cap")
+	var vsync_was: Variant = Settings.get_value("vsync")
+	Settings.set_uncapped(true)
+	check("uncapped, nothing caps the frame rate - and the player's own settings are left as saved",
+		Settings.uncapped and Engine.max_fps == 0 and Settings.get_value("frame_cap") == frame_cap_was
+		and Settings.get_value("vsync") == vsync_was, Engine.max_fps)
+	var focused_was: bool = Settings._focused
+	Settings._focused = false
+	Settings._apply_fps_cap()
+	var held: int = Engine.max_fps
+	Settings._focused = focused_was
+	Settings._apply_fps_cap()
+	check("  but a game behind another window is still held, as ever",
+		held == (Settings.BACKGROUND_FPS if bool(Settings.get_value("background_fps_limit")) else 0), held)
+	var settings_src: String = _code_src("res://src/systems/settings.gd")
+	check("  V-Sync off while it lasts - and choosing V-Sync in Options meanwhile does not turn it back on",
+		_func_body(settings_src, "func set_uncapped(").contains("DisplayServer.VSYNC_DISABLED if on else")
+		and settings_src.contains("DisplayServer.VSYNC_DISABLED if uncapped else vsync_mode_for(str(value))"))
+	Settings.set_uncapped(false)
+	check("switched back, the frame rate is capped as it was", not Settings.uncapped and Engine.max_fps == cap_was,
+		[Engine.max_fps, cap_was])
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var panel: Control = PerfOverlay.get_node("panel")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	panel.call("_on_uncap_input", click)
+	check("the readout's Uncap switches it on, and its title says so",
+		Settings.uncapped and PerfOverlay._cap_short() == "uncapped to test", PerfOverlay._cap_short())
+	PerfOverlay.set_shown(false)
+	check("  closing the readout always puts it back", not Settings.uncapped and Engine.max_fps == cap_was)
+	if shown_before:
+		PerfOverlay.set_shown(true)
+	print("  (uncap: done)")
 
 
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
