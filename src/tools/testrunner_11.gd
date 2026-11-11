@@ -2974,3 +2974,87 @@ func _test_a_phone_left_alone() -> void:
 	PerfOverlay.set_shown(was_shown)
 	await get_tree().process_frame
 	print("  (a phone left alone: done)")
+
+
+# =============================================================================
+# 5,000 SMALLER SLIMES, THE STEP IN PARTS (0.148.0)
+# =============================================================================
+# The owner: "4 players attacking with 5000 slimes i think that would be a
+# massive showcase", "it would be more realistic if we made the slimes a bit
+# smaller", and of two-thirds, "it will look absolutely insane".
+func _test_five_thousand_smaller_slimes() -> void:
+	section("5,000 SMALLER SLIMES - two-thirds the size, 5,000 for computers, the step moved in parts (0.148.0)")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	const RunScript := preload("res://src/world/endless/endlessrun.gd")
+	check("the crowd reaches 5,000 on a computer; a phone, and a party with one, still holds 1,000",
+		SwarmScript.MOST == 5000 and RunScript.crowd_for(40, 4) == 5000 and RunScript.PHONE_CROWD == 1000)
+	check("  two-thirds the size: at the game's 3x zoom an art pixel is two screen pixels, whole",
+		is_equal_approx(SwarmScript.DRAW_SCALE * 3.0, 2.0) and is_equal_approx(SwarmScript.CELL, 16.0)
+		and is_equal_approx(SwarmScript.ROOM, 10.0) and is_equal_approx(SwarmScript.PICTURE_TOP, 28.0))
+	var o := Vector2(-64000, -64000)
+	var arena := Rect2(o + Vector2(24, 34), Vector2(1488, 1334))
+	var me := Node2D.new()
+	me.add_to_group(&"player")
+	add_child(me)
+	var start := o + Vector2(760, 600)
+	me.global_position = start
+	# On a stopped clock (testrunner_10's _SWARM_CLOCK): the crowd's sway reads
+	# the time, and the two would be read a moment apart.
+	var stopped := GDScript.new()
+	stopped.source_code = _SWARM_CLOCK
+	stopped.reload()
+	var pair: Array = []
+	for k in 2:
+		var swarm: Node2D = stopped.new()
+		swarm.set("arena", arena)
+		add_child(swarm)
+		swarm.set_process(false)
+		swarm.set_physics_process(false)
+		pair.append(swarm)
+	await get_tree().process_frame
+	for swarm in pair:
+		var slots: PackedInt32Array = swarm.call("take_slots", 2400)
+		swarm.call("spawn_batch", 1, 4242, slots, PackedVector2Array([start]), 30.0, 1)
+		swarm.set("_others_now", PackedVector2Array([start + Vector2(300, 0), start + Vector2(-260, 200)]))
+	var whole: Node2D = pair[0]
+	var parts: Node2D = pair[1]
+	var same: bool = true
+	for step in 40:
+		whole.call("_step", start, true)
+		parts.call("_begin_step", start, true)
+		var third: int = ceili(float(int(parts.get("_chunk_end"))) / 3.0)
+		parts.call("_move_some", third)
+		parts.call("_move_some", third)
+		parts.call("_move_some", third)
+		parts.call("_end_step")
+		if whole.get("px") != parts.get("px") or whole.get("py") != parts.get("py") \
+				or whole.get("facing") != parts.get("facing") or int(whole.get("_touching")) != int(parts.get("_touching")):
+			same = false
+	check("a step moved in three parts lands every slime where the whole step does, to the bit (40 steps of 2,400)",
+		same and int(whole.get("alive")) == 2400)
+	# The game's frames: three parts at 60 a second, the whole at 30.
+	parts.set("_step_left", 0.0)
+	parts.set("_chunk_at", -1)
+	parts.call("_process", 1.0 / 60.0)
+	var under_way_60: bool = int(parts.get("_chunk_at")) > 0 and int(parts.get("_chunk_at")) < int(parts.get("_chunk_end"))
+	var blend_before: float = float(parts.get("_since_write"))
+	parts.call("_process", 1.0 / 60.0)
+	parts.call("_process", 1.0 / 60.0)
+	var done_60: bool = int(parts.get("_chunk_at")) == -1 and is_zero_approx(float(parts.get("_since_write")))
+	parts.set("_step_left", 0.0)
+	parts.call("_process", 1.0 / 30.0)
+	var done_30: bool = int(parts.get("_chunk_at")) == -1
+	check("  at 60 a second the step is spread over three frames and the picture written after the last; at 30, one frame (never slower)",
+		under_way_60 and done_60 and done_30 and blend_before > 0.0, [under_way_60, done_60, done_30, blend_before])
+	parts.set("_step_left", 0.0)
+	parts.set("_chunk_at", -1)
+	parts.call("_process", 1.0 / 60.0)
+	parts.set("_step_left", -0.01)
+	parts.call("_process", 1.0 / 60.0)
+	check("  a frame that falls behind finishes the step under way at once", int(parts.get("_chunk_at")) == -1
+		or int(parts.get("_chunk_at")) < int(parts.get("_chunk_end")))
+	for swarm in pair:
+		swarm.queue_free()
+	me.queue_free()
+	await get_tree().process_frame
+	print("  (5,000 smaller slimes: done)")

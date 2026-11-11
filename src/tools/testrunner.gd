@@ -257,6 +257,7 @@ func _run_all() -> void:
 	await _test_attack_goes_where_the_thumb_is()
 	await _test_thirty_on_a_phone()
 	await _test_a_phone_left_alone()
+	await _test_five_thousand_smaller_slimes()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

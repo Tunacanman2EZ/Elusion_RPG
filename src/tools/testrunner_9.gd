@@ -735,7 +735,10 @@ func _test_the_swarm_keeps_off_the_walls() -> void:
 	# The top row, over the back wall.
 	swarm.call("clear")
 	var records := PackedInt32Array()
-	var ys: Array = [40, 50, 69, 71, 200]
+	# Either side of the front layer's edge: the wall's foot (28) and a
+	# picture's reach (PICTURE_TOP - 42 before 0.148.0's smaller slimes).
+	var edge: int = 28 + int(SwarmScript.PICTURE_TOP)
+	var ys: Array = [40, 50, edge - 1, edge + 1, 200]
 	for k in ys.size():
 		records.append_array(PackedInt32Array([k, 1, 50, roundi(o.x + 100.0 + k * 40.0), roundi(o.y + float(ys[k])), 0]))
 	swarm.call("import_alive", records)
@@ -852,7 +855,7 @@ func _test_slimes_speed_up() -> void:
 		last = Vector2(float(swarm.get("px")[0]), float(swarm.get("py")[0])).distance_to(player)
 		nearest = minf(nearest, last)
 	check("  at the most, one walking at a still player stops at them and stays (nearest %.1f px, last %.1f)" % [nearest, last],
-		last <= SwarmScript.TOUCH + 0.5 and nearest >= 4.0 and float(swarm.get("px")[0]) <= player.x, [nearest, last])
+		last <= SwarmScript.TOUCH + 0.5 and nearest >= 4.0 * SwarmScript.DRAW_SCALE and float(swarm.get("px")[0]) <= player.x, [nearest, last])
 	# SURROUNDED IS DEADLY: the owner, "make sure more then 3 slimes are
 	# attacking the player when surrounded stopping in a crowd should be
 	# deadly". 200 round a still player, then round one walking.

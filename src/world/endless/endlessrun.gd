@@ -268,14 +268,16 @@ static func land_of(stage_number: int) -> int:
 
 static func stage_crowd(stage_number: int) -> int:
 	"""How many swarmlings the arena fills to at this stage: 60 at the first,
-	then more each stage, never past the swarm's MOST (3,000)."""
+	then more each stage, never past the swarm's MOST (5,000 since 0.148.0;
+	stage 18 alone, as 3,000 was stage 14)."""
 	var s: int = maxi(1, stage_number) - 1
 	return mini(SwarmScript.MOST, 60 + 90 * s + 12 * s * s)
 
 
 static func stage_health(stage_number: int) -> float:
 	"""A new swarmling's health: 24 at the first stage, a fifth more each one
-	after - the crowd stops growing at 3,000, so this is what keeps climbing."""
+	after - the crowd stops growing at 5,000 (3,000 before 0.148.0), so this
+	is what keeps climbing."""
 	return 24.0 * pow(1.22, maxi(1, stage_number) - 1)
 
 

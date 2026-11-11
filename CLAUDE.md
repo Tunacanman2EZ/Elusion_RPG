@@ -13944,6 +13944,51 @@ and: "darza can manage no overheating in mobil play".
   browser, WebAssembly, one thread ([threading] is off). A native Android
   export would be the big step, if he wants it.
 
+### Four players and 5,000 slimes, two-thirds the size (0.148.0)
+
+The owner: "we have to update the entire minigame make it faster and capable
+of having 4 players attacking with 5000 slimes i think that would be a massive
+showcase", then "i was thinking it would be more realistic if we made the
+slimes a bit smaller also", and of the sizes pictured, "two thirds". The plan
+is the Docs page "The Endless: 4 players vs 5,000 slimes".
+
+- **5,000 on a computer** (swarm.gd `MOST`, was 3,000): a game alone reaches
+  it at stage 18 (3,000 was stage 14), a party sooner. A phone, and any
+  party with one, still holds `PHONE_CROWD` (1,000).
+- **Two-thirds the size** (`DRAW_SCALE` 2/3: at the game's 3x zoom an art
+  pixel is two screen pixels, still whole), and every spacing with it:
+  `CELL` 16, `ROOM` 10, `TOUCH` 10, `EDGE` 4, `SIDE_EDGE` 12,
+  `HELD_OUT_SIDES` 11, `PICTURE_TOP` 28, `BITE` 17, and a stand-in's
+  `HURT_RADIUS` 7 (swarmproxy.gd). The suite's spacing checks scale by
+  `DRAW_SCALE` where they named pixels.
+- **THE STEP IN PARTS.** With four players spread over the arena nearly
+  every slime is near one, and a step of 5,000 was 21 ms in one frame - the
+  worst frame of every game. `_begin_step()` counts the crowd (the grid, the
+  near hash, `_make_room()`, the corridor's rects), `_move_some()` moves a
+  part a frame, `_end_step()` closes it, and the buffer is written once at
+  the end. Parts: `floori(STEP / delta)`, at most `CHUNKS_MOST` (3) - so 60
+  a second is three parts and 30 a second (a phone) the whole step in one,
+  and the crowd never slows. A frame that falls behind finishes the step at
+  once. The walk is drawn from the last write (`_since_write`), not from
+  `_step_left`. `_step()` is still the whole step at once, for the suite and
+  the benches. **Parts and whole are the same to the bit** - checked with
+  the sway clock stopped (`_SWARM_CLOCK`), since the sway reads real time.
+- **A hit's key** (swarmproxy.gd `pass_key()`): `KEY_SLOTS` 8,192 a batch,
+  more than `MOST`. At 4,096, slot 4,100 of one batch and slot 4 of the next
+  had one key, and a swing cut only one of them.
+- **The server first.** presence.py dropped a hit on any slot from 4,096
+  up (`RUN_SLOTS`); it is 8,192 (the API's CLAUDE.md). A 0.148.0 game
+  against an older server loses every hit past slot 4,095, and those
+  slimes live on in the other games.
+- **Measured** (zz/party4bench.gd: four games in one tree, a party of four
+  circling and swinging at 5,000, container, headless): 5.2-5.4 ms a frame
+  each, worst 12-14 ms (it was 26-35 with the step in one frame); the
+  leader sends 5.2 KB/s and each other game 1.8 KB/s; 392 slain a second;
+  at most 25 hits waiting to go; about 53 slots alive on one screen and not
+  another at any moment, hits in flight. Sending hits packed was planned and
+  left: the wire is not the cost.
+- `_test_five_thousand_smaller_slimes()` (testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

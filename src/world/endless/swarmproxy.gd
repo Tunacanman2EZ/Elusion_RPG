@@ -15,7 +15,10 @@
 # it, which is what lets those land on the swarm at all.
 extends Node2D
 
-const HURT_RADIUS := 10.0
+# Two-thirds since 0.148.0, as the slimes (swarm.gd DRAW_SCALE).
+const HURT_RADIUS := 7.0
+# Slots a batch in pass_key(): more than swarm.gd MOST.
+const KEY_SLOTS := 8192
 const HURT_LAYER := 8
 const STRESS_MARK := &"stress_copy"
 
@@ -98,8 +101,9 @@ func pass_key() -> int:
 	"""Which slime this is, for an attack that cuts each once (spinningaxe.gd's
 	_passed): the stand-in moves on to another slime, so its own instance id
 	would leave the next one uncut. Negative, so never a node's id; the batch
-	in it, so a slot born again is a new slime (4096 slots a batch: the swarm
-	has MOST, 3,000)."""
+	in it, so a slot born again is a new slime (KEY_SLOTS a batch, more than the
+	swarm's MOST - 8,192 since 0.148.0's 5,000: at 4,096, slot 4,100 of one
+	batch and slot 4 of the next had one key, and a swing cut only one)."""
 	if slot < 0 or swarm == null:
 		return get_instance_id()
-	return -(1 + slot + 4096 * int(swarm.gen[slot]))
+	return -(1 + slot + KEY_SLOTS * int(swarm.gen[slot]))

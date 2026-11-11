@@ -3480,9 +3480,9 @@ func _test_the_endless_run() -> void:
 		if Run.stage_crowd(s + 1) < Run.stage_crowd(s) or Run.stage_health(s + 1) <= Run.stage_health(s):
 			crowd_rises = false
 			health_rises = false
-	check("a stage is a minute; the crowd starts at 60, grows every stage and never passes 3,000",
+	check("a stage is a minute; the crowd starts at 60, grows every stage and never passes 5,000 (3,000 before 0.148.0)",
 		is_equal_approx(Run.STAGE_SECONDS, 60.0) and Run.stage_crowd(1) == 60 and crowd_rises
-		and Run.stage_crowd(40) == SwarmScript.MOST and SwarmScript.MOST == 3000, [Run.stage_crowd(1), Run.stage_crowd(13)])
+		and Run.stage_crowd(40) == SwarmScript.MOST and SwarmScript.MOST == 5000, [Run.stage_crowd(1), Run.stage_crowd(18)])
 	check("  and every swarmling is tougher than the stage before's, past the cap too", health_rises
 		and Run.stage_health(1) == 24.0 and Run.stage_health(40) > Run.stage_health(30))
 	check("the lands come in the bands' order, light first and dark last, then round again",
@@ -3692,9 +3692,10 @@ func _test_the_endless_run() -> void:
 		for j in 160:
 			if i != j:
 				closest = minf(closest, Vector2(rx[i], ry[i]).distance_to(Vector2(rx[j], ry[j])))
-		if closest < 6.0:
+		# 6 px at the slimes' old size; two-thirds of it since 0.148.0.
+		if closest < 6.0 * SwarmScript.DRAW_SCALE:
 			on_top += 1
-	check("  160 round a still player stand apart: %d of them within 6 px of another (147 before 0.93.3), and %d still touch the player" % [on_top, int(ranks.get("_touching"))],
+	check("  160 round a still player stand apart: %d of them within 6 px (at their size) of another (147 before 0.93.3), and %d still touch the player" % [on_top, int(ranks.get("_touching"))],
 		on_top < 40 and int(ranks.get("_touching")) >= 3)
 	ranks.queue_free()
 	# The owner: "bleed damage is spreading". A stand-in keeps its swarmling.

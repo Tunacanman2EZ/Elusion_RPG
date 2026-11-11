@@ -806,6 +806,9 @@ func _test_the_swarm_steps_the_same_for_less() -> void:
 			var t2: int = Time.get_ticks_usec()
 			swarm.call("_write_buffer")
 			var t3: int = Time.get_ticks_usec()
+			# The walk is drawn from the last write since 0.148.0 (THE STEP IN
+			# PARTS): a whole STEP after it is the old blend at _step_left 0.
+			swarm.set("_since_write", float((load("res://src/world/endless/swarm.gd") as GDScript).STEP))
 			swarm.call("_place_proxies")
 			var t4: int = Time.get_ticks_usec()
 			spent[which * 3] += t1 - t0

@@ -75,11 +75,31 @@ const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SHADER := preload("res://src/world/endless/swarm.gdshader")
 const SHEET := preload("res://art/enemy/slime.png")
 
-const MOST := 3000
+# 5,000 SINCE 0.148.0 (the owner: "4 players attacking with 5000 slimes i
+# think that would be a massive showcase"). A phone, and any party with one in
+# it, is held at endlessrun.gd PHONE_CROWD (1,000) as before.
+const MOST := 5000
 const STEPS_PER_SECOND := 20.0
 const STEP := 1.0 / STEPS_PER_SECOND
+# THE STEP IN PARTS (0.148.0). At 5,000, with four players spread over the
+# arena so that nearly every slime is near one, a step - the whole crowd's
+# move - was 21 ms in one frame in the container (zz/party4bench.gd), the
+# worst frame of every game. Now the frame that starts a step counts the crowd
+# (_begin_step()) and moves a part of it, the next frames move the rest
+# (_move_some()), up to CHUNKS_MOST parts - as many as fit in one STEP at this
+# frame rate, so a phone at 30 a second still moves it all in one frame and
+# the crowd never slows. The picture is written once every part has moved,
+# and the walk between steps is drawn from that write (_since_write), so it
+# looks as before, a frame or two later. A frame that falls behind finishes
+# the step at once.
+const CHUNKS_MOST := 3
 # The grid the crowd is counted on, in px.
-const CELL := 24.0
+# TWO-THIRDS THE SIZE SINCE 0.148.0 (DRAW_SCALE): the owner, "it would be
+# more realistic if we made the slimes a bit smaller", and of two-thirds, "it
+# will look absolutely insane seeing them all on the screen". Every spacing
+# below shrank with the picture (16 was 24, ROOM 10 was 15, and so on), so the
+# crowd is as many slimes deep, packed into less floor.
+const CELL := 16.0
 # How hard a thick cell pushes, in px a second for each swarmling more than
 # its neighbour has.
 const PUSH := 14.0
@@ -101,20 +121,20 @@ const FACE_LEAD := 1.35
 # a hop drawn through the one above it.
 const SPREAD := 22.0
 # How many slimes a cell holds before those in it stop pressing on toward
-# the player (24 px is about two slimes' room).
+# the player (16 px is about two slimes' room).
 const CROWD_ROOM := 2
 # AND EACH ITS OWN ROOM, NEAR THE PLAYER (0.93.3): within ROOM_REACH of the
 # player - the crowd on screen - every slime keeps ROOM px from every other,
 # eased apart up to ROOM_PUSH px a second when two stand on one spot. Found
 # through a hash of ROOM-sized cells built each step for those near alone:
 # all three thousand, pair by pair, would cost a frame's work in GDScript.
-const ROOM := 15.0
+const ROOM := 10.0
 const ROOM_PUSH := 80.0
 const ROOM_REACH := 260.0
 # How close one comes to the player before it stops: it is touching them.
-const TOUCH := 14.0
+const TOUCH := 10.0
 # How near the arena's edge a slime may stand.
-const EDGE := 6.0
+const EDGE := 4.0
 # NOT BEHIND THE WALLS (0.96.0). The owner: "slimes are going behind walls".
 # A slime's picture is wider than its feet - 17 px to the left of them, 15 to
 # the right - and the side walls and the corridor's are y-sorted props drawn
@@ -122,13 +142,13 @@ const EDGE := 6.0
 # the wall. Held SIDE_EDGE from the side walls and HELD_OUT_SIDES further out
 # of the corridor, every body stays clear of them; the crowd still touches a
 # player against them (floor_point()).
-const SIDE_EDGE := 18.0
-const HELD_OUT_SIDES := 16.0
+const SIDE_EDGE := 12.0
+const HELD_OUT_SIDES := 11.0
 # And the back wall: a picture reaches PICTURE_TOP above the feet (a hop all
 # of it), so the slimes within that of the wall's foot are drawn by a second
 # MultiMesh sorted just in front of the wall (draw_in_front_of()) - over the
 # wall they stand before, as y-sorting would draw them.
-const PICTURE_TOP := 42.0
+const PICTURE_TOP := 28.0
 # A PLAYER AGAINST THE BACK WALL IS STILL ON THE FLOOR (0.94.2). The owner:
 # "enemies stop moving on top side of map in minigame". A player's origin is
 # 13 px over its feet, so against the back wall it stands at y 22 - over the
@@ -146,7 +166,7 @@ const TOUCH_SECONDS := 0.5
 # ranks, about 15 to 18 round a still player in a crowd of 300 (zz/crowdcount
 # measured 15, 17 and 18 at speeds 60, 110 and 175), at most TOUCH_MOST. One
 # who keeps moving leaves most of the crowd behind them.
-const BITE := 26.0
+const BITE := 17.0
 const TOUCH_MOST := 16
 # THE LAND'S EFFECT RIDES THE TOUCH (0.93.3, the owner: "we need to really
 # feel each elements effect"): a touch that hurts you also puts `touch_effect`
@@ -176,8 +196,9 @@ const FOCUS_GROUP := &"swarm_focus"
 const FOCUS_PROXIES := 160
 const FOCUS_REACH := 44.0
 const FOCUS_MARGIN := 24.0
-# Drawn the size of the Field's small slimes.
-const DRAW_SCALE := 1.0
+# Two-thirds the Field's small slimes (0.148.0): at the game's 3x zoom an art
+# pixel is two screen pixels, still whole.
+const DRAW_SCALE := 2.0 / 3.0
 # UNDER EVERYTHING STANDING: the player, the monsters and the walls draw over
 # the crowd (z 0), the floor under it (-10). One MultiMesh cannot be y-sorted
 # among them, and a horde over the player hides the one thing to watch.
@@ -240,6 +261,22 @@ var _free: PackedInt32Array = PackedInt32Array()
 var _step_left: float = 0.0
 var _touch_left: float = 0.0
 var _touching: int = 0
+# The step under way (THE STEP IN PARTS): the next slot to move (-1: none),
+# where it ends, how many a part, and what every part of it shares.
+var _chunk_at: int = -1
+var _chunk_end: int = 0
+var _chunk_size: int = 0
+var _st_target: Vector2 = Vector2.ZERO
+var _st_chasing: bool = false
+var _st_in_turns: bool = false
+var _st_sway: float = 0.0
+var _st_touching: int = 0
+var _kx0: float = INF
+var _kx1: float = -INF
+var _ky0: float = INF
+var _ky1: float = -INF
+# Seconds since the picture was last written: the walk between steps.
+var _since_write: float = 0.0
 var _effect_left: float = 0.0
 var _grid := PackedInt32Array()
 # Where the swarmlings in each cell stand, added up (for the middle of them).
@@ -694,17 +731,31 @@ func _process(delta: float) -> void:
 		if on_floor(point):
 			_others_now.append(floor_point(point))
 	_step_left -= delta
-	var steps: int = 0
-	while _step_left <= 0.0 and steps < 2:
+	_since_write += delta
+	var wrote: bool = false
+	if _chunk_at >= 0:
+		# A step under way goes on - all of what is left, if the next is due.
+		_move_some(_chunk_end - _chunk_at if _step_left <= 0.0 else _chunk_size)
+		if _chunk_at >= _chunk_end:
+			_end_step()
+			wrote = true
+	if _chunk_at < 0 and _step_left <= 0.0:
 		_step_left += STEP
-		_step(target, chasing)
-		steps += 1
+		_begin_step(target, chasing)
+		# Rounded down: the parts must all fit in one STEP, or the crowd slows.
+		var parts: int = clampi(floori(STEP / maxf(delta, 0.001) + 0.01), 1, CHUNKS_MOST)
+		_chunk_size = ceili(float(_chunk_end) / float(parts))
+		_move_some(_chunk_size)
+		if _chunk_at >= _chunk_end:
+			_end_step()
+			wrote = true
 	if _step_left < -STEP:
 		_step_left = 0.0
-	if steps > 0:
+	if wrote:
 		_write_buffer()
 		_place_proxies()
-	_material.set_shader_parameter("blend", clampf(1.0 - _step_left / STEP, 0.0, 1.0))
+		_since_write = 0.0
+	_material.set_shader_parameter("blend", clampf(_since_write / STEP, 0.0, 1.0))
 	# THE TOUCH, counted at each step and dealt on its own clock.
 	_touch_left -= delta
 	_effect_left = maxf(0.0, _effect_left - delta)
@@ -753,9 +804,24 @@ func _sway_msec() -> int:
 
 func _step(target: Vector2, chasing: bool) -> void:
 	"""One step of the whole crowd: count the grid, then move each one toward
-	the player and off where it is thick."""
+	the player and off where it is thick - all of it at once (the suite, the
+	benches; the game's _process() moves it in parts)."""
+	_begin_step(target, chasing)
+	_move_some(_high)
+	_end_step()
+
+
+func _begin_step(target: Vector2, chasing: bool) -> void:
+	"""A step's start: the grid and the near ones counted, once, for every
+	part of the move that follows (_move_some())."""
 	_step_n += 1
-	var in_turns: bool = is_inside_tree() and get_viewport().get_camera_2d() != null
+	_st_in_turns = is_inside_tree() and get_viewport().get_camera_2d() != null
+	_st_target = target
+	_st_chasing = chasing
+	_st_sway = float(_sway_msec()) * WANDER_RATE
+	_st_touching = 0
+	_chunk_at = 0
+	_chunk_end = _high
 	_grid.fill(0)
 	_sum_x.fill(0.0)
 	_sum_y.fill(0.0)
@@ -800,6 +866,45 @@ func _step(target: Vector2, chasing: bool) -> void:
 				near_n += 1
 	_near_n = near_n
 	_make_room(hx, hy, side)
+	# The corridor's rects, grown by HELD_OUT_SIDES once a step and not once a
+	# slime, and a box round them all a pixel wider (has_point() rounds the
+	# point to 32 bits): one outside the box is in none of them.
+	var kept_n: int = keep_out.size()
+	if _kept_rects.size() != kept_n:
+		_kept_rects.resize(kept_n)
+	_kx0 = INF
+	_kx1 = -INF
+	_ky0 = INF
+	_ky1 = -INF
+	for k in kept_n:
+		var grown: Rect2 = keep_out[k].grow_individual(HELD_OUT_SIDES, 0.0, HELD_OUT_SIDES, 0.0)
+		_kept_rects[k] = grown
+		_kx0 = minf(_kx0, grown.position.x - 1.0)
+		_kx1 = maxf(_kx1, grown.end.x + 1.0)
+		_ky0 = minf(_ky0, grown.position.y - 1.0)
+		_ky1 = maxf(_ky1, grown.end.y + 1.0)
+
+
+func _move_some(count: int) -> void:
+	"""Move the next `count` slots of the step under way (_begin_step()) -
+	THE STEP IN PARTS (0.148.0): the game moves a third of the crowd a frame,
+	so 5,000 is never one frame's whole work."""
+	if _chunk_at < 0:
+		return
+	var from: int = _chunk_at
+	var to: int = mini(_chunk_end, from + maxi(count, 0))
+	_chunk_at = to
+	var gw: int = _gw
+	var gh1: int = _gh - 1
+	var gw1: int = gw - 1
+	var tx: float = _st_target.x
+	var ty: float = _st_target.y
+	var chasing: bool = _st_chasing
+	var in_turns: bool = _st_in_turns
+	var kx0: float = _kx0
+	var kx1: float = _kx1
+	var ky0: float = _ky0
+	var ky1: float = _ky1
 	var left: float = arena.position.x + SIDE_EDGE
 	var right: float = arena.end.x - SIDE_EDGE
 	var top: float = arena.position.y + EDGE
@@ -807,29 +912,12 @@ func _step(target: Vector2, chasing: bool) -> void:
 	var stride: float = speed * STEP
 	var push: float = PUSH * STEP
 	var spread: float = SPREAD * STEP
-	var touching: int = 0
+	var touching: int = _st_touching
 	var others_now: PackedVector2Array = _others_now
 	var n_others: int = others_now.size()
-	var sway: float = float(_sway_msec()) * WANDER_RATE
+	var sway: float = _st_sway
 	var last_row: int = gh1 * gw
-	# The corridor's rects, grown by HELD_OUT_SIDES once a step and not once a
-	# slime, and a box round them all a pixel wider (has_point() rounds the
-	# point to 32 bits): one outside the box is in none of them.
-	var kept_n: int = keep_out.size()
-	if _kept_rects.size() != kept_n:
-		_kept_rects.resize(kept_n)
-	var kx0: float = INF
-	var kx1: float = -INF
-	var ky0: float = INF
-	var ky1: float = -INF
-	for k in kept_n:
-		var grown: Rect2 = keep_out[k].grow_individual(HELD_OUT_SIDES, 0.0, HELD_OUT_SIDES, 0.0)
-		_kept_rects[k] = grown
-		kx0 = minf(kx0, grown.position.x - 1.0)
-		kx1 = maxf(kx1, grown.end.x + 1.0)
-		ky0 = minf(ky0, grown.position.y - 1.0)
-		ky1 = maxf(ky1, grown.end.y + 1.0)
-	for i in _high:
+	for i in range(from, to):
 		var s: int = state[i]
 		if s == 0:
 			continue
@@ -968,7 +1056,13 @@ func _step(target: Vector2, chasing: bool) -> void:
 				facing[i] = 2 if my > 0.0 else 3
 		px[i] = x
 		py[i] = y
-	_touching = touching
+	_st_touching = touching
+
+
+func _end_step() -> void:
+	"""The step done: what it counted becomes the crowd's (the touch)."""
+	_touching = _st_touching
+	_chunk_at = -1
 
 
 func _make_room(hx: float, hy: float, side: int) -> void:
@@ -1364,8 +1458,9 @@ func _near_focus(i: int, foci_n: int) -> float:
 
 func _move_proxies() -> void:
 	"""Each stand-in onto its swarmling, where it is drawn this frame; the
-	rest out of the way."""
-	var blend: float = clampf(1.0 - _step_left / STEP, 0.0, 1.0)
+	rest out of the way. The walk is drawn from the last write (THE STEP IN
+	PARTS), and the stand-ins go where it is drawn."""
+	var blend: float = clampf(_since_write / STEP, 0.0, 1.0)
 	for p in _proxies.size():
 		var proxy: Node2D = _proxies[p]
 		var i: int = _held[p] if p < _held.size() else -1
