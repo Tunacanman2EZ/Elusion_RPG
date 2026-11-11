@@ -954,6 +954,11 @@ func _apply_event(event: Dictionary) -> void:
 			# BOSSES THAT SCALE (0.80.0): its health for who is fighting it.
 			if mirror != null and mirror.has_method("net_rescale"):
 				mirror.call("net_rescale", int(event.get("mh", 0)), int(event.get("hp", 0)))
+		"la":
+			# A BOSS'S ARENA (0.139.0): a hazard its leader made - the Light
+			# Keeper's flares (lightarena.gd hear() reads only what it knows).
+			if mirror != null and mirror.has_method("net_arena"):
+				mirror.call("net_arena", event)
 
 
 func _mirror_died(id: int, mirror: BaseEnemy) -> void:

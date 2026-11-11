@@ -337,6 +337,7 @@ const KITS := {
 	Element.Type.LIGHT: {
 		"shapes": [&"lance", &"ring", &"arc"],
 		"volleys": [[&"prism"], [&"prism"], [&"prism"]],
+		"arena": true,
 	},
 	Element.Type.WIND: {
 		"shapes": [&"arc", &"snare", &"sweep"],
@@ -1144,6 +1145,16 @@ var _aim_target: Node2D = null
 var _last_volley: StringName = &""
 # Swings since the last cast (SWINGS_BEFORE_CAST).
 var _swings_in_a_row: int = 0
+
+# THE ARENA THAT FIGHTS BACK (0.139.0): a kit with "arena" has one made beside
+# its fight once it is loose (_keep_arena()) - the Light Keeper's mirrors,
+# flares and eclipse, lightarena.gd - looked for every ARENA_LOOK_SECONDS. It
+# goes by itself with the boss. Never for a boss wearing another land's crown
+# (the Crowned has its own room).
+const LightArena := preload("res://src/enemies/lightarena.gd")
+const ARENA_LOOK_SECONDS := 0.5
+var _arena: Node2D = null
+var _arena_look: float = 0.0
 
 
 # =============================================================================
@@ -2022,6 +2033,43 @@ func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	if not net_mirror:
 		watch_runners(delta)
+	_keep_arena(delta)
+
+
+func _keep_arena(delta: float) -> void:
+	"""Its arena made once it is loose, on every game (THE ARENA THAT FIGHTS
+	BACK, above)."""
+	if _arena != null:
+		if not is_instance_valid(_arena):
+			_arena = null
+		return
+	_arena_look -= delta
+	if _arena_look > 0.0:
+		return
+	_arena_look = ARENA_LOOK_SECONDS
+	if crown_land >= 0 or not bool((KITS.get(current_element(), {}) as Dictionary).get("arena", false)):
+		return
+	if gated or _dying or _death_resolved:
+		return
+	_arena = LightArena.make(self)
+
+
+func arena() -> Node2D:
+	"""Its arena now, or null."""
+	return _arena if is_instance_valid(_arena) else null
+
+
+func arena_event(event: Dictionary) -> void:
+	"""(Leader, from its arena.) An arena hazard, for every screen - "la",
+	monstersync.gd."""
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, event)
+
+
+func net_arena(event: Dictionary) -> void:
+	"""(Follower, monstersync.gd's "la".) The leader's arena hazard, here."""
+	if arena() != null:
+		_arena.call(&"hear", event)
 
 
 func _velocity_of(body: Node) -> Vector2:

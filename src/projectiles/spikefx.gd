@@ -404,6 +404,20 @@ func puddles_for(element: int) -> Node2D:
 	return holder
 
 
+# THE ECLIPSE LIFTS THE RINGS (0.139.0): the Light Keeper's dark is drawn at
+# z 15 (lightarena.gd), over everything standing; a spike's warning has to be
+# seen in it, so while it falls the rings are drawn just above it.
+const RINGS_LIFTED_Z := 16
+
+
+func lift_rings(up: bool) -> void:
+	"""The rings over the eclipse's dark (`up`), or back among the floor."""
+	if _rings == null:
+		return
+	_rings.z_as_relative = not up
+	_rings.z_index = RINGS_LIFTED_Z if up else 0
+
+
 func show_tests() -> void:
 	"""Rings, sparks and pools drawn or not as the GM panel's lag tests say
 	(lagtests.gd). Only drawing: the spikes still warn, rise and hit."""

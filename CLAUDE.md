@@ -2729,6 +2729,84 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The Light Keeper's arena: mirrors, flares and the eclipse (0.139.0)
+
+The owner, of the Docs plan "Boss fights: arenas that fight back" (each of the
+six elemental bosses gets an arena that fights back, built one boss at a
+time, pictures first): "lets build it", and of the mirrors, "Yes, players
+break them". Pictured before building (light_arena_plan.png), then as built.
+`src/enemies/lightarena.gd` (no class_name), made by the boss.
+
+- **Made by its kit** (bossenemy.gd): `KITS[LIGHT]["arena"]`, and
+  `_keep_arena()` from `_physics_process` on every game, leader and
+  follower, every `ARENA_LOOK_SECONDS` (0.5) until there is one: loose (not
+  gated, not dying), its own element (never a boss wearing another land's
+  crown), in `ARENA_AREAS` (bossarena, endless; `everywhere` for the suite
+  and benches), with a bullet zone, never a Descent caster
+  (`descent_caster`). In the area's effects container as
+  `lightarena<net_id>`, y-sorted, so its panes sort with everyone.
+- **Phase one: four mirrors** (`Pane`, an inner class) round the room's
+  middle (the bullets' floor, `BulletField.bounds` - the Boss Arena's
+  (0, 0)): `PANE_SPOTS`, each angled so a spoke from the middle goes along
+  the room's side (`PANE_SENDS`). Skipped where its foot would be in a wall
+  or on something solid (the gauntlet's gate bars are layer 2 - the first
+  try put the top two in wave two's gates).
+- **The bounce costs an orb nothing**: a mirror is painted into the bullet
+  walls grid (`BulletZone.paint_mirror()`, value `MIRROR_FIRST` + k, never
+  over a wall; the scans skip those cells). `BulletField.step()` reads one
+  cell per orb as before (`wall_cell()`, `is_wall()` is now "== 1"); in a
+  mirror's cell, heading into its face from the side it is on, the orb's
+  velocity is reflected (`set_mirror()` gives the face), its curve turned
+  the other way, it stays where it was, it is reshaped once and drawn
+  `BOUNCED_COLOUR` (white). `bounces` lists the mirrors hit that step (the
+  panes glow).
+- **Breaking one**: `PANE_HITS` (4) blows of yours (any attack: the pane is
+  in "enemies" with a hurtbox on layer 8 and the stress-copy mark, as the
+  Endless's stand-ins; `can_be_aimed_at()` is false, so no aim picks it).
+  Broken: its cells open, its body (layer 2, solid while it stands) and
+  hurtbox go, LIGHT sparks burst (spikefx), `mirrors break` marked. Every
+  mirror grows back at the next phase (`_to_phase()`).
+- **The same on every screen**: the panes stand where the room says and the
+  phase is the boss's health. A break goes to the other games through the
+  LEVERS (`Presence.tell_lever()`; the pane is in "levers" with
+  `follow_pull()`), so the server needed nothing: the pane's name carries
+  the phase (`pane2p1`), so a pull from a phase gone by finds no pane.
+  Each game counts its own player's blows.
+- **Phase two: flares**: the leader's arena throws one near each player in
+  the fight every `FLARE_GAP` (3.0 s; 2.2 in phase three) and sends it as a
+  world event `"la"` (`arena_event()`; monstersync.gd `_apply_event` ->
+  `net_arena()` -> `hear()`, only near its boss). It swells
+  `FLARE_SWELL` (1.1 s, a ring showing its reach), then flashes: within
+  `FLARE_RADIUS` (52) a game's own player takes `FLARE_SHARE` (8%) of its
+  health as light, blamed "flare", and is dazzled. `flares flash` marked.
+- **Phase three: the eclipse**: a dark (`ECLIPSE_DARK` 0.86) falls over
+  `ECLIPSE_IN` (1.5 s) at z 15, lit round the boss, each standing mirror
+  and each player (a shader with up to 12 lights; **unshaded**, or the
+  room's own lights - the boss's glow - light the dark grey). Orbs (z 20),
+  flares (z 17) and the spikes' warning rings stay above it (spikefx.gd
+  `lift_rings()`, z 16 while it is dark): nothing that hurts is hidden.
+  A broken mirror's light goes out too. `eclipse falls` marked.
+- **Gone with its boss**: dying, freed or caged again, every pane
+  shatters, the dark lifts and it frees itself (`END_SECONDS`).
+- **Cheap**: the panes are drawn in quads only (`draw_primitive`) - Godot
+  draws a run of them in one call: four panes were 20 draw calls drawn with
+  lines, polygons and a circle, 1 in quads (zz/light/drawbench). In the
+  Boss Arena: 19 -> 28 draws in phase one, 25 -> 31 in phase three
+  (zz/light/realshot.gd BENCH=1); the bullet step unchanged.
+- **The readout and the lag tests**: letters F (flares flash), X (mirrors
+  break), E (eclipse falls); GM panel > Testing > LAG TESTS has a fifth
+  switch, Arena (`LagTests.hide_arena`): its mirrors, flares and dark not
+  drawn (they still bounce orbs and burn).
+- **And the readout's long lines fit** (from the owner's 0.138.0 readout):
+  the frame legend's label gives way before its number, the physics line
+  is a size smaller and says "physics tick", and a spike's cause is cut to
+  what its node count leaves (`_fit()`).
+
+Not yet played in a party: the breaks and flares are held by the suite, not
+by two games.
+
+`_test_the_light_arena()` (testrunner_11).
+
 ### The readout's lag points, markers and verdicts, and the lag tests (0.138.0)
 
 The owner's 0.137.5 video of the Boss Arena in his browser: 60 fps, draw

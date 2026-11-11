@@ -242,6 +242,7 @@ func _run_all() -> void:
 	await _test_the_gm_panel_comes_with_the_area()
 	await _test_spikes_drawn_together()
 	await _test_the_lag_points()
+	await _test_the_light_arena()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

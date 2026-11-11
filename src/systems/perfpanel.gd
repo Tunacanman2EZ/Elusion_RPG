@@ -270,9 +270,16 @@ func _draw() -> void:
 		var label: String = PART_NAMES[part]
 		if part == "physics" and int(split.get("ticks", 0)) > 0:
 			label = "physics, %s" % _ticks_text(float(split.get("ticks", 0.0)))
-		_text(font, Vector2(px + 14.0, py), "%s  %.1f ms" % [label, float(split.get(part, 0.0))], 12, TEXT)
+		# The label gives way, never the number (0.139.0: "waiting: screen,
+		# driver 6.8 ms" ran off the panel's edge in the owner's browser).
+		var amount: String = "  %.1f ms" % float(split.get(part, 0.0))
+		var column: float = (WIDTH - PAD - px - 14.0) if i % 2 == 1 else 196.0 - 18.0
+		label = _fit(font, label, 12, column - font.get_string_size(amount, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x)
+		_text(font, Vector2(px + 14.0, py), label + amount, 12, TEXT)
 	y += 34.0
-	_text(font, Vector2(PAD, y), str(d.get("ticks_line", "")), 11, SOFT)
+	# A size smaller, and cut to the panel if still too long (0.139.0:
+	# "graphics card not measured" ran off its edge).
+	_text(font, Vector2(PAD, y), _fit(font, str(d.get("ticks_line", "")), 10, WIDTH - 2.0 * PAD), 10, SOFT)
 
 	# ---- the world -----------------------------------------------------------------------
 	y = _section(font, y + 10.0, "THE WORLD")
@@ -422,8 +429,13 @@ func _spike_row(font: Font, y: float, spike: Dictionary, budget: float, hitch: f
 	_text(font, Vector2(PAD, y), "%.0f ms" % ms, 12, tone(ms, budget, hitch))
 	_text(font, Vector2(PAD + 50.0, y), str(spike.get("ago", "")), 11, SOFT)
 	draw_rect(Rect2(PAD + 116.0, y - 9.0, 9, 9), PART_COLOURS.get(str(spike.get("kind", "")), SOFT))
-	_text(font, Vector2(PAD + 130.0, y), str(spike.get("cause", "")), 11, TEXT)
+	# The cause cut to what the node count beside it leaves (0.139.0: "waiting:
+	# screen, driver 6.8 ms" ran off the panel's edge).
 	var nodes: String = str(spike.get("nodes", ""))
+	var room: float = WIDTH - 2.0 * PAD - 130.0
+	if nodes != "":
+		room -= font.get_string_size(nodes, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 8.0
+	_text(font, Vector2(PAD + 130.0, y), _fit(font, str(spike.get("cause", "")), 11, room), 11, TEXT)
 	if nodes != "":
 		_text(font, Vector2(PAD, y), nodes, 10, SOFT, HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 2.0 * PAD)
 	# What happened in that frame, under it.

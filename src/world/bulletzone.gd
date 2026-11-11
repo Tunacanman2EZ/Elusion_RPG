@@ -73,6 +73,10 @@
 # game's arrows stop on) finds a body. Built a few rows a frame after the area
 # loads, so loading does not hitch, and rebuilt around a spike door whenever
 # one rises or lowers, so a door that opens lets the orbs through too.
+#
+# MIRRORS ride in the same grid (0.139.0): the Light Keeper's arena paints a
+# standing mirror's cells (paint_mirror()), which turn an orb back instead of
+# ending it (BulletField, MIRRORS), and the scans never write over them.
 class_name BulletZone
 extends Node2D
 
@@ -419,6 +423,9 @@ func _scan_rows(from_row: int, to_row: int) -> void:
 	query.collide_with_areas = false
 	for cy in range(from_row, to_row):
 		for cx in _walls_size.x:
+			# A mirror's cell is the arena's, not the scan's (paint_mirror()).
+			if _walls[cy * _walls_size.x + cx] >= BulletField.MIRROR_FIRST:
+				continue
 			query.position = _walls_origin + Vector2(cx + 0.5, cy + 0.5) * WALL_CELL
 			_walls[cy * _walls_size.x + cx] = 1 if not space.intersect_point(query, 1).is_empty() else 0
 
@@ -442,6 +449,54 @@ func _on_door_changed(_is_raised: bool, door: Node) -> void:
 	query.collide_with_areas = false
 	for cy in range(maxi(first.y, 0), mini(last.y, _walls_size.y)):
 		for cx in range(maxi(first.x, 0), mini(last.x, _walls_size.x)):
+			if _walls[cy * _walls_size.x + cx] >= BulletField.MIRROR_FIRST:
+				continue
 			query.position = _walls_origin + Vector2(cx + 0.5, cy + 0.5) * WALL_CELL
 			_walls[cy * _walls_size.x + cx] = 1 if not space.intersect_point(query, 1).is_empty() else 0
 	field.set_walls(_walls, _walls_origin, WALL_CELL, _walls_size)
+
+
+# =============================================================================
+# MIRRORS (0.139.0)
+# =============================================================================
+
+# How far either side of a mirror's line its cells reach: enough that an orb
+# a frame's flight from crossing it diagonally still lands in one.
+const MIRROR_THICK: float = 3.0
+
+
+func paint_mirror(k: int, from: Vector2, to: Vector2, on: bool) -> int:
+	"""Mirror k (lightarena.gd) standing from `from` to `to`, in the grid
+	(`on`) or out of it: its cells hold BulletField.MIRROR_FIRST + k, so an
+	orb that reaches one is turned back off the mirror's face. Painted only
+	on open floor, never over a wall; taken out, only its own cells open
+	again. Answers how many cells it changed. No grid (a test world with no
+	floor), nothing."""
+	if _walls_size == Vector2i.ZERO or k < 0 or k >= BulletField.MIRRORS_MOST:
+		return 0
+	var mark: int = BulletField.MIRROR_FIRST + k
+	var along: Vector2 = to - from
+	var length: float = along.length()
+	var across: Vector2 = along.orthogonal().normalized() * MIRROR_THICK
+	var steps: int = maxi(1, ceili(length / 2.0))
+	var changed: int = 0
+	for n in steps + 1:
+		var on_line: Vector2 = from + along * (float(n) / float(steps))
+		for side in [-1.0, 0.0, 1.0]:
+			var at: Vector2 = on_line + across * float(side)
+			var cx: int = floori((at.x - _walls_origin.x) / WALL_CELL)
+			var cy: int = floori((at.y - _walls_origin.y) / WALL_CELL)
+			if cx < 0 or cy < 0 or cx >= _walls_size.x or cy >= _walls_size.y:
+				continue
+			var cell: int = cy * _walls_size.x + cx
+			if on and _walls[cell] == 0:
+				_walls[cell] = mark
+				changed += 1
+			elif not on and _walls[cell] == mark:
+				_walls[cell] = 0
+				changed += 1
+	if changed > 0:
+		if on:
+			field.set_mirror(k, (from + to) * 0.5, along.orthogonal())
+		field.set_walls(_walls, _walls_origin, WALL_CELL, _walls_size)
+	return changed

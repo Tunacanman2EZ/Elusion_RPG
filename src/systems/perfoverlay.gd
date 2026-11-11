@@ -175,6 +175,10 @@ const MARK_LETTERS := {
 	&"loot bags": "B",
 	&"key or click": "K",
 	&"shaders warm": "H",
+	# A boss's arena (0.139.0, lightarena.gd).
+	&"flares flash": "F",
+	&"mirrors break": "X",
+	&"eclipse falls": "E",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many
@@ -1013,7 +1017,7 @@ func panel_data(now_msec: int) -> Dictionary:
 			if _loads == 0 else "%s, the last %.0f ms into %s" % [_thousands(_loads), _last_load_ms,
 				AreaRegistry.display_name(_last_load_area) if _last_load_area != "" else "an area"]),
 		"split": split,
-		"ticks_line": "a physics tick %.2f ms (worst %.2f) of %.2f   ·   graphics card %s" % [_physics_ms(),
+		"ticks_line": "physics tick %.2f ms (worst %.2f) of %.2f  ·  graphics card %s" % [_physics_ms(),
 			_worst_physics_ms, 1000.0 / float(Engine.physics_ticks_per_second),
 			("%.2f ms" % gpu) if gpu > 0.0 else "not measured"],
 		"world": [

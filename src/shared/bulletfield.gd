@@ -162,6 +162,22 @@ var _walls_origin: Vector2 = Vector2.ZERO
 var _walls_cell: float = 8.0
 var _walls_size: Vector2i = Vector2i.ZERO
 
+# MIRRORS (0.139.0, the Light Keeper's arena - lightarena.gd). A cell of the
+# wall grid holding MIRROR_FIRST + k is mirror k's: a bullet whose centre
+# enters it heading into the mirror's face, from either side, is turned back
+# off it (its velocity reflected across the face, its curve turned the other
+# way) and stays where it was, outside - so it costs a bullet nothing it did
+# not already pay, one cell read. A bullet turned is drawn BOUNCED_COLOUR from
+# then on, so a lane of light from a mirror reads apart from the boss's own.
+# `bounces` is which mirror each bounce of the last step() was off (the arena
+# flashes them); cleared at the start of the next.
+const MIRROR_FIRST: int = 2
+const MIRRORS_MOST: int = 8
+const BOUNCED_COLOUR := Color(1.0, 1.0, 1.0)
+var bounces: PackedInt32Array = PackedInt32Array()
+var _mirror_point: PackedVector2Array = PackedVector2Array()
+var _mirror_normal: PackedVector2Array = PackedVector2Array()
+
 
 func _ready() -> void:
 	_pos.resize(capacity)
@@ -240,14 +256,32 @@ func set_walls(cells: PackedByteArray, origin: Vector2, cell: float, size: Vecto
 	_walls_size = size
 
 
+func set_mirror(k: int, point: Vector2, normal: Vector2) -> void:
+	"""Mirror k's face: a point on it and the way it faces (either way - a
+	mirror turns a bullet back from both sides). Its cells are painted into
+	the grid by BulletZone.paint_mirror()."""
+	if k < 0 or k >= MIRRORS_MOST:
+		return
+	if _mirror_point.size() < MIRRORS_MOST:
+		_mirror_point.resize(MIRRORS_MOST)
+		_mirror_normal.resize(MIRRORS_MOST)
+	_mirror_point[k] = point
+	_mirror_normal[k] = normal.normalized()
+
+
 func is_wall(at: Vector2) -> bool:
+	return wall_cell(at) == 1
+
+
+func wall_cell(at: Vector2) -> int:
+	"""What the grid holds at `at`: 0 open, 1 solid, MIRROR_FIRST + k mirror k."""
 	if _walls.is_empty():
-		return false
+		return 0
 	var cx: int = floori((at.x - _walls_origin.x) / _walls_cell)
 	var cy: int = floori((at.y - _walls_origin.y) / _walls_cell)
 	if cx < 0 or cy < 0 or cx >= _walls_size.x or cy >= _walls_size.y:
-		return false
-	return _walls[cy * _walls_size.x + cx] != 0
+		return 0
+	return _walls[cy * _walls_size.x + cx]
 
 
 func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool = false,
@@ -375,6 +409,7 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 	hits.clear()
 	hit_from.clear()
 	hit_source.clear()
+	bounces.clear()
 	var grazes: int = 0
 	var area: Rect2 = bounds
 	var walled: bool = not _walls.is_empty()
@@ -413,9 +448,29 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 			at = _pos[i] + velocity * delta
 		var age: float = _age[i] + delta
 		var drawn: Vector2 = at if _sway_rate[i] == 0.0 else _drawn(i, at, velocity, age)
-		if age > _life[i] or not area.has_point(drawn) or (walled and is_wall(drawn)):
+		var cell: int = wall_cell(drawn) if walled else 0
+		if age > _life[i] or not area.has_point(drawn) or cell == 1:
 			_remove(i)
 			continue
+		var reshape: bool = turn != 0.0 or brake > 0.0
+		if cell >= MIRROR_FIRST and cell - MIRROR_FIRST < _mirror_normal.size():
+			# MIRRORS (see the top): turned back only heading into the face
+			# from the side it is on, and kept where it was, outside.
+			var k: int = cell - MIRROR_FIRST
+			var face: Vector2 = _mirror_normal[k]
+			var into: float = velocity.dot(face)
+			if into * (_pos[i] - _mirror_point[k]).dot(face) < 0.0:
+				velocity -= 2.0 * into * face
+				_vel[i] = velocity
+				_turn[i] = -turn
+				at = _pos[i]
+				drawn = at if _sway_rate[i] == 0.0 else _drawn(i, at, velocity, age)
+				bounces.append(k)
+				var tinted: int = i * STRIDE
+				_buffer[tinted + 8] = BOUNCED_COLOUR.r
+				_buffer[tinted + 9] = BOUNCED_COLOUR.g
+				_buffer[tinted + 10] = BOUNCED_COLOUR.b
+				reshape = true
 		var reach: float = _radius[i] + target_radius
 		var gap_squared: float = drawn.distance_squared_to(target)
 		if gap_squared < reach * reach and not untouchable:
@@ -434,11 +489,12 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var o: int = i * STRIDE
 		_buffer[o + 3] = roundf(drawn.x)
 		_buffer[o + 7] = roundf(drawn.y)
-		# A curving bullet turns, a slowing one rounds off; a straight one
-		# keeps the shape it was given. _shape(), written out here: this runs
+		# A curving bullet turns, a slowing one rounds off, a bounced one turns
+		# once; a straight one keeps the shape it was given. _shape(), written
+		# out here: this runs
 		# for every curving bullet every frame, and a call costs more than the
 		# sums (the bench's stress test, 2,652 at once).
-		if turn != 0.0 or brake > 0.0:
+		if reshape:
 			var size: float = BIG_SIZE if _radius[i] > SMALL_RADIUS else SMALL_SIZE
 			var fast: float = velocity.length()
 			if fast >= STRETCH_SPEED:

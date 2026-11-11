@@ -12,6 +12,8 @@ extends RefCounted
 #   hide_sparks  their bursts of sparks (spikefx.gd's sparks)
 #   hide_pools   the pools they leave (spikefx.gd's holders)
 #   lights_off   every light in the area (Light2D.enabled; put back after)
+#   hide_arena   a boss's arena (0.139.0, lightarena.gd): its mirrors, flares
+#                and the dark (they still turn orbs and burn)
 #
 # TRANSIENT, as God mode is: nothing is saved, and a restart has them all off.
 # Hiding is only drawing - the spikes still warn, rise and hit, the pools
@@ -26,10 +28,12 @@ static var hide_rings: bool = false
 static var hide_sparks: bool = false
 static var hide_pools: bool = false
 static var lights_off: bool = false
+static var hide_arena: bool = false
 
 
 static func set_test(test: String, on: bool, tree: SceneTree) -> void:
-	"""One test on or off ("rings", "sparks", "pools", "lights"), now."""
+	"""One test on or off ("rings", "sparks", "pools", "lights", "arena"),
+	now."""
 	match test:
 		"rings":
 			hide_rings = on
@@ -39,11 +43,13 @@ static func set_test(test: String, on: bool, tree: SceneTree) -> void:
 			hide_pools = on
 		"lights":
 			lights_off = on
+		"arena":
+			hide_arena = on
 	apply(tree)
 
 
 static func any_on() -> bool:
-	return hide_rings or hide_sparks or hide_pools or lights_off
+	return hide_rings or hide_sparks or hide_pools or lights_off or hide_arena
 
 
 static func names_on() -> PackedStringArray:
@@ -58,12 +64,14 @@ static func names_on() -> PackedStringArray:
 		out.append("pools off")
 	if lights_off:
 		out.append("lights off")
+	if hide_arena:
+		out.append("arena off")
 	return out
 
 
 static func apply(tree: SceneTree) -> void:
-	"""Every spikefx.gd in the tree drawn or not as the tests say, and the
-	area's lights out or back as they were."""
+	"""Every spikefx.gd and boss arena in the tree drawn or not as the tests
+	say, and the area's lights out or back as they were."""
 	if tree == null:
 		return
 	for fx in tree.get_nodes_in_group(GROUP):

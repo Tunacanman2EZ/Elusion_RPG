@@ -868,8 +868,8 @@ func _test_the_lag_points() -> void:
 	if button != null:
 		button.button_pressed = true
 	var strip: Array = gm.call("active_now")
-	check("the GM panel's Testing tab has the four under LAG TESTS, toggles in a row; one on is on the strip",
-		grid != null and grid.find_children("lag*button", "Button", false, false).size() == 4
+	check("the GM panel's Testing tab has the five under LAG TESTS (the arena's since 0.139.0), toggles in a row; one on is on the strip",
+		grid != null and grid.find_children("lag*button", "Button", false, false).size() == 5
 		and button != null and button.toggle_mode
 		and Lag.hide_sparks and strip.has("Sparks Off"), strip)
 	if button != null:
@@ -880,6 +880,7 @@ func _test_the_lag_points() -> void:
 	Lag.hide_sparks = false
 	Lag.hide_pools = false
 	Lag.lights_off = false
+	Lag.hide_arena = false
 	PerfOverlay.set_shown(was_shown)
 	await get_tree().process_frame
 	print("  (the readout's lag points: done)")
@@ -899,3 +900,234 @@ func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 
 func _chunk_made(helper: Node, key: Vector2i) -> bool:
 	return (helper.get("_made") as Dictionary).has(key)
+
+
+# =============================================================================
+# THE LIGHT KEEPER'S ARENA (0.139.0)
+# =============================================================================
+
+class ArenaDummy extends CharacterBody2D:
+	# A player for the arena's flares: in their group, with the health a
+	# flare takes its share of, and a take_damage() that writes it down.
+	var taken: Array = []
+	var max_hp: int = 1000
+	var is_dying: bool = false
+
+	func _init() -> void:
+		collision_layer = 4
+		collision_mask = 0
+		add_to_group(&"player")
+
+	func take_damage(amount: int, element: int = 0) -> void:
+		taken.append([amount, element])
+
+
+func _test_the_light_arena() -> void:
+	section("THE LIGHT KEEPER'S ARENA - MIRRORS, FLARES, THE ECLIPSE (0.139.0)")
+	# The owner, of the Docs plan "Boss fights: arenas that fight back": "lets
+	# build it", and of the mirrors: "Yes, players break them".
+	const Arena := preload("res://src/enemies/lightarena.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+
+	# THE BULLETS: a mirror cell turns an orb back off its face, a wall ends it.
+	var field := BulletField.new()
+	add_child(field)
+	field.bounds = Rect2(0, 0, 160, 160)
+	var grid := PackedByteArray()
+	grid.resize(20 * 20)
+	for cy in 20:
+		grid[cy * 20 + 15] = 1
+	for cx in range(2, 12):
+		grid[10 * 20 + cx] = BulletField.MIRROR_FIRST + 1
+	field.set_walls(grid, Vector2.ZERO, 8.0, Vector2i(20, 20))
+	field.set_mirror(1, Vector2(56, 84), Vector2(0, 1))
+	field.spawn(Vector2(40, 60), PI * 0.5 + 0.3, 60.0, Color(1, 0.9, 0.5), false, 0.0, 0.0, 6.0, 5, Element.Type.LIGHT)
+	var off_it: Array = []
+	var curve: float = 0.0
+	for n in 30:
+		field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+		for k in field.bounces:
+			off_it.append(k)
+	var turned: Vector2 = field.velocity_of(0) if field.count > 0 else Vector2.ZERO
+	curve = field._turn[0] if field.count > 0 else 1.0
+	check("an orb reaching a mirror's cell is turned back off its face, once, stays in the air and is drawn white",
+		field.count == 1 and off_it == [1] and turned.y < 0.0 and is_equal_approx(turned.length(), 60.0)
+		and curve == 0.0 and field._buffer[8] == 1.0 and field._buffer[9] == 1.0 and field._buffer[10] == 1.0,
+		[field.count, off_it, turned])
+	field.clear()
+	field.spawn(Vector2(100, 20), 0.0, 80.0, Color.WHITE)
+	field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+	var flying: int = field.count
+	for n in 10:
+		field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+	check("  a wall still ends one", flying == 1 and field.count == 0, [flying, field.count])
+	field.queue_free()
+
+	# THE ARENA, in a world of its own far from everything.
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	zone._start_walls()
+	zone.build_all_walls()
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(60, 120)
+	var boss: Node2D = (load("res://scene/enemy/lightboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(0, -30)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Arena.everywhere = false
+	check("no arena outside the Boss Arena and the Endless", not Arena.wanted(boss))
+	Arena.everywhere = true
+	boss.set_meta(&"descent_caster", true)
+	check("  nor for a Descent's hidden caster", not Arena.wanted(boss))
+	boss.remove_meta(&"descent_caster")
+	check("  only the Light Keeper's kit has one", bool(BossEnemy.KITS[Element.Type.LIGHT].get("arena", false))
+		and BossEnemy.KITS.keys().filter(func(e): return bool(BossEnemy.KITS[e].get("arena", false))).size() == 1)
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null:
+		check("the loose Light Keeper makes its arena", false)
+		Arena.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	var panes: Array = arena.get("panes")
+	var named: bool = true
+	var marked: bool = true
+	for k in panes.size():
+		var pane: Node2D = panes[k]
+		named = named and pane != null and str(pane.name) == "pane%dp0" % k
+		marked = marked and pane != null and pane.is_in_group(&"enemies") and pane.is_in_group(&"levers") \
+			and pane.has_meta(&"stress_copy") and not bool(pane.call("can_be_aimed_at"))
+	check("the loose Light Keeper makes its arena in the area's effects, named for the levers",
+		arena.get_parent() == ground and str(arena.name) == "lightarena0" and arena.is_in_group(Lag.GROUP), arena.name)
+	check("  four mirrors, \"pane<k>p<phase>\", in enemies and levers, stress-marked, never aimed at",
+		panes.size() == 4 and int(arena.call("standing")) == 4 and named and marked)
+	var cells: Array = [0, 0, 0, 0]
+	for v in zone._walls:
+		if v >= BulletField.MIRROR_FIRST and v < BulletField.MIRROR_FIRST + 4:
+			cells[v - BulletField.MIRROR_FIRST] += 1
+	check("  each painted into the bullets' walls", cells.all(func(c): return c >= 10), cells)
+	var middle: Vector2 = zone.field.bounds.get_center()
+	var sends: bool = true
+	for k in panes.size():
+		var pane: Node2D = panes[k]
+		var face: Vector2 = (pane.get("half") as Vector2).orthogonal().normalized()
+		var spoke: Vector2 = (pane.global_position - middle).normalized()
+		var off: Vector2 = spoke - 2.0 * spoke.dot(face) * face
+		sends = sends and off.dot(Arena.PANE_SENDS[k]) > 0.99
+	check("  each angled to send a spoke from the middle along the room's side", sends)
+	var target: Node2D = panes[0]
+	zone.field.spawn(middle, (target.global_position - middle).angle(), 90.0, Color.WHITE)
+	var bounced: bool = false
+	for n in 60:
+		zone.field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+		if zone.field.bounces.has(0):
+			bounced = true
+			break
+	check("  an orb from the middle comes off the first down the room's side",
+		bounced and zone.field.velocity_of(zone.field.count - 1).normalized().dot(Vector2(0, 1)) > 0.99)
+	zone.field.clear()
+
+	# BREAKING ONE: your blows, or somebody else's game's.
+	for n in Arena.PANE_HITS - 1:
+		target.call("take_damage", 10.0)
+	var held: bool = not bool(target.get("broken")) and int(target.get("hits")) == Arena.PANE_HITS - 1
+	target.call("take_damage", 10.0)
+	var left: int = 0
+	for v in zone._walls:
+		if v == BulletField.MIRROR_FIRST:
+			left += 1
+	check("%d blows break a mirror: its cells open, it is no longer counted standing" % Arena.PANE_HITS,
+		held and bool(target.get("broken")) and left == 0 and int(arena.call("standing")) == 3, [held, left])
+	(panes[1] as Node).call("follow_pull", false)
+	var kept: bool = not bool((panes[1] as Node).get("broken"))
+	(panes[1] as Node).call("follow_pull", true)
+	check("  another game's break (a lever pull, on) breaks it here too; an off pull does nothing",
+		kept and bool((panes[1] as Node).get("broken")))
+
+	# PHASE TWO: every mirror again, and the leader's flares.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.call("_process", 0.7)
+	var regrown: bool = int(arena.call("standing")) == 4 and str(target.name) == "pane0p1" \
+		and int(target.get("hits")) == 0
+	var flares: Array = arena.get("flares")
+	var near: bool = flares.size() == 1 and (flares[0][0] as Vector2).distance_to(me.global_position) <= Arena.FLARE_FURTHEST + 16.0
+	check("phase two: every mirror stands again under the phase's name, and the leader throws a flare near each player",
+		regrown and near, [regrown, flares])
+	flares.clear()
+	arena.set("_flare_clock", 99.0)
+	arena.call("add_flare", me.global_position)
+	arena.call("add_flare", me.global_position + Vector2(200, 0))
+	arena.call("_process", Arena.FLARE_SWELL + 0.05)
+	Hits.take()
+	var share: int = roundi(1000.0 * Arena.FLARE_SHARE)
+	check("  a flare flashes after its swell: near it, a share of your health as light; further off, nothing",
+		me.taken == [[share, Element.Type.LIGHT]], me.taken)
+	flares.clear()
+	arena.call("hear", {"h": "flare", "x": me.global_position.x, "y": me.global_position.y})
+	arena.call("hear", {"h": "flare", "x": origin.x + Arena.FLARE_REACH + 300.0, "y": origin.y})
+	arena.call("hear", {"h": "mirror", "x": me.global_position.x, "y": me.global_position.y})
+	check("  a follower makes the leader's flare where it was put - near its boss, and nothing it does not know",
+		flares.size() == 1, flares.size())
+	flares.clear()
+
+	# PHASE THREE: the eclipse.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	for n in 4:
+		arena.call("_process", 0.5)
+	var fx: Node2D = Fx.of(ground)
+	var rings: CanvasItem = fx.get("_rings")
+	var dark: CanvasItem = arena.get_node("eclipse") as CanvasItem
+	var lit: int = int((arena.get("_dark_material") as ShaderMaterial).get_shader_parameter(&"count"))
+	check("phase three: the dark falls, lit round the boss, each mirror and each player; the spikes' rings above it",
+		is_equal_approx(float(arena.get("eclipse")), 1.0) and dark.visible and lit == 6
+		and rings.z_index == Fx.RINGS_LIFTED_Z and not rings.z_as_relative, [arena.get("eclipse"), lit, rings.z_index])
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not target.visible and not dark.visible and not (arena.get_node("flares") as CanvasItem).visible
+	var said: bool = Lag.names_on().has("arena off")
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides it all (and says so), and puts it back",
+		hidden and said and target.visible and dark.visible)
+	boss.set("hp", int(boss.get("max_hp")))
+	for n in 3:
+		arena.call("_process", 0.5)
+	check("  back to full health, it lifts and the rings go back among the floor",
+		float(arena.get("eclipse")) == 0.0 and not dark.visible and rings.z_index == 0 and rings.z_as_relative)
+
+	# GONE WITH ITS BOSS.
+	boss.set("_dying", true)
+	arena.call("_process", 0.1)
+	var painted: int = 0
+	for v in zone._walls:
+		if v >= BulletField.MIRROR_FIRST:
+			painted += 1
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, every mirror shatters, the bullets' walls are as they were, and it goes",
+		int(arena.call("standing")) == 0 and painted == 0 and arena.is_queued_for_deletion(), [painted])
+
+	# AND ON THE WIRE, AND ON THE READOUT.
+	var sync_src: String = FileAccess.get_file_as_string("res://src/world/monstersync.gd")
+	var apply_body: String = _func_body(sync_src, "func _apply_event(")
+	check("the leader's arena hazard (\"la\") reaches a follower's boss (net_arena)",
+		apply_body.contains("\"la\":") and apply_body.contains("\"net_arena\""))
+	check("  and the readout letters the arena's marks",
+		PerfOverlay.MARK_LETTERS.get(&"flares flash") == "F" and PerfOverlay.MARK_LETTERS.get(&"mirrors break") == "X"
+		and PerfOverlay.MARK_LETTERS.get(&"eclipse falls") == "E")
+	Arena.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Light Keeper's arena: done)")

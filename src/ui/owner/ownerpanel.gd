@@ -623,6 +623,7 @@ const LAG_TESTS := [
 	["sparks", "Sparks", "Hides the sparks spikes throw."],
 	["pools", "Pools", "Hides the pools spikes leave."],
 	["lights", "Lights", "Puts out every light in the area."],
+	["arena", "Arena", "Hides a boss arena's mirrors, flares and dark."],
 ]
 const HINT_COLOUR := Color(0.6, 0.56, 0.48)
 const SECTION_COLOUR := Color(0.82, 0.7, 0.45)
@@ -703,9 +704,10 @@ func _dress_testing() -> void:
 
 
 func _add_lag_tests(testing: Node, at: int) -> void:
-	"""LAG TESTS and its four toggles, all on one row: the window holds its
-	tallest tab, and this tab had three pixels to spare (two hints above
-	went to one line each to make the row's room)."""
+	"""LAG TESTS and its toggles (five since 0.139.0, the boss arena's), all
+	on one row: the window holds its tallest tab, and this tab had three
+	pixels to spare (two hints above went to one line each to make the
+	row's room)."""
 	var row := HBoxContainer.new()
 	row.name = "laggrid"
 	row.add_theme_constant_override("separation", 6)
@@ -744,7 +746,7 @@ func _sync_lag_tests() -> void:
 	if grid == null:
 		return
 	var on: Dictionary = {"rings": LagTests.hide_rings, "sparks": LagTests.hide_sparks,
-		"pools": LagTests.hide_pools, "lights": LagTests.lights_off}
+		"pools": LagTests.hide_pools, "lights": LagTests.lights_off, "arena": LagTests.hide_arena}
 	for test in LAG_TESTS:
 		var button: Button = grid.find_child("lag%sbutton" % test[0], true, false) as Button
 		if button != null:
