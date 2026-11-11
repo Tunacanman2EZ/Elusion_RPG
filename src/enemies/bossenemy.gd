@@ -337,11 +337,12 @@ const KITS := {
 	Element.Type.LIGHT: {
 		"shapes": [&"lance", &"ring", &"arc"],
 		"volleys": [[&"prism"], [&"prism"], [&"prism"]],
-		"arena": true,
+		"arena": &"light",
 	},
 	Element.Type.WIND: {
 		"shapes": [&"arc", &"snare", &"sweep"],
 		"volleys": [[&"gale"], [&"gale"], [&"gale", &"vortex"]],
+		"arena": &"wind",
 	},
 	Element.Type.WATER: {
 		"shapes": [&"cage", &"snare", &"ladder"],
@@ -1147,11 +1148,14 @@ var _last_volley: StringName = &""
 var _swings_in_a_row: int = 0
 
 # THE ARENA THAT FIGHTS BACK (0.139.0): a kit with "arena" has one made beside
-# its fight once it is loose (_keep_arena()) - the Light Keeper's mirrors,
-# flares and eclipse, lightarena.gd - looked for every ARENA_LOOK_SECONDS. It
-# goes by itself with the boss. Never for a boss wearing another land's crown
-# (the Crowned has its own room).
+# its fight once it is loose (_keep_arena()), from ARENAS - the Light Keeper's
+# mirrors, flares and eclipse (lightarena.gd), the Wind boss's crosswind,
+# gusts and tornado (windarena.gd, 0.140.0) - looked for every
+# ARENA_LOOK_SECONDS. It goes by itself with the boss. Never for a boss
+# wearing another land's crown (the Crowned has its own room).
 const LightArena := preload("res://src/enemies/lightarena.gd")
+const WindArena := preload("res://src/enemies/windarena.gd")
+const ARENAS := {&"light": LightArena, &"wind": WindArena}
 const ARENA_LOOK_SECONDS := 0.5
 var _arena: Node2D = null
 var _arena_look: float = 0.0
@@ -2047,11 +2051,12 @@ func _keep_arena(delta: float) -> void:
 	if _arena_look > 0.0:
 		return
 	_arena_look = ARENA_LOOK_SECONDS
-	if crown_land >= 0 or not bool((KITS.get(current_element(), {}) as Dictionary).get("arena", false)):
+	if crown_land >= 0:
 		return
-	if gated or _dying or _death_resolved:
+	var kind: StringName = StringName(str((KITS.get(current_element(), {}) as Dictionary).get("arena", "")))
+	if not ARENAS.has(kind) or gated or _dying or _death_resolved:
 		return
-	_arena = LightArena.make(self)
+	_arena = (ARENAS[kind] as GDScript).call(&"make", self)
 
 
 func arena() -> Node2D:

@@ -994,8 +994,9 @@ func _test_the_light_arena() -> void:
 	boss.set_meta(&"descent_caster", true)
 	check("  nor for a Descent's hidden caster", not Arena.wanted(boss))
 	boss.remove_meta(&"descent_caster")
-	check("  only the Light Keeper's kit has one", bool(BossEnemy.KITS[Element.Type.LIGHT].get("arena", false))
-		and BossEnemy.KITS.keys().filter(func(e): return bool(BossEnemy.KITS[e].get("arena", false))).size() == 1)
+	check("  the Light Keeper's kit has its arena (and the Wind boss's, 0.140.0), no other yet",
+		BossEnemy.KITS[Element.Type.LIGHT].get("arena") == &"light" and BossEnemy.KITS[Element.Type.WIND].get("arena") == &"wind"
+		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 2)
 	boss.call("_keep_arena", 1.0)
 	var arena: Node2D = boss.call("arena")
 	if arena == null:
@@ -1131,3 +1132,178 @@ func _test_the_light_arena() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  (the Light Keeper's arena: done)")
+
+
+func _test_the_wind_arena() -> void:
+	section("THE WIND BOSS'S ARENA - CROSSWIND, WINDBREAKS, GUSTS, THE TORNADO (0.140.0)")
+	# The owner: "great lets build the next", and of the windbreaks, "Wind
+	# only": they stop the wind and walking, never an orb.
+	const Arena := preload("res://src/enemies/windarena.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Aim := preload("res://src/shared/targets.gd")
+
+	# THE BULLETS FEEL IT: a flying orb bends, a mine lies still, a swirl turns.
+	var field := BulletField.new()
+	add_child(field)
+	field.bounds = Rect2(-500, -500, 1000, 1000)
+	field.wind = Vector2(0, 100)
+	field.spawn(Vector2.ZERO, 0.0, 100.0, Color.WHITE)
+	field.spawn_settling(Vector2(200, 0), 0.0, 50.0, Color.WHITE, 10.0, 3.0, 1, 0)
+	for n in 40:
+		field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+	var bent: Vector2 = field.velocity_of(0)
+	var mine: Vector2 = field.velocity_of(1)
+	check("the wind bends an orb in flight and leaves a mine lying still",
+		bent.y > 150.0 and is_equal_approx(bent.x, 100.0) and mine == Vector2.ZERO, [bent, mine])
+	field.clear()
+	field.wind = Vector2.ZERO
+	field.swirl_at = Vector2(0, 0)
+	field.swirl_radius = 50.0
+	field.swirl_rate = 2.0
+	field.spawn(Vector2(10, 0), 0.0, 1.0, Color.WHITE)
+	field.spawn(Vector2(300, 0), 0.0, 1.0, Color.WHITE)
+	field.step(0.5, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+	check("  and a swirl turns what is inside it, nothing outside",
+		absf(field.velocity_of(0).angle() - 1.0) < 0.01 and absf(field.velocity_of(1).angle()) < 0.001,
+		[field.velocity_of(0).angle(), field.velocity_of(1).angle()])
+	field.queue_free()
+
+	# THE ARENA.
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	zone._start_walls()
+	zone.build_all_walls()
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 150)
+	var fx: Node = FX.attach(me)
+	var boss: Node2D = (load("res://scene/enemy/windboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(-115, -105)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null or arena.get_script() != Arena:
+		check("the loose Wind boss makes its arena", false, arena)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	var middle: Vector2 = zone.field.bounds.get_center()
+	var breaks: Array = arena.get("breaks")
+	var solid: bool = true
+	for pair in breaks:
+		for pillar in pair:
+			var body: CollisionObject2D = (pillar as Node).get_node("body") as CollisionObject2D
+			solid = solid and body.collision_layer == Arena.BODY_LAYER and body.collision_mask == 0
+	# The pillars reach the physics world on its next frame.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	zone._rows_built = 0
+	zone.build_all_walls()
+	var orbs_pass: bool = true
+	for k in breaks.size():
+		orbs_pass = orbs_pass and not zone.field.is_wall(middle + Arena.BREAK_SPOTS[k] + Vector2(Arena.BREAK_GAP, -6))
+	check("the loose Wind boss makes its arena, with two windbreaks of two crypt pillars each",
+		str(arena.name) == "windarena0" and arena.get_parent() == ground and int(arena.call("standing")) == 2
+		and breaks.all(func(p): return (p as Array).size() == 2), arena.name)
+	check("  solid to walking (the walls layer), never to orbs (no bullet wall under them)", solid and orbs_pass)
+
+	# THE CROSSWIND, turned by the leader and carrying you.
+	arena.call("_process", 0.05)
+	var to: float = float(arena.get("angle_to"))
+	var eighth: float = fposmod(to, TAU / 8.0)
+	for n in 30:
+		arena.call("_process", 0.05)
+	var way: Vector2 = Vector2.from_angle(float(arena.get("angle")))
+	check("the leader turns the wind one of eight ways; it comes round, and bends the orbs that way",
+		minf(eighth, TAU / 8.0 - eighth) < 0.001 and absf(angle_difference(float(arena.get("angle")), to)) < 0.001
+		and zone.field.wind.is_equal_approx(way * Arena.ORB_BEND), [to, arena.get("angle")])
+	var drifting: Vector2 = fx.get("drift_velocity")
+	check("  out in it, you are carried along at its strength (a drift, renewed every frame)",
+		float(fx.get("drift_left")) > 0.0 and drifting.is_equal_approx(way * float(Arena.WIND_DRIFT[0])), drifting)
+	arena.call("hear", {"h": "wind", "a": 0.0})
+	for n in 30:
+		arena.call("_process", 0.05)
+	var lee: Vector2 = middle + Arena.BREAK_SPOTS[0] + Vector2(30, 0)
+	var calm: bool = bool(arena.call("sheltered", lee)) and not bool(arena.call("sheltered", lee - Vector2(60, 0))) \
+		and not bool(arena.call("sheltered", lee + Vector2(Arena.LEE_LONG, 0)))
+	me.global_position = lee
+	fx.set("drift_left", 0.0)
+	arena.call("_process", 0.05)
+	check("  a follower turns it when told; behind a windbreak, down the wind, the air is calm and nothing carries you",
+		calm and float(fx.get("drift_left")) == 0.0)
+
+	# PHASE TWO: a gust lane through you.
+	me.global_position = origin + Vector2(0, 150)
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.call("_process", 0.9)
+	var gusts: Array = arena.get("gusts")
+	var through: bool = gusts.size() == 1 and bool(arena.call("in_gust", gusts[0], Aim.body_point(me)))
+	arena.set("_gust_clock", 99.0)
+	arena.call("_process", Arena.GUST_WARN)
+	Hits.take()
+	check("phase two: the leader lays a gust lane through you; it blows - a share of your health as wind, and a slide",
+		through and me.taken == [[roundi(1000.0 * Arena.GUST_SHARE), Element.Type.WIND]] and float(fx.get("shove_left")) > 0.0,
+		[through, me.taken])
+	arena.call("hear", {"h": "gust", "x": me.global_position.x, "y": me.global_position.y, "a": 0.0})
+	arena.call("hear", {"h": "twister", "x": origin.x + 5000.0, "y": origin.y})
+	check("  a follower lays the leader's lane; nothing from far off", (arena.get("gusts") as Array).size() >= 1
+		and arena.get("twister_to") == Vector2.INF)
+
+	# PHASE THREE: the tornado.
+	(arena.get("gusts") as Array).clear()
+	me.taken.clear()
+	fx.call("clear_all")
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	arena.call("_process", 0.05)
+	var twister: Vector2 = arena.get("twister")
+	check("phase three: the tornado forms in the room's middle and carries the orbs round it",
+		twister.distance_to(middle) < 5.0 and is_equal_approx(zone.field.swirl_radius, Arena.TWISTER_REACH)
+		and zone.field.swirl_at.distance_to(twister) < 5.0, twister)
+	me.global_position = twister + Vector2(60, 0)
+	arena.call("_process", 0.05)
+	var pulled: bool = float(fx.get("pull_left")) > 0.0
+	me.global_position = arena.get("twister")
+	arena.set("_twister_clock", 99.0)
+	arena.call("_process", 0.05)
+	Hits.take()
+	check("  within its reach it pulls you; in its core it flings you out, a share of your health as wind",
+		pulled and me.taken == [[roundi(1000.0 * Arena.TWISTER_SHARE), Element.Type.WIND]] and float(fx.get("shove_left")) > 0.0,
+		[pulled, me.taken])
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not (arena.get_node("wind") as CanvasItem).visible
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides its drawing", hidden and (arena.get_node("wind") as CanvasItem).visible)
+
+	# GONE WITH ITS BOSS.
+	var pillar: Node = (breaks[0] as Array)[0]
+	boss.set("_dying", true)
+	arena.call("_process", 0.05)
+	var dropped: bool = zone.field.wind == Vector2.ZERO and zone.field.swirl_radius == 0.0 \
+		and pillar.is_queued_for_deletion() and int(arena.call("standing")) == 0
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, the wind drops, the windbreaks crumble, and it goes",
+		dropped and arena.is_queued_for_deletion())
+	check("  and the readout letters its marks",
+		PerfOverlay.MARK_LETTERS.get(&"wind turns") == "W" and PerfOverlay.MARK_LETTERS.get(&"gusts blow") == "L"
+		and PerfOverlay.MARK_LETTERS.get(&"tornado forms") == "T")
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Wind boss's arena: done)")

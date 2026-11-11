@@ -212,6 +212,11 @@ var shove_seconds: float = SHOVE_SECONDS
 var pull_to: Vector2 = Vector2.ZERO
 var pull_left: float = 0.0
 var pull_speed: float = 0.0
+# A DRIFT (0.140.0, the Wind boss's crosswind - windarena.gd): a steady push
+# its arena renews every frame you stand in the wind (drift()), gone a moment
+# after it stops. Never as fast as walking (PULL_SPEED_MAX), like a pull.
+var drift_velocity: Vector2 = Vector2.ZERO
+var drift_left: float = 0.0
 var dazzle_left: float = 0.0
 var wither_left: float = 0.0
 
@@ -369,6 +374,16 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 	return false
 
 
+func drift(velocity: Vector2, seconds: float = 0.15) -> void:
+	"""Carried by the wind at `velocity` (held under PULL_SPEED_MAX) for
+	`seconds` - renewed every frame by whatever blows. Not an effect on the
+	strip: weather."""
+	if _host_dying() or immune():
+		return
+	drift_velocity = velocity.limit_length(PULL_SPEED_MAX)
+	drift_left = seconds
+
+
 func pull(toward: Vector2, seconds: float, speed: float) -> void:
 	"""Draws the body toward `toward` for `seconds` at `speed` (held under
 	PULL_SPEED_MAX, so walking always beats it)."""
@@ -462,6 +477,8 @@ func push_velocity() -> Vector2:
 		var toward: Vector2 = pull_to - _body_point()
 		if toward.length() > 4.0:
 			push += toward.normalized() * pull_speed
+	if drift_left > 0.0:
+		push += drift_velocity
 	return push
 
 
@@ -500,6 +517,7 @@ func clear_all() -> void:
 	soaked_left = 0.0
 	shove_left = 0.0
 	pull_left = 0.0
+	drift_left = 0.0
 	dazzle_left = 0.0
 	wither_left = 0.0
 	_flash_left = 0.0
@@ -551,6 +569,7 @@ func advance(delta: float) -> void:
 	soaked_left = maxf(0.0, soaked_left - delta)
 	shove_left = maxf(0.0, shove_left - delta)
 	pull_left = maxf(0.0, pull_left - delta)
+	drift_left = maxf(0.0, drift_left - delta)
 	dazzle_left = maxf(0.0, dazzle_left - delta)
 	wither_left = maxf(0.0, wither_left - delta)
 	_flash_gap_left = maxf(0.0, _flash_gap_left - delta)

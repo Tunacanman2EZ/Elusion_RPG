@@ -178,6 +178,16 @@ var bounces: PackedInt32Array = PackedInt32Array()
 var _mirror_point: PackedVector2Array = PackedVector2Array()
 var _mirror_normal: PackedVector2Array = PackedVector2Array()
 
+# THE WIND (0.140.0, the Wind boss's arena - windarena.gd). Every orb in
+# flight gains `wind` px/s every second (a crosswind bends a fan), and within
+# `swirl_radius` of `swirl_at` is turned `swirl_rate` radians a second round
+# it (the tornado carries them). A mine lying still (braking) is left where it
+# lies. Zero, nothing - and nothing extra a step.
+var wind: Vector2 = Vector2.ZERO
+var swirl_at: Vector2 = Vector2.ZERO
+var swirl_radius: float = 0.0
+var swirl_rate: float = 0.0
+
 
 func _ready() -> void:
 	_pos.resize(capacity)
@@ -413,11 +423,20 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 	var grazes: int = 0
 	var area: Rect2 = bounds
 	var walled: bool = not _walls.is_empty()
+	var blowing: bool = wind != Vector2.ZERO or swirl_radius > 0.0
+	var swirl_reach: float = swirl_radius * swirl_radius
 	var i: int = 0
 	while i < count:
 		var velocity: Vector2 = _vel[i]
 		var turn: float = _turn[i]
 		var brake: float = _brake[i]
+		var blown: bool = blowing and brake <= 0.0
+		if blown:
+			# THE WIND (see the top).
+			velocity += wind * delta
+			if swirl_radius > 0.0 and _pos[i].distance_squared_to(swirl_at) < swirl_reach:
+				velocity = velocity.rotated(swirl_rate * delta)
+			_vel[i] = velocity
 		var at: Vector2
 		if brake > 0.0:
 			# Evenly slower: the distance is the frame's average speed times
@@ -452,7 +471,7 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		if age > _life[i] or not area.has_point(drawn) or cell == 1:
 			_remove(i)
 			continue
-		var reshape: bool = turn != 0.0 or brake > 0.0
+		var reshape: bool = turn != 0.0 or brake > 0.0 or blown
 		if cell >= MIRROR_FIRST and cell - MIRROR_FIRST < _mirror_normal.size():
 			# MIRRORS (see the top): turned back only heading into the face
 			# from the side it is on, and kept where it was, outside.

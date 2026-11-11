@@ -2729,6 +2729,60 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The Wind boss's arena: crosswind, windbreaks, gusts, the tornado (0.140.0)
+
+The owner: "great lets build the next" - the second boss of the Docs plan,
+pictured first (wind_arena_plan.png); of the windbreaks, "Wind only": they
+stop the wind and walking, never an orb. `src/enemies/windarena.gd` (no
+class_name), made the way the Light Keeper's is.
+
+- **Arenas by kind** (bossenemy.gd): a kit's `"arena"` is now a name,
+  `&"light"` or `&"wind"`, and `ARENAS` maps it to its script; each has a
+  static `make()`. `lightarena.gd wanted()` (and its `everywhere`) decides
+  for both.
+- **Phase one, the crosswind**: the leader turns it every `WIND_TURN`
+  (10 s) to one of eight ways, never the same, sent as `"la"` `h: "wind"`;
+  every game eases round over `WIND_SWING`. It carries this game's player
+  out in it (`StatusEffects.drift()`, new: a push renewed every frame,
+  under `PULL_SPEED_MAX` so walking beats it, added in `push_velocity()`,
+  cleared with the rest, refused while immune) at `WIND_DRIFT` by phase
+  (26/32/38), and bends every orb in flight (`BulletField.wind`,
+  `ORB_BEND` 40 px/s each second; a braking mine is left alone).
+- **Two windbreaks**: pairs of the crypt's pillars (`scene/crypt/pillar.tscn`,
+  his art) at `BREAK_SPOTS` from the room's middle, their bodies moved to
+  layer 2 (the gate bars' layer), so the bullets' walls (layer 1) never see
+  them - wind and walking only. Placed when their spots are clear (no
+  wall, no body - nobody is built into a pillar), looked at again every
+  `PILLAR_LOOK`. Calm behind each (`sheltered()`: `LEE_LONG` down the wind,
+  `LEE_HALF` across, narrowing): no streaks, no drift.
+- **Phase two, gust lanes**: the leader lays one through each player in the
+  fight every `GUST_GAP` (4 s; 3 in phase three), along the wind (`h:
+  "gust"`). It thickens `GUST_WARN` (0.9 s), then blows: in it, `GUST_SHARE`
+  (5%) of your health as wind and a shove made a slide along it.
+- **Phase three, the tornado**: forms in the room's middle; the leader sends
+  it near a player every `TWISTER_RETARGET` (`h: "twister"`), it goes at
+  `TWISTER_SPEED`. Within `TWISTER_REACH` it pulls you (a pull, so walking
+  beats it); in its core it flings you out (`TWISTER_SHARE` 6%, a slide, at
+  most every `TWISTER_GAP`). It turns the orbs round it
+  (`BulletField.swirl_*`).
+- **Drawn in quads only** on one layer at z 17: streaks (half on a phone),
+  the arrow over the boss, the lanes (cut to the room), the funnel. The
+  whole arena is one more draw call in the Boss Arena (21 -> 22,
+  zz/wind/realshot.gd BENCH=1).
+- **Gone with its boss**: the bullets' wind and swirl drop (and on
+  `_exit_tree`), the windbreaks crumble, it goes.
+- **Readout**: W (wind turns), L (gusts blow), T (tornado forms). The Arena
+  lag test hides its drawing.
+- **Found on the way**: a test that adds a body and asks the physics world
+  about it in the same frame gets nothing - `_test_the_wind_arena` waits two
+  physics frames before rescanning the bullets' walls, or its "never stops
+  an orb" check passed with the pillars on the walls' layer (sabotaged and
+  seen red).
+
+Not yet played in a party, as with the Light Keeper's.
+
+`_test_the_wind_arena()` (testrunner_11).
+
 ### The Light Keeper's arena: mirrors, flares and the eclipse (0.139.0)
 
 The owner, of the Docs plan "Boss fights: arenas that fight back" (each of the
