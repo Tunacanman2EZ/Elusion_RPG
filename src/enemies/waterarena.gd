@@ -30,6 +30,7 @@
 extends Node2D
 
 const LightArena := preload("res://src/enemies/lightarena.gd")
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 const Targets := preload("res://src/shared/targets.gd")
@@ -92,6 +93,8 @@ var _bubble_rng := RandomNumberGenerator.new()
 var _bubbles_made: int = 0
 var _zone: BulletZone = null
 var _layer: Node2D = null
+# Every quad of a layer, handed over in one call (quadbatch.gd).
+var _quads := QuadBatch.new()
 var _room: Rect2 = Rect2()
 var _clock: float = 0.0
 var _ending: float = -1.0
@@ -115,6 +118,7 @@ static func name_for(for_boss: Node2D) -> String:
 func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
+	add_to_group(LightArena.FLOOR_GROUP)
 	y_sort_enabled = true
 	_zone = BulletZone.find(self)
 	_room = LightArena.room_of(self)
@@ -124,7 +128,7 @@ func _ready() -> void:
 	_layer.name = "water"
 	# Sorted before everything in the container, the spikes' rings included.
 	_layer.position = Vector2(0.0, SpikeFx.SORT_Y - 1.0)
-	_layer.draw.connect(_draw_water)
+	_layer.draw.connect(_quads.paint.bind(_layer, _draw_water))
 	add_child(_layer)
 	_layer.reset_physics_interpolation()
 	show_tests()
@@ -150,6 +154,11 @@ func flood() -> Rect2:
 		2:
 			return Rect2(_room.position, Vector2(_room.size.x, across))
 	return Rect2(Vector2(_room.position.x, _room.end.y - across), Vector2(_room.size.x, across))
+
+
+func takes_floor(at: Vector2) -> bool:
+	"""(The floor book, lightarena.gd.) The water, and where it shines."""
+	return flood().has_point(at) or shine().has_point(at)
 
 
 func shine() -> Rect2:
@@ -248,7 +257,7 @@ func _lead(delta: float) -> void:
 	_next_tide -= delta
 	if _next_tide > 0.0:
 		return
-	_next_tide = TIDE_REST
+	_next_tide = LightArena.paced(self, TIDE_REST)
 	var next: int = randi() % SIDES
 	if next == side:
 		next = (next + 1 + randi() % (SIDES - 1)) % SIDES
@@ -331,11 +340,11 @@ func _wet(delta: float) -> void:
 			_whirl_left = WHIRL_GAP
 			_hit(me, WHIRL_SHARE, "whirlpool", pool)
 	elif fx != null and fx.has_method(&"pull"):
-		fx.call(&"pull", pool, 0.15, WHIRL_PULL)
+		fx.call(&"pull", pool, 0.15, WHIRL_PULL, get_instance_id())
 
 
 func _hit(me: Node2D, share: float, what: String, from: Vector2) -> void:
-	if not me.has_method(&"take_damage"):
+	if not me.has_method(&"take_damage") or not LightArena.may_hit(me, self):
 		return
 	var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * share))
 	HitSource.blame(HitSource.of(boss, what))
@@ -348,7 +357,7 @@ func _hit(me: Node2D, share: float, what: String, from: Vector2) -> void:
 # =============================================================================
 
 func _fill(p: Vector2, q: Vector2, r: Vector2, t: Vector2, colour: Color) -> void:
-	_layer.draw_primitive(PackedVector2Array([p, q, r, t]), PackedColorArray([colour]), PackedVector2Array())
+	_quads.quad(p, q, r, t, colour)
 
 
 func _box(rect: Rect2, colour: Color) -> void:

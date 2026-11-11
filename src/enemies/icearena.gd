@@ -38,6 +38,7 @@
 extends Node2D
 
 const LightArena := preload("res://src/enemies/lightarena.gd")
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 const BossProjectile := preload("res://src/projectiles/bossprojectile.gd")
@@ -79,6 +80,8 @@ const WALL_RISE := 0.3
 const WALL_LIFE := 6.0
 const WALL_HITS := 3
 const WALL_NAMES := 10
+# Spots a frost tries before it waits (the floor book, lightarena.gd).
+const TRIES := 4
 const BODY_LAYER := 2
 const HURT_LAYER := 8
 const STRESS_MARK := &"stress_copy"
@@ -98,11 +101,39 @@ const SNOW := 140
 const FOG_CLEAR := 0.32
 const FOG_EDGE := 0.62
 const FOG_THICK := 0.72
-const FOG_LAYER := 39
+const FOG_Z := 30
+const FOG_REACH := 1600.0
 # Furthest from its boss anything the leader sends may be put.
 const EVENT_REACH := 1200.0
 const SNOW_Z := 17
 const END_SECONDS := 0.8
+
+# THE SNOW ON THE CARD (0.143.0, the refinement): the blizzard's SNOW flakes
+# are one MultiMesh, each flake placed by its shader from its own number and
+# the clock - the sums _draw_snow() did for 140 flakes every frame - so the
+# processor does nothing for them. A phone shows half (visible_instance_count).
+const SNOW_SHADER := """
+shader_type canvas_item;
+uniform vec2 middle;
+uniform vec2 way;
+uniform float span;
+uniform vec4 room;
+uniform float amount = 0.0;
+varying float keep;
+void vertex() {
+	float k = float(INSTANCE_ID);
+	float lane = fract(k * 0.6180339);
+	float run = fract(k * 0.3713 + TIME * 0.35);
+	vec2 across = vec2(way.y, -way.x);
+	vec2 at = middle + across * (lane - 0.5) * span + way * (run - 0.5) * span;
+	keep = (at.x >= room.x && at.y >= room.y && at.x <= room.z && at.y <= room.w) ? 1.0 : 0.0;
+	float size = 1.0 + fract(k * 0.77) * 1.5;
+	VERTEX = at + VERTEX * size * keep;
+}
+void fragment() {
+	COLOR = vec4(1.0, 1.0, 1.0, 0.75 * amount * keep);
+}
+"""
 
 const FOG_SHADER := """
 shader_type canvas_item;
@@ -241,8 +272,15 @@ var _chill_left: float = 0.0
 var _glide: Vector2 = Vector2.ZERO
 var _zone: BulletZone = null
 var _floor: Node2D = null
+# Every quad of a layer, handed over in one call (quadbatch.gd).
+var _quads := QuadBatch.new()
 var _air: Node2D = null
-var _fog_layer: CanvasLayer = null
+var _snow: MultiMeshInstance2D = null
+var _snow_material: ShaderMaterial = null
+var _snow_shown: float = -1.0
+var _fog_shown: float = -1.0
+var _snow_at: Vector2 = Vector2.INF
+var _fog_layer: Node2D = null
 var _fog: ColorRect = null
 var _fog_material: ShaderMaterial = null
 var _room: Rect2 = Rect2()
@@ -268,6 +306,7 @@ static func name_for(for_boss: Node2D) -> String:
 func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
+	add_to_group(LightArena.FLOOR_GROUP)
 	y_sort_enabled = true
 	_zone = BulletZone.find(self)
 	_room = LightArena.room_of(self)
@@ -276,22 +315,32 @@ func _ready() -> void:
 	_floor = Node2D.new()
 	_floor.name = "frost"
 	_floor.position = Vector2(0.0, SpikeFx.SORT_Y - 1.0)
-	_floor.draw.connect(_draw_floor)
+	_floor.draw.connect(_quads.paint.bind(_floor, _draw_floor))
 	add_child(_floor)
 	_floor.reset_physics_interpolation()
 	_air = Node2D.new()
 	_air.name = "snow"
 	_air.z_index = SNOW_Z
 	_air.z_as_relative = false
-	_air.draw.connect(_draw_snow)
 	add_child(_air)
-	_fog_layer = CanvasLayer.new()
+	_make_snow()
+	# THE FOG UNDER THE HUD (0.143.0, the refinement): it was a CanvasLayer at
+	# FOG_LAYER, over the HUD too - the health bars and hotbar went white in
+	# a blizzard. Now it lies in the world over everything there (FOG_Z) and
+	# under every CanvasLayer, a rect FOG_REACH past the room each way (only
+	# what is on screen is drawn); the shader still reads the screen.
+	_fog_layer = Node2D.new()
 	_fog_layer.name = "fog"
-	_fog_layer.layer = FOG_LAYER
+	_fog_layer.top_level = true
+	_fog_layer.z_index = FOG_Z
+	_fog_layer.z_as_relative = false
 	add_child(_fog_layer)
+	_fog_layer.global_position = Vector2.ZERO
+	_fog_layer.reset_physics_interpolation()
 	_fog = ColorRect.new()
 	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fog.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fog.position = _room.position - Vector2(FOG_REACH, FOG_REACH)
+	_fog.size = _room.size + Vector2(FOG_REACH, FOG_REACH) * 2.0
 	_fog_material = ShaderMaterial.new()
 	var shader := Shader.new()
 	shader.code = FOG_SHADER
@@ -315,7 +364,6 @@ func _process(delta: float) -> void:
 		blizzard = maxf(0.0, blizzard - delta / END_SECONDS)
 		_show_fog()
 		_floor.queue_redraw()
-		_air.queue_redraw()
 		if _ending >= END_SECONDS:
 			queue_free()
 		return
@@ -333,8 +381,8 @@ func _process(delta: float) -> void:
 	_on_you(delta)
 	blizzard = clampf(blizzard + (delta if phase >= 2 else -delta) / BLIZZARD_IN, 0.0, 1.0)
 	_show_fog()
-	_floor.queue_redraw()
-	_air.queue_redraw()
+	if QuadBatch.turn(self, QuadBatch.FLOOR_EVERY):
+		_floor.queue_redraw()
 
 
 func _boss_here() -> bool:
@@ -347,36 +395,63 @@ func _p(table: Array) -> float:
 	return float(table[clampi(phase, 0, 2)])
 
 
+# WHO IS IN THE FIGHT, LOOKED UP FOUR TIMES A SECOND (0.143.0, the
+# refinement): the leader's clocks asked the boss every frame
+# (fight_targets(), a walk over everyone), about a third of this arena's frame.
+const LOOK_SECONDS := 0.25
+var _fight: Array = []
+var _look_left: float = 0.0
+
+
+func _fighters(delta: float) -> Array:
+	"""(Leader.) The boss's fight_targets(), kept LOOK_SECONDS."""
+	_look_left -= delta
+	if _look_left <= 0.0:
+		_look_left = LOOK_SECONDS
+		_fight = boss.call(&"fight_targets")
+	for body in _fight:
+		if not is_instance_valid(body):
+			_fight = _fight.filter(func(b: Variant) -> bool: return is_instance_valid(b))
+			break
+	return _fight
+
+
 func _lead(delta: float) -> void:
 	"""(Leader.) The frost, the walls and the hail, for every screen."""
-	var bodies: Array = boss.call(&"fight_targets")
+	var bodies: Array = _fighters(delta)
 	if bodies.is_empty():
 		return
 	_frost_clock -= delta
 	if _frost_clock <= 0.0:
-		_frost_clock = _p(FROST_GAP)
+		_frost_clock = LightArena.paced(self, _p(FROST_GAP))
 		var near: Vector2 = Targets.body_point(bodies[randi() % bodies.size()])
-		var at: Vector2 = _inside(near + Vector2.from_angle(randf() * TAU) * randf_range(FROST_NEAR.x, FROST_NEAR.y))
 		var r: float = _p(FROST_RADIUS)
-		add_frost(at, r)
-		_send({"h": "frost", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1), "r": r})
+		# THE FLOOR BOOK (lightarena.gd): a few tries for a spot no partner
+		# holds that leaves the room enough; none, and this frost waits.
+		for _try in TRIES:
+			var at: Vector2 = _inside(near + Vector2.from_angle(randf() * TAU) * randf_range(FROST_NEAR.x, FROST_NEAR.y))
+			if LightArena.may_take(self, at, r):
+				add_frost(at, r)
+				_send({"h": "frost", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1), "r": r})
+				break
 	_wall_clock -= delta
 	if _wall_clock <= 0.0:
-		_wall_clock = _p(WALL_GAP)
+		_wall_clock = LightArena.paced(self, _p(WALL_GAP))
 		var who: Vector2 = Targets.body_point(bodies[randi() % bodies.size()])
 		var away: Vector2 = (who - boss.global_position).normalized()
 		if away == Vector2.ZERO:
 			away = Vector2.DOWN
 		var at: Vector2 = _inside(who + away * WALL_BEHIND)
 		var a: float = away.orthogonal().angle()
-		_wall_count += 1
-		add_wall(at, a, _wall_count)
-		_send({"h": "wall", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1), "a": snappedf(a, 0.0001), "n": _wall_count})
+		if LightArena.may_take(self, at, BLOCK * WALL_BLOCKS * 0.5):
+			_wall_count += 1
+			add_wall(at, a, _wall_count)
+			_send({"h": "wall", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1), "a": snappedf(a, 0.0001), "n": _wall_count})
 	var gap: float = _p(HAIL_GAP)
 	if gap > 0.0:
 		_hail_clock -= delta
 		if _hail_clock <= 0.0:
-			_hail_clock = gap
+			_hail_clock = LightArena.paced(self, gap)
 			for body in bodies:
 				var at: Vector2 = _inside(Targets.body_point(body) + Vector2.from_angle(randf() * TAU) * randf() * HAIL_NEAR)
 				add_hail(at)
@@ -542,7 +617,7 @@ func _land(at: Vector2) -> void:
 	var me: Node2D = _me()
 	if me == null or not me.has_method(&"take_damage"):
 		return
-	if Targets.body_point(me).distance_to(at) > HAIL_RADIUS:
+	if Targets.body_point(me).distance_to(at) > HAIL_RADIUS or not LightArena.may_hit(me, self):
 		return
 	var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * HAIL_SHARE))
 	HitSource.blame(HitSource.of(boss, "hail"))
@@ -561,6 +636,22 @@ func on_frost(at: Vector2) -> bool:
 	"""On a patch that has formed."""
 	for patch in frost:
 		if float(patch[2]) >= FROST_FORM and at.distance_to(patch[0]) <= float(patch[1]):
+			return true
+	return false
+
+
+func takes_floor(at: Vector2) -> bool:
+	"""(The floor book, lightarena.gd.) Frost, forming or formed, and a
+	standing wall."""
+	for patch in frost:
+		if at.distance_to(patch[0]) <= float(patch[1]):
+			return true
+	for wall in walls:
+		if not is_instance_valid(wall) or not (wall as Wall).stands():
+			continue
+		var middle: Vector2 = (wall as Wall).global_position
+		var on: Vector2 = Geometry2D.get_closest_point_to_segment(at, middle - (wall as Wall).half, middle + (wall as Wall).half)
+		if on.distance_to(at) <= WALL_THICK:
 			return true
 	return false
 
@@ -592,22 +683,17 @@ func _on_you(delta: float) -> void:
 # DRAWING (quads only)
 # =============================================================================
 
-func _fill(on: CanvasItem, p: Vector2, q: Vector2, r: Vector2, t: Vector2, colour: Color) -> void:
-	on.draw_primitive(PackedVector2Array([p, q, r, t]), PackedColorArray([colour]), PackedVector2Array())
+func _fill(_on: CanvasItem, p: Vector2, q: Vector2, r: Vector2, t: Vector2, colour: Color) -> void:
+	# Into the layer's batch (quadbatch.gd: the whole layer in one call).
+	_quads.quad(p, q, r, t, colour)
 
 
-func _ring(on: CanvasItem, middle: Vector2, r: float, ry: float, colour: Color, solid: bool) -> void:
-	# A flat ring (or a filled disc) of quads, round `middle`.
-	var segments: int = 20
-	for s in segments:
-		var a0: float = float(s) * TAU / segments
-		var a1: float = float(s + 1) * TAU / segments
-		var p := Vector2(cos(a0) * r, sin(a0) * ry)
-		var q := Vector2(cos(a1) * r, sin(a1) * ry)
-		if solid:
-			_fill(on, middle, middle + p, middle + q, middle, colour)
-		else:
-			_fill(on, middle + p * 0.92, middle + q * 0.92, middle + q, middle + p, colour)
+func _ring(_on: CanvasItem, middle: Vector2, r: float, ry: float, colour: Color, solid: bool) -> void:
+	# A flat ring (or a filled disc) round `middle`.
+	if solid:
+		_quads.oval(middle, r, ry, colour)
+	else:
+		_quads.band(middle, r, ry, 0.92, colour)
 
 
 func _draw_floor() -> void:
@@ -633,30 +719,56 @@ func _draw_floor() -> void:
 		_ring(_floor, m, HAIL_RADIUS, HAIL_RADIUS * 0.55, Color(ICE, (0.3 + 0.5 * grow) * fade), false)
 
 
-func _draw_snow() -> void:
-	if blizzard <= 0.0:
-		return
-	var o: Vector2 = _air.global_position
-	var count: int = (SNOW >> 1) if SettingsScript.on_phone() else SNOW
-	var way: Vector2 = Vector2(1.0, 0.45).normalized()
-	var span: float = _room.size.length()
-	var middle: Vector2 = _room.get_center()
-	for k in count:
-		var lane: float = fmod(float(k) * 0.6180339, 1.0)
-		var run: float = fmod(float(k) * 0.3713 + _clock * 0.35, 1.0)
-		var at: Vector2 = middle + way.orthogonal() * (lane - 0.5) * span + way * (run - 0.5) * span
-		if not _room.has_point(at):
-			continue
-		var size: float = 1.0 + fmod(float(k) * 0.77, 1.0) * 1.5
-		var p: Vector2 = at - o
-		_fill(_air, p + Vector2(-size, 0), p + Vector2(0, -size), p + Vector2(size, 0), p + Vector2(0, size),
-			Color(1, 1, 1, 0.75 * blizzard))
+func _make_snow() -> void:
+	"""The blizzard's flakes: one MultiMesh, placed on the card (SNOW_SHADER)."""
+	var diamond := ArrayMesh.new()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector2Array([Vector2(-1, 0), Vector2(0, -1), Vector2(1, 0), Vector2(0, 1)])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	diamond.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_2D
+	multi.mesh = diamond
+	multi.instance_count = SNOW
+	multi.visible_instance_count = (SNOW >> 1) if SettingsScript.on_phone() else SNOW
+	multi.custom_aabb = AABB(Vector3(-1.0e6, -1.0e6, -1.0), Vector3(2.0e6, 2.0e6, 2.0))
+	for k in SNOW:
+		multi.set_instance_transform_2d(k, Transform2D.IDENTITY)
+	_snow_material = ShaderMaterial.new()
+	var shader := Shader.new()
+	shader.code = SNOW_SHADER
+	_snow_material.shader = shader
+	_snow_material.set_shader_parameter(&"way", Vector2(1.0, 0.45).normalized())
+	_snow_material.set_shader_parameter(&"span", _room.size.length())
+	_snow = MultiMeshInstance2D.new()
+	_snow.name = "flakes"
+	_snow.multimesh = multi
+	_snow.material = _snow_material
+	_snow.visible = false
+	# Placed by its shader, never moved between two buffers.
+	_snow.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	RenderingServer.multimesh_set_physics_interpolated(multi.get_rid(), false)
+	_air.add_child(_snow)
 
 
 func _show_fog() -> void:
 	_fog_layer.visible = blizzard > 0.0 and not LagTests.hide_arena
-	if _fog_layer.visible:
+	if _fog_layer.visible and not is_equal_approx(blizzard, _fog_shown):
+		_fog_shown = blizzard
 		_fog_material.set_shader_parameter(&"amount", FOG_THICK * blizzard)
+	if _snow != null:
+		_snow.visible = blizzard > 0.0
+		if _snow.visible and not is_equal_approx(blizzard, _snow_shown):
+			_snow_shown = blizzard
+			_snow_material.set_shader_parameter(&"amount", blizzard)
+		var o: Vector2 = _air.global_position
+		if _snow.visible and o != _snow_at:
+			# The room in the layer's own space (once, and again if it moved).
+			_snow_at = o
+			_snow_material.set_shader_parameter(&"middle", _room.get_center() - o)
+			_snow_material.set_shader_parameter(&"room", Vector4(_room.position.x - o.x, _room.position.y - o.y,
+				_room.end.x - o.x, _room.end.y - o.y))
 
 
 # =============================================================================

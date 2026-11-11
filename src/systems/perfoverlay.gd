@@ -187,6 +187,11 @@ const MARK_LETTERS := {
 	&"frost forms": "S",
 	&"ice walls rise": "I",
 	&"hail lands": "U",
+	&"faults crack": "J",
+	&"rocks fall": "Y",
+	&"floor drops": "Z",
+	&"vents erupt": "N",
+	&"lava burns": "~",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many

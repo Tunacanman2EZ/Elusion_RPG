@@ -357,10 +357,12 @@ const KITS := {
 	Element.Type.EARTH: {
 		"shapes": [&"gate", &"triwall", &"rake"],
 		"volleys": [[&"boulder"], [&"boulder"], [&"boulder"]],
+		"arena": &"earth",
 	},
 	Element.Type.FIRE: {
 		"shapes": [&"cross", &"spiral", &"carpet"],
 		"volleys": [[&"pincer"], [&"pincer"], [&"pincer"]],
+		"arena": &"fire",
 	},
 	Element.Type.DARK: {
 		"shapes": [&"ring", &"cage", &"gate"],
@@ -1154,17 +1156,30 @@ var _swings_in_a_row: int = 0
 # mirrors, flares and eclipse (lightarena.gd), the Wind boss's crosswind,
 # gusts and tornado (windarena.gd, 0.140.0), the Water boss's tide, bubbles
 # and whirlpool (waterarena.gd, 0.141.0), the Ice boss's frost, walls, hail
-# and blizzard (icearena.gd, 0.142.0) - looked for every
+# and blizzard (icearena.gd, 0.142.0), the Earth boss's faults, falling rock
+# and quake (eartharena.gd, 0.143.0), the Fire boss's vents, embers and
+# rising lava (firearena.gd, 0.143.0) - looked for every
 # ARENA_LOOK_SECONDS. It goes by itself with the boss. Never for a boss
 # wearing another land's crown (the Crowned has its own room).
 const LightArena := preload("res://src/enemies/lightarena.gd")
 const WindArena := preload("res://src/enemies/windarena.gd")
 const WaterArena := preload("res://src/enemies/waterarena.gd")
 const IceArena := preload("res://src/enemies/icearena.gd")
-const ARENAS := {&"light": LightArena, &"wind": WindArena, &"water": WaterArena, &"ice": IceArena}
+const EarthArena := preload("res://src/enemies/eartharena.gd")
+const FireArena := preload("res://src/enemies/firearena.gd")
+const ARENAS := {&"light": LightArena, &"wind": WindArena, &"water": WaterArena, &"ice": IceArena,
+	&"earth": EarthArena, &"fire": FireArena}
 const ARENA_LOOK_SECONDS := 0.5
 var _arena: Node2D = null
 var _arena_look: float = 0.0
+
+# WALKING OUT (0.143.0, the staggered gates - bossgauntlet.gd): a boss let out
+# of its gate makes no attack for WALK_OUT_SECONDS - neither clock - while it
+# steps out, and its arena starts in phase one. Only a boss that was caged:
+# the Endless's come out of nothing as before.
+const WALK_OUT_SECONDS := 2.0
+var _walk_out_left: float = 0.0
+var _was_gated: bool = false
 
 
 # =============================================================================
@@ -1302,6 +1317,9 @@ func _on_animation_finished() -> void:
 # =============================================================================
 
 func _trigger_attack() -> void:
+	# Stepping out of its gate: no attack yet (WALK_OUT_SECONDS).
+	if walking_out():
+		return
 	# Reset the guards, then let BaseEnemy set attack_ready, is_attacking, start
 	# the cooldown and play the animation. The eruption and the blow are both
 	# delivered from frame_changed, not here — this only opens the window.
@@ -1483,7 +1501,7 @@ func _on_spike_timer() -> void:
 	# IN A FIGHT ONLY. Dying, dead, caged, walking home on the leash - or with
 	# nobody near - the boss is not fighting anyone, and stalagmites erupting
 	# in an empty room read as a bug rather than an attack.
-	if not in_fight():
+	if not in_fight() or walking_out():
 		_spike_timer.wait_time = 2.0
 		return
 
@@ -2041,9 +2059,18 @@ func watch_runners(delta: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
+	if _was_gated and not gated:
+		_walk_out_left = WALK_OUT_SECONDS
+	_was_gated = gated
+	_walk_out_left = maxf(0.0, _walk_out_left - delta)
 	if not net_mirror:
 		watch_runners(delta)
 	_keep_arena(delta)
+
+
+func walking_out() -> bool:
+	"""Just let out of its gate, and not attacking yet (WALK_OUT_SECONDS)."""
+	return _walk_out_left > 0.0
 
 
 func _keep_arena(delta: float) -> void:
@@ -2956,6 +2983,11 @@ func split_targets(first: Node2D) -> Array:
 func _mark_aimed(body: Node) -> void:
 	if is_instance_valid(body):
 		_last_aimed[body.get_instance_id()] = Time.get_ticks_msec()
+
+
+func wave_pace() -> float:
+	"""(For its arena, lightarena.gd paced().) _pace()."""
+	return _pace()
 
 
 func _pace() -> float:

@@ -1004,10 +1004,11 @@ func _test_the_light_arena() -> void:
 	boss.set_meta(&"descent_caster", true)
 	check("  nor for a Descent's hidden caster", not Arena.wanted(boss))
 	boss.remove_meta(&"descent_caster")
-	check("  the Light Keeper's kit has its arena (Wind 0.140.0, Water 0.141.0, Ice 0.142.0), no other yet",
+	check("  the six elemental bosses' kits each have their arena (Light 0.139.0 ... Fire 0.143.0), the Crowned's none",
 		BossEnemy.KITS[Element.Type.LIGHT].get("arena") == &"light" and BossEnemy.KITS[Element.Type.WIND].get("arena") == &"wind"
 		and BossEnemy.KITS[Element.Type.WATER].get("arena") == &"water" and BossEnemy.KITS[Element.Type.ICE].get("arena") == &"ice"
-		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 4)
+		and BossEnemy.KITS[Element.Type.EARTH].get("arena") == &"earth" and BossEnemy.KITS[Element.Type.FIRE].get("arena") == &"fire"
+		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 6)
 	boss.call("_keep_arena", 1.0)
 	var arena: Node2D = boss.call("arena")
 	if arena == null:
@@ -1522,9 +1523,12 @@ func _test_the_ice_arena() -> void:
 		world.queue_free()
 		return
 	arena.set_process(false)
-	check("the loose Ice boss makes its arena: frost on the floor, the fog under the dazzle's layer, not yet showing",
+	var fog_node: Node2D = arena.get_node("fog")
+	var fog_rect: Rect2 = Rect2((fog_node.get_child(0) as ColorRect).position, (fog_node.get_child(0) as ColorRect).size)
+	check("the loose Ice boss makes its arena: frost on the floor, the fog in the world over it all and under the HUD, not yet showing",
 		str(arena.name) == "icearena0" and (arena.get_node("frost") as Node2D).position.y < Fx.SORT_Y
-		and (arena.get_node("fog") as CanvasLayer).layer == Arena.FOG_LAYER and not (arena.get_node("fog") as CanvasLayer).visible)
+		and fog_node.z_index == Arena.FOG_Z and not fog_node.z_as_relative and not fog_node.visible
+		and fog_rect.encloses(Light.room_of(boss).grow(Arena.FOG_REACH - 1.0)), fog_rect)
 
 	# FROST: the leader's, near you; on it you skid and are chilled.
 	arena.set("_wall_clock", 99.0)
@@ -1606,7 +1610,7 @@ func _test_the_ice_arena() -> void:
 	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
 	for n in 5:
 		arena.call("_process", 0.5)
-	var fog: CanvasLayer = arena.get_node("fog")
+	var fog: Node2D = arena.get_node("fog")
 	check("phase three: the blizzard closes in - snow over the room, the fog at the screen's edges",
 		is_equal_approx(float(arena.get("blizzard")), 1.0) and fog.visible
 		and is_equal_approx(float((arena.get("_fog_material") as ShaderMaterial).get_shader_parameter(&"amount")), Arena.FOG_THICK))
@@ -1640,3 +1644,597 @@ func _test_the_ice_arena() -> void:
 
 func _arena_point(body: Node2D) -> Vector2:
 	return preload("res://src/shared/targets.gd").body_point(body)
+
+
+func _test_the_earth_arena() -> void:
+	section("THE EARTH BOSS'S ARENA - FAULT LINES, FALLING ROCK, THE QUAKE (0.143.0)")
+	# The owner: "ok next boss", and of the fault walls, "Walking only".
+	const Arena := preload("res://src/enemies/eartharena.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	zone._start_walls()
+	zone.build_all_walls()
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 120)
+	var fx: Node = FX.attach(me)
+	var boss: Node2D = (load("res://scene/enemy/earthboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(0, -150)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null or arena.get_script() != Arena:
+		check("the loose Earth boss makes its arena", false, arena)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	check("the loose Earth boss makes its arena, its cracks drawn on the floor",
+		str(arena.name) == "eartharena0" and (arena.get_node("ground") as Node2D).position.y < Fx.SORT_Y)
+
+	# A FAULT: across the line from the boss to you, so it parts you.
+	arena.set("_fault_clock", 0.0)
+	arena.call("_process", 0.01)
+	var faults: Array = arena.get("faults")
+	var parts: bool = false
+	var warned: bool = false
+	if faults.size() == 1:
+		var a: Vector2 = faults[0][0]
+		var b: Vector2 = faults[0][1]
+		var face: Vector2 = (b - a).orthogonal()
+		parts = signf((boss.global_position - a).dot(face)) != signf((_arena_point(me) - a).dot(face))
+		warned = not bool(faults[0][4])
+	var ridges: Array = faults[0][3] if faults.size() == 1 else []
+	# Stood on the crack as it rises.
+	var on: Vector2 = Geometry2D.get_closest_point_to_segment(_arena_point(me), faults[0][0], faults[0][1])
+	me.global_position += on - _arena_point(me)
+	me.taken.clear()
+	arena.set("_fault_clock", 99.0)
+	arena.call("_process", Arena.FAULT_WARN)
+	Hits.take()
+	await get_tree().physics_frame
+	var solid: bool = not ridges.is_empty() and ridges.all(func(r): return not ((r as Node).get_node("rock").get_child(0) as CollisionShape2D).disabled)
+	var mid: Vector2 = ((faults[0][0] as Vector2) + (faults[0][1] as Vector2)) * 0.5
+	check("the leader cracks the floor across the line from the boss to you; it warns, then stalagmites rise along it",
+		parts and warned and bool(faults[0][4]) and solid and ridges.size() >= 2, [parts, warned, ridges.size()])
+	check("  solid to walking, never to an orb; risen under you, it hits and throws you off",
+		not zone.field.is_wall(mid) and me.taken == [[roundi(1000.0 * Arena.FAULT_SHARE), Element.Type.EARTH]]
+		and float(fx.get("shove_left")) > 0.0, me.taken)
+	arena.call("_process", Arena.FAULT_LIFE)
+	check("  and it sinks when its time is up", (arena.get("faults") as Array).is_empty()
+		and ridges.all(func(r): return not is_instance_valid(r) or (r as Node).is_queued_for_deletion()))
+
+	# PHASE TWO: falling rock.
+	fx.call("clear_all")
+	me.taken.clear()
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.call("_process", 0.01)
+	var rocks: Array = arena.get("rocks")
+	var near: bool = rocks.size() == 1 and (rocks[0][0] as Vector2).distance_to(_arena_point(me)) <= Arena.ROCK_NEAR + 1.0
+	rocks.clear()
+	arena.set("_rock_clock", 99.0)
+	arena.call("add_rock", _arena_point(me))
+	arena.call("add_rock", _arena_point(me) + Vector2(70, 0))
+	arena.call("_process", Arena.ROCK_WARN)
+	Hits.take()
+	check("phase two: rock falls near each player after its shadow - near it, a share of your health as earth, and rooted",
+		near and me.taken == [[roundi(1000.0 * Arena.ROCK_SHARE), Element.Type.EARTH]] and (fx.get("started") as Array).has(FX.ROOT),
+		me.taken)
+
+	# PHASE THREE: the quake.
+	fx.call("clear_all")
+	me.taken.clear()
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	arena.call("_process", 0.01)
+	var pits: Array = arena.get("pits")
+	var cracked: bool = pits.size() == 1 and (pits[0][0] as Vector2).distance_to(_arena_point(me)) <= Arena.PIT_NEAR + 1.0
+	pits.clear()
+	arena.set("_pit_clock", 99.0)
+	arena.call("add_pit", _arena_point(me) + Vector2(6, 0))
+	arena.call("_process", Arena.PIT_WARN * 0.5)
+	var before: int = me.taken.size()
+	arena.call("_process", Arena.PIT_WARN * 0.5)
+	arena.call("_process", 0.1)
+	Hits.take()
+	check("phase three: the floor cracks near you, then drops away - in it you fall (a share of your health), thrown out; once a second at most",
+		cracked and before == 0 and me.taken == [[roundi(1000.0 * Arena.PIT_SHARE), Element.Type.EARTH]]
+		and float(fx.get("shove_left")) > 0.0, [cracked, me.taken])
+	arena.call("hear", {"h": "pit", "x": origin.x + 5000.0, "y": origin.y})
+	arena.call("hear", {"h": "rock", "x": me.global_position.x, "y": me.global_position.y})
+	arena.call("hear", {"h": "fault", "x": me.global_position.x, "y": me.global_position.y, "a": 0.0})
+	check("  a follower makes the leader's faults, rocks and pits; nothing from far off",
+		(arena.get("pits") as Array).size() == 1 and (arena.get("rocks") as Array).size() == 1 and (arena.get("faults") as Array).size() == 1)
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not (arena.get_node("ground") as CanvasItem).visible
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides its cracks and pits", hidden and (arena.get_node("ground") as CanvasItem).visible)
+
+	# GONE WITH ITS BOSS.
+	var last: Array = ((arena.get("faults") as Array)[0] as Array)[3]
+	boss.set("_dying", true)
+	arena.call("_process", 0.05)
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, the stalagmites sink, the floor knits, and it goes",
+		arena.is_queued_for_deletion() and last.all(func(r): return not is_instance_valid(r) or (r as Node).is_queued_for_deletion()))
+	check("  and the readout letters its marks",
+		PerfOverlay.MARK_LETTERS.get(&"faults crack") == "J" and PerfOverlay.MARK_LETTERS.get(&"rocks fall") == "Y"
+		and PerfOverlay.MARK_LETTERS.get(&"floor drops") == "Z")
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Earth boss's arena: done)")
+
+
+func _test_the_fire_arena() -> void:
+	section("THE FIRE BOSS'S ARENA - LAVA VENTS, EMBERS, THE RISING LAVA (0.143.0)")
+	# The owner: "next boss", and of the lava, "Deeper".
+	const Arena := preload("res://src/enemies/firearena.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var room: Rect2 = zone.field.bounds.grow(-16.0)
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 60)
+	var fx: Node = FX.attach(me)
+	var boss: Node2D = (load("res://scene/enemy/fireboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(175, -172)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null or arena.get_script() != Arena:
+		check("the loose Fire boss makes its arena", false, arena)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	var vents: PackedVector2Array = arena.get("vents")
+	check("the loose Fire boss makes its arena: its vents on a ring round the room's middle, drawn on the floor",
+		str(arena.name) == "firearena0" and vents.size() == Arena.VENTS and (arena.get_node("lava") as Node2D).position.y < Fx.SORT_Y
+		and Array(vents).all(func(v): return room.has_point(v)))
+
+	# A SWEEP: the leader's, round the ring one way, a vent at a time.
+	arena.set("_sweep_clock", 0.0)
+	arena.call("_process", 0.01)
+	var turns: Array = arena.get("turns")
+	var order: Array = turns.map(func(t): return int(t[0]))
+	var one_way: bool = order.size() == int(Arena.SWEEP_LENGTH[0])
+	for k in range(1, order.size()):
+		var step: int = posmod(int(order[k]) - int(order[k - 1]), Arena.VENTS)
+		one_way = one_way and step == posmod(int(order[1]) - int(order[0]), Arena.VENTS) and (step == 1 or step == Arena.VENTS - 1)
+	check("the leader starts a sweep round the vents, one way, never doubling back, each its turn after the last",
+		one_way, order)
+	turns.clear()
+	(arena.get("pools") as Array).clear()
+	arena.set("_sweep_clock", 99.0)
+	var vent: Vector2 = vents[2]
+	me.global_position += vent - _arena_point(me) + Vector2(4, 0)
+	me.taken.clear()
+	arena.call("start_sweep", 2, 1, 1)
+	arena.call("_process", Arena.VENT_WARN * 0.5)
+	var before: int = me.taken.size()
+	arena.call("_process", Arena.VENT_WARN * 0.5 + 0.01)
+	Hits.take()
+	check("  a vent glows, then erupts: on it, a share of your health as fire and burning; it leaves a pool",
+		before == 0 and me.taken.size() >= 1 and me.taken[0] == [roundi(1000.0 * Arena.VENT_SHARE), Element.Type.FIRE]
+		and (fx.get("started") as Array).has(FX.BURN) and (arena.get("pools") as Array).size() == 1, me.taken)
+	me.taken.clear()
+	arena.call("_process", Arena.POOL_GAP + 0.01)
+	Hits.take()
+	check("  and the pool burns you while you stand in it", me.taken.size() == 1
+		and me.taken[0] == [roundi(1000.0 * Arena.POOL_SHARE), Element.Type.FIRE], me.taken)
+
+	# PHASE TWO: embers.
+	fx.call("clear_all")
+	(arena.get("pools") as Array).clear()
+	me.global_position = origin + Vector2(0, 60)
+	me.taken.clear()
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.call("_process", 0.01)
+	var embers: Array = arena.get("embers")
+	var over: bool = embers.size() == 1 and (embers[0][0] as Vector2).y < _arena_point(me).y - 100.0
+	embers.clear()
+	arena.set("_ember_clock", 99.0)
+	arena.call("add_ember", _arena_point(me) - Vector2(0, Arena.EMBER_FALL * 1.0))
+	# Its sway at nothing a second in, when it reaches you.
+	((arena.get("embers") as Array)[0] as Array)[2] = TAU - 2.2
+	for n in 30:
+		arena.call("_process", 0.05)
+	Hits.take()
+	check("phase two: an ember falls over each player; drifting down onto you, it burns",
+		over and me.taken.size() == 1 and me.taken[0] == [roundi(1000.0 * Arena.EMBER_SHARE), Element.Type.FIRE]
+		and (arena.get("embers") as Array).is_empty(), [over, me.taken])
+	arena.call("hear", {"h": "sweep", "s": 3, "d": -1, "n": 4})
+	arena.call("hear", {"h": "ember", "x": origin.x + 5000.0, "y": origin.y})
+	var heard: Array = (arena.get("turns") as Array).map(func(t): return int(t[0]))
+	check("  a follower plays the leader's sweep; nothing from far off",
+		heard == [3, 2, 1, 0] and (arena.get("embers") as Array).is_empty(), [heard, (arena.get("embers") as Array).size()])
+	(arena.get("turns") as Array).clear()
+
+	# PHASE THREE: the lava rises, leaving the middle.
+	me.taken.clear()
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	for n in 8:
+		arena.call("_process", 0.5)
+	var dry: Rect2 = arena.call("dry")
+	var kept: bool = is_equal_approx(dry.size.x, room.size.x * Arena.LAVA_KEEP.x) and is_equal_approx(dry.size.y, room.size.y * Arena.LAVA_KEEP.y)
+	var middle_dry: bool = not bool(arena.call("in_lava", room.get_center())) and bool(arena.call("in_lava", room.position + Vector2(10, 10)))
+	me.global_position = room.position + Vector2(30, 40)
+	arena.call("_process", 0.05)
+	Hits.take()
+	check("phase three: the lava rises from the walls, leaving the middle; in it you burn",
+		float(arena.get("lava")) == 1.0 and kept and middle_dry and me.taken.size() >= 1
+		and me.taken[0] == [roundi(1000.0 * Arena.LAVA_SHARE), Element.Type.FIRE], [kept, middle_dry, me.taken])
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not (arena.get_node("lava") as CanvasItem).visible and not (arena.get_node("fire") as CanvasItem).visible
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides the vents, lava and fire", hidden)
+	boss.set("hp", int(boss.get("max_hp")))
+	for n in 8:
+		arena.call("_process", 0.5)
+	check("  back to full health, it ebbs", float(arena.get("lava")) == 0.0 and not bool(arena.call("in_lava", room.position + Vector2(10, 10))))
+
+	# GONE WITH ITS BOSS.
+	boss.set("_dying", true)
+	arena.call("_process", 0.05)
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, the vents go cold and it goes", arena.is_queued_for_deletion())
+	check("  and the readout letters its marks",
+		PerfOverlay.MARK_LETTERS.get(&"vents erupt") == "N" and PerfOverlay.MARK_LETTERS.get(&"lava burns") == "~")
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Fire boss's arena: done)")
+
+
+class GateStub extends Node2D:
+	# A gauntlet gate, as bossgauntlet.gd asks one: its wave, its boss, its
+	# land, and open() / warn() written down.
+	var wave: int = 1
+	var boss_path: NodePath = NodePath("boss")
+	var element: int = Element.Type.ICE
+	var opened: bool = false
+	var warned: float = 0.0
+
+	func open() -> void:
+		opened = true
+		var boss: Node = get_node_or_null(boss_path)
+		if boss != null:
+			boss.set(&"gated", false)
+		# As the real gate frees itself once it has shattered, an opened one
+		# holds nothing any more: the gauntlet must not ask it.
+		boss_path = NodePath()
+
+	func warn(seconds: float) -> void:
+		warned = seconds
+
+
+class GateBoss extends Node2D:
+	# A boss behind a gate, as the gauntlet watches it.
+	signal died
+	var gated: bool = true
+	var _dying: bool = false
+	@warning_ignore("unused_private_class_variable")
+	var _death_resolved: bool = false
+	var net_mirror: bool = false
+	var land: int = Element.Type.ICE
+	var phase_now: int = 0
+	var fighting: bool = true
+
+	func current_element() -> int:
+		return land
+
+	func _current_phase() -> int:
+		return phase_now
+
+	func in_fight() -> bool:
+		return fighting and not gated
+
+
+func _gauntlet_of(lands: Array, mirrors: bool) -> Node2D:
+	"""A gauntlet over stub gates: `lands` is [[wave, land], ...] in scene
+	order."""
+	var gauntlet: Node2D = (preload("res://src/world/bossgauntlet.gd") as GDScript).new()
+	gauntlet.set(&"wave_gap_seconds", 0.05)
+	for pair in lands:
+		var gate := GateStub.new()
+		gate.wave = int(pair[0])
+		gate.element = int(pair[1])
+		var boss := GateBoss.new()
+		boss.name = "boss"
+		boss.land = int(pair[1])
+		boss.net_mirror = mirrors
+		gate.add_child(boss)
+		gauntlet.add_child(gate)
+	add_child(gauntlet)
+	return gauntlet
+
+
+func _gate_of(gauntlet: Node, land: int) -> GateStub:
+	for gate in gauntlet.get_children():
+		if gate is GateStub and (gate as GateStub).element == land:
+			return gate
+	return null
+
+
+func _test_bosses_share_the_arena() -> void:
+	section("WHEN BOSSES FIGHT TOGETHER - TURNS, THE FLOOR, ONE HIT, ONE GATE AT A TIME (0.143.0)")
+	# The owner: "we need to make sure that 3 bosses do not break the game
+	# also", "should we release them 1 gate at a time then?", and of the
+	# advice, "sounds good".
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const Fire := preload("res://src/enemies/firearena.gd")
+	const Ice := preload("res://src/enemies/icearena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const BossScript := preload("res://src/enemies/bossenemy.gd")
+	const Gauntlet := preload("res://src/world/bossgauntlet.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Sync := preload("res://src/world/monstersync.gd")
+
+	# TWO PULLS AT ONCE: the tornado and the whirlpool both draw you.
+	var host := ArenaDummy.new()
+	add_child(host)
+	host.global_position = Vector2(-30000, -30000)
+	var pulls: Node = FX.attach(host)
+	await get_tree().process_frame
+	for n in 3:
+		pulls.call("pull", host.global_position + Vector2(200, 0), 0.15, 40.0, 11)
+		pulls.call("pull", host.global_position + Vector2(0, 200), 0.15, 40.0, 22)
+	var push: Vector2 = pulls.call("push_velocity")
+	check("two pulls renewed together both draw you (the tornado and the whirlpool), together under PULL_SPEED_MAX",
+		push.x > 15.0 and push.y > 15.0 and push.length() <= FX.PULL_SPEED_MAX + 0.01, push)
+	pulls.call("clear_all")
+	for n in 3:
+		pulls.call("pull", host.global_position + Vector2(200, 0), 0.15, 40.0, 11)
+		pulls.call("pull", host.global_position + Vector2(200, 0), 0.15, 40.0, 11)
+	push = pulls.call("push_velocity")
+	check("  one pull alone, however often renewed, draws you at its own speed, as before", absf(push.length() - 40.0) < 0.5
+		and float(pulls.get("pull_left_b")) == 0.0, push)
+	host.queue_free()
+
+	# A ROOM WITH TWO BOSSES: Fire and Ice, each with its arena.
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 40)
+	FX.attach(me)
+	var fire_boss: Node2D = (load("res://scene/enemy/fireboss.tscn") as PackedScene).instantiate()
+	fire_boss.position = origin + Vector2(175, -172)
+	world.add_child(fire_boss)
+	var ice_boss: Node2D = (load("res://scene/enemy/iceboss.tscn") as PackedScene).instantiate()
+	ice_boss.position = origin + Vector2(-175, -172)
+	world.add_child(ice_boss)
+	await get_tree().process_frame
+	fire_boss.process_mode = Node.PROCESS_MODE_DISABLED
+	ice_boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	fire_boss.call("_keep_arena", 1.0)
+	ice_boss.call("_keep_arena", 1.0)
+	var fire: Node2D = fire_boss.call("arena")
+	var ice: Node2D = ice_boss.call("arena")
+	if fire == null or ice == null:
+		check("two loose bosses make two arenas in one room", false, [fire, ice])
+		Light.everywhere = false
+		world.queue_free()
+		return
+	fire.set_process(false)
+	ice.set_process(false)
+	check("two loose bosses make two arenas, both in the floor book, and each counts the other as a partner",
+		get_tree().get_nodes_in_group(Light.FLOOR_GROUP).has(fire) and get_tree().get_nodes_in_group(Light.FLOOR_GROUP).has(ice)
+		and Light.partners(fire_boss) == 1 and Light.partners(ice_boss) == 1)
+
+	# THE LAVA LEAVES MORE WITH A PARTNER: half the room, not the dirt square.
+	fire_boss.set("hp", 1)
+	for k in 8:
+		fire.call("_process", 0.5)
+	var dry: Rect2 = fire.call("dry")
+	var room: Rect2 = fire.get("_room")
+	var share: float = dry.get_area() / room.get_area()
+	check("with a partner, Fire's lava rises to leave about half the room dry (%.0f%%), not the dirt square alone" % (share * 100.0),
+		float(fire.get("lava")) >= 1.0 and absf(share - Fire.LAVA_KEEP_SHARED.x * Fire.LAVA_KEEP_SHARED.y) < 0.01, share)
+
+	# THE FLOOR BOOK.
+	var in_lava: Vector2 = room.position + Vector2(20, 20)
+	var middle: Vector2 = room.get_center()
+	check("the floor book: Ice may not put frost on Fire's lava", not Light.may_take(ice, in_lava, 40.0)
+		and Light.floor_taken_by_others(ice, in_lava))
+	check("  but may in the dry middle while the room keeps %d%% free" % roundi(Light.SAFE_FLOOR * 100.0),
+		Light.may_take(ice, middle, 40.0) and Light.floor_left(ice) >= Light.SAFE_FLOOR, Light.floor_left(ice))
+	check("  and not a hazard so big it would leave less than that free",
+		not Light.may_take(ice, middle, 200.0) and Light.floor_left(ice, middle, 200.0) < Light.SAFE_FLOOR,
+		Light.floor_left(ice, middle, 200.0))
+	me.global_position += in_lava - _arena_point(me)
+	ice.set("_frost_clock", 0.0)
+	ice.set("_wall_clock", 99.0)
+	ice.set("_hail_clock", 99.0)
+	var asked: Array = ice_boss.call("fight_targets")
+	ice.call("_lead", 0.01)
+	check("  the leader's frost round a player standing in the lava waits rather than land on it",
+		not asked.is_empty() and (ice.get("frost") as Array).is_empty(), [asked.size(), (ice.get("frost") as Array).size()])
+	Light.everywhere = true
+
+	# THE WAVE'S PACE: a partner in the fight stretches the arena's clocks.
+	var stub := GDScript.new()
+	stub.source_code = "extends Node2D\nfunc in_fight() -> bool:\n\treturn true\n"
+	stub.reload()
+	me.global_position += middle - _arena_point(me)
+	var pace_was: float = float(ice_boss.call("wave_pace"))
+	var partner: Node2D = stub.new()
+	partner.add_to_group(BossScript.BOSS_GROUP)
+	world.add_child(partner)
+	partner.global_position = middle
+	ice.set("_frost_clock", 0.0)
+	ice.call("_lead", 0.01)
+	var clock: float = float(ice.get("_frost_clock"))
+	var want: float = float(Ice.FROST_GAP[0]) * (pace_was + BossScript.WAVE_PACE)
+	check("one more partner in the fight stretches the arena's clocks by the wave's pace (frost every %.2f s, was %.2f)" % [want, float(Ice.FROST_GAP[0]) * pace_was],
+		absf(clock - want) < 0.05, clock)
+	partner.queue_free()
+	await get_tree().process_frame
+	ice.set("_frost_clock", 0.0)
+	ice.call("_lead", 0.01)
+	check("  and it goes back when that partner goes", absf(float(ice.get("_frost_clock")) - float(Ice.FROST_GAP[0]) * pace_was) < 0.05,
+		ice.get("_frost_clock"))
+
+	# ONE HIT: two arenas never both hit you in the same moment.
+	me.remove_meta(&"arena_hit")
+	me.taken.clear()
+	fire.call("_hit", me, Fire.VENT_SHARE, "vent", _arena_point(me))
+	ice.call("_land", _arena_point(me))
+	Hits.take()
+	check("a hit from one arena, then another's at once: only the first lands", me.taken.size() == 1
+		and int(me.taken[0][1]) == Element.Type.FIRE, me.taken)
+	fire.call("_hit", me, Fire.POOL_SHARE, "lava pool", _arena_point(me))
+	Hits.take()
+	check("  one arena's own hits keep their own clocks", me.taken.size() == 2, me.taken)
+	me.set_meta(&"arena_hit", [Time.get_ticks_msec() - int(Light.HIT_GAP * 1000.0) - 10, fire.get_instance_id()])
+	ice.call("_land", _arena_point(me))
+	Hits.take()
+	check("  and %.2f s later the other's lands" % Light.HIT_GAP, me.taken.size() == 3
+		and int(me.taken[2][1]) == Element.Type.ICE, me.taken)
+
+	# THE PARTNER LEAVES: Fire alone again, the lava back to the dirt square.
+	ice_boss.set("_dying", true)
+	for k in 8:
+		fire.call("_process", 0.5)
+	dry = fire.call("dry")
+	check("Fire's partner falls: the lava creeps back to the dirt square",
+		Light.partners(fire_boss) == 0 and absf(dry.get_area() / room.get_area() - Fire.LAVA_KEEP.x * Fire.LAVA_KEEP.y) < 0.01,
+		dry.get_area() / room.get_area())
+	check("  and alone, the floor book asks nothing of an arena", Light.may_take(fire, in_lava, 40.0))
+
+	# WALKING OUT: a boss let out of its gate attacks after WALK_OUT_SECONDS.
+	fire_boss.set("gated", true)
+	fire_boss.call("_physics_process", 0.016)
+	fire_boss.set("gated", false)
+	fire_boss.call("_physics_process", 0.016)
+	fire_boss.set("_erupted_this_cast", true)
+	fire_boss.call("_trigger_attack")
+	check("a boss let out of its gate makes no attack for %.0f s while it steps out" % BossScript.WALK_OUT_SECONDS,
+		bool(fire_boss.call("walking_out")) and bool(fire_boss.get("_erupted_this_cast")))
+	fire_boss.call("_physics_process", BossScript.WALK_OUT_SECONDS)
+	check("  and then it may", not bool(fire_boss.call("walking_out")))
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+
+	# ONE GATE AT A TIME.
+	var W := Element.Type
+	var gauntlet: Node2D = _gauntlet_of([[1, W.LIGHT], [2, W.WIND], [2, W.WATER], [3, W.FIRE], [3, W.ICE], [3, W.EARTH]], false)
+	check("the gauntlet orders a wave's gates: Water then Wind; Ice, Earth, then Fire",
+		Gauntlet.ordered([_gate_of(gauntlet, W.FIRE), _gate_of(gauntlet, W.EARTH), _gate_of(gauntlet, W.ICE)]).map(func(g): return int(g.element))
+			== [W.ICE, W.EARTH, W.FIRE]
+		and Gauntlet.ordered([_gate_of(gauntlet, W.WIND), _gate_of(gauntlet, W.WATER)]).map(func(g): return int(g.element)) == [W.WATER, W.WIND])
+	check("  wave one's gate is open from the start, with no banner", _gate_of(gauntlet, W.LIGHT).opened
+		and str(gauntlet.call("banner_text")) == "")
+	(_gate_of(gauntlet, W.LIGHT).get_node("boss") as GateBoss).died.emit()
+	await get_tree().create_timer(0.15).timeout
+	var water: GateStub = _gate_of(gauntlet, W.WATER)
+	var wind: GateStub = _gate_of(gauntlet, W.WIND)
+	check("wave two opens on Water alone, and says so", water.opened and not wind.opened and wind.warned == 0.0
+		and str(gauntlet.call("banner_text")) == "Wave 2: Water", [water.opened, wind.opened, gauntlet.call("banner_text")])
+	for k in 20:
+		gauntlet.call("_process", 1.0)
+	check("  Wind waits while Water is in its phase one (20 s of fighting)", not wind.opened and wind.warned == 0.0)
+	(water.get_node("boss") as GateBoss).phase_now = 1
+	gauntlet.call("_process", 0.01)
+	check("Water reaches its phase two: Wind's gate warns for %.0f s and the banner says it joins" % Gauntlet.WARN_SECONDS,
+		wind.warned == Gauntlet.WARN_SECONDS and not wind.opened and str(gauntlet.call("banner_text")) == "Wind joins the fight",
+		[wind.warned, gauntlet.call("banner_text")])
+	gauntlet.call("_process", Gauntlet.WARN_SECONDS - 0.1)
+	var early: bool = wind.opened
+	gauntlet.call("_process", 0.2)
+	check("  and opens when the warning is over", not early and wind.opened)
+	(water.get_node("boss") as GateBoss).died.emit()
+	(wind.get_node("boss") as GateBoss).died.emit()
+	await get_tree().create_timer(0.15).timeout
+	var ice_gate: GateStub = _gate_of(gauntlet, W.ICE)
+	var earth_gate: GateStub = _gate_of(gauntlet, W.EARTH)
+	var fire_gate: GateStub = _gate_of(gauntlet, W.FIRE)
+	check("wave three opens on Ice alone", ice_gate.opened and not earth_gate.opened and not fire_gate.opened)
+	for k in 29:
+		gauntlet.call("_process", 1.0)
+	var waited: bool = earth_gate.warned == 0.0
+	gauntlet.call("_process", 1.1)
+	check("  after %.0f s of Ice fighting in its phase one, Earth is let out anyway" % Gauntlet.RELEASE_SECONDS,
+		waited and earth_gate.warned == Gauntlet.WARN_SECONDS)
+	gauntlet.call("_process", Gauntlet.WARN_SECONDS + 0.1)
+	(earth_gate.get_node("boss") as GateBoss).fighting = false
+	for k in 40:
+		gauntlet.call("_process", 1.0)
+	check("  the clock counts only fighting: nobody near Earth for 40 s and Fire waits", earth_gate.opened and fire_gate.warned == 0.0)
+	(earth_gate.get_node("boss") as GateBoss)._dying = true
+	gauntlet.call("_process", 0.01)
+	check("Earth falls before its phase two: Fire is let out at once (warned %.1f s)" % Gauntlet.WARN_ON_FALL,
+		fire_gate.warned == Gauntlet.WARN_ON_FALL and int(gauntlet.call("waiting")) == 0)
+	check("  the leader says how many are out, for its party", gauntlet.call("net_released") == [3, 3])
+	gauntlet.queue_free()
+
+	# A PARTY: the follower opens what the leader says, never on its own.
+	var follower: Node2D = _gauntlet_of([[1, W.LIGHT], [2, W.WIND], [2, W.WATER], [3, W.FIRE], [3, W.ICE], [3, W.EARTH]], true)
+	follower.call("net_jump_to", 2, 1)
+	water = _gate_of(follower, W.WATER)
+	wind = _gate_of(follower, W.WIND)
+	(water.get_node("boss") as GateBoss).phase_now = 2
+	for k in 40:
+		follower.call("_process", 1.0)
+	check("a follower catching up opens the leader's first gate of the wave, and never lets the next out itself",
+		_gate_of(follower, W.LIGHT).opened and water.opened and not wind.opened and wind.warned == 0.0)
+	follower.call("net_release_to", 2, 2)
+	check("  told the leader let Wind out, it warns as the leader's did", wind.warned == Gauntlet.WARN_SECONDS
+		and str(follower.call("banner_text")) == "Wind joins the fight")
+	follower.call("net_jump_to", 3, 2)
+	check("  and caught up to wave three with two out: Ice and Earth open at once, Fire still shut",
+		_gate_of(follower, W.ICE).opened and _gate_of(follower, W.EARTH).opened and not _gate_of(follower, W.FIRE).opened
+		and wind.opened)
+	check("the wire: \"rel\" is [wave, let out]; another wave's or none reads unsaid",
+		Sync.rel_for({"rel": [3, 2]}, 3) == 2 and Sync.rel_for({"rel": [2, 2]}, 3) == -1 and Sync.rel_for({}, 3) == -1)
+	follower.queue_free()
+	await get_tree().process_frame
+	print("  (when bosses fight together: done)")

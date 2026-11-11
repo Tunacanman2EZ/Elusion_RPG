@@ -2729,6 +2729,187 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### When bosses fight together: one gate at a time, turns, the floor, one hit (0.143.0)
+
+The owner, once all six arenas were built: "we need to make sure that 3
+bosses do not break the game also"; asked whether to release them one gate
+at a time, then "i need your best advice unknown area for me", and of the
+advice, "sounds good". Part A of the Docs plan's "When bosses fight
+together" - the reactions between arenas are parts B (wave two) and C (wave
+three). Folded into 0.143.0, whose SHIP file was still waiting.
+
+What two or three loose bosses broke, found in the code before building: the
+tornado's and the whirlpool's pulls replaced each other every frame, so one
+did nothing; Fire's lava ("Deeper") leaves a quarter of the floor and nothing
+kept Earth's pits or Ice's frost and walls out of it; the bosses' attacks
+took turns (`_pace()`, WAVES TAKE TURNS) but their arenas did not; and
+nobody had measured three at once.
+
+- **One gate at a time** (bossgauntlet.gd, ONE GATE AT A TIME): a wave's
+  gates open in `RELEASE_ORDER` - Water then Wind; Ice, Earth, then Fire (the
+  arena easiest to read first, the one that takes the most floor last, so
+  Fire's lava comes when the others are falling). The first at once; each
+  next when the boss let out last reaches its phase two (`NEXT_AT_PHASE`),
+  after `RELEASE_SECONDS` (30) of it IN A FIGHT (nobody near, the clock
+  stops), or as soon as it falls (`WARN_ON_FALL`, 1.5 s). The gate warns
+  `WARN_SECONDS` (3) first - bossgate.gd `warn()`: a quickening glow toward
+  white, a crack (`WARN_CRACK` of its dissolve, which open() then shatters
+  from) and a shake - and a banner (layer 40, as the Crowned's) says "Wave 2:
+  Water" or "Wind joins the fight". `ordered()`, `released()`, `waiting()`,
+  `banner_text()`.
+- **Walking out** (bossenemy.gd `WALK_OUT_SECONDS`, 2): a boss whose gate
+  has just opened makes no attack on either clock (`walking_out()`, checked
+  in `_trigger_attack()` and `_on_spike_timer()`); its arena starts in phase
+  one. Never the Endless's bosses, which were never caged. `in_fight()` is
+  untouched - it drives the party scaling.
+- **A party**: the leader decides; a follower's bosses are mirrors, so its
+  gauntlet never lets the next one out (`_decides()`). The leader's world
+  message carries `"rel": [wave, let out]` when it changes and in every full
+  (monstersync.gd `_rel()`, `rel_for()`); a follower warns and opens what it
+  is told (`net_release_to()`), and one walking in opens them at once
+  (`net_jump_to(n, rel)`; `rel` -1, a leader from before, opens the whole
+  wave as it used to). presence.py passes "w" as sent and the books read
+  only their own keys: no server change.
+- **The arenas take turns** (lightarena.gd `paced()`): every leader's hazard
+  clock - Light's flares, Wind's gusts, the rest between Water's tides, Ice's
+  frost, walls and hail, Earth's faults, rocks and pits, Fire's sweeps and
+  embers - is its gap times the boss's `wave_pace()` (`_pace()`: x1.35 with
+  one partner fighting, x1.7 with two). How often standing in a hazard hurts
+  is not paced.
+- **The floor book** (lightarena.gd, WHEN BOSSES FIGHT TOGETHER): every arena
+  is in `FLOOR_GROUP` with `takes_floor(at)` - Fire's lava and pools, Ice's
+  frost (forming too) and standing walls, Earth's pits (cracking too), the
+  tide and its shine; none for Light or Wind. With `partners()` (other bosses
+  loose in the room), the leader's frost, ice walls and pits ask `may_take()`
+  first: never on another arena's floor, and never leaving under
+  `SAFE_FLOOR` (40%) of the room free (`floor_left()`, a `FLOOR_CELLS` 16 x
+  16 grid). `TRIES` (4) spots, then that one waits. Alone, nothing is asked.
+- **Lava with partners** (firearena.gd `LAVA_KEEP_SHARED`, 0.7 x 0.72): while
+  another boss is loose, the lava leaves half the room, easing to it and
+  back to `LAVA_KEEP` (the dirt square) over `LAVA_RISE` (`keep`).
+- **One hit** (lightarena.gd `may_hit()`): an arena's hit within `HIT_GAP`
+  (0.25 s) of ANOTHER arena's (still standing) is passed over, effect and
+  all; one arena's own hits keep their own clocks, so a fight alone is
+  unchanged. Every arena damage site asks.
+- **Two pulls** (statuseffects.gd TWO PULLS AT ONCE): `pull()` takes a
+  `source`; the tornado and the whirlpool name theirs, and a second source
+  keeps a second slot (`pull_to_b`, ...) beside the first. Together they are
+  held under `PULL_SPEED_MAX`. A pull naming none (an attack's) is the first
+  slot's as ever, so one source renewed many times a frame is one pull.
+- **Measured** (zz/wave3/bench.gd: the Boss Arena, Ice, Earth and Fire loose
+  and held in phase three, four players; the container's software
+  renderer at 1280 x 720, 8 s a run, two or three runs each): the three
+  arenas add 13 to 17 draw calls (159-164 -> 176-177) and about 1 ms to the
+  physics tick (1.9-2.4 -> 2.8-4.3 ms of its 12.5); the frame went 23-25 ->
+  31-35 ms here, about half of it the drawing (the Arena lag test, which
+  hides them: 29 ms). The bar is still the owner's: 60 fps in the browser
+  with the readout saying GREAT.
+
+- **The refinement** (the owner, after those numbers: "our goal is to still
+  have room for more phsics so we need a lot of refinement"). Profiled per
+  arena on the same bench (zz/wave3/bench.gd, PROFILE=1: each arena's frame
+  and each draw callback timed, triangles counted). The physics tick was
+  never the arenas' - the three bosses' own scripts are about 0.2 ms of it
+  and the rest is the room - so the cut is in their frames: about 0.74 ms of
+  scripts a frame (0.23 thinking, 0.51 drawing, ~800 triangles) down to about
+  0.42 (0.21 and 0.21, ~420 triangles), container numbers:
+  - **One call a layer** (src/enemies/quadbatch.gd, no class_name): every
+    arena's quads go into a batch filled in place and handed to the engine
+    in one `canvas_item_add_triangle_array()`; ovals and rims are fans from
+    a corner table made once (`corners()`), small ones (`SMALL`, 14 px) with
+    half the corners. Each layer's draw is `_quads.paint.bind(layer, draw)`.
+  - **Floors every other frame** (`QuadBatch.turn(self, FLOOR_EVERY)`, each
+    arena on its own frame): frost, cracks, pits, pools and the lava change
+    slowly; the air (embers, streaks) every frame. Wind and Water have one
+    layer each and still draw every frame.
+  - **The snow on the card** (icearena.gd SNOW_SHADER): one MultiMesh of
+    `SNOW` flakes, each placed by its shader from its number and TIME; a
+    phone shows half (`visible_instance_count`). Nothing for the processor.
+  - **Who is in the fight four times a second** (Ice and Earth
+    `_fighters()`, `LOOK_SECONDS`): their leaders asked the boss every frame.
+  - Fire's lava glints 40 -> `GLINTS` 24; the fog's amount set only when it
+    changes.
+  - **The fog under the HUD** (icearena.gd, FOG_Z 30): the blizzard's fog
+    was a CanvasLayer at 39 and washed out the health bars and hotbar. It is
+    a rect in the world now, `FOG_REACH` past the room, over everything there
+    and under every CanvasLayer; the shader still reads the screen.
+  The frame in the container's software renderer is mostly filling pixels
+  and did not move; the card is the owner's to judge in the browser.
+
+Not yet played in a party, nor with a game from before 0.143.0 in one (it
+would open the whole wave at once).
+
+`_test_bosses_share_the_arena()` (testrunner_11).
+
+### The Fire boss's arena: lava vents, embers, the rising lava (0.143.0)
+
+The owner: "next boss" - the last of the six, folded into 0.143.0 with the
+Earth boss's (its SHIP file was still waiting); built, pictured from the real
+code (fire_built.png); of the lava, "Deeper". `src/enemies/firearena.gd` (no
+class_name), kit `"arena": &"fire"`. Every elemental boss has its arena now;
+the Crowned keeps its own room.
+
+- **Lava vents** (phase one on): `VENTS` (8) cracks on a ring `RING` of the
+  way to the room's edges. Every `SWEEP_GAP` (7 / 6 / 5 s) the leader starts
+  a sweep (`h: "sweep"`: start, way, count) - `SWEEP_LENGTH` vents round one
+  way, `VENT_STEP` apart, so it never doubles back. Each glows `VENT_WARN`
+  (0.8 s), erupts in a column of fire (within `VENT_RADIUS`, `VENT_SHARE` 7%
+  and burning) and leaves a pool for `POOL_LIFE` that burns you every
+  `POOL_GAP` while you stand in it (`POOL_SHARE`, as ground).
+- **Embers** (phase two on): over each player every `EMBER_GAP`
+  (`h: "ember"`), `EMBER_HIGH` above, falling `EMBER_FALL` px/s and swaying
+  (where it is at any age is worked out from where it started - `ember_at()`
+  - so every screen agrees). One that touches you: `EMBER_SHARE` and
+  burning.
+- **The lava rises** (phase three): from the room's edges over `LAVA_RISE`,
+  leaving `LAVA_KEEP` of it dry in the middle (0.45 across, 0.5 down - the
+  Boss Arena's dirt square: "Deeper"); in it `LAVA_SHARE` every `LAVA_GAP`,
+  burning. It ebbs if the boss is healed back past the phase.
+- **Drawn**: vents, pools and lava on the floor (sorted first), columns and
+  embers at z 17, quads only.
+- **Readout**: N (vents erupt), ~ (lava burns) - the alphabet ran out: every
+  letter is some mark's now. The Arena lag test hides it.
+
+Not yet played in a party.
+
+`_test_the_fire_arena()` (testrunner_11).
+
+### The Earth boss's arena: fault lines, falling rock, the quake (0.143.0)
+
+The owner: "ok next boss" - the fifth of the Docs plan; built, pictured from
+the real code before it went to his PC (earth_built.png); of the fault
+walls, "Walking only". `src/enemies/eartharena.gd` (no class_name), kit
+`"arena": &"earth"`.
+
+- **Fault lines** (phase one on): every `FAULT_GAP` (8 / 7 / 6 s) the leader
+  cracks the floor across the line from the boss to a player, `FAULT_ALONG`
+  of the way along it, turned up to `FAULT_TURN` from square, `FAULT_HALF`
+  either way cut to the room (`h: "fault"`). A crack of dust widens over
+  `FAULT_WARN` (1.6 s), then stalagmites rise for `FAULT_LIFE` (4 s): pieces
+  of `PIECE` px (`Ridge`, an inner class), each its own node sorted by its
+  feet with its own body on layer 2 - walking only, the orbs fly over (no
+  bullet wall). Risen within `FAULT_UNDER` of you: `FAULT_SHARE` (6%) and
+  thrown off to your side.
+- **Falling rock** (phase two on): a shadow of grit near each player every
+  `ROCK_GAP` (`h: "rock"`); after `ROCK_WARN` it lands - within
+  `ROCK_RADIUS`, `ROCK_SHARE` (6%) as earth, and rooted.
+- **The quake** (phase three): every `PIT_GAP` a piece of floor near a player
+  cracks (`PIT_WARN`, cracks running out) and drops away for `PIT_LIFE`
+  (`h: "pit"`): in it you fall - `PIT_SHARE` (8%), at most every
+  `PIT_GAP_HIT` - and are thrown out over its edge.
+- **Drawn**: cracks, shadows and pits on the floor (sorted first), the
+  stalagmites as quads among everyone. One draw call over none in phase one.
+- **Readout**: J (faults crack), Y (rocks fall), Z (floor drops). The Arena
+  lag test hides the cracks and pits.
+- **Found on the way** (the test's, not the game's): a hazard made in a frame
+  is aged by that whole frame, so a test stepping seconds at once must make
+  it with a short step first; and a shove from exactly where you stand has
+  no direction, so it does nothing.
+
+Not yet played in a party.
+
+`_test_the_earth_arena()` (testrunner_11).
+
 ### The Ice boss's arena: frost, walls of ice, hail, the blizzard (0.142.0)
 
 The owner: "next boss" - the fourth of the Docs plan; built, then pictured
@@ -2758,10 +2939,12 @@ kit `"arena": &"ice"`.
   (`h: "hail"`); after `HAIL_WARN` it lands: within `HAIL_RADIUS`,
   `HAIL_SHARE` (5%) as ice and chilled.
 - **The blizzard** (phase three): over `BLIZZARD_IN`, snow across the room
-  (quads at z 17, half on a phone) and a white fog closing in from the
-  screen's edges - a CanvasLayer at `FOG_LAYER` 39 (under the dazzle's 40),
-  clear to `FOG_CLEAR` of the screen's height from its middle, `FOG_THICK`
-  (0.72) at `FOG_EDGE`. The frost comes faster.
+  (z 17, half on a phone; a MultiMesh placed on the card since the 0.143.0
+  refinement) and a white fog closing in from the screen's edges - clear to
+  `FOG_CLEAR` of the screen's height from its middle, `FOG_THICK` (0.72) at
+  `FOG_EDGE`; a CanvasLayer at 39 until the 0.143.0 refinement put it in the
+  world under the HUD (`FOG_Z`, "When bosses fight together"). The frost
+  comes faster.
 - **Drawn**: the frost, warnings and shadows on the floor (sorted first, as
   the tide), the walls among everyone, quads only. Phase one is one draw
   call over none in the Boss Arena.

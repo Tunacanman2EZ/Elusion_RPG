@@ -212,6 +212,18 @@ var shove_seconds: float = SHOVE_SECONDS
 var pull_to: Vector2 = Vector2.ZERO
 var pull_left: float = 0.0
 var pull_speed: float = 0.0
+# TWO PULLS AT ONCE (0.143.0, waves of bosses): a pull that names its
+# `source` (an arena: the Wind boss's tornado, the Water boss's whirlpool,
+# each renewed every frame) keeps a slot of its own while it lasts, so a
+# second source is kept beside the first instead of replacing it - both draw
+# you and neither quietly does nothing. Together they are still held under
+# PULL_SPEED_MAX (push_velocity()). A pull naming none (an attack's) is the
+# first slot's, as ever.
+var pull_to_b: Vector2 = Vector2.ZERO
+var pull_left_b: float = 0.0
+var pull_speed_b: float = 0.0
+var _pull_source: int = 0
+var _pull_source_b: int = 0
 # A DRIFT (0.140.0, the Wind boss's crosswind - windarena.gd): a steady push
 # its arena renews every frame you stand in the wind (drift()), gone a moment
 # after it stops. Never as fast as walking (PULL_SPEED_MAX), like a pull.
@@ -397,14 +409,24 @@ func wade(seconds: float = 0.15) -> void:
 	wade_left = seconds
 
 
-func pull(toward: Vector2, seconds: float, speed: float) -> void:
+func pull(toward: Vector2, seconds: float, speed: float, source: int = 0) -> void:
 	"""Draws the body toward `toward` for `seconds` at `speed` (held under
-	PULL_SPEED_MAX, so walking always beats it)."""
+	PULL_SPEED_MAX, so walking always beats it). `source` (TWO PULLS AT
+	ONCE): who pulls, for one that renews itself beside another."""
 	if _host_dying() or immune():
 		return
-	pull_to = toward
-	pull_left = maxf(pull_left, seconds)
-	pull_speed = clampf(speed, 0.0, PULL_SPEED_MAX)
+	var second: bool = source != 0 and source != _pull_source and pull_left > 0.0 \
+		and (source == _pull_source_b or pull_left_b <= 0.0 or _pull_source_b != 0)
+	if second:
+		pull_to_b = toward
+		pull_left_b = maxf(pull_left_b, seconds)
+		pull_speed_b = clampf(speed, 0.0, PULL_SPEED_MAX)
+		_pull_source_b = source
+	else:
+		pull_to = toward
+		pull_left = maxf(pull_left, seconds)
+		pull_speed = clampf(speed, 0.0, PULL_SPEED_MAX)
+		_pull_source = source
 	_started(PULL, false)
 
 
@@ -487,10 +509,16 @@ func push_velocity() -> Vector2:
 	var push: Vector2 = Vector2.ZERO
 	if shove_left > 0.0:
 		push += shove_velocity * (shove_left / maxf(0.001, shove_seconds))
+	var pulled: Vector2 = Vector2.ZERO
 	if pull_left > 0.0 and host != null:
 		var toward: Vector2 = pull_to - _body_point()
 		if toward.length() > 4.0:
-			push += toward.normalized() * pull_speed
+			pulled += toward.normalized() * pull_speed
+	if pull_left_b > 0.0 and host != null:
+		var toward_b: Vector2 = pull_to_b - _body_point()
+		if toward_b.length() > 4.0:
+			pulled += toward_b.normalized() * pull_speed_b
+	push += pulled.limit_length(PULL_SPEED_MAX)
 	if drift_left > 0.0:
 		push += drift_velocity
 	return push
@@ -509,7 +537,7 @@ func active() -> Array[StringName]:
 		on.append(SOAKED)
 	if shove_left > 0.0:
 		on.append(SHOVE)
-	if pull_left > 0.0:
+	if pull_left > 0.0 or pull_left_b > 0.0:
 		on.append(PULL)
 	if root_left > 0.0:
 		on.append(ROOT)
@@ -531,6 +559,7 @@ func clear_all() -> void:
 	soaked_left = 0.0
 	shove_left = 0.0
 	pull_left = 0.0
+	pull_left_b = 0.0
 	drift_left = 0.0
 	wade_left = 0.0
 	dazzle_left = 0.0
@@ -584,6 +613,7 @@ func advance(delta: float) -> void:
 	soaked_left = maxf(0.0, soaked_left - delta)
 	shove_left = maxf(0.0, shove_left - delta)
 	pull_left = maxf(0.0, pull_left - delta)
+	pull_left_b = maxf(0.0, pull_left_b - delta)
 	drift_left = maxf(0.0, drift_left - delta)
 	wade_left = maxf(0.0, wade_left - delta)
 	dazzle_left = maxf(0.0, dazzle_left - delta)

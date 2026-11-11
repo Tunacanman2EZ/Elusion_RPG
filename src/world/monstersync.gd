@@ -50,8 +50,11 @@
 #             of the monster fires it (fire_volley), with its own damage,
 #             element, count and speed
 #   {"wave": n}                                  the boss gauntlet's wave
+#   {"rel": [wave, n]}                           how many of that wave's gates
+#                                                are let out (0.143.0, ONE
+#                                                GATE AT A TIME, bossgauntlet.gd)
 #   {"full": true, "reset": bool, "part": i, "parts": n, "spawn": [records],
-#    "wave": n}                                  everything, to a game joining
+#    "wave": n, "rel": [wave, n]}                everything, to a game joining
 # A record is {id, o (the spot it was authored at, or ""), s (scene), pp (its
 # parent), x, y, a, hp, mh, p (BaseEnemy.net_props())}.
 # And presence's "h" (follower to leader): [[id, damage, element], ...].
@@ -155,6 +158,7 @@ var _pending_left: float = 0.0
 var _tick_left: float = 0.0
 var _ask_left: float = 0.0
 var _sent_wave: int = -1
+var _sent_rel: Array = []
 var _respawner_nodes: Array = []
 var _containers: Dictionary = {}   # where this scene keeps its monsters
 
@@ -571,6 +575,10 @@ func _send_delta() -> void:
 	if wave != _sent_wave:
 		message["wave"] = wave
 		_sent_wave = wave
+	var rel: Array = _rel()
+	if not rel.is_empty() and rel != _sent_rel:
+		message["rel"] = rel
+		_sent_rel = rel
 	if not message.is_empty():
 		link.send_world(message)
 
@@ -590,6 +598,8 @@ func _send_full(to: int, reset: bool) -> void:
 		var chunk: Array = records.slice(part * RECORDS_PER_PART, (part + 1) * RECORDS_PER_PART)
 		var message: Dictionary = {"full": true, "reset": reset, "part": part, "parts": parts,
 			"spawn": chunk, "wave": _wave()}
+		if not _rel().is_empty():
+			message["rel"] = _rel()
 		link.send_world(message, to)
 	_sent_wave = _wave()
 
@@ -695,6 +705,22 @@ func _wave() -> int:
 	return int(gauntlet.net_wave()) if gauntlet != null and gauntlet.has_method("net_wave") else -1
 
 
+func _rel() -> Array:
+	"""[wave, gates let out] of the gauntlet here, or [] with none."""
+	var gauntlet: Node = get_tree().get_first_node_in_group(&"bossgauntlet") if is_inside_tree() else null
+	if gauntlet == null or not gauntlet.has_method(&"net_released"):
+		return []
+	return gauntlet.call(&"net_released")
+
+
+static func rel_for(data: Dictionary, wave: int) -> int:
+	"""The leader's gates let out of wave `wave` in `data`, or -1 unsaid."""
+	var rel: Variant = data.get("rel", null)
+	if rel is Array and (rel as Array).size() == 2 and int(rel[0]) == wave:
+		return clampi(int(rel[1]), 0, 16)
+	return -1
+
+
 # =============================================================================
 # THE FOLLOWER
 # =============================================================================
@@ -740,10 +766,11 @@ func _take_full_part(data: Dictionary) -> void:
 			records.append_array(spawn)
 	var first: Dictionary = _full_parts[0]
 	_full_parts.clear()
-	reconcile(records, bool(first.get("reset", false)), int(data.get("wave", -1)))
+	reconcile(records, bool(first.get("reset", false)), int(data.get("wave", -1)),
+		rel_for(data, int(data.get("wave", -1))))
 
 
-func reconcile(records: Array, reset: bool, wave: int) -> void:
+func reconcile(records: Array, reset: bool, wave: int, rel: int = -1) -> void:
 	"""Make this game's monsters exactly the leader's: the same ones, where
 	the leader has them. Each is matched first by its number, then by the spot
 	it was authored at (so the gauntlet's bosses stay the ones behind its
@@ -780,7 +807,9 @@ func reconcile(records: Array, reset: bool, wave: int) -> void:
 	if wave > 0:
 		var gauntlet: Node = get_tree().get_first_node_in_group(&"bossgauntlet")
 		if gauntlet != null and gauntlet.has_method("net_jump_to"):
-			gauntlet.net_jump_to(wave)
+			gauntlet.net_jump_to(wave, rel)
+		if gauntlet != null and rel > 0 and gauntlet.has_method(&"net_release_to"):
+			gauntlet.call(&"net_release_to", wave, rel, true)
 
 
 func _take_or_build(r: Dictionary, by_origin: Dictionary) -> BaseEnemy:
@@ -892,7 +921,11 @@ func apply_world(data: Dictionary) -> void:
 	if data.has("wave") and int(data.get("wave", -1)) > 0:
 		var gauntlet: Node = get_tree().get_first_node_in_group(&"bossgauntlet")
 		if gauntlet != null and gauntlet.has_method("net_jump_to"):
-			gauntlet.net_jump_to(int(data["wave"]))
+			gauntlet.net_jump_to(int(data["wave"]), rel_for(data, int(data["wave"])))
+	if data.get("rel", null) is Array and (data["rel"] as Array).size() == 2:
+		var gates: Node = get_tree().get_first_node_in_group(&"bossgauntlet")
+		if gates != null and gates.has_method(&"net_release_to"):
+			gates.call(&"net_release_to", int(data["rel"][0]), int(data["rel"][1]))
 
 
 func _apply_event(event: Dictionary) -> void:

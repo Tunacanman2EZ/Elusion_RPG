@@ -69,6 +69,21 @@ extends Node2D
 var _boss: Node = null
 var _open: bool = false
 
+# THE WARNING (0.143.0, ONE GATE AT A TIME - bossgauntlet.gd): before it
+# opens, a gate glows toward white in a quickening pulse (WARN_GLOW, and
+# WARN_BRIGHTER more of its face's alpha), starts to crack (WARN_CRACK of
+# its dissolve) and shakes (WARN_SHAKE px), for warn()'s seconds; then
+# open() shatters it as ever.
+const WARN_GLOW := 0.85
+const WARN_BRIGHTER := 0.35
+const WARN_CRACK := 0.14
+const WARN_SHAKE := 1.6
+var _warn_seconds: float = 0.0
+var _warn_left: float = 0.0
+var _pane_homes: Dictionary = {}
+var _crack: float = 0.0
+var _alpha_home: Dictionary = {}
+
 @onready var far_pane: CanvasItem = get_node_or_null("far")
 @onready var near_pane: CanvasItem = get_node_or_null("near")
 @onready var bars: StaticBody2D = get_node_or_null("bars")
@@ -85,6 +100,7 @@ func _ready() -> void:
 		_boss.set("gated", true)
 
 	_tint()
+	set_process(false)
 
 	# SAYS SO ONCE, at boot, in the pane everyone actually reads.
 	#
@@ -149,6 +165,54 @@ func is_open() -> bool:
 	return _open
 
 
+func warn(seconds: float) -> void:
+	"""Glow, crack and shake for `seconds`: it is about to open."""
+	if _open or seconds <= 0.0:
+		return
+	_warn_seconds = seconds
+	_warn_left = seconds
+	for pane in [far_pane, near_pane]:
+		if pane is Node2D:
+			_pane_homes[pane] = (pane as Node2D).position
+	for pane_material in _panes():
+		var was: Variant = pane_material.get_shader_parameter("alpha")
+		_alpha_home[pane_material] = float(was) if was != null else 0.3
+	set_process(true)
+
+
+func is_warning() -> bool:
+	return _warn_left > 0.0 and not _open
+
+
+func _process(delta: float) -> void:
+	if _open or _warn_left <= 0.0:
+		_warn_left = 0.0
+		_settle_panes()
+		set_process(false)
+		return
+	_warn_left = maxf(0.0, _warn_left - delta)
+	var t: float = 1.0 - _warn_left / maxf(0.001, _warn_seconds)
+	var pulse: float = 0.5 + 0.5 * sin(t * TAU * (2.0 + 4.0 * t))
+	var base: Color = Element.COLOURS.get(element, Element.COLOURS[Element.Type.ICE])
+	var glow: Color = base.lerp(Color.WHITE, WARN_GLOW * pulse * (0.35 + 0.65 * t))
+	_crack = WARN_CRACK * t * (0.6 + 0.4 * pulse)
+	for pane_material in _panes():
+		pane_material.set_shader_parameter("tint", glow)
+		pane_material.set_shader_parameter("dissolve", _crack)
+		pane_material.set_shader_parameter("alpha",
+			float(_alpha_home.get(pane_material, 0.3)) + WARN_BRIGHTER * pulse * (0.4 + 0.6 * t))
+	for pane in _pane_homes.keys():
+		if is_instance_valid(pane):
+			(pane as Node2D).position = (_pane_homes[pane] as Vector2) \
+				+ Vector2(randf_range(-1.0, 1.0), randf_range(-0.5, 0.5)) * WARN_SHAKE * t
+
+
+func _settle_panes() -> void:
+	for pane in _pane_homes.keys():
+		if is_instance_valid(pane):
+			(pane as Node2D).position = _pane_homes[pane]
+
+
 func open() -> void:
 	# IDEMPOTENT. bossgauntlet.gd advances on a died signal, and two bosses
 	# dying in the same frame would otherwise run this twice - freeing the
@@ -183,7 +247,7 @@ func open() -> void:
 	# by the tween's remaining arguments - is exactly the shape that parses
 	# differently than it reads. This cannot be misread.
 	var tween := create_tween()
-	tween.tween_method(_set_dissolve, 0.0, 1.0, open_seconds)
+	tween.tween_method(_set_dissolve, _crack, 1.0, open_seconds)
 	tween.tween_callback(queue_free)
 
 

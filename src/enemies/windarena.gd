@@ -38,6 +38,7 @@
 extends Node2D
 
 const LightArena := preload("res://src/enemies/lightarena.gd")
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 const BossProjectile := preload("res://src/projectiles/bossprojectile.gd")
@@ -125,6 +126,8 @@ var _fling_left: float = 0.0
 var _pillar_clock: float = 0.0
 var _zone: BulletZone = null
 var _layer: Node2D = null
+# Every quad of a layer, handed over in one call (quadbatch.gd).
+var _quads := QuadBatch.new()
 var _middle: Vector2 = Vector2.ZERO
 var _room: Rect2 = Rect2()
 var _clock: float = 0.0
@@ -150,6 +153,7 @@ static func name_for(for_boss: Node2D) -> String:
 func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
+	add_to_group(LightArena.FLOOR_GROUP)
 	y_sort_enabled = true
 	_zone = BulletZone.find(self)
 	_middle = boss.global_position
@@ -162,7 +166,7 @@ func _ready() -> void:
 	_layer.name = "wind"
 	_layer.z_index = DRAW_Z
 	_layer.z_as_relative = false
-	_layer.draw.connect(_draw_wind)
+	_layer.draw.connect(_quads.paint.bind(_layer, _draw_wind))
 	add_child(_layer)
 	for k in BREAK_SPOTS.size():
 		breaks.append([])
@@ -321,7 +325,7 @@ func _lead(delta: float) -> void:
 	if gap > 0.0:
 		_gust_clock -= delta
 		if _gust_clock <= 0.0:
-			_gust_clock = gap
+			_gust_clock = LightArena.paced(self, gap)
 			for body in boss.call(&"fight_targets"):
 				var through: Vector2 = Targets.body_point(body)
 				add_gust(through, angle_to)
@@ -371,6 +375,11 @@ func hear_wind(a: float) -> void:
 # =============================================================================
 # WHAT IT DOES TO YOU
 # =============================================================================
+
+func takes_floor(_at: Vector2) -> bool:
+	"""(The floor book, lightarena.gd.) Wind holds no floor."""
+	return false
+
 
 func _me() -> Node2D:
 	var me: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
@@ -422,7 +431,7 @@ func _blow(gust: Array) -> void:
 	if me == null or not me.has_method(&"take_damage"):
 		return
 	var at: Vector2 = Targets.body_point(me)
-	if not in_gust(gust, at):
+	if not in_gust(gust, at) or not LightArena.may_hit(me, self):
 		return
 	var way: Vector2 = Vector2.from_angle(float(gust[1]))
 	var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * GUST_SHARE))
@@ -448,7 +457,8 @@ func _move_twister(delta: float) -> void:
 	var gap: float = at.distance_to(twister)
 	if gap > TWISTER_REACH:
 		return
-	if gap <= TWISTER_CORE and _fling_left <= 0.0 and me.has_method(&"take_damage"):
+	if gap <= TWISTER_CORE and _fling_left <= 0.0 and me.has_method(&"take_damage") \
+			and LightArena.may_hit(me, self):
 		_fling_left = TWISTER_GAP
 		var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * TWISTER_SHARE))
 		HitSource.blame(HitSource.of(boss, "tornado"))
@@ -458,7 +468,7 @@ func _move_twister(delta: float) -> void:
 		return
 	var fx: Node = StatusEffects.of(me)
 	if fx != null and fx.has_method(&"pull"):
-		fx.call(&"pull", twister, 0.15, TWISTER_PULL)
+		fx.call(&"pull", twister, 0.15, TWISTER_PULL, get_instance_id())
 
 
 # =============================================================================
@@ -466,7 +476,7 @@ func _move_twister(delta: float) -> void:
 # =============================================================================
 
 func _fill(p: Vector2, q: Vector2, r: Vector2, t: Vector2, colour: Color) -> void:
-	_layer.draw_primitive(PackedVector2Array([p, q, r, t]), PackedColorArray([colour]), PackedVector2Array())
+	_quads.quad(p, q, r, t, colour)
 
 
 func _bar(from: Vector2, to: Vector2, width: float, colour: Color) -> void:

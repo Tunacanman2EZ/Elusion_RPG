@@ -338,9 +338,142 @@ static func in_room(node: Node, at: Vector2) -> bool:
 	return room_of(node).has_point(at)
 
 
+# =============================================================================
+# WHEN BOSSES FIGHT TOGETHER (0.143.0, Part A of "When bosses fight together")
+# =============================================================================
+# The owner: "we need to make sure that 3 bosses do not break the game". Two
+# or three arenas in one room share it by three rules, all here so every arena
+# keeps them alike:
+#   PARTNERS     partners() - the other bosses loose in the room (not caged,
+#                dying or dead). Alone, nothing below changes a fight.
+#   THE FLOOR    every arena is in FLOOR_GROUP and says what floor it holds
+#                (takes_floor(at): lava, a pit, frost, an ice wall, the tide).
+#                With partners, a hazard that holds floor for a while asks
+#                may_take() first: never on floor another arena holds, and
+#                never so that less than SAFE_FLOOR of the room is left free
+#                (counted on a FLOOR_CELLS grid). Asked by the leader only, so
+#                every screen still sees the same floor.
+#   ONE HIT      may_hit(): two arenas never both hit you inside HIT_GAP; the
+#                second is passed over. One arena's own hits keep their own
+#                clocks, so a fight alone is as it was.
+# The bosses' clocks already take turns (bossenemy.gd _pace()); each arena's
+# leader times its hazards by the same pace (boss.wave_pace()).
+const FLOOR_GROUP := &"boss_arena_floor"
+const FLOOR_CELLS := 16
+const SAFE_FLOOR := 0.4
+const HIT_GAP := 0.25
+const BOSS_GROUP := &"bosses"
+
+
+static func partners(for_boss: Node) -> int:
+	"""How many other bosses are loose in `for_boss`'s room."""
+	if for_boss == null or not is_instance_valid(for_boss) or not for_boss.is_inside_tree():
+		return 0
+	var room: Rect2 = room_of(for_boss)
+	var count: int = 0
+	for other in for_boss.get_tree().get_nodes_in_group(BOSS_GROUP):
+		if other == for_boss or not is_instance_valid(other) or not (other is Node2D):
+			continue
+		if other.get(&"gated") == true or other.get(&"_dying") == true or other.get(&"_death_resolved") == true:
+			continue
+		if room.has_area() and not room.grow(64.0).has_point((other as Node2D).global_position):
+			continue
+		count += 1
+	return count
+
+
+static func _arena_room(arena: Node) -> Rect2:
+	var own: Variant = arena.get(&"_room")
+	return own if own is Rect2 and (own as Rect2).has_area() else room_of(arena)
+
+
+static func _shares_room(arena: Node, other: Node) -> bool:
+	return _arena_room(arena).intersects(_arena_room(other))
+
+
+static func floor_taken_by_others(arena: Node, at: Vector2) -> bool:
+	"""Whether another arena in this room holds the floor at `at`."""
+	for other in arena.get_tree().get_nodes_in_group(FLOOR_GROUP):
+		if other == arena or not is_instance_valid(other) or not other.has_method(&"takes_floor"):
+			continue
+		if _shares_room(arena, other) and bool(other.call(&"takes_floor", at)):
+			return true
+	return false
+
+
+static func floor_left(arena: Node, taking_at: Vector2 = Vector2.INF, taking_r: float = 0.0) -> float:
+	"""How much of the room no arena holds (0 to 1), counted at the middles of
+	a FLOOR_CELLS grid - less what a new hazard of `taking_r` at `taking_at`
+	would take."""
+	var room: Rect2 = _arena_room(arena)
+	if not room.has_area():
+		return 1.0
+	var arenas: Array = []
+	for other in arena.get_tree().get_nodes_in_group(FLOOR_GROUP):
+		if is_instance_valid(other) and other.has_method(&"takes_floor") and _shares_room(arena, other):
+			arenas.append(other)
+	var step: Vector2 = room.size / float(FLOOR_CELLS)
+	var free: int = 0
+	for y in FLOOR_CELLS:
+		for x in FLOOR_CELLS:
+			var at: Vector2 = room.position + step * (Vector2(x, y) + Vector2(0.5, 0.5))
+			if taking_r > 0.0 and at.distance_to(taking_at) <= taking_r:
+				continue
+			var held: bool = false
+			for other in arenas:
+				if bool(other.call(&"takes_floor", at)):
+					held = true
+					break
+			if not held:
+				free += 1
+	return float(free) / float(FLOOR_CELLS * FLOOR_CELLS)
+
+
+static func may_take(arena: Node, at: Vector2, r: float) -> bool:
+	"""(Leader.) May a hazard of `arena` hold the floor within `r` of `at`?
+	Alone, always; with partners, not on another arena's floor and not past
+	SAFE_FLOOR."""
+	var for_boss: Variant = arena.get(&"boss")
+	if not (for_boss is Node) or partners(for_boss) == 0:
+		return true
+	if floor_taken_by_others(arena, at):
+		return false
+	return floor_left(arena, at, r) >= SAFE_FLOOR
+
+
+static func may_hit(me: Node, by: Node) -> bool:
+	"""May arena `by` hit `me` now? Not inside HIT_GAP of another arena's hit
+	(which is still standing); stamps the hit when it may."""
+	if me == null or by == null:
+		return true
+	var now: int = Time.get_ticks_msec()
+	var last: Variant = me.get_meta(&"arena_hit", [])
+	if last is Array and (last as Array).size() == 2:
+		var other_id: int = int(last[1])
+		if other_id != by.get_instance_id() and now - int(last[0]) < int(HIT_GAP * 1000.0) \
+				and is_instance_valid(instance_from_id(other_id)):
+			return false
+	me.set_meta(&"arena_hit", [now, by.get_instance_id()])
+	return true
+
+
+func takes_floor(_at: Vector2) -> bool:
+	"""(The floor book.) The mirrors hold no floor."""
+	return false
+
+
+static func paced(arena: Node, seconds: float) -> float:
+	"""`seconds` stretched by its boss's wave pace (1 alone)."""
+	var for_boss: Variant = arena.get(&"boss")
+	if for_boss is Node and is_instance_valid(for_boss) and (for_boss as Node).has_method(&"wave_pace"):
+		return seconds * float((for_boss as Node).call(&"wave_pace"))
+	return seconds
+
+
 func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
+	add_to_group(FLOOR_GROUP)
 	# Its panes stand among everyone else, sorted by their feet.
 	y_sort_enabled = true
 	_zone = BulletZone.find(self)
@@ -447,7 +580,7 @@ func _process(delta: float) -> void:
 	if gap > 0.0 and not bool(boss.get(&"net_mirror")):
 		_flare_clock -= delta
 		if _flare_clock <= 0.0:
-			_flare_clock = gap
+			_flare_clock = paced(self, gap)
 			_throw_flares()
 	_age_flares(delta)
 	_flash_panes()
@@ -570,6 +703,8 @@ func _flash(at: Vector2) -> void:
 	if me == null or not me.has_method(&"take_damage") or bool(me.get(&"is_dying")):
 		return
 	if Targets.body_point(me).distance_to(at) > FLARE_RADIUS:
+		return
+	if not may_hit(me, self):
 		return
 	var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * FLARE_SHARE))
 	HitSource.blame(HitSource.of(boss, "flare"))
