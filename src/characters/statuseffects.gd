@@ -217,6 +217,11 @@ var pull_speed: float = 0.0
 # after it stops. Never as fast as walking (PULL_SPEED_MAX), like a pull.
 var drift_velocity: Vector2 = Vector2.ZERO
 var drift_left: float = 0.0
+# WADING (0.141.0, the Water boss's tide - waterarena.gd): your walk times
+# WADE_SCALE while you stand in the water, renewed every frame (wade()), gone
+# a moment after you are out. Weather, like a drift: never on the strip.
+const WADE_SCALE := 0.7
+var wade_left: float = 0.0
 var dazzle_left: float = 0.0
 var wither_left: float = 0.0
 
@@ -384,6 +389,13 @@ func drift(velocity: Vector2, seconds: float = 0.15) -> void:
 	drift_left = seconds
 
 
+func wade(seconds: float = 0.15) -> void:
+	"""In the water for `seconds` - renewed every frame by the tide."""
+	if _host_dying() or immune():
+		return
+	wade_left = seconds
+
+
 func pull(toward: Vector2, seconds: float, speed: float) -> void:
 	"""Draws the body toward `toward` for `seconds` at `speed` (held under
 	PULL_SPEED_MAX, so walking always beats it)."""
@@ -432,7 +444,8 @@ func speed_scale() -> float:
 	"""What your walk is multiplied by: 0 while held, down to SLOW_FLOOR."""
 	if frozen_left > 0.0 or root_left > 0.0:
 		return 0.0
-	return maxf(SLOW_FLOOR, 1.0 - CHILL_STEP * chill_stacks)
+	var wading: float = WADE_SCALE if wade_left > 0.0 else 1.0
+	return maxf(SLOW_FLOOR, (1.0 - CHILL_STEP * chill_stacks) * wading)
 
 
 func can_sprint() -> bool:
@@ -518,6 +531,7 @@ func clear_all() -> void:
 	shove_left = 0.0
 	pull_left = 0.0
 	drift_left = 0.0
+	wade_left = 0.0
 	dazzle_left = 0.0
 	wither_left = 0.0
 	_flash_left = 0.0
@@ -570,6 +584,7 @@ func advance(delta: float) -> void:
 	shove_left = maxf(0.0, shove_left - delta)
 	pull_left = maxf(0.0, pull_left - delta)
 	drift_left = maxf(0.0, drift_left - delta)
+	wade_left = maxf(0.0, wade_left - delta)
 	dazzle_left = maxf(0.0, dazzle_left - delta)
 	wither_left = maxf(0.0, wither_left - delta)
 	_flash_gap_left = maxf(0.0, _flash_gap_left - delta)

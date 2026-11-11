@@ -182,6 +182,8 @@ const MARK_LETTERS := {
 	&"wind turns": "W",
 	&"gusts blow": "L",
 	&"tornado forms": "T",
+	&"tide comes": "Q",
+	&"bubbles pop": "O",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many

@@ -154,9 +154,10 @@ func _ready() -> void:
 	_zone = BulletZone.find(self)
 	_middle = boss.global_position
 	_room = Rect2(_middle - Vector2(300, 300), Vector2(600, 600))
-	if _zone != null and _zone.field.bounds.size.x < 100000.0:
-		_middle = _zone.field.bounds.get_center()
-		_room = _zone.field.bounds.grow(-16.0)
+	var room: Rect2 = LightArena.room_of(self)
+	if room.has_area():
+		_middle = room.get_center()
+		_room = room
 	_layer = Node2D.new()
 	_layer.name = "wind"
 	_layer.z_index = DRAW_Z
@@ -384,7 +385,7 @@ func _carry(way: Vector2) -> void:
 	if me == null or phase < 0:
 		return
 	var at: Vector2 = Targets.body_point(me)
-	if not _room.has_point(at) or sheltered(at):
+	if not LightArena.in_room(self, at) or sheltered(at):
 		return
 	var fx: Node = StatusEffects.of(me)
 	if fx != null and fx.has_method(&"drift"):

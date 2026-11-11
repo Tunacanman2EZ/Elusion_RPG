@@ -2729,6 +2729,47 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The Water boss's arena: the tide, bubbles, the whirlpool (0.141.0)
+
+The owner: "next boss" - the third of the Docs plan, pictured first
+(water_arena_plan.png); of the water's look, "Drawn band" (not the town's
+water tiles). `src/enemies/waterarena.gd` (no class_name), kit `"arena":
+&"water"`, made like the others.
+
+- **The tide**: the leader sends one from a side (left, right, top, bottom;
+  never the same twice running) with a seed (`"la"` `h: "tide"`, `s`,
+  `n`); every game plays it on its own clock (`start_tide()`): the side
+  SHINES wet `TIDE_WARN` (1.5 s), the water comes in over `TIDE_IN` to
+  `TIDE_DEPTH` of the room (a third; half in phase three), stands
+  `TIDE_HOLD` (4.5 s), goes out over `TIDE_OUT`; the next `TIDE_REST`
+  after. In it: soaked (renewed every `SOAK_GAP`, as ground - a renewal
+  never says "Soaked" again) and wading - `StatusEffects.wade()` (new):
+  your walk times `WADE_SCALE` (0.7) in `speed_scale()`, renewed every frame,
+  refused while immune, cleared with the rest.
+- **Phase two, bubbles**: one every `BUBBLE_GAP` while the water stands, at
+  points rolled from the tide's seed - the same bubbles on every screen.
+  Touched, one pops: `BUBBLE_SHARE` (5%) as water, and soaked.
+- **Phase three, the whirlpool**: in the middle of the water while there is
+  any: in the water it pulls you (a pull - walking beats it); its core
+  drags you under (`WHIRL_SHARE` 6%, at most every `WHIRL_GAP`).
+- **On the floor**: its layer sits at spikefx.gd's `SORT_Y` less one in the
+  effects container, so it sorts before everything there - over the floor's
+  tiles, under the spikes' rings and everyone standing in it. Quads only;
+  in the Boss Arena it costs no draw call at all (21 either way).
+- **The room an arena fills** (`lightarena.gd room_of()` / `in_room()`, for
+  all three now): the Endless's arena floor (its run's `arena_rect`), never
+  its corridor - the fallen wait by the chest there, and no wind, tide or
+  flare reaches them. Elsewhere the bullets' floor, 16 px in. The Light
+  Keeper's mirrors and the Wind boss's windbreaks stand round its middle.
+- **Readout**: Q (tide comes), O (bubbles pop). The Arena lag test hides the
+  water (it still soaks and slows).
+- **Not done from the plan**: the tide volley's gap kept to the dry side.
+  Its door already walks; tying it to the flood is a later tuning.
+
+Not yet played in a party.
+
+`_test_the_water_arena()` (testrunner_11).
+
 ### The Wind boss's arena: crosswind, windbreaks, gusts, the tornado (0.140.0)
 
 The owner: "great lets build the next" - the second boss of the Docs plan,

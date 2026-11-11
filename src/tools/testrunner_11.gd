@@ -906,6 +906,16 @@ func _chunk_made(helper: Node, key: Vector2i) -> bool:
 # THE LIGHT KEEPER'S ARENA (0.139.0)
 # =============================================================================
 
+class RunStub extends Node:
+	# The Endless's run, as an arena asks it: its arena floor, and whether a
+	# point is on it rather than in the corridor.
+	var arena_rect: Rect2 = Rect2(0, 0, 1000, 1000)
+	var corridor_rect: Rect2 = Rect2(450, 800, 100, 200)
+
+	func in_arena(at: Vector2) -> bool:
+		return arena_rect.has_point(at) and not corridor_rect.has_point(at)
+
+
 class ArenaDummy extends CharacterBody2D:
 	# A player for the arena's flares: in their group, with the health a
 	# flare takes its share of, and a take_damage() that writes it down.
@@ -994,9 +1004,10 @@ func _test_the_light_arena() -> void:
 	boss.set_meta(&"descent_caster", true)
 	check("  nor for a Descent's hidden caster", not Arena.wanted(boss))
 	boss.remove_meta(&"descent_caster")
-	check("  the Light Keeper's kit has its arena (and the Wind boss's, 0.140.0), no other yet",
+	check("  the Light Keeper's kit has its arena (the Wind boss's 0.140.0, the Water boss's 0.141.0), no other yet",
 		BossEnemy.KITS[Element.Type.LIGHT].get("arena") == &"light" and BossEnemy.KITS[Element.Type.WIND].get("arena") == &"wind"
-		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 2)
+		and BossEnemy.KITS[Element.Type.WATER].get("arena") == &"water"
+		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 3)
 	boss.call("_keep_arena", 1.0)
 	var arena: Node2D = boss.call("arena")
 	if arena == null:
@@ -1307,3 +1318,148 @@ func _test_the_wind_arena() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  (the Wind boss's arena: done)")
+
+
+func _test_the_water_arena() -> void:
+	section("THE WATER BOSS'S ARENA - THE TIDE, BUBBLES, THE WHIRLPOOL (0.141.0)")
+	# The owner: "next boss", and of the water, "Drawn band".
+	const Arena := preload("res://src/enemies/waterarena.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var room: Rect2 = zone.field.bounds.grow(-16.0)
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(-300, 0)
+	var fx: Node = FX.attach(me)
+	var boss: Node2D = (load("res://scene/enemy/waterboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(115, -105)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null or arena.get_script() != Arena:
+		check("the loose Water boss makes its arena", false, arena)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	var water: Node2D = arena.get_node("water")
+	check("the loose Water boss makes its arena, the water drawn on the floor (sorted before the spikes' rings)",
+		str(arena.name) == "waterarena0" and arena.get_parent() == ground and water.position.y < Fx.SORT_Y)
+
+	# THE TIDE: the leader's, from a side; it shines, comes in a third, stands, goes.
+	arena.call("_process", Arena.FIRST_TIDE + 0.05)
+	var from: int = int(arena.get("side"))
+	var shone: Rect2 = arena.call("shine")
+	var dry: bool = (arena.call("flood") as Rect2).size.x <= 0.0
+	arena.set("side", 0)
+	arena.call("_process", Arena.TIDE_WARN + Arena.TIDE_IN)
+	var wet: Rect2 = arena.call("flood")
+	check("the leader sends a tide from a side: it shines wet first, then comes in a third of the room",
+		from >= 0 and shone.has_area() and dry and is_equal_approx(wet.size.x, room.size.x * 0.34)
+		and is_equal_approx(wet.position.x, room.position.x) and bool(arena.call("standing")), [from, wet])
+	check("  in it you are soaked and wade (slower), out of it neither",
+		(fx.get("started") as Array).has(FX.SOAKED) and float(fx.get("wade_left")) > 0.0
+		and float(fx.call("speed_scale")) < 1.0)
+	fx.call("clear_all")
+	me.global_position = origin + Vector2(300, 0)
+	arena.call("_process", 0.05)
+	check("  (out of it)", float(fx.get("wade_left")) == 0.0 and is_equal_approx(float(fx.call("speed_scale")), 1.0))
+	arena.call("_process", Arena.TIDE_HOLD + Arena.TIDE_OUT)
+	var sides: Array = []
+	for n in 6:
+		arena.call("_process", Arena.TIDE_REST + 0.05)
+		sides.append(int(arena.get("side")))
+		arena.call("_process", Arena.TIDE_WARN + Arena.TIDE_IN + Arena.TIDE_HOLD + Arena.TIDE_OUT)
+	var repeats: int = 0
+	for n in range(1, sides.size()):
+		if sides[n] == sides[n - 1]:
+			repeats += 1
+	check("  it goes out, and the next comes from another side, never the same twice", repeats == 0, sides)
+
+	# PHASE TWO: the same bubbles on every screen, from the tide's seed.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.call("_process", 0.01)
+	arena.call("start_tide", 0, 4242)
+	arena.call("_process", Arena.TIDE_WARN + Arena.TIDE_IN + 1.0)
+	var mine: Array = (arena.get("bubbles") as Array).map(func(b): return b[0])
+	arena.call("start_tide", 0, 4242)
+	arena.call("_process", Arena.TIDE_WARN + Arena.TIDE_IN + 1.0)
+	var again: Array = (arena.get("bubbles") as Array).map(func(b): return b[0])
+	var inside: bool = mine.all(func(p): return (arena.call("flood") as Rect2).has_point(p))
+	check("phase two: bubbles rise in the water - the same from the same tide, wherever it is played",
+		mine.size() >= 3 and mine == again and inside, mine.size())
+	var bubble: Array = (arena.get("bubbles") as Array)[0]
+	me.global_position = (bubble[0] as Vector2) - Vector2(0, -4)
+	me.taken.clear()
+	arena.call("_process", 0.01)
+	Hits.take()
+	check("  one that touches you pops: a share of your health as water, and soaked",
+		me.taken.size() == 1 and me.taken[0] == [roundi(1000.0 * Arena.BUBBLE_SHARE), Element.Type.WATER] and bool(bubble[2]),
+		me.taken)
+	arena.call("hear", {"h": "tide", "s": 3, "n": 7})
+	check("  a follower plays the leader's tide; nothing it does not know",
+		int(arena.get("side")) == 3 and int(arena.get("tide_seed")) == 7)
+	arena.call("hear", {"h": "gust", "s": 1, "n": 9})
+	check("  (a stranger's event changes nothing)", int(arena.get("side")) == 3)
+
+	# PHASE THREE: half the room, and the whirlpool.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	arena.call("_process", 0.01)
+	arena.call("start_tide", 1, 11)
+	arena.call("_process", Arena.TIDE_WARN + Arena.TIDE_IN + 0.1)
+	var half: Rect2 = arena.call("flood")
+	var pool: Vector2 = arena.call("whirlpool")
+	fx.call("clear_all")
+	me.global_position = pool + Vector2(-60, 0)
+	(arena.get("bubbles") as Array).clear()
+	arena.call("_process", 0.01)
+	var pulled: bool = float(fx.get("pull_left")) > 0.0
+	me.global_position = pool
+	me.taken.clear()
+	(arena.get("bubbles") as Array).clear()
+	arena.call("_process", 0.01)
+	Hits.take()
+	check("phase three: the water comes in half the room; the whirlpool in its middle pulls you, its core drags you under",
+		is_equal_approx(half.size.x, room.size.x * 0.5) and pool.distance_to(half.get_center()) < 1.0 and pulled
+		and me.taken.size() == 1 and me.taken[0] == [roundi(1000.0 * Arena.WHIRL_SHARE), Element.Type.WATER], [pulled, me.taken])
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not water.visible
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides the water (it still soaks)", hidden and water.visible)
+
+	# GONE WITH ITS BOSS.
+	boss.set("_dying", true)
+	arena.call("_process", 0.05)
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, the water drains away and it goes", arena.is_queued_for_deletion())
+	check("  and the readout letters its marks",
+		PerfOverlay.MARK_LETTERS.get(&"tide comes") == "Q" and PerfOverlay.MARK_LETTERS.get(&"bubbles pop") == "O")
+	var run := RunStub.new()
+	run.add_to_group(&"endless_run")
+	add_child(run)
+	check("in the Endless an arena fills the run's floor, never its corridor (the fallen wait there)",
+		Light.room_of(self) == run.arena_rect and Light.in_room(self, Vector2(100, 100))
+		and not Light.in_room(self, Vector2(500, 900)))
+	run.free()
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Water boss's arena: done)")

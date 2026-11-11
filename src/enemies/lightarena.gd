@@ -317,6 +317,27 @@ static func name_for(for_boss: Node2D) -> String:
 	return "lightarena%d" % maxi(int(for_boss.get(&"net_id")), 0)
 
 
+# THE ROOM AN ARENA FILLS (0.141.0, for every arena): the Endless's arena
+# floor (its run's arena_rect), or else the bullets' floor a little in from
+# its walls; and in_room() leaves out the Endless's corridor, where the
+# fallen wait by the chest - no wind, no tide, no flare reaches them there.
+static func room_of(node: Node) -> Rect2:
+	var run: Node = node.get_tree().get_first_node_in_group(&"endless_run")
+	if run != null and run.get(&"arena_rect") is Rect2:
+		return run.get(&"arena_rect")
+	var zone: BulletZone = BulletZone.find(node)
+	if zone != null and zone.field.bounds.size.x < 100000.0:
+		return zone.field.bounds.grow(-16.0)
+	return Rect2()
+
+
+static func in_room(node: Node, at: Vector2) -> bool:
+	var run: Node = node.get_tree().get_first_node_in_group(&"endless_run")
+	if run != null and run.has_method(&"in_arena"):
+		return bool(run.call(&"in_arena", at))
+	return room_of(node).has_point(at)
+
+
 func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
@@ -347,8 +368,9 @@ func _ready() -> void:
 
 func _place_panes() -> void:
 	var home: Vector2 = boss.global_position
-	if _zone != null and _zone.field.bounds.size.x < 100000.0:
-		home = _zone.field.bounds.get_center()
+	var room: Rect2 = room_of(self)
+	if room.has_area():
+		home = room.get_center()
 	for k in PANE_SPOTS.size():
 		var at: Vector2 = home + PANE_SPOTS[k]
 		var from_home: Vector2 = (at - home).normalized()
