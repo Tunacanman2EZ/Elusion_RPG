@@ -412,23 +412,69 @@ func _unhandled_input(event: InputEvent) -> void:
 	var touch := event as InputEventScreenTouch
 	if touch != null:
 		if touch.pressed:
-			if _world_finger < 0 and player() != null:
-				played_now()
-				_world_finger = touch.index
-				_world_screen = touch.position
-				_attack_tap = true
-				_tap_on_world = true
+			if world_down(touch.index, touch.position):
 				get_viewport().set_input_as_handled()
-		elif touch.index == _world_finger:
-			_world_finger = -1
+		else:
+			world_up(touch.index)
 		return
 	var drag := event as InputEventScreenDrag
-	if drag != null and drag.index == _world_finger:
-		_world_screen = drag.position
+	if drag != null:
+		world_moved(drag.index, drag.position)
 
 
 func world_finger() -> int:
 	return _world_finger
+
+
+func world_down(index: int, screen: Vector2) -> bool:
+	"""Finger `index` lands on the world at `screen` (the viewport's pixels): an
+	attack aimed there, held while it stays down. False - nothing done - while
+	another finger is on the world, or with nobody to attack with."""
+	if _world_finger >= 0 or player() == null:
+		return false
+	played_now()
+	_world_finger = index
+	_world_screen = screen
+	_attack_tap = true
+	_tap_on_world = true
+	return true
+
+
+func world_moved(index: int, screen: Vector2) -> void:
+	if index == _world_finger:
+		_world_screen = screen
+
+
+func world_up(index: int) -> void:
+	if index == _world_finger:
+		_world_finger = -1
+
+
+# A QUICK TAP ON THE STICK'S SIDE STRIKES THERE (0.145.0). The owner, on a
+# phone: "i have to tap left of character to attack and it hits joystick
+# instead". The stick takes every touch on the left 42% of the screen
+# (touchpad.gd STICK_ZONE_WIDTH) and the character stands in the middle, so a
+# tap at a monster to its left landed on the stick. Now a thumb there lifted
+# within STRIKE_TAP_MSEC, whose knob never left the stick's dead middle
+# (STICK_DEAD: it walked nobody), is a tap on the world - one attack, aimed
+# where it landed (strike_at()). Held or slid, it is the stick as ever. And a
+# second finger on that side while a thumb holds the stick is a finger on the
+# world (world_down()): an attack there, held and aimed like any other.
+const STRIKE_TAP_MSEC := 250
+
+
+func strike_at(screen: Vector2) -> bool:
+	"""A tap already lifted at `screen`: one attack aimed there, as a tap on
+	the world quicker than a frame is (_latch_attack(), _world_aim_ticks).
+	False while a finger holds the world - it is attacking already - or with
+	nobody to attack with."""
+	if _world_finger >= 0 or player() == null:
+		return false
+	played_now()
+	_world_screen = screen
+	_attack_tap = true
+	_tap_on_world = true
+	return true
 
 
 # =============================================================================

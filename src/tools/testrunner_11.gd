@@ -2599,3 +2599,205 @@ func _test_the_mirrors_shield() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  (the mirrors shield: done)")
+
+
+# =============================================================================
+# A QUICK TAP ON THE STICK'S SIDE STRIKES THERE (0.145.0)
+# =============================================================================
+# The owner, on a phone: "i have to tap left of character to attack and it
+# hits joystick instead". A thumb on the left that lifts quickly and walked
+# nobody is a tap on the world; a second finger there while a thumb holds the
+# stick is a finger on the world.
+func _test_a_tap_on_the_left_strikes() -> void:
+	section("A TAP ON THE LEFT STRIKES THERE - the stick's side, a quick tap that walked nobody, a second finger (0.145.0)")
+	const PadScript := preload("res://src/ui/touchpad.gd")
+	const TouchScript := preload("res://src/systems/touchcontrols.gd")
+	var was_active: bool = TouchControls.active
+	TouchControls.set_active(true)
+	TouchControls.clear()
+	var body := Node2D.new()
+	body.add_to_group(&"player")
+	add_child(body)
+	var holder := Control.new()
+	holder.position = Vector2(0, 100)
+	add_child(holder)
+	var stick = PadScript.Stick.new()
+	holder.add_child(stick)
+	stick.place(Rect2(0, 0, 500, 400), Vector2(80, 300), 50.0, 21.0)
+	var at_screen := func(local: Vector2) -> Vector2:
+		return stick.get_global_transform_with_canvas() * local
+
+	var touch := func(index: int, local: Vector2, down: bool) -> void:
+		var event := InputEventScreenTouch.new()
+		event.index = index
+		event.position = local
+		event.pressed = down
+		stick._gui_input(event)
+	var slide := func(index: int, local: Vector2) -> void:
+		var event := InputEventScreenDrag.new()
+		event.index = index
+		event.position = local
+		stick._gui_input(event)
+
+	# A quick tap that went nowhere: one attack, aimed where it landed.
+	touch.call(0, Vector2(300, 120), true)
+	touch.call(0, Vector2(302, 121), false)
+	var tapped: bool = bool(TouchControls.get("_attack_tap"))
+	var aimed: Vector2 = TouchControls.get("_world_screen")
+	TouchControls._latch_attack(null)
+	var struck: bool = Input.is_action_pressed("attack")
+	var aim_ticks: int = int(TouchControls.get("_world_aim_ticks"))
+	TouchControls._latch_attack(null)
+	check("a quick tap on the stick's side that walked nobody is an attack, aimed where it landed",
+		tapped and struck and aimed.is_equal_approx(at_screen.call(Vector2(302, 121))) and aim_ticks > 0,
+		[tapped, struck, aimed, aim_ticks])
+	check("  once: the next frame lets go", not Input.is_action_pressed("attack"))
+	check("  and the stick went back to rest, walking nobody", int(stick.finger) == -1 and TouchControls.stick == Vector2.ZERO
+		and not TouchControls.stick_held)
+
+	# Slid past the dead middle: the stick, no attack.
+	TouchControls.clear()
+	touch.call(0, Vector2(300, 120), true)
+	slide.call(0, Vector2(300 + 50.0 * TouchScript.STICK_DEAD + 6.0, 120))
+	var walked: bool = TouchControls.stick.length() >= TouchScript.STICK_DEAD
+	touch.call(0, Vector2(300, 120), false)
+	check("  a thumb that slid past the stick's dead middle walked, and is no attack - even slid back before it lifted",
+		walked and not bool(TouchControls.get("_attack_tap")), walked)
+
+	# Held too long: no attack.
+	touch.call(0, Vector2(300, 120), true)
+	stick.set("_landed_msec", Time.get_ticks_msec() - TouchScript.STRIKE_TAP_MSEC - 50)
+	touch.call(0, Vector2(300, 120), false)
+	check("  nor one held past STRIKE_TAP_MSEC (%d ms) - a thumb resting on the stick" % TouchScript.STRIKE_TAP_MSEC,
+		not bool(TouchControls.get("_attack_tap")))
+
+	# A second finger while a thumb holds the stick: on the world.
+	touch.call(0, Vector2(100, 300), true)
+	slide.call(0, Vector2(140, 300))
+	touch.call(1, Vector2(420, 60), true)
+	var second_on_world: bool = TouchControls.world_finger() == 1 \
+		and (TouchControls.get("_world_screen") as Vector2).is_equal_approx(at_screen.call(Vector2(420, 60)))
+	TouchControls._latch_attack(null)
+	var second_attacks: bool = Input.is_action_pressed("attack")
+	slide.call(1, Vector2(380, 80))
+	var followed: bool = (TouchControls.get("_world_screen") as Vector2).is_equal_approx(at_screen.call(Vector2(380, 80)))
+	var still_walking: bool = TouchControls.stick_held and TouchControls.stick.x > 0.5
+	check("a second finger on the stick's side while a thumb holds it is a finger on the world: an attack aimed there",
+		second_on_world and second_attacks, [TouchControls.world_finger(), TouchControls.get("_world_screen")])
+	check("  aimed where it slides, and the stick walks on under the first thumb", followed and still_walking,
+		[followed, still_walking, TouchControls.stick])
+	touch.call(1, Vector2(380, 80), false)
+	check("  lifted, it lets go of the world", TouchControls.world_finger() == -1)
+	touch.call(1, Vector2(420, 60), true)
+	stick.let_go()
+	check("  and the stick let go lets go of both", TouchControls.world_finger() == -1 and int(stick.finger) == -1
+		and int(stick.second) == -1)
+
+	# A minigame's stick is over the world: a tap there is the knob, never a strike.
+	TouchControls.clear()
+	stick.mounted = true
+	touch.call(0, Vector2(90, 300), true)
+	touch.call(0, Vector2(90, 300), false)
+	check("a minigame's mounted stick never strikes", not bool(TouchControls.get("_attack_tap")))
+	stick.mounted = false
+
+	# With nobody to attack with, nothing.
+	body.remove_from_group(&"player")
+	touch.call(0, Vector2(300, 120), true)
+	touch.call(0, Vector2(300, 120), false)
+	check("  nor does a tap with nobody to attack with", not bool(TouchControls.get("_attack_tap")))
+
+	TouchControls.clear()
+	holder.queue_free()
+	body.queue_free()
+	TouchControls.set_active(was_active)
+	await get_tree().process_frame
+	print("  (a tap on the left: done)")
+
+
+# =============================================================================
+# A PINCH ZOOMS THE MAP (0.145.0)
+# =============================================================================
+# The owner: "we also need zoom in and out of map with a pinch".
+func _test_a_pinch_zooms_the_map() -> void:
+	section("A PINCH ZOOMS THE MAP - two fingers zoom about the point between them, one drags (0.145.0)")
+	WorldMap._terrain[_MAP_BIG] = {"image": Image.create_empty(40, 20, false, Image.FORMAT_RGBA8),
+		"origin": Vector2i.ZERO, "size": Vector2i(40, 20), "tile": Vector2i(16, 16)}
+	var map: Control = _MapScene.instantiate() as Control
+	add_child(map)
+	var picture: TextureRect = map.get_node("%mapview") as TextureRect
+	map.set("_area", _MAP_BIG)
+	picture.size = Vector2(400, 300)
+	map.call("show_whole")
+	var touch := func(index: int, at: Vector2, down: bool) -> void:
+		var event := InputEventScreenTouch.new()
+		event.index = index
+		event.position = at
+		event.pressed = down
+		map.call("_on_view_input", event)
+	var slide := func(index: int, at: Vector2, by: Vector2) -> void:
+		var event := InputEventScreenDrag.new()
+		event.index = index
+		event.position = at
+		event.relative = by
+		map.call("_on_view_input", event)
+	var map_at := func(view_point: Vector2) -> Vector2:
+		return (view_point - (map.get("_offset") as Vector2)) / float(map.get("_fit"))
+
+	# Spread from 100 apart to 200 apart about (200, 150): twice as close.
+	touch.call(0, Vector2(150, 150), true)
+	touch.call(1, Vector2(250, 150), true)
+	var under_before: Vector2 = map_at.call(Vector2(200, 150))
+	slide.call(0, Vector2(100, 150), Vector2(-50, 0))
+	slide.call(1, Vector2(300, 150), Vector2(50, 0))
+	var fit_in: float = float(map.get("_fit"))
+	var under_after: Vector2 = map_at.call(Vector2(200, 150))
+	check("two fingers spread on the map zoom it in by as much as they spread (10 -> 20 a tile)",
+		is_equal_approx(fit_in, 20.0), fit_in)
+	check("  about the point between them: the map under it stays under it",
+		under_after.distance_to(under_before) < 0.05, [under_before, under_after])
+	# Both move right together: the map moves with them, no zoom.
+	var centre_before: Vector2 = map.get("_centre")
+	slide.call(0, Vector2(120, 150), Vector2(20, 0))
+	slide.call(1, Vector2(320, 150), Vector2(20, 0))
+	var moved: Vector2 = (map.get("_centre") as Vector2) - centre_before
+	check("  moved together, they move the map with them and zoom nothing",
+		is_equal_approx(float(map.get("_fit")), 20.0) and is_equal_approx(moved.x, -1.0) and is_zero_approx(moved.y),
+		[map.get("_fit"), moved])
+	# Closed together: back out, never past the whole area.
+	slide.call(0, Vector2(219, 150), Vector2(99, 0))
+	slide.call(1, Vector2(221, 150), Vector2(-99, 0))
+	check("  closed together, out again - no further than the whole area", is_equal_approx(float(map.get("_fit")), 10.0),
+		map.get("_fit"))
+	# A pinch is never a click on a pin.
+	var travel: float = float(map.get("_press_travel"))
+	touch.call(1, Vector2(221, 150), false)
+	touch.call(0, Vector2(219, 150), false)
+	check("  a pinch is never a click on a pin, and lifted, no finger is kept",
+		travel > float(_MapCode.CLICK_SLACK) and (map.get("_fingers") as Dictionary).is_empty(), [travel, map.get("_fingers")])
+
+	# One finger drags; its copied mouse motion moves nothing more.
+	map.call("zoom_by", 2.0)
+	touch.call(0, Vector2(200, 150), true)
+	var held_centre: Vector2 = map.get("_centre")
+	slide.call(0, Vector2(240, 150), Vector2(40, 0))
+	var copy := InputEventMouseMotion.new()
+	copy.device = InputEvent.DEVICE_ID_EMULATION
+	copy.button_mask = MOUSE_BUTTON_MASK_LEFT
+	copy.relative = Vector2(40, 0)
+	map.set("_dragging", true)
+	map.call("_on_view_input", copy)
+	var one_moved: Vector2 = (map.get("_centre") as Vector2) - held_centre
+	touch.call(0, Vector2(240, 150), false)
+	check("one finger drags the map once - its copied mouse motion does not drag it again",
+		is_equal_approx(one_moved.x, -2.0), one_moved)
+	map.set("_dragging", false)
+	touch.call(3, Vector2(10, 10), true)
+	map.call("close")
+	check("  and the map shut keeps no finger for the next time it opens",
+		(map.get("_fingers") as Dictionary).is_empty())
+
+	map.queue_free()
+	WorldMap._terrain.erase(_MAP_BIG)
+	await get_tree().process_frame
+	print("  (a pinch zooms the map: done)")

@@ -13811,6 +13811,43 @@ decision", Speed on day 1), and a smaller engine for the web (index.wasm is
 39.5 MB of a 58 MB first visit, about 16 MB compressed; a Godot build without
 3D is a custom export template, built from source).
 
+### A tap on the left strikes; the map pinches (0.145.0)
+
+The owner, on a phone: "left and right jooystick is not great for phone
+because i have to tap left of character to attack and it hits joystick
+instead", then "we also need zoom in and out of map with a pinch". The stick
+takes every touch on the left `STICK_ZONE_WIDTH` (42%) of the screen and the
+character stands in the middle, so a tap at a monster to its left landed on
+the stick. He chose this over shrinking the stick to the bottom left corner.
+
+- **A quick tap there that walked nobody strikes** (touchpad.gd
+  `Stick._tapped()`, TouchControls `strike_at()`): lifted within
+  `STRIKE_TAP_MSEC` (250) with the knob never past the stick's dead middle
+  (`_went` under `STICK_DEAD` of its reach) - one attack aimed where it
+  landed, as a tap on the world quicker than a frame (`_world_aim_ticks`). A
+  name under it still opens the player's menu first (0.56.0). Held or slid,
+  the stick as ever; the stick lands under the thumb, so a still tap never
+  walked. The attack goes as the finger lifts - about a tenth of a second
+  later than a tap on the world. Never on a minigame's mounted stick.
+- **A second finger there while a thumb holds the stick is on the world**
+  (`Stick.second`, TouchControls `world_down()` / `world_moved()` /
+  `world_up()`, which `_unhandled_input()` now goes through too): an attack
+  there, held and aimed where it slides. It was eaten. `let_go()` lets go of
+  both; `_lift()` is the stick's thumb alone.
+- **Two fingers on the map pinch** (mapscreen.gd `_on_touch()`,
+  `pinch_by()`): zoomed about the point between them, then moved with it -
+  zoom first, because at the whole area there is no room to move. One finger
+  drags by its own `InputEventScreenDrag`; the first finger's copied mouse
+  motion (`DEVICE_ID_EMULATION`) moves nothing now, or a drag moved it twice.
+  Its copied press and release still click a pin; a pinch sets
+  `_press_travel` past `CLICK_SLACK`, so it never does. `_fingers` is
+  cleared on open and close. The game view's zoom stays on Options' Camera
+  view: two thumbs fighting look like a pinch.
+
+`_test_a_tap_on_the_left_strikes()`, `_test_a_pinch_zooms_the_map()`
+(testrunner_11); testrunner_4's played-now check reads `world_down()` and
+`strike_at()`.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

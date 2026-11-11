@@ -460,9 +460,14 @@ func _test_a_phone_can_do_what_a_mouse_can() -> void:
 	var tc_code := _code_src("res://src/systems/touchcontrols.gd")
 	var pad_code := _code_src("res://src/ui/touchpad.gd")
 	var all_played: bool = true
-	for fn in ["func press_attack(", "func press_use(", "func press_skill(", "func toggle_sprint(", "func _unhandled_input("]:
+	# A finger on the world goes through world_down() since 0.145.0 (the
+	# stick's side hands a second finger to it), and a quick tap on the
+	# stick's side through strike_at().
+	for fn in ["func press_attack(", "func press_use(", "func press_skill(", "func toggle_sprint(", "func world_down(",
+			"func strike_at("]:
 		all_played = all_played and _func_body(tc_code, fn).contains("played_now()")
-	check("  every one: Attack, Use, the skill, Run, a tap on the world, and the stick",
+	all_played = all_played and _func_body(tc_code, "func _unhandled_input(").contains("world_down(")
+	check("  every one: Attack, Use, the skill, Run, a tap on the world (or the stick's side), and the stick",
 		all_played and _func_body(pad_code, "	func _gui_input(").contains("TouchControls.played_now()"))
 
 	# ---- a name under the stick ------------------------------------------------------------

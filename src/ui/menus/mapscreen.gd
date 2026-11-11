@@ -35,6 +35,9 @@
 # meant map in hud" - the map is what had to zoom out. It opens on the whole
 # area; the mouse wheel over it zooms in and out where the pointer is, a drag
 # moves it, and -, + and Whole map in its footer do the same for a finger.
+# PINCHED (0.145.0): the owner, "we also need zoom in and out of map with a
+# pinch". Two fingers on the map zoom about the point between them and move it
+# with them (pinch_by()); one finger drags it, as a held button does.
 # _zoom is a multiple of the whole-area fit (1 is all of it, at most a tile
 # MAX_TILE_PX across); _centre is the map pixel at the middle of the view.
 #
@@ -225,6 +228,8 @@ var _icon_cache: Dictionary = {}
 # and the row of them under the map.
 const CLICK_SLACK := 5.0
 var _press_travel: float = 0.0
+# The fingers on the map (0.145.0): index -> where it is in the view.
+var _fingers: Dictionary = {}
 var waystone_row: HFlowContainer = null
 # How to use them, under the row (PLAYERS DID NOT KNOW, waystones.gd).
 var waystone_hint: Label = null
@@ -329,11 +334,15 @@ func open() -> void:
 	# OPENS ON THE WHOLE AREA, every time: that is what it is opened for.
 	_zoom = 1.0
 	_centre = Vector2(-1.0, -1.0)
+	# No finger kept from before it was shut: a finger lifted while it was
+	# shut never said so.
+	_fingers.clear()
 	refresh()
 
 
 func close() -> void:
 	visible = false
+	_fingers.clear()
 	closed.emit()
 
 
@@ -509,9 +518,64 @@ func show_whole() -> void:
 	_layout()
 
 
+func pinch_by(from_a: Vector2, from_b: Vector2, to_a: Vector2, to_b: Vector2) -> void:
+	"""Two fingers moved from `from_a`, `from_b` to `to_a`, `to_b` (in the
+	view): the map under the point between them goes with it, and zooms by how
+	far they spread or closed."""
+	var before: float = from_a.distance_to(from_b)
+	if before < 1.0:
+		return
+	var was_middle: Vector2 = (from_a + from_b) * 0.5
+	# Zoomed first, then moved: zoomed in, the map has room to move that the
+	# whole area at 1x does not.
+	zoom_by(to_a.distance_to(to_b) / before, was_middle)
+	pan_by((to_a + to_b) * 0.5 - was_middle)
+
+
+func _two_fingers() -> Array:
+	"""The two lowest fingers on the map, by index - a third is ignored."""
+	var held: Array = _fingers.keys()
+	held.sort()
+	return [_fingers[held[0]], _fingers[held[1]]]
+
+
+func _on_touch(event: InputEvent) -> bool:
+	"""A finger's own events (0.145.0): two pinch, one drags. True when taken.
+	The first finger is a mouse as well (emulate_mouse_from_touch): its
+	copied press and release still make a click on a pin, but its copied
+	motion moves nothing - the finger's drag does that here."""
+	var touch := event as InputEventScreenTouch
+	if touch != null:
+		if touch.pressed:
+			_fingers[touch.index] = touch.position
+			if _fingers.size() >= 2:
+				# A PINCH IS NEVER A CLICK on a pin.
+				_press_travel = INF
+		else:
+			_fingers.erase(touch.index)
+		return true
+	var drag := event as InputEventScreenDrag
+	if drag == null:
+		return false
+	if _fingers.size() >= 2 and _fingers.has(drag.index):
+		var was: Array = _two_fingers()
+		_fingers[drag.index] = drag.position
+		var now: Array = _two_fingers()
+		pinch_by(was[0], was[1], now[0], now[1])
+	else:
+		_fingers[drag.index] = drag.position
+		_press_travel += drag.relative.length()
+		pan_by(drag.relative)
+	return true
+
+
 func _on_view_input(event: InputEvent) -> void:
 	"""The wheel zooms where the pointer is, a held button drags, a trackpad's
-	pinch zooms - all of it taken here, so none of it reaches the camera."""
+	pinch zooms, two fingers pinch - all of it taken here, so none of it
+	reaches the camera."""
+	if _on_touch(event):
+		view.accept_event()
+		return
 	var button := event as InputEventMouseButton
 	if button != null:
 		if button.pressed and button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
@@ -530,6 +594,10 @@ func _on_view_input(event: InputEvent) -> void:
 			view.accept_event()
 		return
 	var motion := event as InputEventMouseMotion
+	if motion != null and motion.device == InputEvent.DEVICE_ID_EMULATION:
+		# A FINGER'S COPY: its own drag moved the map (_on_touch()).
+		view.accept_event()
+		return
 	if motion != null and _dragging:
 		if not (motion.button_mask & MOUSE_BUTTON_MASK_LEFT):
 			_dragging = false

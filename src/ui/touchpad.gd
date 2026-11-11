@@ -7,7 +7,10 @@
 #
 #   the stick    anywhere in the left part of the screen: it comes to where the
 #                thumb lands and follows it, and is the move keys, eight ways;
-#                drawn only while a thumb is on it (0.91.0), round (0.91.1)
+#                drawn only while a thumb is on it (0.91.0), round (0.91.1); a
+#                quick tap there that walks nobody strikes where it landed, and
+#                a second finger there is on the world (0.145.0,
+#                TouchControls.strike_at(), world_down())
 #   Attack       a thumb anywhere on the middle right (ATTACK_ZONE_LEFT): drawn
 #                where it lands, only while down (0.91.2); a press is an attack;
 #                held, it keeps attacking; dragged, it aims (TouchControls, THE AIM)
@@ -745,6 +748,12 @@ class Stick extends Control:
 	# Where and when the thumb came down, for a tap on a name.
 	var _landed_at: Vector2 = Vector2.ZERO
 	var _landed_msec: int = 0
+	# How far the knob has been from the middle since it came down: a tap
+	# that never left the dead middle strikes (TouchControls.strike_at()).
+	var _went: float = 0.0
+	# A second finger on this side while a thumb holds the stick: a finger on
+	# the world (0.145.0), told to TouchControls. -1 without one.
+	var second: int = -1
 
 	var ring: RoundSocket = null
 
@@ -788,19 +797,26 @@ class Stick extends Control:
 					knob = Vector2.ZERO
 				_landed_at = touch.position
 				_landed_msec = Time.get_ticks_msec()
+				_went = 0.0
 				_say()
+			elif touch.pressed and not mounted and second < 0:
+				# A SECOND FINGER HERE (0.145.0), the stick held: on the world.
+				if TouchControls.world_down(touch.index, get_global_transform_with_canvas() * touch.position):
+					second = touch.index
+			elif not touch.pressed and touch.index == second:
+				TouchControls.world_up(second)
+				second = -1
 			elif not touch.pressed and touch.index == finger:
-				# A QUICK TAP THAT WENT NOWHERE may be on a name (0.56.0) - not
-				# on a minigame's, which is over the world.
-				if not mounted and Time.get_ticks_msec() - _landed_msec <= TouchControls.NAME_TAP_MSEC \
-						and touch.position.distance_to(_landed_at) <= TouchControls.NAME_TAP_SLIDE:
-					TouchControls.tap_name_at(get_global_transform_with_canvas() * touch.position)
-				let_go()
+				if not mounted:
+					_tapped(touch.position)
+				_lift()
 			accept_event()
 			return
 		var drag := event as InputEventScreenDrag
 		if drag != null:
-			if drag.index == finger and mounted:
+			if drag.index == second:
+				TouchControls.world_moved(second, get_global_transform_with_canvas() * drag.position)
+			elif drag.index == finger and mounted:
 				# MOUNTED: past the rim the knob waits at it; the stick stays.
 				knob = (drag.position - base).limit_length(radius)
 				_say()
@@ -811,13 +827,34 @@ class Stick extends Control:
 					base += off - off.normalized() * radius
 					off = drag.position - base
 				knob = off
+				_went = maxf(_went, knob.length())
 				_say()
 			accept_event()
 			return
 		if event is InputEventMouseButton or event is InputEventMouseMotion:
 			accept_event()
 
+	func _tapped(at: Vector2) -> void:
+		"""The thumb lifted at `at` (this control's): a quick tap that went
+		nowhere is on a name (0.56.0), or else strikes there (0.145.0) - not
+		on a minigame's stick, which is over the world."""
+		var held: int = Time.get_ticks_msec() - _landed_msec
+		var point: Vector2 = get_global_transform_with_canvas() * at
+		if held <= TouchControls.NAME_TAP_MSEC and at.distance_to(_landed_at) <= TouchControls.NAME_TAP_SLIDE \
+				and TouchControls.tap_name_at(point):
+			return
+		if held <= TouchControls.STRIKE_TAP_MSEC and _went < radius * TouchControls.STICK_DEAD:
+			TouchControls.strike_at(point)
+
 	func let_go() -> void:
+		"""Every finger here up: the stick's thumb and a second one."""
+		if second >= 0:
+			TouchControls.world_up(second)
+			second = -1
+		_lift()
+
+	func _lift() -> void:
+		"""The stick's thumb up: the stick back to rest."""
 		if finger < 0:
 			return
 		finger = -1

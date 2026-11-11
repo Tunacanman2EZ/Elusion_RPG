@@ -252,6 +252,8 @@ func _run_all() -> void:
 	await _test_the_elements_mix()
 	await _test_the_tide_and_the_wind()
 	await _test_the_mirrors_shield()
+	await _test_a_tap_on_the_left_strikes()
+	await _test_a_pinch_zooms_the_map()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
