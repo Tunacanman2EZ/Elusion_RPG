@@ -44,6 +44,7 @@ extends Node2D
 # ends is replaced by the last (_remove_ring_at(), _spend_bursts()) - and
 # draw only as many instances as there are.
 
+const LagTests := preload("res://src/systems/lagtests.gd")
 const RING_SHADER := preload("res://src/projectiles/spikerings.gdshader")
 const SPARK_SHADER := preload("res://src/projectiles/spikesparks.gdshader")
 
@@ -148,6 +149,9 @@ func _ready() -> void:
 		_motion.append(Vector4.ZERO)
 		_shape.append(Vector4.ZERO)
 		_tint.append(Vector4.ZERO)
+	# The GM panel's lag tests hide what they say (lagtests.gd).
+	add_to_group(LagTests.GROUP)
+	show_tests()
 	set_process(not _ring_spikes.is_empty() or not _spark_end.is_empty())
 
 
@@ -394,9 +398,22 @@ func puddles_for(element: int) -> Node2D:
 	if holder == null:
 		holder = Node2D.new()
 		holder.name = holder_name
+		holder.visible = not LagTests.hide_pools
 		add_child(holder)
 		move_child(holder, 0)
 	return holder
+
+
+func show_tests() -> void:
+	"""Rings, sparks and pools drawn or not as the GM panel's lag tests say
+	(lagtests.gd). Only drawing: the spikes still warn, rise and hit."""
+	if _rings != null:
+		_rings.visible = not LagTests.hide_rings
+	if _sparks != null:
+		_sparks.visible = not LagTests.hide_sparks
+	for child in get_children():
+		if str(child.name).begins_with("puddles_"):
+			(child as CanvasItem).visible = not LagTests.hide_pools
 
 
 static func pool_holder(container: Node, element: int) -> Node:
@@ -485,6 +502,7 @@ func warm() -> void:
 	if _warmed or not is_inside_tree():
 		return
 	_warmed = true
+	PerfOverlay.mark(&"shaders warm")
 	# The sprites in a layer of their own, under everything and in the corner,
 	# so they are drawn whatever the camera is doing (a sprite off screen is
 	# not drawn at all); the MultiMeshes are never culled.

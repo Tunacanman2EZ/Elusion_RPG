@@ -25,6 +25,7 @@ extends CanvasLayer
 
 const PerfPanel := preload("res://src/systems/perfpanel.gd")
 const StressCrowdScript := preload("res://src/world/stresscrowd.gd")
+const LagTests := preload("res://src/systems/lagtests.gd")
 
 
 # How often the readout refreshes, in seconds.
@@ -149,6 +150,52 @@ var _held_before: bool = false
 # waiting, "not the game's code": the owner's 44 ms spike was the GM panel
 # being built. Each press is noted here, and a spike with one in it says so.
 var _press_usec: int = 0
+
+# LAG POINTS (0.138.0). The owner, of the Boss Arena's hitches in his
+# browser: "can we upgrade the test to analyze the lag points". Which part of
+# a frame was slow does not say what happened in it, and a browser cannot
+# time the graphics card. So the game marks what it does - mark(&"spikes
+# rise") at each place that does a lot in one frame - and every kind is
+# counted: the frames with it, and how many of those hitched. The kind far
+# above the frames with nothing marked is what makes the lag. A mark is
+# nothing while the readout is off.
+#
+# A MARK BELONGS TO THE FRAME IT WAS MADE IN: the frame starts at its first
+# physics tick (_physics_process()) and its marks so far are set aside there,
+# so a mark made in the next frame's ticks is not counted against this one.
+const MARK_LETTERS := {
+	&"boss casts": "C",
+	&"spikes appear": "A",
+	&"spikes rise": "R",
+	&"spikes go": "G",
+	&"pools land": "P",
+	&"boss volleys": "V",
+	&"monsters appear": "M",
+	&"monsters die": "D",
+	&"loot bags": "B",
+	&"key or click": "K",
+	&"shaders warm": "H",
+}
+const NOTHING_MARKED := "nothing marked"
+# A kind is the cause when this share of its frames hitched and this many
+# times the frames with nothing marked; worth watching at the second pair.
+const FIX_RATE := 0.2
+const FIX_TIMES := 5.0
+const WATCH_RATE := 0.05
+const WATCH_TIMES := 2.0
+var _marks_now: Dictionary = {}
+var _marks_ended: Dictionary = {}
+# kind -> [frames, hitched, {part: hitches}]; the same for nothing marked.
+var _lag: Dictionary = {}
+var _lag_base: Array = [0, 0, {}]
+var _on_time: int = 0
+# Beside the graph's frames: a hitch's [letter, part], or null.
+var _graph_marks: Array = []
+# The last frame's draw calls, triangles and graphics memory, for what a
+# frame changed.
+var _last_draws: int = -1
+var _last_prims: int = -1
+var _last_vram: int = -1
 var _unheld_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
@@ -231,6 +278,9 @@ func _physics_process(_delta: float) -> void:
 	_ticks_now += 1
 	if _ticks_now == 1:
 		_frame_start_usec_next = now
+		# The frame that just ended has its marks; this one starts afresh.
+		_marks_ended = _marks_now
+		_marks_now = {}
 
 
 func clocked_frame(now_usec: int) -> Dictionary:
@@ -239,6 +289,10 @@ func clocked_frame(now_usec: int) -> Dictionary:
 	parts in ms - length, physics, worst_tick, ticks, scripts, drawing - or {}
 	for the first frame."""
 	var start: int = _frame_start_usec_next if _ticks_now > 0 else now_usec
+	if _ticks_now == 0:
+		# No tick to set the ended frame's marks aside: they end here.
+		_marks_ended = _marks_now
+		_marks_now = {}
 	var parts: Dictionary = {}
 	if _frame_start_usec > 0 and _idle_usec > 0:
 		var drew: bool = _pre_draw_usec >= _idle_usec and _post_draw_usec >= _pre_draw_usec
@@ -250,7 +304,9 @@ func clocked_frame(now_usec: int) -> Dictionary:
 			"ticks": int(_last_parts.get("next_ticks", 0)),
 			"scripts": float(maxi(0, scripts_end - _idle_usec)) / 1000.0,
 			"drawing": float(_post_draw_usec - _pre_draw_usec) / 1000.0 if drew else 0.0,
+			"marks": _marks_ended,
 		}
+	_marks_ended = {}
 	# This frame: its ticks ran before this call; the last one ends now.
 	if _tick_usec > 0 and _ticks_now > 0:
 		_tick_worst_usec = maxi(_tick_worst_usec, now_usec - _tick_usec)
@@ -311,6 +367,15 @@ func set_shown(on: bool) -> void:
 		_graph_count = 0
 		_split_sums.fill(0.0)
 		_split = {}
+		_marks_now = {}
+		_marks_ended = {}
+		_lag = {}
+		_lag_base = [0, 0, {}]
+		_on_time = 0
+		_graph_marks.clear()
+		_last_draws = -1
+		_last_prims = -1
+		_last_vram = -1
 	visible = on
 	_measure_render_time(on)
 	# NEVER LEFT UNCAPPED once the readout is gone (Settings.set_uncapped()).
@@ -373,6 +438,7 @@ func _process(delta: float) -> void:
 		parts["nodes"] = (nodes - _prev_nodes) if _prev_nodes > 0 else 0
 		parts["area"] = AreaRegistry.current_area_id()
 		parts["at"] = Time.get_ticks_msec()
+		_note_drawn(parts)
 		push_sample(parts)
 	_prev_nodes = nodes
 
@@ -454,9 +520,22 @@ func _process(delta: float) -> void:
 	if _spikes.is_empty():
 		rows.append(_row("spikes", "none since switched on"))
 	for i in _spikes.size():
-		rows.append(_row("spikes" if i == 0 else "", spike_text(_spikes[i], now_msec)))
+		rows.append(_row("spikes" if i == 0 else "", _with_marks(spike_text(_spikes[i], now_msec), _spikes[i])))
 	if not _worst_spike.is_empty():
-		rows.append(_row("worst", spike_text(_worst_spike, now_msec)))
+		rows.append(_row("worst", _with_marks(spike_text(_worst_spike, now_msec), _worst_spike)))
+	# Every kind marked, the likeliest cause first, and the verdicts.
+	var lag: Array = lag_rows()
+	for i in lag.size():
+		var row: Array = lag[i]
+		rows.append(_row("lag" if i == 0 else "", "%s   %d of %s hitched (%.0f%%)%s" % [row[0], row[2],
+			_thousands(int(row[1])), 100.0 * float(row[2]) / maxf(1.0, float(row[1])),
+			(", mostly %s" % row[3]) if str(row[3]) != "" else ""]))
+	if not lag.is_empty():
+		var base: Array = lag_base()
+		rows.append(_row("", "%s   %d of %s hitched (%.1f%%)" % [NOTHING_MARKED, base[1], _thousands(int(base[0])),
+			100.0 * float(base[1]) / maxf(1.0, float(base[0]))]))
+	for verdict in verdicts():
+		rows.append(_row(str(verdict[0]), str(verdict[1])))
 	_label.text = "\n".join(rows)
 	_panel.show_data(panel_data(now_msec))
 
@@ -464,6 +543,31 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if is_press(event):
 		_press_usec = Time.get_ticks_usec()
+		mark(&"key or click")
+
+
+func mark(kind: StringName, count: int = 1) -> void:
+	"""The game did `count` of `kind` this frame (MARK_LETTERS has the kinds;
+	any other is counted the same, lettered by its first letter). Nothing
+	while the readout is off."""
+	if not visible:
+		return
+	_marks_now[kind] = int(_marks_now.get(kind, 0)) + count
+
+
+func _note_drawn(parts: Dictionary) -> void:
+	"""What the ended frame changed in what is drawn: draw calls, triangles,
+	graphics memory (new buffers and textures). The renderer's numbers now
+	are the last drawn frame's - the one ending."""
+	var draws: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	var prims: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	var vram: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED)
+	parts["draws"] = draws - _last_draws if _last_draws >= 0 else 0
+	parts["prims"] = prims - _last_prims if _last_prims >= 0 else 0
+	parts["vram"] = vram - _last_vram if _last_vram >= 0 else 0
+	_last_draws = draws
+	_last_prims = prims
+	_last_vram = vram
 
 
 static func is_press(event: InputEvent) -> bool:
@@ -554,9 +658,19 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
 	var scripts: float = float(sample.get("scripts", _process_ms()))
 	var drawing: float = float(sample.get("drawing", 0.0))
-	_note_for_panel(ms, physics, scripts, drawing, ticks)
+	var hitched: bool = ms > HITCH_MS
+	if ms <= TARGET_FRAME_MS * 1.05:
+		_on_time += 1
+	var marks: Dictionary = sample.get("marks", {})
+	var part: String = str(spike_cause({"ms": ms, "physics": physics, "scripts": scripts, "drawing": drawing})["kind"]) \
+		if hitched else ""
+	_count_lag(marks, hitched, part)
+	var hitch_mark: Variant = null
+	if hitched:
+		hitch_mark = [_letter_for(marks), part]
+	_note_for_panel(ms, physics, scripts, drawing, ticks, hitch_mark)
 	_worst_frame_ms = maxf(_worst_frame_ms, ms)
-	if ms > HITCH_MS:
+	if hitched:
 		_hitches += 1
 		_spikes.push_front({
 			"ms": ms, "physics": physics, "worst_tick": worst_tick, "ticks": ticks,
@@ -564,6 +678,9 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 			"pressed": bool(sample.get("pressed", false)),
 			"area": str(sample.get("area", AreaRegistry.current_area_id())),
 			"at": int(sample.get("at", Time.get_ticks_msec())),
+			"marks": marks.duplicate(),
+			"draws": int(sample.get("draws", 0)), "prims": int(sample.get("prims", 0)),
+			"vram": int(sample.get("vram", 0)),
 		})
 		if _worst_spike.is_empty() or ms > float(_worst_spike["ms"]):
 			_worst_spike = _spikes[0]
@@ -639,10 +756,14 @@ func spike_text(spike: Dictionary, now_msec: int) -> String:
 # THE PANEL'S NUMBERS (0.136.0)
 # =============================================================================
 
-func _note_for_panel(ms: float, physics: float, scripts: float, drawing: float, ticks: int) -> void:
+func _note_for_panel(ms: float, physics: float, scripts: float, drawing: float, ticks: int,
+		hitch_mark: Variant = null) -> void:
 	if _graph.size() != PerfPanel.GRAPH_FRAMES:
 		_graph.resize(PerfPanel.GRAPH_FRAMES)
+	if _graph_marks.size() != _graph.size():
+		_graph_marks.resize(_graph.size())
 	_graph[_graph_at] = ms
+	_graph_marks[_graph_at] = hitch_mark
 	_graph_at = (_graph_at + 1) % _graph.size()
 	_graph_count = mini(_graph_count + 1, _graph.size())
 	_split_sums[0] += ms
@@ -660,6 +781,175 @@ func graph_frames() -> PackedFloat32Array:
 	for i in _graph_count:
 		out.append(_graph[posmod(start + i, _graph.size())])
 	return out
+
+
+func graph_marks() -> Array:
+	"""The graph's hitches, oldest first: [frame in graph_frames(), letter,
+	part]."""
+	var out: Array = []
+	if _graph_marks.size() != _graph.size():
+		return out
+	var start: int = _graph_at - _graph_count
+	for i in _graph_count:
+		var hitch_mark: Variant = _graph_marks[posmod(start + i, _graph_marks.size())]
+		if hitch_mark != null:
+			out.append([i, hitch_mark[0], hitch_mark[1]])
+	return out
+
+
+func graph_key(marks: Array, most: int = 3) -> Array:
+	"""What the graph's letters stand for: [letter, name, how many, part of
+	the latest], the commonest first, at most `most`."""
+	var counts: Dictionary = {}
+	var parts: Dictionary = {}
+	for hitch_mark in marks:
+		var letter: String = str(hitch_mark[1])
+		counts[letter] = int(counts.get(letter, 0)) + 1
+		parts[letter] = str(hitch_mark[2])
+	var letters: Array = counts.keys()
+	letters.sort_custom(func(a, b): return int(counts[a]) > int(counts[b]))
+	var out: Array = []
+	for letter in letters.slice(0, most):
+		out.append([letter, _name_of_letter(str(letter)), int(counts[letter]), parts[letter]])
+	return out
+
+
+static func letter_of(kind: StringName) -> String:
+	if MARK_LETTERS.has(kind):
+		return str(MARK_LETTERS[kind])
+	var word := str(kind)
+	return word.left(1).to_upper() if word != "" else "?"
+
+
+static func _name_of_letter(letter: String) -> String:
+	if letter == "?":
+		return NOTHING_MARKED
+	for kind in MARK_LETTERS:
+		if str(MARK_LETTERS[kind]) == letter:
+			return str(kind)
+	return letter
+
+
+func _letter_for(marks: Dictionary) -> String:
+	"""A hitch's letter: of its marks, the one most often in hitches so far
+	("?" with none)."""
+	if marks.is_empty():
+		return "?"
+	var best: StringName = &""
+	var best_rate: float = -1.0
+	for kind in marks:
+		var row: Array = _lag.get(kind, [0, 0, {}])
+		var rate: float = float(row[1]) / maxf(1.0, float(row[0]))
+		if rate > best_rate:
+			best_rate = rate
+			best = kind
+	return letter_of(best)
+
+
+func _count_lag(marks: Dictionary, hitched: bool, part: String) -> void:
+	if marks.is_empty():
+		_bump(_lag_base, hitched, part)
+		return
+	for kind in marks:
+		if not _lag.has(kind):
+			_lag[kind] = [0, 0, {}]
+		_bump(_lag[kind], hitched, part)
+
+
+static func _bump(row: Array, hitched: bool, part: String) -> void:
+	row[0] = int(row[0]) + 1
+	if hitched:
+		row[1] = int(row[1]) + 1
+		var parts: Dictionary = row[2]
+		parts[part] = int(parts.get(part, 0)) + 1
+
+
+static func _mostly(parts: Dictionary) -> String:
+	var best: String = ""
+	for part in parts:
+		if best == "" or int(parts[part]) > int(parts[best]):
+			best = str(part)
+	return best
+
+
+func lag_rows() -> Array:
+	"""Every kind marked since switched on: [kind, frames, hitched, mostly
+	in], the likeliest cause first (the share that hitched, then how many)."""
+	var rows: Array = []
+	for kind in _lag:
+		var row: Array = _lag[kind]
+		rows.append([str(kind), int(row[0]), int(row[1]), _mostly(row[2])])
+	rows.sort_custom(func(a, b):
+		var ra: float = float(a[2]) / maxf(1.0, float(a[1]))
+		var rb: float = float(b[2]) / maxf(1.0, float(b[1]))
+		return ra > rb if not is_equal_approx(ra, rb) else int(a[2]) > int(b[2]))
+	return rows
+
+
+func lag_base() -> Array:
+	"""The frames with nothing marked: [frames, hitched, mostly in]."""
+	return [int(_lag_base[0]), int(_lag_base[1]), _mostly(_lag_base[2])]
+
+
+func verdicts() -> Array:
+	"""[["great" | "fix" | "watch", why], ...]: what is well inside its
+	budget, the kind of event that makes the hitches, and the next one."""
+	var out: Array = []
+	var great: PackedStringArray = []
+	if _frames >= 60:
+		var on_time: float = float(_on_time) / float(_frames)
+		if on_time >= 0.95:
+			great.append("%d%% of frames on time" % floori(on_time * 100.0))
+	var inside: PackedStringArray = []
+	if float(_split.get("scripts", TARGET_FRAME_MS)) < TARGET_FRAME_MS * 0.25:
+		inside.append("scripts")
+	if _physics_ms() < 0.4 * 1000.0 / float(Engine.physics_ticks_per_second):
+		inside.append("physics")
+	if not inside.is_empty():
+		great.append("%s well inside" % " and ".join(inside))
+	if not great.is_empty():
+		out.append(["great", " · ".join(great)])
+	var base: Array = lag_base()
+	var base_rate: float = float(base[1]) / maxf(1.0, float(base[0]))
+	var fix: Array = []
+	var watch: Array = []
+	for row in lag_rows():
+		if int(row[1]) < 3 or int(row[2]) < 2:
+			continue
+		var rate: float = float(row[2]) / float(row[1])
+		if fix.is_empty() and watch.is_empty() and rate >= maxf(FIX_RATE, base_rate * FIX_TIMES):
+			fix = row
+		elif watch.is_empty() and rate >= maxf(WATCH_RATE, base_rate * WATCH_TIMES):
+			watch = row
+	if not fix.is_empty():
+		out.append(["fix", "%s: %d of %d hitched, mostly %s" % [fix[0], fix[2], fix[1], fix[3]]])
+	elif _frames >= 60 and float(_hitches) / float(_frames) > 0.02 and int(base[1]) >= 3:
+		out.append(["fix", "%s: %d of %s hitched, mostly %s" % [NOTHING_MARKED,
+			base[1], _thousands(int(base[0])), base[2]]])
+	if not watch.is_empty():
+		out.append(["watch", "%s: %d of %d hitched" % [watch[0], watch[2], watch[1]]])
+	return out
+
+
+func marks_text(spike: Dictionary, most: int = 3) -> String:
+	"""What happened in a hitch's frame, in a few words: its marks, the
+	commonest first, then what it changed in what is drawn."""
+	var bits: PackedStringArray = []
+	var marks: Dictionary = spike.get("marks", {})
+	var kinds: Array = marks.keys()
+	kinds.sort_custom(func(a, b): return int(marks[a]) > int(marks[b]))
+	for kind in kinds.slice(0, most):
+		bits.append("%s ×%d" % [kind, int(marks[kind])])
+	var draws: int = int(spike.get("draws", 0))
+	if absi(draws) >= 3:
+		bits.append("draws %s%d" % ["+" if draws > 0 else "", draws])
+	var prims: int = int(spike.get("prims", 0))
+	if absi(prims) >= 1000:
+		bits.append("%s%.1fk triangles" % ["+" if prims > 0 else "-", absf(prims) / 1000.0])
+	var vram: int = int(spike.get("vram", 0))
+	if absi(vram) >= 262144:
+		bits.append("%s%.1f MB graphics" % ["+" if vram > 0 else "-", absf(vram) / 1048576.0])
+	return " · ".join(bits)
 
 
 func split_now() -> Dictionary:
@@ -698,6 +988,14 @@ func panel_data(now_msec: int) -> Dictionary:
 	var cap: String = _cap_short()
 	if cap != "":
 		title_bits.append(cap)
+	# A LAG TEST ON SAYS SO, so a quiet readout is read as the test's.
+	if LagTests.any_on():
+		title_bits.append("test: " + ", ".join(LagTests.names_on()))
+	var marks: Array = graph_marks()
+	var lag: Array = []
+	for row in lag_rows():
+		lag.append([row[0], row[1], row[2]])
+	var base: Array = lag_base()
 	return {
 		"title": "  ·  ".join(title_bits),
 		"title_colour": PerfPanel.WARN if Settings.held_reason() != "" else PerfPanel.SOFT,
@@ -732,6 +1030,11 @@ func panel_data(now_msec: int) -> Dictionary:
 		],
 		"spikes": spikes,
 		"worst_spike": _panel_spike(_worst_spike, now_msec, true) if not _worst_spike.is_empty() else {},
+		"graph_marks": marks,
+		"graph_key": graph_key(marks),
+		"verdict": verdicts(),
+		"lag": lag,
+		"lag_base": [base[0], base[1]] if not lag.is_empty() else [],
 	}
 
 
@@ -750,6 +1053,7 @@ func _panel_spike(spike: Dictionary, now_msec: int, worst: bool = false) -> Dict
 		"kind": kind,
 		"cause": what,
 		"nodes": ("%s%s nodes" % ["+" if nodes > 0 else "", _thousands(nodes)]) if nodes != 0 else "",
+		"marks": marks_text(spike),
 	}
 
 
@@ -891,6 +1195,11 @@ func _monsters_text() -> String:
 		return "none here"
 	return "%s here   %s awake   %s asleep" % [
 		_thousands(counts.x), _thousands(counts.x - counts.y), _thousands(counts.y)]
+
+
+func _with_marks(text: String, spike: Dictionary) -> String:
+	var marks: String = marks_text(spike, 6)
+	return text + ("   [%s]" % marks if marks != "" else "")
 
 
 func readout() -> String:

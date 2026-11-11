@@ -732,6 +732,159 @@ func _test_spikes_drawn_together() -> void:
 	print("  (a boss's spikes drawn together: done)")
 
 
+func _test_the_lag_points() -> void:
+	section("THE READOUT'S LAG POINTS - WHAT HAPPENED WHEN FRAMES HITCHED (0.138.0)")
+	# The owner: "can we upgrade the test to analyze the lag points", then
+	# "make markers showing what is great and what needs to be fixed".
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	var was_shown: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.mark(&"spikes rise")
+	check("a mark is nothing while the readout is off", (PerfOverlay._marks_now as Dictionary).is_empty())
+	PerfOverlay.set_shown(true)
+	var t: int = Time.get_ticks_usec()
+	PerfOverlay.clocked_frame(t)
+	PerfOverlay.mark(&"spikes rise", 3)
+	PerfOverlay._physics_process(0.0)
+	PerfOverlay.mark(&"boss casts")
+	var parts: Dictionary = PerfOverlay.clocked_frame(t + 20000)
+	check("  a mark belongs to the frame it was made in: set aside at the next frame's first tick",
+		parts.get("marks", {}) == {&"spikes rise": 3} and PerfOverlay._marks_now == {&"boss casts": 1}, parts.get("marks"))
+	PerfOverlay._marks_now = {}
+	PerfOverlay.clocked_frame(t + 30000)
+	PerfOverlay.mark(&"pools land")
+	var untick: Dictionary = PerfOverlay.clocked_frame(t + 40000)
+	check("  and a frame with no tick ends its marks where it ends", untick.get("marks", {}) == {&"pools land": 1},
+		untick.get("marks"))
+
+	# ---- counted: the frames with each kind, and those that hitched ----------
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var at: int = Time.get_ticks_msec() - 100000
+	var feed := func(ms: float, marks: Dictionary) -> void:
+		at += 17
+		PerfOverlay.push_sample({"ms": ms, "held": false, "fps": 60.0, "physics": 0.3, "worst_tick": 0.3, "ticks": 1,
+			"scripts": 0.5, "drawing": ms - 1.0, "nodes": 0, "area": "", "at": at, "marks": marks,
+			"draws": 4 if not marks.is_empty() else 0, "prims": 0, "vram": 0})
+	for i in 100:
+		feed.call(40.0 if i == 50 else 16.6, {})
+	for i in 10:
+		feed.call(40.0 if i < 8 else 16.6, {&"spikes rise": 12})
+	for i in 10:
+		feed.call(16.6, {&"pools land": 2})
+	for i in 10:
+		feed.call(40.0 if i < 2 else 16.6, {&"boss casts": 1})
+	PerfOverlay.flush_samples()
+	var rows: Array = PerfOverlay.lag_rows()
+	check("each kind: its frames, those that hitched, and in which part - the likeliest first",
+		not rows.is_empty() and rows[0] == ["spikes rise", 10, 8, "drawing"], rows)
+	check("  and the frames with nothing marked beside them", PerfOverlay.lag_base() == [100, 1, "drawing"],
+		PerfOverlay.lag_base())
+	var verdicts: Array = PerfOverlay.verdicts()
+	var said: Dictionary = {}
+	for v in verdicts:
+		said[v[0]] = v[1]
+	check("  FIX names the kind far above the rest, and where its time went",
+		str(said.get("fix", "")) == "spikes rise: 8 of 10 hitched, mostly drawing", verdicts)
+	check("  WATCH the next (boss casts, 2 of 10), never one that did not hitch",
+		str(said.get("watch", "")) == "boss casts: 2 of 10 hitched" and not str(verdicts).contains("pools land"), verdicts)
+	var marks: Array = PerfOverlay.graph_marks()
+	var letters: String = ""
+	for m in marks:
+		letters += str(m[1])
+	check("  the graph marks each hitch with its kind's letter - ? where nothing was marked",
+		letters == "?RRRRRRRRCC" and str(marks[1][2]) == "drawing", letters)
+	var key: Array = PerfOverlay.graph_key(marks)
+	check("  and the key under it says what the letters were, the commonest first",
+		not key.is_empty() and key[0][0] == "R" and key[0][1] == "spikes rise" and int(key[0][2]) == 8, key)
+	var data: Dictionary = PerfOverlay.panel_data(Time.get_ticks_msec())
+	var spike: Dictionary = (data.get("spikes", []) as Array)[0] if not (data.get("spikes", []) as Array).is_empty() else {}
+	check("  the panel has them all, and a spike says what happened in its frame",
+		(data.get("lag", []) as Array).size() == 3 and data.get("lag_base", []) == [100, 1]
+		and (data.get("verdict", []) as Array).size() >= 2 and str(spike.get("marks", "")) == "boss casts ×1 · draws +4",
+		[spike.get("marks"), data.get("lag_base")])
+	check("  and the copied text has the lag points and the verdicts",
+		_func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _process(").contains("lag_rows()")
+		and _func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _process(").contains("verdicts()"))
+	PerfOverlay.set_shown(false)
+
+	# ---- where the game marks -----------------------------------------------------
+	var marked: Array = [
+		["res://src/enemies/bossenemy.gd", "func _cast_stalagmites_from_cast(", "boss casts"],
+		["res://src/enemies/bossenemy.gd", "func fire_volley(", "boss volleys"],
+		["res://src/projectiles/bossprojectile.gd", "func _ready(", "spikes appear"],
+		["res://src/projectiles/bossprojectile.gd", "func _erupt(", "spikes rise"],
+		["res://src/projectiles/bossprojectile.gd", "func _on_animation_finished(", "spikes go"],
+		["res://src/projectiles/acidpuddle.gd", "func _ready(", "pools land"],
+		["res://src/enemies/baseenemy.gd", "func _ready(", "monsters appear"],
+		["res://src/enemies/baseenemy.gd", "func _die(", "monsters die"],
+		["res://src/world/lootbag.gd", "func _ready(", "loot bags"],
+		["res://src/projectiles/spikefx.gd", "func warm(", "shaders warm"],
+		["res://src/systems/perfoverlay.gd", "func _input(", "key or click"],
+	]
+	var unmarked: Array = []
+	for place in marked:
+		if not _func_body(_code_src(place[0]), place[1]).contains("mark(&\"%s\")" % place[2]):
+			unmarked.append(place[2])
+		if not PerfOverlay.MARK_LETTERS.has(StringName(place[2])):
+			unmarked.append(place[2] + " (no letter)")
+	check("the game marks its big moments, each with a letter", unmarked.is_empty(), unmarked)
+
+	# ---- the lag tests ------------------------------------------------------------
+	var area := Node2D.new()
+	add_child(area)
+	var fx: Node2D = Fx.of(area)
+	var pools: Node = fx.call("puddles_for", Element.Type.FIRE)
+	var light := PointLight2D.new()
+	get_tree().current_scene.add_child(light)
+	var dark := PointLight2D.new()
+	dark.enabled = false
+	get_tree().current_scene.add_child(dark)
+	Lag.set_test("rings", true, get_tree())
+	Lag.set_test("pools", true, get_tree())
+	Lag.set_test("lights", true, get_tree())
+	var hidden: bool = not (fx.get_node("rings") as CanvasItem).visible and (fx.get_node("sparks") as CanvasItem).visible \
+		and not (pools as CanvasItem).visible and not light.enabled
+	var titled: String = str(PerfOverlay.panel_data(Time.get_ticks_msec()).get("title", ""))
+	Lag.set_test("rings", false, get_tree())
+	Lag.set_test("pools", false, get_tree())
+	Lag.set_test("lights", false, get_tree())
+	check("a lag test hides what it says - drawing only - and the readout's title says so",
+		hidden and titled.contains("test: rings off, pools off, lights off"), [hidden, titled])
+	check("  and off, it is all back as it was (a light that was off stays off)",
+		(fx.get_node("rings") as CanvasItem).visible and (pools as CanvasItem).visible and light.enabled
+		and not dark.enabled and not Lag.any_on())
+	light.free()
+	dark.free()
+	area.queue_free()
+	var was_role: String = Api.role
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var grid: Node = gm.find_child("laggrid", true, false)
+	var button: Button = gm.find_child("lagsparksbutton", true, false) as Button
+	if button != null:
+		button.button_pressed = true
+	var strip: Array = gm.call("active_now")
+	check("the GM panel's Testing tab has the four under LAG TESTS, toggles in a row; one on is on the strip",
+		grid != null and grid.find_children("lag*button", "Button", false, false).size() == 4
+		and button != null and button.toggle_mode
+		and Lag.hide_sparks and strip.has("Sparks Off"), strip)
+	if button != null:
+		button.button_pressed = false
+	gm.queue_free()
+	Api.role = was_role
+	Lag.hide_rings = false
+	Lag.hide_sparks = false
+	Lag.hide_pools = false
+	Lag.lights_off = false
+	PerfOverlay.set_shown(was_shown)
+	await get_tree().process_frame
+	print("  (the readout's lag points: done)")
+
+
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 	"""Cells in a range that are not in that range's chunk."""
 	const Ground := preload("res://src/world/groundchunks.gd")

@@ -167,6 +167,7 @@ var _next_tick: Dictionary = {}
 # =============================================================================
 
 func _ready() -> void:
+	PerfOverlay.mark(&"pools land")
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
 		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation("puddle"):

@@ -2514,6 +2514,7 @@ func _cast_stalagmites_from_cast() -> void:
 		container = get_tree().current_scene
 	if container == null or eruption_scene == null:
 		return
+	PerfOverlay.mark(&"boss casts")
 	var pool: Array[StringName] = stalagmite_pool(_current_phase())
 	var choice: StringName = pool[randi() % pool.size()]
 	var pattern: Array[Dictionary] = _lead_pattern(_pattern_by_name(choice, _aim_point()), choice)
@@ -2542,6 +2543,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	var kind: StringName = StringName(head.left(head.length() - 1))
 	if not VOLLEYS.has(kind):
 		return
+	PerfOverlay.mark(&"boss volleys")
 	var phase: int = clampi(int(head.right(1)), 0, 2)
 	# WHAT HIT ME (0.85.0): every orb of it is this boss's `kind`.
 	HitSource.stamp_for(self, String(kind))

@@ -31,7 +31,9 @@ const GRAPH_STEP := 2.0
 const GRAPH_FRAMES := int((WIDTH - 2.0 * PAD) / GRAPH_STEP)
 const GRAPH_HEIGHT := 64.0
 const GRAPH_TOP_MS := 50.0
-const SPIKES_SHOWN := 4
+const SPIKES_SHOWN := 3
+# The lag points shown, the likeliest first; Copy has them all.
+const LAG_SHOWN := 3
 const COPY_RECT := Rect2(WIDTH - PAD - 56.0, 6.0, 56.0, 17.0)
 const TITLE_LINE := 12.0
 const UNCAP_RECT := Rect2(WIDTH - PAD - 56.0 - 6.0 - 66.0, 6.0, 66.0, 17.0)
@@ -222,12 +224,25 @@ func _draw() -> void:
 		var line_y: float = graph.end.y - float(line[0]) / GRAPH_TOP_MS * graph.size.y
 		draw_dashed_line(Vector2(graph.position.x, line_y), Vector2(graph.end.x, line_y), line[1], 1.0, 4.0)
 		_text(font, Vector2(graph.position.x + 3.0, line_y - 2.0), line[2], 9, line[1])
-	_text(font, Vector2(graph.position.x, graph.position.y + 11.0),
-		"the last %.0f s" % (float(GRAPH_FRAMES) / 60.0), 9, SOFT, HORIZONTAL_ALIGNMENT_RIGHT, graph.size.x - 3.0)
+	var marks: Array = d.get("graph_marks", [])
+	if marks.is_empty():
+		_text(font, Vector2(graph.position.x, graph.position.y + 11.0),
+			"the last %.0f s" % (float(GRAPH_FRAMES) / 60.0), 9, SOFT, HORIZONTAL_ALIGNMENT_RIGHT, graph.size.x - 3.0)
+	_graph_marks(font, graph, n, frames, marks)
 	var y: float = 142.0
+	var key: Array = d.get("graph_key", [])
+	if not key.is_empty():
+		_graph_key(font, y - 2.0, key)
+		y += 14.0
 	_text(font, Vector2(PAD, y), str(d.get("hitches", "")), 12, TEXT)
 	y += 15.0
 	_text(font, Vector2(PAD, y), str(d.get("loads", "")), 10, SOFT)
+	if not marks.is_empty():
+		_text(font, Vector2(PAD, y), "graph: the last %.0f s" % (float(GRAPH_FRAMES) / 60.0), 10, SOFT,
+			HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 2.0 * PAD)
+	for verdict in d.get("verdict", []):
+		y += 16.0
+		_verdict(font, y, str(verdict[0]), str(verdict[1]))
 
 	# ---- where the frame goes -----------------------------------------------------------
 	y = _section(font, y + 9.0, "WHERE THE FRAME GOES")
@@ -271,6 +286,12 @@ func _draw() -> void:
 	@warning_ignore("integer_division")
 	y += 30.0 * float((cells.size() + 3) / 4) + 2.0
 
+	# ---- lag points -----------------------------------------------------------------------
+	var lag: Array = d.get("lag", [])
+	if not lag.is_empty():
+		y = _section(font, y, "LAG POINTS  (what was happening when frames hitched)")
+		y = _lag_rows(font, y, lag, d.get("lag_base", []))
+
 	# ---- spikes --------------------------------------------------------------------------
 	y = _section(font, y, "SPIKES  (newest first)")
 	var spikes: Array = d.get("spikes", [])
@@ -279,12 +300,121 @@ func _draw() -> void:
 		y += 16.0
 	for spike in spikes:
 		_spike_row(font, y + 4.0, spike, budget, hitch)
-		y += 16.0
+		y += _spike_height(spike)
 	var worst_spike: Dictionary = d.get("worst_spike", {})
 	if not worst_spike.is_empty():
 		draw_line(Vector2(PAD, y - 1.0), Vector2(WIDTH - PAD, y - 1.0), Color(EDGE, 0.2), 1.0)
 		_spike_row(font, y + 10.0, worst_spike, budget, hitch)
 	draw_set_transform(Vector2.ZERO)
+
+
+# A hitch's marker over its bar: the letter of what happened in it, on the
+# colour of the part that took the time.
+const MARK_SIZE := Vector2(11.0, 11.0)
+const VERDICT_WORDS := {"great": ["GREAT", GOOD], "fix": ["FIX", BAD], "watch": ["WATCH", WARN]}
+
+
+func _graph_marks(font: Font, graph: Rect2, n: int, frames: PackedFloat32Array, marks: Array) -> void:
+	"""A marker over each hitch in the graph (`marks`: [frame, letter, part]),
+	a faint stem down to its bar; two that would touch drawn as one."""
+	var last_x: float = -100.0
+	for mark in marks:
+		var i: int = int(mark[0])
+		var x: float = graph.end.x - float(n - i) * GRAPH_STEP + GRAPH_STEP * 0.5
+		if x - last_x < MARK_SIZE.x + 1.0:
+			continue
+		last_x = x
+		var colour: Color = PART_COLOURS.get(str(mark[2]), SOFT)
+		var box := Rect2(Vector2(x - MARK_SIZE.x * 0.5, graph.position.y + 1.0), MARK_SIZE)
+		var bar_top: float = graph.end.y - minf(frames[i] / GRAPH_TOP_MS, 1.0) * graph.size.y if i < frames.size() else graph.end.y
+		if bar_top > box.end.y:
+			draw_line(Vector2(x, box.end.y), Vector2(x, bar_top), Color(colour, 0.6), 1.0)
+		draw_rect(box, Color(0, 0, 0, 0.7))
+		draw_rect(box.grow(-1.0), colour)
+		_text(font, box.position + Vector2(0, 9.5), str(mark[1]), 9, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box.size.x)
+
+
+func _graph_key(font: Font, y: float, key: Array) -> void:
+	"""What the markers' letters stand for, those in the graph now."""
+	var x: float = PAD
+	for item in key:
+		var colour: Color = PART_COLOURS.get(str(item[3]), SOFT) if item.size() > 3 else SOFT
+		var box := Rect2(Vector2(x, y - 9.0), MARK_SIZE)
+		draw_rect(box, colour)
+		_text(font, box.position + Vector2(0, 9.5), str(item[0]), 9, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box.size.x)
+		var label: String = "%s ×%d" % [item[1], int(item[2])]
+		_text(font, Vector2(x + MARK_SIZE.x + 4.0, y), label, 10, SOFT)
+		x += MARK_SIZE.x + 4.0 + font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 10.0
+
+
+func _verdict(font: Font, y: float, kind: String, text: String) -> void:
+	"""GREAT, WATCH or FIX, and why."""
+	var word: Array = VERDICT_WORDS.get(kind, ["", SOFT])
+	var colour: Color = word[1]
+	var badge := Rect2(PAD, y - 10.0, 44.0, 13.0)
+	draw_rect(badge, Color(colour, 0.25))
+	draw_rect(badge, colour, false, 1.0)
+	_text(font, badge.position + Vector2(0, 10.0), str(word[0]), 9, colour, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x)
+	_text(font, Vector2(PAD + 52.0, y), _fit(font, text, 11, WIDTH - PAD - 52.0 - PAD), 11, TEXT)
+
+
+static func _fit(font: Font, text: String, font_size: int, width: float) -> String:
+	"""`text`, cut with an ellipsis to fit `width`."""
+	if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= width:
+		return text
+	var cut: String = text
+	while cut.length() > 1 and font.get_string_size(cut + "…", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > width:
+		cut = cut.left(cut.length() - 1)
+	return cut.strip_edges() + "…"
+
+
+# Where a lag point's columns stand, and its bar.
+const LAG_FRAMES_X := 196.0
+const LAG_RATE_X := 286.0
+const LAG_BAR := Rect2(326.0, -8.0, 56.0, 8.0)
+
+
+func _lag_rows(font: Font, y: float, lag: Array, base: Array) -> float:
+	"""Each kind of event: how many frames had it, how many of those hitched,
+	and that share against the frames with none of them (`base`) - the one
+	far above the rest is what makes the lag."""
+	var base_rate: float = float(base[1]) / maxf(1.0, float(base[0])) if base.size() >= 2 else 0.0
+	_text(font, Vector2(PAD, y + 2.0), "event", 10, SOFT)
+	_text(font, Vector2(LAG_FRAMES_X, y + 2.0), "frames that hitched", 10, SOFT)
+	y += 16.0
+	for row in lag.slice(0, LAG_SHOWN):
+		var frames: int = int(row[1])
+		var hitched: int = int(row[2])
+		var rate: float = float(hitched) / maxf(1.0, float(frames))
+		var colour: Color = BAD if rate >= maxf(0.2, base_rate * 5.0) else (WARN if rate >= maxf(0.05, base_rate * 2.0) else TEXT)
+		_lag_row(font, y, str(row[0]), "%d of %d" % [hitched, frames], rate, colour)
+		y += 16.0
+	if base.size() >= 2:
+		_lag_row(font, y, "none of these", "%d of %s" % [int(base[1]), _thousands(int(base[0]))], base_rate, SOFT)
+		y += 16.0
+	return y + 2.0
+
+
+func _lag_row(font: Font, y: float, label: String, count: String, rate: float, colour: Color) -> void:
+	_text(font, Vector2(PAD, y), label, 12, colour)
+	_text(font, Vector2(LAG_FRAMES_X, y), count, 11, TEXT)
+	_text(font, Vector2(LAG_RATE_X, y), "%d%%" % roundi(rate * 100.0), 11, colour)
+	var bar := Rect2(LAG_BAR.position + Vector2(0, y), LAG_BAR.size)
+	draw_rect(bar, Color(0, 0, 0, 0.4))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(rate, 0.0, 1.0), bar.size.y)), colour)
+
+
+static func _thousands(n: int) -> String:
+	var digits := str(n)
+	var out := ""
+	while digits.length() > 3:
+		out = "," + digits.right(3) + out
+		digits = digits.left(digits.length() - 3)
+	return digits + out
+
+
+func _spike_height(spike: Dictionary) -> float:
+	return 28.0 if str(spike.get("marks", "")) != "" else 16.0
 
 
 func _spike_row(font: Font, y: float, spike: Dictionary, budget: float, hitch: float) -> void:
@@ -296,15 +426,28 @@ func _spike_row(font: Font, y: float, spike: Dictionary, budget: float, hitch: f
 	var nodes: String = str(spike.get("nodes", ""))
 	if nodes != "":
 		_text(font, Vector2(PAD, y), nodes, 10, SOFT, HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 2.0 * PAD)
+	# What happened in that frame, under it.
+	var marks: String = str(spike.get("marks", ""))
+	if marks != "":
+		_text(font, Vector2(PAD + 130.0, y + 12.0), _fit(font, marks, 10, WIDTH - 2.0 * PAD - 130.0), 10, SOFT)
 
 
 func _height_for(d: Dictionary) -> float:
 	var cells: int = (d.get("world", []) as Array).size()
-	var spikes: int = maxi(1, (d.get("spikes", []) as Array).size())
-	var worst: float = 18.0 if not (d.get("worst_spike", {}) as Dictionary).is_empty() else 0.0
+	var spikes: float = 0.0
+	for spike in d.get("spikes", []):
+		spikes += _spike_height(spike)
+	spikes = maxf(16.0, spikes)
+	var worst_spike: Dictionary = d.get("worst_spike", {})
+	var worst: float = (2.0 + _spike_height(worst_spike)) if not worst_spike.is_empty() else 0.0
+	var lag_rows: int = mini(LAG_SHOWN, (d.get("lag", []) as Array).size())
+	var lag: float = (22.0 + 16.0 + 16.0 * float(lag_rows + (1 if (d.get("lag_base", []) as Array).size() >= 2 else 0)) + 2.0) \
+		if lag_rows > 0 else 0.0
 	@warning_ignore("integer_division")
 	var world: float = 30.0 * float((cells + 3) / 4)
-	return TITLE_LINE + 157.0 + 9.0 + 22.0 + 30.0 + 34.0 + 10.0 + 22.0 + world + 2.0 + 22.0 + 16.0 * float(spikes) + worst + 10.0
+	var extra: float = 16.0 * float((d.get("verdict", []) as Array).size()) \
+		+ (14.0 if not (d.get("graph_key", []) as Array).is_empty() else 0.0)
+	return TITLE_LINE + 157.0 + extra + 9.0 + 22.0 + 30.0 + 34.0 + 10.0 + 22.0 + world + 2.0 + lag + 22.0 + spikes + worst + 10.0
 
 
 func _section(font: Font, y: float, title: String) -> float:

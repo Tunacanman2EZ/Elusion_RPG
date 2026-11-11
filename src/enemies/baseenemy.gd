@@ -493,6 +493,8 @@ var nav_agent: NavigationAgent2D = null
 # =============================================================================
 
 func _ready() -> void:
+	# A crowd made at once is one of the readout's lag points (0.138.0).
+	PerfOverlay.mark(&"monsters appear")
 	# FIRST, before anything reads these fields — `hp = max_hp` on the very next
 	# line would otherwise fill the health pool from BaseEnemy's default of 50
 	# rather than this enemy's real maximum.
@@ -3482,6 +3484,7 @@ func _die() -> void:
 		return
 
 	_death_resolved = true
+	PerfOverlay.mark(&"monsters die")
 
 	_release_slot()
 	leave_seat()

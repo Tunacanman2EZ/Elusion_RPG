@@ -133,6 +133,7 @@ const MYTHIC_PILLAR_BRIGHTNESS := Color(1.25, 1.25, 1.25, 1.9)
 # =============================================================================
 
 func _ready() -> void:
+	PerfOverlay.mark(&"loot bags")
 	if anim != null and anim.sprite_frames != null and anim.sprite_frames.has_animation("idle"):
 		anim.play("idle")
 

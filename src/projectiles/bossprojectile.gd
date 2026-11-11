@@ -383,6 +383,7 @@ func _ready() -> void:
 	if not _validate_animation():
 		queue_free()
 		return
+	PerfOverlay.mark(&"spikes appear")
 
 	# BEFORE ANYTHING READS telegraph_seconds, which the ring below does at
 	# once. This is also why bossenemy.gd sets element, damage, scale and
@@ -449,6 +450,7 @@ func _exit_tree() -> void:
 
 func _erupt() -> void:
 	_erupting = true
+	PerfOverlay.mark(&"spikes rise")
 	anim.visible = true
 	anim.play(RISE_ANIM)
 	# Clears the ring in the same frame the spike appears.
@@ -629,6 +631,7 @@ func _on_animation_finished() -> void:
 	# Guarded on the animation name in case a variant ever plays debris or a
 	# settle sequence after the rise.
 	if anim.animation == RISE_ANIM:
+		PerfOverlay.mark(&"spikes go")
 		_leave_puddle()
 		queue_free()
 

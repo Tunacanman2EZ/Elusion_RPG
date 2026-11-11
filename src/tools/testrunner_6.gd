@@ -1797,8 +1797,11 @@ func _test_no_debug_keys_the_panel_does_it() -> void:
 	key.keycode = KEY_BACKSLASH
 	key.pressed = true
 	get_viewport().push_input(key)
+	# Its _input notes a key or click for the spikes (0.137.3) and the lag
+	# points (0.138.0); it reads no key of its own.
 	check("backslash no longer shows the performance readout",
-		not PerfOverlay.is_shown() and not PerfOverlay.has_method("_input"))
+		not PerfOverlay.is_shown()
+		and not _func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _input(").contains("KEY_"))
 
 	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
 	add_child(gm)

@@ -2729,6 +2729,71 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The readout's lag points, markers and verdicts, and the lag tests (0.138.0)
+
+The owner's 0.137.5 video of the Boss Arena in his browser: 60 fps, draw
+calls steady at 300-345, and bursts of 31-40 ms frames, all in "drawing",
+about every 5-10 s. Then: "can we upgrade the test to analyze the lag
+points surely there is a method to doing this more efficiently", and of
+the graph, "make markers showing what is great and what needs to be fixed".
+Which part of a frame was slow does not say what happened in it, and a
+browser cannot time the graphics card.
+
+- **Marks** (perfoverlay.gd `mark(kind, count)`): the game says what it did
+  in a frame, at each place that does a lot at once - `boss casts`
+  (`_cast_stalagmites_from_cast()`), `boss volleys` (`fire_volley()`),
+  `spikes appear` / `rise` / `go` (bossprojectile.gd), `pools land`
+  (acidpuddle.gd), `monsters appear` / `die` (BaseEnemy `_ready()`,
+  `_die()`), `loot bags` (lootbag.gd), `shaders warm` (spikefx.gd),
+  `key or click` (the overlay's `_input`). `MARK_LETTERS` gives each a
+  letter. Nothing while the readout is off. **A mark belongs to the frame it
+  was made in**: the frame starts at its first physics tick, and the marks
+  so far are set aside there (`_marks_ended`); a frame with no tick ends
+  them at `clocked_frame()`. Input is handled before a frame's ticks, so a
+  key's mark goes with the frame whose waiting it is counted in, as
+  `pressed` always has.
+- **Each frame** carries its marks and what it changed in what is drawn
+  (`_note_drawn()`: draw calls, triangles, graphics memory - the renderer's
+  numbers at the overlay's `_process` are the frame just ending).
+- **Lag points** (`lag_rows()`, `lag_base()`): every kind, the frames with
+  it and those that hitched, and which part the hitches were mostly in;
+  beside them the frames with nothing marked. The likeliest cause first.
+- **Verdicts** (`verdicts()`): GREAT - frames on time (95%+), scripts and
+  physics well inside (under a quarter of the frame, under 40% of a tick);
+  FIX - the kind that hitched in `FIX_RATE` (20%) of its frames and
+  `FIX_TIMES` (5) times the unmarked rate, or, when none does and over 2%
+  of frames hitch, the unmarked frames ("nothing marked" - the whole frame
+  is slow, not an event); WATCH - the next at 5% and twice the rate.
+- **The panel** (perfpanel.gd): a marker over each hitch in the graph - the
+  letter of its likeliest mark ("?" for nothing marked), on its part's
+  colour, a stem to its bar, two that would touch drawn as one; a key under
+  the graph; GREAT / FIX / WATCH lines; a LAG POINTS section (the
+  likeliest `LAG_SHOWN`, 3); each spike's second line its marks and
+  changes ("spikes rise ×12 · draws +1"). `SPIKES_SHOWN` 3 now, so it all
+  fits a 720 screen (700 px at most). Long lines are cut with "…"
+  (`_fit()`). Copy has every lag point, the verdicts, and each spike's
+  marks.
+- **Lag tests** (lagtests.gd; GM panel > Testing, one row under the
+  switches: LAG TESTS, Rings, Sparks, Pools, Lights): hide the spikes'
+  rings, sparks or pools (spikefx.gd `show_tests()`), or put out every
+  light in the area (Light2D.enabled, the old state kept and put back).
+  Drawing only, transient, on the ON strip and in the readout's title
+  ("test: rings off"). Kept through a change of area (spikefx.gd reads
+  them; AreaRegistry puts the lights out again).
+- **The Testing tab had three pixels to spare**: the window holds its
+  tallest tab and must clear the menu bar, so the six switch hints went to
+  one short line each (tooltips say the rest), short enough never to wrap
+  even at the width a hint is first laid out at - a hint wrapping only on
+  the first frame made the window test read two heights.
+- **My bench reads the same**: zz/benchspikes.gd THREE with READOUT=1
+  prints the readout's spikes, lag points and verdicts. In the container
+  (software GL) every frame is slow, so it says "nothing marked" - true.
+- **Found on the way**: `_test_no_debug_keys_the_panel_does_it` failed
+  since 0.137.3 gave the overlay an `_input` (for presses); it now checks
+  that `_input` reads no key.
+
+`_test_the_lag_points()` (testrunner_11).
+
 ### A boss's spikes drawn together: rings, sparks and pools (0.137.5)
 
 The owner: "the issue is when 16 spikes raise up leave poin clouds ... and

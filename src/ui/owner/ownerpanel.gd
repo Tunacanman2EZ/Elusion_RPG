@@ -94,6 +94,7 @@ const TEXT_SIZE := 13
 const STALE_SECONDS := 10.0
 const LIVE_SECONDS := 30.0
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
+const LagTests := preload("res://src/systems/lagtests.gd")
 const StatusEffectsScript := preload("res://src/characters/statuseffects.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
@@ -596,12 +597,15 @@ func _process(delta: float) -> void:
 
 const ACTIVE_EVERY := 0.25
 const SWITCH_HINTS := {
-	"godmodebutton": "No damage taken - and no defence XP.",
-	"immunebutton": "No chill, burn, freeze or any effect.",
-	"perfbutton": "Frame, physics, monsters - top left.",
-	"meterbutton": "Live DPS and the fight log.",
-	"commonbutton": "Every mythic attack rolls its 10%.",
-	"rarebutton": "Every mythic attack rolls its 1%.",
+	# ONE SHORT LINE EACH (0.138.0), so the tab has room for the lag tests
+	# and a hint never wraps however narrow it is first laid out; each
+	# switch's tooltip says the rest.
+	"godmodebutton": "No damage or XP.",
+	"immunebutton": "No status effects.",
+	"perfbutton": "Frames and lag.",
+	"meterbutton": "DPS, fight log.",
+	"commonbutton": "Mythics roll 10%.",
+	"rarebutton": "Mythics roll 1%.",
 }
 # Shorter names in the grid, so two columns fit the panel's 370 (the hint
 # under each says the rest; the tooltip still says everything).
@@ -611,6 +615,15 @@ const SWITCH_NAMES := {
 	"commonbutton": "Roll 10%",
 	"rarebutton": "Roll 1%",
 }
+# LAG TESTS (0.138.0): switch one thing off, watch whether the readout's
+# hitches stop - the only way to tell a graphics card drawing too much from a
+# browser stalling, where the card cannot be timed. lagtests.gd has them.
+const LAG_TESTS := [
+	["rings", "Rings", "Hides boss spikes' warning rings."],
+	["sparks", "Sparks", "Hides the sparks spikes throw."],
+	["pools", "Pools", "Hides the pools spikes leave."],
+	["lights", "Lights", "Puts out every light in the area."],
+]
 const HINT_COLOUR := Color(0.6, 0.56, 0.48)
 const SECTION_COLOUR := Color(0.82, 0.7, 0.45)
 const CHIP_FILL := Color(0.24, 0.17, 0.06, 0.95)
@@ -678,6 +691,7 @@ func _dress_testing() -> void:
 		cell.add_child(hint)
 	if row != null and row.get_child_count() == 0:
 		row.free()
+	_add_lag_tests(testing, grid.get_index() + 1)
 	var stress: Node = testing.get_node_or_null("stressrow")
 	if stress != null:
 		var said: Label = stress.get_node_or_null("label") as Label
@@ -686,6 +700,62 @@ func _dress_testing() -> void:
 		var stress_head: Label = _section_head("STRESS TEST")
 		testing.add_child(stress_head)
 		testing.move_child(stress_head, stress.get_index())
+
+
+func _add_lag_tests(testing: Node, at: int) -> void:
+	"""LAG TESTS and its four toggles, all on one row: the window holds its
+	tallest tab, and this tab had three pixels to spare (two hints above
+	went to one line each to make the row's room)."""
+	var row := HBoxContainer.new()
+	row.name = "laggrid"
+	row.add_theme_constant_override("separation", 6)
+	testing.add_child(row)
+	testing.move_child(row, at)
+	var head: Label = _section_head("LAG TESTS")
+	head.tooltip_text = "Hide one thing while the readout runs, and watch whether the hitches stop.\nDrawing only: the fight is unchanged. All off again after a restart."
+	head.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(head)
+	var on_look := StyleBoxFlat.new()
+	on_look.bg_color = CHIP_FILL
+	on_look.border_color = CHIP_EDGE
+	on_look.set_border_width_all(1)
+	on_look.set_corner_radius_all(3)
+	on_look.content_margin_left = 6.0
+	on_look.content_margin_right = 6.0
+	for test in LAG_TESTS:
+		var button := Button.new()
+		button.name = "lag%sbutton" % test[0]
+		button.text = str(test[1])
+		button.toggle_mode = true
+		button.tooltip_text = "%s Drawing only: the fight is unchanged." % test[2]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size", 11)
+		button.add_theme_stylebox_override("pressed", on_look)
+		button.add_theme_stylebox_override("hover_pressed", on_look)
+		button.add_theme_color_override("font_pressed_color", CHIP_EDGE)
+		button.add_theme_color_override("font_hover_pressed_color", CHIP_EDGE)
+		button.toggled.connect(_on_lag_test_toggled.bind(str(test[0])))
+		row.add_child(button)
+	_sync_lag_tests()
+
+
+func _sync_lag_tests() -> void:
+	var grid: Node = find_child("laggrid", true, false)
+	if grid == null:
+		return
+	var on: Dictionary = {"rings": LagTests.hide_rings, "sparks": LagTests.hide_sparks,
+		"pools": LagTests.hide_pools, "lights": LagTests.lights_off}
+	for test in LAG_TESTS:
+		var button: Button = grid.find_child("lag%sbutton" % test[0], true, false) as Button
+		if button != null:
+			button.set_pressed_no_signal(bool(on[test[0]]))
+
+
+func _on_lag_test_toggled(pressed: bool, test: String) -> void:
+	LagTests.set_test(test, pressed, get_tree() if is_inside_tree() else null)
+	_set_testing_status("[GM] lag test: %s %s." % [test, "hidden" if pressed and test != "lights"
+		else ("off" if pressed else "back")])
+	paint_active()
 
 
 func _build_active_strip() -> void:
@@ -721,6 +791,8 @@ func active_now() -> Array:
 		on.append("10% rolls")
 	if GameState.force_rare_rolls:
 		on.append("1% rolls")
+	for test in LagTests.names_on():
+		on.append(test.capitalize())
 	return on
 
 
@@ -1119,6 +1191,7 @@ func _on_visibility_changed() -> void:
 
 func _sync_god_mode_button() -> void:
 	_sync_immune_button()
+	_sync_lag_tests()
 	if god_mode_button == null:
 		return
 	# NO SIGNAL. Writing button_pressed fires toggled, which would call the
