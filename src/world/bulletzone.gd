@@ -500,3 +500,45 @@ func paint_mirror(k: int, from: Vector2, to: Vector2, on: bool) -> int:
 			field.set_mirror(k, (from + to) * 0.5, along.orthogonal())
 		field.set_walls(_walls, _walls_origin, WALL_CELL, _walls_size)
 	return changed
+
+
+# PAINTED WALLS (0.142.0): the Ice boss's walls of ice, solid to an orb while
+# they stand. Each is painted under a key, and only its own cells open again.
+var _painted: Dictionary = {}
+
+
+func paint_solid(key: String, from: Vector2, to: Vector2, thick: float, on: bool) -> int:
+	"""A wall from `from` to `to`, `thick` across, in the grid (`on`) or out
+	of it again under `key`: its cells end an orb (BulletField.SOLID_FIRST),
+	painted only on open floor. Answers how many cells it changed."""
+	if _walls_size == Vector2i.ZERO:
+		return 0
+	if not on:
+		var had: PackedInt32Array = _painted.get(key, PackedInt32Array())
+		_painted.erase(key)
+		for cell in had:
+			if _walls[cell] == BulletField.SOLID_FIRST:
+				_walls[cell] = 0
+		if not had.is_empty():
+			field.set_walls(_walls, _walls_origin, WALL_CELL, _walls_size)
+		return had.size()
+	var along: Vector2 = to - from
+	var across: Vector2 = along.orthogonal().normalized()
+	var steps: int = maxi(1, ceili(along.length() / 2.0))
+	var sides: int = maxi(1, ceili(thick / 2.0))
+	var made: PackedInt32Array = _painted.get(key, PackedInt32Array())
+	for n in steps + 1:
+		var on_line: Vector2 = from + along * (float(n) / float(steps))
+		for m in sides + 1:
+			var at: Vector2 = on_line + across * (thick * (float(m) / float(sides) - 0.5))
+			var cx: int = floori((at.x - _walls_origin.x) / WALL_CELL)
+			var cy: int = floori((at.y - _walls_origin.y) / WALL_CELL)
+			if cx < 0 or cy < 0 or cx >= _walls_size.x or cy >= _walls_size.y:
+				continue
+			var cell: int = cy * _walls_size.x + cx
+			if _walls[cell] == 0:
+				_walls[cell] = BulletField.SOLID_FIRST
+				made.append(cell)
+	_painted[key] = made
+	field.set_walls(_walls, _walls_origin, WALL_CELL, _walls_size)
+	return made.size()

@@ -2729,6 +2729,51 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The Ice boss's arena: frost, walls of ice, hail, the blizzard (0.142.0)
+
+The owner: "next boss" - the fourth of the Docs plan; built, then pictured
+from the real code before it went to his PC (ice_built.png); of the
+blizzard's fog, "As pictured". `src/enemies/icearena.gd` (no class_name),
+kit `"arena": &"ice"`.
+
+- **Frost** (phase one on): the leader lays a patch near a player every
+  `FROST_GAP` (5 / 4 / 2.5 s by phase; `h: "frost"`), radius `FROST_RADIUS`,
+  forming over `FROST_FORM`, lying `FROST_LIFE` (12 s), `FROST_MOST` (6) at
+  once. On it you SKID: your walk comes round slowly (`_glide` eases to your
+  own velocity at `GRIP` a second) and the difference carries you - a drift
+  (`StatusEffects.drift()` now takes its cap; `SKID_MOST` 160 here) - and
+  you are chilled every `CHILL_GAP`, as ground (never to freezing).
+- **Walls of ice** (phase one on): every `WALL_GAP` (6 / 5 / 4 s) the leader
+  raises one `WALL_BEHIND` (45 px) behind a player, across the line from the
+  boss, so backing away meets ice (`h: "wall"`, with its number). A line of
+  frost warns `WALL_WARN`, it rises `WALL_RISE`, stands `WALL_LIFE` (6 s).
+  Solid to walking (layer 2) and to orbs: `BulletZone.paint_solid()` (new)
+  paints cells `BulletField.SOLID_FIRST` (16) under a key and opens exactly
+  those again; the step and `is_wall()` read them as walls, and the scans
+  skip them as they do mirrors. Risen on this game's player, it shoves you
+  out to your side. `WALL_HITS` (3) blows of yours break it - a door - told
+  to the other games as a lever pull; walls are named `wall<n mod
+  WALL_NAMES>` (10), because the server's lever book holds 32 names an area.
+- **Hail** (phase two on): a shadow near each player every `HAIL_GAP`
+  (`h: "hail"`); after `HAIL_WARN` it lands: within `HAIL_RADIUS`,
+  `HAIL_SHARE` (5%) as ice and chilled.
+- **The blizzard** (phase three): over `BLIZZARD_IN`, snow across the room
+  (quads at z 17, half on a phone) and a white fog closing in from the
+  screen's edges - a CanvasLayer at `FOG_LAYER` 39 (under the dazzle's 40),
+  clear to `FOG_CLEAR` of the screen's height from its middle, `FOG_THICK`
+  (0.72) at `FOG_EDGE`. The frost comes faster.
+- **Drawn**: the frost, warnings and shadows on the floor (sorted first, as
+  the tide), the walls among everyone, quads only. Phase one is one draw
+  call over none in the Boss Arena.
+- **Readout**: S (frost forms), I (ice walls rise), U (hail lands). The Arena
+  lag test hides the frost, snow and fog (the walls stand, the frost skids).
+- **Gone with its boss**: the walls shatter (the bullets' grid as it was),
+  the frost goes, the fog lifts.
+
+Not yet played in a party.
+
+`_test_the_ice_arena()` (testrunner_11).
+
 ### The Water boss's arena: the tide, bubbles, the whirlpool (0.141.0)
 
 The owner: "next boss" - the third of the Docs plan, pictured first

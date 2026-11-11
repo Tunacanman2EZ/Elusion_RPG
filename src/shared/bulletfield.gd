@@ -173,6 +173,10 @@ var _walls_size: Vector2i = Vector2i.ZERO
 # flashes them); cleared at the start of the next.
 const MIRROR_FIRST: int = 2
 const MIRRORS_MOST: int = 8
+# A PAINTED WALL (0.142.0, the Ice boss's walls - icearena.gd): a cell from
+# SOLID_FIRST up ends a bullet as a wall's does, and is the arena's to take
+# away again (BulletZone.paint_solid()).
+const SOLID_FIRST: int = 16
 const BOUNCED_COLOUR := Color(1.0, 1.0, 1.0)
 var bounces: PackedInt32Array = PackedInt32Array()
 var _mirror_point: PackedVector2Array = PackedVector2Array()
@@ -280,7 +284,8 @@ func set_mirror(k: int, point: Vector2, normal: Vector2) -> void:
 
 
 func is_wall(at: Vector2) -> bool:
-	return wall_cell(at) == 1
+	var cell: int = wall_cell(at)
+	return cell == 1 or cell >= SOLID_FIRST
 
 
 func wall_cell(at: Vector2) -> int:
@@ -468,11 +473,11 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var age: float = _age[i] + delta
 		var drawn: Vector2 = at if _sway_rate[i] == 0.0 else _drawn(i, at, velocity, age)
 		var cell: int = wall_cell(drawn) if walled else 0
-		if age > _life[i] or not area.has_point(drawn) or cell == 1:
+		if age > _life[i] or not area.has_point(drawn) or cell == 1 or cell >= SOLID_FIRST:
 			_remove(i)
 			continue
 		var reshape: bool = turn != 0.0 or brake > 0.0 or blown
-		if cell >= MIRROR_FIRST and cell - MIRROR_FIRST < _mirror_normal.size():
+		if cell >= MIRROR_FIRST and cell - MIRROR_FIRST < mini(_mirror_normal.size(), MIRRORS_MOST):
 			# MIRRORS (see the top): turned back only heading into the face
 			# from the side it is on, and kept where it was, outside.
 			var k: int = cell - MIRROR_FIRST

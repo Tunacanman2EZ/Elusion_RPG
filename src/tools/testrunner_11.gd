@@ -1004,10 +1004,10 @@ func _test_the_light_arena() -> void:
 	boss.set_meta(&"descent_caster", true)
 	check("  nor for a Descent's hidden caster", not Arena.wanted(boss))
 	boss.remove_meta(&"descent_caster")
-	check("  the Light Keeper's kit has its arena (the Wind boss's 0.140.0, the Water boss's 0.141.0), no other yet",
+	check("  the Light Keeper's kit has its arena (Wind 0.140.0, Water 0.141.0, Ice 0.142.0), no other yet",
 		BossEnemy.KITS[Element.Type.LIGHT].get("arena") == &"light" and BossEnemy.KITS[Element.Type.WIND].get("arena") == &"wind"
-		and BossEnemy.KITS[Element.Type.WATER].get("arena") == &"water"
-		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 3)
+		and BossEnemy.KITS[Element.Type.WATER].get("arena") == &"water" and BossEnemy.KITS[Element.Type.ICE].get("arena") == &"ice"
+		and BossEnemy.KITS.keys().filter(func(e): return BossEnemy.KITS[e].has("arena")).size() == 4)
 	boss.call("_keep_arena", 1.0)
 	var arena: Node2D = boss.call("arena")
 	if arena == null:
@@ -1463,3 +1463,180 @@ func _test_the_water_arena() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	print("  (the Water boss's arena: done)")
+
+
+func _test_the_ice_arena() -> void:
+	section("THE ICE BOSS'S ARENA - FROST, WALLS OF ICE, HAIL, THE BLIZZARD (0.142.0)")
+	# The owner: "next boss", and of the blizzard's fog, "As pictured".
+	const Arena := preload("res://src/enemies/icearena.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+
+	# THE BULLETS: a painted wall ends an orb, and goes leaving the real walls.
+	var origin := Vector2(-40000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	zone._start_walls()
+	zone.build_all_walls()
+	var probe: Vector2 = origin + Vector2(0, 200)
+	var wall_cell: int = zone._walls.size() - 1
+	zone._walls[wall_cell] = 1
+	var painted: int = zone.paint_solid("t", probe - Vector2(40, 0), probe + Vector2(40, 0), 10.0, true)
+	zone.field.spawn(probe + Vector2(0, -40), PI * 0.5, 100.0, Color.WHITE)
+	for n in 10:
+		zone.field.step(0.05, Vector2(1.0e6, 1.0e6), 1.0, 0.0, true)
+	var ended: bool = zone.field.count == 0 and zone.field.is_wall(probe)
+	var opened: int = zone.paint_solid("t", Vector2.ZERO, Vector2.ZERO, 0.0, false)
+	check("a painted wall ends an orb and opens again exactly - the real walls kept",
+		painted > 10 and ended and opened == painted and not zone.field.is_wall(probe) and zone._walls[wall_cell] == 1,
+		[painted, ended, opened])
+	zone._walls[wall_cell] = 0
+
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 100)
+	var fx: Node = FX.attach(me)
+	var boss: Node2D = (load("res://scene/enemy/iceboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(0, -150)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	if arena == null or arena.get_script() != Arena:
+		check("the loose Ice boss makes its arena", false, arena)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	arena.set_process(false)
+	check("the loose Ice boss makes its arena: frost on the floor, the fog under the dazzle's layer, not yet showing",
+		str(arena.name) == "icearena0" and (arena.get_node("frost") as Node2D).position.y < Fx.SORT_Y
+		and (arena.get_node("fog") as CanvasLayer).layer == Arena.FOG_LAYER and not (arena.get_node("fog") as CanvasLayer).visible)
+
+	# FROST: the leader's, near you; on it you skid and are chilled.
+	arena.set("_wall_clock", 99.0)
+	arena.call("_process", 1.6)
+	var patches: Array = arena.get("frost")
+	var near: bool = patches.size() == 1 and (patches[0][0] as Vector2).distance_to(_arena_point(me)) <= Arena.FROST_NEAR.y + 2.0
+	patches[0][0] = _arena_point(me)
+	patches[0][2] = Arena.FROST_FORM
+	arena.set("_frost_clock", 99.0)
+	me.velocity = Vector2(100, 0)
+	arena.call("_process", 0.05)
+	me.velocity = Vector2(-100, 0)
+	arena.call("_process", 0.05)
+	var skid: Vector2 = fx.get("drift_velocity")
+	check("the leader lays frost near you; on it your walk comes round slowly (a skid) and you are chilled",
+		near and float(fx.get("drift_left")) > 0.0 and skid.x > 50.0 and (fx.get("started") as Array).has(FX.CHILL), [near, skid])
+
+	# A WALL OF ICE behind you, away from the boss.
+	fx.call("clear_all")
+	(arena.get("frost") as Array).clear()
+	arena.set("_wall_clock", 0.0)
+	arena.call("_process", 0.01)
+	var walls: Array = arena.get("walls")
+	var wall: Node2D = walls[0] if not walls.is_empty() else null
+	var behind: bool = wall != null and wall.global_position.y > me.global_position.y \
+		and absf(wall.global_position.x - me.global_position.x) < 4.0
+	var warned: bool = wall != null and not bool(wall.call("stands"))
+	arena.set("_wall_clock", 99.0)
+	arena.call("_process", Arena.WALL_WARN)
+	await get_tree().physics_frame
+	var solid: int = 0
+	for v in zone._walls:
+		if v == BulletField.SOLID_FIRST:
+			solid += 1
+	var body: CollisionShape2D = wall.get_node("ice").get_child(0) as CollisionShape2D
+	check("the leader raises a wall of ice behind you, across from the boss: it warns, then stops walking and orbs",
+		behind and warned and bool(wall.call("stands")) and solid > 10 and not body.disabled
+		and wall.is_in_group(&"levers") and wall.has_meta(&"stress_copy") and not bool(wall.call("can_be_aimed_at")),
+		[behind, warned, solid])
+	for n in Arena.WALL_HITS:
+		wall.call("take_damage", 5.0)
+	solid = 0
+	for v in zone._walls:
+		if v == BulletField.SOLID_FIRST:
+			solid += 1
+	check("  %d blows of yours break it - a door, the orbs through it again" % Arena.WALL_HITS,
+		bool(wall.get("broken")) and solid == 0)
+	arena.call("hear", {"h": "wall", "x": origin.x + 100.0, "y": origin.y, "a": 0.0, "n": 12})
+	var heard: Node2D = (arena.get("walls") as Array).back()
+	arena.call("_process", Arena.WALL_WARN)
+	heard.call("follow_pull", true)
+	check("  a follower raises the leader's wall (named for the levers, \"wall<n mod 10>\"); another game's break breaks it here",
+		str(heard.name) == "wall2" and bool(heard.get("broken")))
+	arena.call("_process", Arena.WALL_RISE + Arena.WALL_LIFE)
+	check("  and a wall goes when its time is up", (arena.get("walls") as Array).is_empty(), (arena.get("walls") as Array).size())
+
+	# PHASE TWO: hail.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.5))
+	arena.set("_frost_clock", 99.0)
+	arena.set("_wall_clock", 99.0)
+	arena.call("_process", 0.01)
+	var stones: Array = arena.get("hail")
+	var dropped: bool = stones.size() == 1 and (stones[0][0] as Vector2).distance_to(_arena_point(me)) <= Arena.HAIL_NEAR + 1.0
+	stones.clear()
+	arena.set("_hail_clock", 99.0)
+	arena.call("add_hail", _arena_point(me))
+	arena.call("add_hail", _arena_point(me) + Vector2(60, 0))
+	me.taken.clear()
+	arena.call("_process", Arena.HAIL_WARN)
+	Hits.take()
+	check("phase two: hail near each player; a stone lands after its shadow - near it, a share of your health as ice",
+		dropped and me.taken == [[roundi(1000.0 * Arena.HAIL_SHARE), Element.Type.ICE]], me.taken)
+	arena.call("hear", {"h": "hail", "x": origin.x + 5000.0, "y": origin.y})
+	arena.call("hear", {"h": "frost", "x": me.global_position.x, "y": me.global_position.y, "r": 40.0})
+	check("  a follower makes the leader's frost and hail; nothing from far off",
+		(arena.get("hail") as Array).is_empty() and (arena.get("frost") as Array).size() == 1)
+
+	# PHASE THREE: the blizzard.
+	boss.set("hp", int(float(boss.get("max_hp")) * 0.2))
+	for n in 5:
+		arena.call("_process", 0.5)
+	var fog: CanvasLayer = arena.get_node("fog")
+	check("phase three: the blizzard closes in - snow over the room, the fog at the screen's edges",
+		is_equal_approx(float(arena.get("blizzard")), 1.0) and fog.visible
+		and is_equal_approx(float((arena.get("_fog_material") as ShaderMaterial).get_shader_parameter(&"amount")), Arena.FOG_THICK))
+	Lag.set_test("arena", true, get_tree())
+	var hidden: bool = not fog.visible and not (arena.get_node("snow") as CanvasItem).visible \
+		and not (arena.get_node("frost") as CanvasItem).visible
+	Lag.set_test("arena", false, get_tree())
+	check("  the GM panel's Arena lag test hides frost, snow and fog", hidden and fog.visible)
+
+	# GONE WITH ITS BOSS.
+	arena.set("_wall_clock", 0.0)
+	arena.call("_process", 0.01)
+	arena.call("_process", Arena.WALL_WARN)
+	boss.set("_dying", true)
+	arena.call("_process", 0.05)
+	solid = 0
+	for v in zone._walls:
+		if v == BulletField.SOLID_FIRST:
+			solid += 1
+	arena.call("_process", Arena.END_SECONDS + 0.1)
+	check("its boss falling, the walls shatter (the bullets' grid as it was), the fog lifts, and it goes",
+		solid == 0 and (arena.get("walls") as Array).is_empty() and arena.is_queued_for_deletion() and not fog.visible)
+	check("  and the readout letters its marks",
+		PerfOverlay.MARK_LETTERS.get(&"frost forms") == "S" and PerfOverlay.MARK_LETTERS.get(&"ice walls rise") == "I"
+		and PerfOverlay.MARK_LETTERS.get(&"hail lands") == "U")
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the Ice boss's arena: done)")
+
+
+func _arena_point(body: Node2D) -> Vector2:
+	return preload("res://src/shared/targets.gd").body_point(body)

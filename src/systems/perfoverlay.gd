@@ -184,6 +184,9 @@ const MARK_LETTERS := {
 	&"tornado forms": "T",
 	&"tide comes": "Q",
 	&"bubbles pop": "O",
+	&"frost forms": "S",
+	&"ice walls rise": "I",
+	&"hail lands": "U",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many

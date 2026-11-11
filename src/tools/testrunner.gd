@@ -245,6 +245,7 @@ func _run_all() -> void:
 	await _test_the_light_arena()
 	await _test_the_wind_arena()
 	await _test_the_water_arena()
+	await _test_the_ice_arena()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

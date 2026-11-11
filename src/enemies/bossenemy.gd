@@ -352,6 +352,7 @@ const KITS := {
 	Element.Type.ICE: {
 		"shapes": [&"ladder", &"cage", &"checker"],
 		"volleys": [[&"frost"], [&"frost"], [&"frost"]],
+		"arena": &"ice",
 	},
 	Element.Type.EARTH: {
 		"shapes": [&"gate", &"triwall", &"rake"],
@@ -1152,13 +1153,15 @@ var _swings_in_a_row: int = 0
 # its fight once it is loose (_keep_arena()), from ARENAS - the Light Keeper's
 # mirrors, flares and eclipse (lightarena.gd), the Wind boss's crosswind,
 # gusts and tornado (windarena.gd, 0.140.0), the Water boss's tide, bubbles
-# and whirlpool (waterarena.gd, 0.141.0) - looked for every
+# and whirlpool (waterarena.gd, 0.141.0), the Ice boss's frost, walls, hail
+# and blizzard (icearena.gd, 0.142.0) - looked for every
 # ARENA_LOOK_SECONDS. It goes by itself with the boss. Never for a boss
 # wearing another land's crown (the Crowned has its own room).
 const LightArena := preload("res://src/enemies/lightarena.gd")
 const WindArena := preload("res://src/enemies/windarena.gd")
 const WaterArena := preload("res://src/enemies/waterarena.gd")
-const ARENAS := {&"light": LightArena, &"wind": WindArena, &"water": WaterArena}
+const IceArena := preload("res://src/enemies/icearena.gd")
+const ARENAS := {&"light": LightArena, &"wind": WindArena, &"water": WaterArena, &"ice": IceArena}
 const ARENA_LOOK_SECONDS := 0.5
 var _arena: Node2D = null
 var _arena_look: float = 0.0

@@ -379,13 +379,14 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 	return false
 
 
-func drift(velocity: Vector2, seconds: float = 0.15) -> void:
-	"""Carried by the wind at `velocity` (held under PULL_SPEED_MAX) for
-	`seconds` - renewed every frame by whatever blows. Not an effect on the
-	strip: weather."""
+func drift(velocity: Vector2, seconds: float = 0.15, most: float = PULL_SPEED_MAX) -> void:
+	"""Carried by the wind at `velocity` (held under `most`, PULL_SPEED_MAX
+	unless the ice says - icearena.gd's skid, 0.142.0) for `seconds` -
+	renewed every frame by whatever carries you. Not an effect on the strip:
+	weather."""
 	if _host_dying() or immune():
 		return
-	drift_velocity = velocity.limit_length(PULL_SPEED_MAX)
+	drift_velocity = velocity.limit_length(most)
 	drift_left = seconds
 
 
