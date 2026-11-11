@@ -13811,7 +13811,7 @@ decision", Speed on day 1), and a smaller engine for the web (index.wasm is
 39.5 MB of a 58 MB first visit, about 16 MB compressed; a Godot build without
 3D is a custom export template, built from source).
 
-### A tap on the left strikes; the map pinches (0.145.0)
+### A tap on the left strikes; the map pinches; Attack where the thumb is (0.145.0, 0.145.1)
 
 The owner, on a phone: "left and right jooystick is not great for phone
 because i have to tap left of character to attack and it hits joystick
@@ -13847,6 +13847,19 @@ the stick. He chose this over shrinking the stick to the bottom left corner.
 `_test_a_tap_on_the_left_strikes()`, `_test_a_pinch_zooms_the_map()`
 (testrunner_11); testrunner_4's played-now check reads `world_down()` and
 `strike_at()`.
+
+**And the right side's Attack aims where the thumb is (0.145.1).** The owner,
+playing 0.145.0: "now attack is not moving to right side of screen ... the
+analog and attacking left works fine". The floating Attack aimed at the
+nearest monster or the facing - after a strike to the left, the left again.
+Now it says where its thumb is as it lands and slides (`PadButton.touched_at`,
+floating only) and TouchControls aims there (`aim_attack_at()`,
+`attack_screen`, `attack_aimed`; in `aim_for()` after the Aura's drag, before
+the old drag rule); a press quicker than a frame aims there through
+`_world_aim_ticks` as a world tap does. Held, it keeps attacking toward the
+thumb. The auto-aim at the nearest is left for an Attack held with no point
+of its own. The Controls card: "Tap where to strike; hold to keep on".
+`_test_attack_goes_where_the_thumb_is()` (testrunner_11).
 
 ## Deleting your own account (0.90.0)
 

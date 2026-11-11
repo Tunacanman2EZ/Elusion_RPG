@@ -84,6 +84,10 @@ var stick: Vector2 = Vector2.ZERO
 var stick_held: bool = false
 var attack_held: bool = false
 var attack_drag: Vector2 = Vector2.ZERO
+# Where the Attack thumb is on the screen, and whether it says so (0.145.1,
+# aim_attack_at()).
+var attack_screen: Vector2 = Vector2.ZERO
+var attack_aimed: bool = false
 var skill_held: bool = false
 var skill_drag: Vector2 = Vector2.ZERO
 var sprint_on: bool = false
@@ -325,6 +329,7 @@ func clear() -> void:
 	stick_held = false
 	attack_held = false
 	attack_drag = Vector2.ZERO
+	attack_aimed = false
 	skill_held = false
 	skill_drag = Vector2.ZERO
 	sprint_on = false
@@ -363,6 +368,7 @@ func press_attack() -> void:
 	played_now()
 	attack_held = true
 	attack_drag = Vector2.ZERO
+	attack_aimed = false
 	_attack_tap = true
 	_tap_on_world = false
 
@@ -370,6 +376,24 @@ func press_attack() -> void:
 func release_attack() -> void:
 	attack_held = false
 	attack_drag = Vector2.ZERO
+	attack_aimed = false
+
+
+# ATTACK GOES WHERE THE THUMB IS (0.145.1). The owner, once a tap on the left
+# struck where it landed (0.145.0): "now attack is not moving to right side of
+# screen ... attacking left works fine". The Attack thumb on the right aimed at
+# the nearest monster, or the way the character faced - after a strike to the
+# left, back to the left. Now it aims where it landed and follows it as it
+# slides (the floating button's touched_at), as a finger on the world does.
+func aim_attack_at(screen: Vector2) -> void:
+	"""The Attack thumb is at `screen` (the viewport's pixels)."""
+	attack_screen = screen
+	attack_aimed = attack_held
+	if _attack_tap:
+		# Its press has not had a frame yet: a tap quicker than one still
+		# aims here (_latch_attack(), _world_aim_ticks).
+		_world_screen = screen
+		_tap_on_world = true
 
 
 func press_use() -> void:
@@ -606,6 +630,8 @@ func aim_for(body: Node2D) -> Variant:
 		return body.call("world_point_at", _world_screen)
 	if skill_held and skill_drag.length() >= DRAG_DEAD:
 		return skill_point(body, skill_drag)
+	if attack_held and attack_aimed:
+		return body.call("world_point_at", attack_screen)
 	if attack_held and attack_drag.length() >= DRAG_DEAD:
 		return body.global_position + attack_drag.normalized() * drag_reach(attack_drag.length())
 	var target: Node2D = aim_target(body)

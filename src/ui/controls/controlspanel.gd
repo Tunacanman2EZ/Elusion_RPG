@@ -99,8 +99,9 @@ const ROWS := [
 const TOUCH_ROWS := [
 	["Move", "The stick: a thumb anywhere on the left"],
 	["Sprint", "Push the stick all the way to its edge"],
-	["Attack", "A thumb on the right: at the nearest; hold to keep on"],
-	["Aim an attack", "Drag that thumb, or tap where to strike"],
+	# WHERE THE THUMB IS (0.145.0, 0.145.1): a tap anywhere strikes there.
+	["Attack", "Tap where to strike; hold to keep on"],
+	["Aim an attack", "Slide the thumb that holds it"],
 	["Healer: drop a healing aura", "Aura: a tap at your feet, a drag to place it"],
 	["Use the shop, bank, fire or fishing spot", "Use"],
 	["Use the item on a hotbar key", "Tap the key"],
@@ -133,7 +134,7 @@ const TOUCH_WELCOME_LINES := [
 ]
 const TOUCH_WELCOME_ROWS := [
 	["Move", "A thumb anywhere on the left"],
-	["Attack", "A thumb on the right; drag it to aim"],
+	["Attack", "Tap where to strike, or hold"],
 	["Run", "Push the stick to its edge"],
 	["Shop, bank, fire, fishing", "Use"],
 	["Potions and food", "Tap a hotbar key"],

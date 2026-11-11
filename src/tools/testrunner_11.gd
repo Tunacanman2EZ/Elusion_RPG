@@ -2801,3 +2801,71 @@ func _test_a_pinch_zooms_the_map() -> void:
 	WorldMap._terrain.erase(_MAP_BIG)
 	await get_tree().process_frame
 	print("  (a pinch zooms the map: done)")
+
+
+# =============================================================================
+# ATTACK GOES WHERE THE THUMB IS (0.145.1)
+# =============================================================================
+# The owner, once a tap on the left struck where it landed: "now attack is not
+# moving to right side of screen ... attacking left works fine". The Attack
+# thumb on the right aimed at the nearest monster or the character's facing.
+func _test_attack_goes_where_the_thumb_is() -> void:
+	section("ATTACK GOES WHERE THE THUMB IS - the right side's Attack aims where it lands and slides (0.145.1)")
+	const PadScript := preload("res://src/ui/touchpad.gd")
+	var was_active: bool = TouchControls.active
+	TouchControls.set_active(true)
+	TouchControls.clear()
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nfunc world_point_at(screen: Vector2) -> Vector2:\n\treturn screen * 2.0\n"
+	body_script.reload()
+	var body: Node2D = body_script.new()
+	body.add_to_group(&"player")
+	add_child(body)
+	var holder := Control.new()
+	holder.position = Vector2(640, 100)
+	add_child(holder)
+	var button = PadScript.PadButton.new()
+	holder.add_child(button)
+	button.place_floating(Rect2(0, 0, 600, 400), Rect2(0, 0, 52, 52), 34, 2.0)
+	var heard: Array = []
+	button.touched_at.connect(func(at: Vector2) -> void: heard.append(at))
+	button.went_down.connect(TouchControls.press_attack)
+	button.went_up.connect(TouchControls.release_attack)
+	button.touched_at.connect(TouchControls.aim_attack_at)
+	var press := InputEventScreenTouch.new()
+	press.index = 1
+	press.position = Vector2(400, 50)
+	press.pressed = true
+	button._gui_input(press)
+	var landed: Vector2 = Vector2(1040, 150)
+	check("the Attack thumb says where it landed on the screen", heard.size() == 1 and heard[0].is_equal_approx(landed), heard)
+	TouchControls._latch_attack(body)
+	check("  its press is an attack, aimed where it landed - not the nearest monster, not the facing",
+		Input.is_action_pressed("attack") and (TouchControls.aim_for(body) as Vector2).is_equal_approx(landed * 2.0),
+		TouchControls.aim_for(body))
+	var slide := InputEventScreenDrag.new()
+	slide.index = 1
+	slide.position = Vector2(100, 300)
+	button._gui_input(slide)
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	check("  held and slid, it aims where the thumb is now", (TouchControls.aim_for(body) as Vector2).is_equal_approx(Vector2(740, 400) * 2.0),
+		TouchControls.aim_for(body))
+	press.pressed = false
+	button._gui_input(press)
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	TouchControls._aim_frame = -1
+	check("  lifted, it aims nowhere of its own", not bool(TouchControls.attack_aimed) and TouchControls.aim_for(body) == null,
+		TouchControls.aim_for(body))
+	var pad: Control = PadScript.new()
+	check("the pad's Attack is wired to it", pad.attack.touched_at.is_connected(TouchControls.aim_attack_at))
+	pad.free()
+	TouchControls.clear()
+	holder.queue_free()
+	body.queue_free()
+	TouchControls.set_active(was_active)
+	await get_tree().process_frame
+	print("  (attack goes where the thumb is: done)")

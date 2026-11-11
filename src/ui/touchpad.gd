@@ -13,7 +13,8 @@
 #                TouchControls.strike_at(), world_down())
 #   Attack       a thumb anywhere on the middle right (ATTACK_ZONE_LEFT): drawn
 #                where it lands, only while down (0.91.2); a press is an attack;
-#                held, it keeps attacking; dragged, it aims (TouchControls, THE AIM)
+#                held, it keeps attacking; it aims where the thumb is, as it
+#                lands and as it slides (0.145.1, TouchControls.aim_attack_at())
 #   Use          the interact key: the shop, the bank, the fire, the fishing
 #                spot, a loot bag, a lever
 #   Run          no button since 0.91.1: the stick pushed to its edge runs
@@ -207,6 +208,7 @@ func _init() -> void:
 	attack.went_down.connect(TouchControls.press_attack)
 	attack.went_up.connect(TouchControls.release_attack)
 	attack.dragged.connect(func(drag: Vector2): TouchControls.attack_drag = drag)
+	attack.touched_at.connect(TouchControls.aim_attack_at)
 	use.went_down.connect(TouchControls.press_use)
 	use.went_up.connect(TouchControls.release_use)
 	run.went_down.connect(TouchControls.toggle_sprint)
@@ -573,6 +575,9 @@ class PadButton extends Control:
 	signal went_down
 	signal went_up
 	signal dragged(share: Vector2)
+	# A floating button's thumb, where it is on the screen (the viewport's
+	# pixels): as it lands, and as it slides (0.145.1).
+	signal touched_at(screen: Vector2)
 
 	var picture: Texture2D = null:
 		set(value):
@@ -681,6 +686,8 @@ class PadButton extends Control:
 				if floating:
 					_land(touch.position)
 				went_down.emit()
+				if floating:
+					touched_at.emit(get_global_transform_with_canvas() * touch.position)
 				queue_redraw()
 			elif not touch.pressed and touch.index == finger:
 				let_go()
@@ -690,6 +697,8 @@ class PadButton extends Control:
 		if drag != null:
 			if drag.index == finger:
 				dragged.emit(((drag.position - _from) / (radius() * 1.2)).limit_length(1.0))
+				if floating:
+					touched_at.emit(get_global_transform_with_canvas() * drag.position)
 			accept_event()
 			return
 		if event is InputEventMouseButton or event is InputEventMouseMotion:
