@@ -2729,6 +2729,68 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### A boss's spikes drawn together: rings, sparks and pools (0.137.5)
+
+The owner: "the issue is when 16 spikes raise up leave poin clouds ... and
+there is a huge measurement of speed going on", then "if i have 3 bosses
+all doing that at once you see the issue". Measured with three bosses
+casting together (zz/benchspikes.gd THREE, sandbox only, fixed patterns):
+270 to 940 draw calls a frame. Each spike drew its own warning ring (a fill
+and an outline, drawn again every frame it warned); each eruption made a
+CPUParticles2D of its own (a draw each, 130 to 500 alive); dark, lightning
+and poison spikes (no spike scene of their own) made a material each, so
+none could be drawn together; and the pools sat in the y-sort between
+them. A browser on a phone pays for every draw call.
+
+- **spikefx.gd**, one in each effects container ("groundeffects"), made
+  by `AreaRegistry._on_scene_changed()` (`SpikeFx.add_to()`) or by the
+  first spike (`SpikeFx.of()`), first among the container's children:
+  - **The rings: one MultiMesh** (spikerings.gdshader), an instance a
+    spike while it warns - its transform, ring colour, start, length and
+    radius, written when the warning starts. The shader grows the fill
+    from `now`, so nothing is written while they warn. The warnings END
+    there too: `_process()` calls the spike's `telegraph_over()`. A spike
+    has no `_process` or `_draw` of its own; leaving the tree before it
+    erupts takes its ring out (`_exit_tree()`).
+  - **The sparks: one MultiMesh** (spikesparks.gdshader), an instance a
+    BURST, each spark a quad of the mesh flown by the shader from the
+    element's ELEMENT_SPARKS row (patch, spread, speed, size, gravity, the
+    same ramp) - written once, when the spike erupts. z_index 1, as they
+    were.
+  - **Pools** go to a holder an element under the rings
+    (`SpikeFx.pool_holder()`, from `_leave_puddle()`), so pools of one
+    element are drawn together.
+  - Both MultiMeshes are kept packed (one that ends is replaced by the
+    last) and draw only what is alive; neither is physics-interpolated.
+- **On the floor, under everything standing.** The node stands at
+  `SORT_Y` (-100,000), so the world's y-sort draws it first: pools, then
+  rings, then the spikes, players and boss. A ring used to be sorted by its
+  middle - drawn over the feet of anybody in its upper half - and a pool
+  over the spikes behind it. Pictured before and after: the same rings and
+  sparks; a ring is now under a spike standing in it.
+- **Half floats.** On the web (Compatibility) a MultiMesh's colour and
+  custom data reach the GPU as 16-bit floats - measured (zz/ringbench/
+  halfprobe.gd): a start of 3000.3 drew as 3000. So times there are on a
+  clock that comes round every `WRAP` (16) seconds, and nothing lives that
+  long. A burst's sparks are rolled from its own number (0-127, packed with
+  its element), not its slot, so they do not jump when the buffer is packed.
+- **One tint an element** (`_tints` in bossprojectile.gd) for the spikes
+  with no scene of their own.
+- **Warmed once a session** (`warm()`, deferred from `add_to()`): a pool
+  of each pool shader, a tinted spike (in a CanvasLayer of their own, so
+  the camera does not matter), a ring and a burst, at an alpha of 0.02 for
+  three frames - the first cast compiled them (106 and 176 ms frames). With
+  every cache emptied, the first cast's worst frames 172-213 -> 109-144 ms
+  in the container; what is left is the container's software GL.
+- **Measured** (three bosses, fixed patterns, drawn by the container's
+  software GL): draw calls 270-940 -> 22-36 a frame. That renderer is not a
+  phone's GPU - it is slow per vertex and quick per draw call - and its
+  frame times were too noisy to rank the two (p95 30-80 ms from run to run
+  of the same build); headless, the scripts cost the same. The draw calls
+  are what a phone's browser pays for.
+
+`_test_spikes_drawn_together()` (testrunner_11).
+
 ### The town's floor and water in chunks (0.137.3)
 
 The owner: "time to refine town now", then "chunking its important

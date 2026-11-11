@@ -627,6 +627,111 @@ func _test_the_gm_panel_comes_with_the_area() -> void:
 	print("  (the GM panel with the area: done)")
 
 
+func _test_spikes_drawn_together() -> void:
+	section("A BOSS'S SPIKES DRAWN TOGETHER - RINGS, SPARKS AND POOLS (0.137.5)")
+	# The owner: "if i have 3 bosses all doing that at once you see the issue".
+	# Three bosses' patterns were 500 to 1,100 draw calls a frame (a ring and
+	# a CPUParticles2D a spike); spikefx.gd draws the container's rings in one
+	# MultiMesh, its sparks in another, and its pools under them.
+	const Fx := preload("res://src/projectiles/spikefx.gd")
+	var spike_scene := load("res://scene/projectiles/bossprojectile.tscn") as PackedScene
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var container := Node2D.new()
+	container.y_sort_enabled = true
+	world.add_child(container)
+	var spikes: Array = []
+	var spots: Array = [Vector2(-30000, -30000), Vector2(-29900, -30000), Vector2(-29800, -29950), Vector2(-29700, -30050)]
+	var elements: Array = [Element.Type.DARK, Element.Type.DARK, Element.Type.DARK, Element.Type.LIGHTNING]
+	for i in spots.size():
+		var spike: Node2D = spike_scene.instantiate()
+		spike.set("element", elements[i])
+		spike.set("telegraph_seconds", 30.0)
+		container.add_child(spike)
+		spike.global_position = spots[i]
+		spike.reset_physics_interpolation()
+		spikes.append(spike)
+	var fx: Node2D = container.get_node_or_null(NodePath(Fx.NODE_NAME)) as Node2D
+	var made: int = 0
+	for c in container.get_children():
+		if c.get_script() == Fx:
+			made += 1
+	check("the first spike makes the container's spikefx - one, first among its children, at the top of the y-sort",
+		fx != null and made == 1 and fx.get_index() == 0 and is_equal_approx(fx.position.y, Fx.SORT_Y), [made, fx])
+	check("  each spike warns there (%d), with no _process or _draw of its own" % [fx.call("warning_count") if fx != null else -1],
+		fx != null and int(fx.call("warning_count")) == 4
+		and spikes.all(func(k): return not (k as Node).is_processing() and not (k as Node).has_method(&"_draw")))
+	var dark_a: Material = (spikes[0] as Node).get_node("animatedsprite2d").material
+	var dark_b: Material = (spikes[2] as Node).get_node("animatedsprite2d").material
+	var spark_tint: Material = (spikes[3] as Node).get_node("animatedsprite2d").material
+	check("  dark spikes (no scene of their own) share one tint; lightning has its own",
+		dark_a != null and dark_a == dark_b and spark_tint != null and spark_tint != dark_a)
+	await get_tree().process_frame
+	var rings: MultiMeshInstance2D = fx.get_node("rings") as MultiMeshInstance2D
+	var sparks: MultiMeshInstance2D = fx.get_node("sparks") as MultiMeshInstance2D
+	var placed: int = 0
+	var buf: PackedFloat32Array = fx.get("_ring_buf")
+	for i in rings.multimesh.visible_instance_count:
+		var origin: Vector2 = fx.to_global(Vector2(buf[i * Fx.RING_STRIDE + 3], buf[i * Fx.RING_STRIDE + 7]))
+		for spot in spots:
+			if origin.distance_to(spot) < 0.5:
+				placed += 1
+	check("  the rings are one MultiMesh, an instance a spike where it stands (placed after it was added)",
+		rings.multimesh.visible_instance_count == 4 and placed == 4, [rings.multimesh.visible_instance_count, placed])
+	check("  both MultiMeshes drawn as written, never blended between buffers; the sparks over everything",
+		rings.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
+		and sparks.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF and sparks.z_index == 1)
+	var early: bool = spikes.any(func(k): return bool((k as Node).get("_erupting")))
+	var gone: Node2D = spike_scene.instantiate()
+	gone.set("element", Element.Type.DARK)
+	container.add_child(gone)
+	var with_it: int = int(fx.call("warning_count"))
+	gone.free()
+	check("  a spike that goes before it erupts takes its ring with it",
+		with_it == 5 and int(fx.call("warning_count")) == 4, [with_it, fx.call("warning_count")])
+	# Thirty seconds on: the clock says so.
+	fx.set("now", float(fx.get("now")) + 30.5)
+	var waited: int = 0
+	while int(fx.call("warning_count")) > 0 and waited < 300:
+		await get_tree().process_frame
+		waited += 1
+	check("  on the container's clock the warnings end and the spikes erupt (none before), a burst each",
+		not early and int(fx.call("warning_count")) == 0
+		and spikes.all(func(k): return bool((k as Node).get("_erupting")))
+		and int(fx.call("bursts_alive")) == 4 and sparks.multimesh.visible_instance_count == 4,
+		[early, fx.call("warning_count"), fx.call("bursts_alive")])
+	var holder: Node = Fx.pool_holder(container, Element.Type.DARK)
+	check("  a spike's pool goes under the rings, beside its element's",
+		holder != null and holder.get_parent() == fx and holder.get_index() < rings.get_index()
+		and Fx.pool_holder(container, Element.Type.DARK) == holder
+		and _func_body(_code_src("res://src/projectiles/bossprojectile.gd"), "func _leave_puddle(").contains("SpikeFx.pool_holder("))
+	await get_tree().create_timer(1.5).timeout
+	check("  the sparks spent, nothing is drawn and the container's clock stops",
+		int(fx.call("bursts_alive")) == 0 and sparks.multimesh.visible_instance_count == 0 and not fx.is_processing(),
+		[fx.call("bursts_alive"), fx.is_processing()])
+
+	# ---- warming the shaders --------------------------------------------------
+	var was_warmed: bool = Fx._warmed
+	Fx._warmed = false
+	fx.call("warm")
+	var layer: Node = fx.get_node_or_null(^"warming")
+	var drawn: int = layer.get_child(0).get_child_count() if layer != null and layer.get_child_count() > 0 else 0
+	check("warming draws a pool, a tinted spike, a ring and a burst, faint, in a layer of their own",
+		layer is CanvasLayer and drawn >= 2 and int(fx.call("warning_count")) == 1 and int(fx.call("bursts_alive")) == 1
+		and Fx._warmed, [layer, drawn])
+	for k in Fx.WARM_FRAMES + 2:
+		await get_tree().process_frame
+	check("  for a few frames, then it is gone",
+		fx.get_node_or_null(^"warming") == null and int(fx.call("warning_count")) == 0 and sparks.self_modulate.a == 1.0)
+	Fx._warmed = was_warmed
+	check("  AreaRegistry gives every area its own as the area arrives",
+		_func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(").contains("SpikeFx.add_to(scene)"))
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (a boss's spikes drawn together: done)")
+
+
 func _strays(data: PackedByteArray, ranges: PackedInt32Array, size: int) -> int:
 	"""Cells in a range that are not in that range's chunk."""
 	const Ground := preload("res://src/world/groundchunks.gd")

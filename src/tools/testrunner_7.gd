@@ -2250,7 +2250,8 @@ func _test_the_bosses_are_seven_fights() -> void:
 		var had: Array = holder.get_children()
 		boss._spawn_one_eruption(holder, Vector2.ZERO, 1.0, boss.SPIKE_BASE_RADIUS, boss.gate_scene)
 		for c in holder.get_children():
-			if not had.has(c):
+			# The spikes, not the spikefx.gd the first one makes (0.137.5).
+			if not had.has(c) and "status" in c:
 				if StringName(c.get("status")) != FX.for_element(boss.current_element()):
 					wrong.append(eid)
 				c.free()

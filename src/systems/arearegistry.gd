@@ -117,6 +117,7 @@ const MonsterSync := preload("res://src/world/monstersync.gd")
 const PropChunks := preload("res://src/world/propchunks.gd")
 const GroundChunks := preload("res://src/world/groundchunks.gd")
 const Waystones := preload("res://src/world/waystones.gd")
+const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 
 
 func _ready() -> void:
@@ -187,6 +188,9 @@ func _on_scene_changed() -> void:
 		hud.call(&"prepare_owner_panel")
 	if scene.get_node_or_null(Waystones.NODE_NAME) == null:
 		Waystones.add_to(scene)
+	# A boss's spikes draw their rings, sparks and pools together, and the
+	# first area of a session warms their shaders (0.137.5); see spikefx.gd.
+	SpikeFx.add_to(scene)
 	# AND THE SERVER HEARS WHERE YOU ARE NOW, not at your next step - see
 	# CharacterData.note_area().
 	CharacterData.note_area(scene.scene_file_path.get_file().get_basename())

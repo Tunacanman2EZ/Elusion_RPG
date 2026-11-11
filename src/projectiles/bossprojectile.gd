@@ -25,6 +25,9 @@
 extends Area2D
 
 const HitSource := preload("res://src/shared/hitsource.gd")
+# The rings, the sparks and the pools of every spike in the container, drawn
+# together (0.137.5) - see spikefx.gd.
+const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 
 
 # =============================================================================
@@ -226,6 +229,9 @@ const SPREAD_RADIUS := 26.0
 #
 # NONE is absent on purpose. A spike with no element throws nothing, the same
 # rule the tint and the slag follow.
+#
+# spikefx.gd's shader flies them since 0.137.5 (spikesparks.gdshader), from
+# this table as it is: a burst draws at most spikefx.gd BURST_QUADS sparks.
 const ELEMENT_SPARKS := {
 	# Embers, rising and dying. The firepit's, in the boss arena.
 	Element.Type.FIRE: {
@@ -338,8 +344,15 @@ var status: StringName = &""
 # STATE
 # =============================================================================
 
-var _telegraph_age: float = 0.0
 var _erupting: bool = false
+
+# Where this spike's ring is drawn and its warning timed (0.137.5): the
+# container's spikefx.gd. A spike draws nothing itself and has no _process.
+var _fx: Node2D = null
+
+# ONE MATERIAL AN ELEMENT for a spike with no scene of its own - see
+# _apply_spike_tint(). Nothing writes to one after it is made.
+static var _tints: Dictionary = {}
 
 # One damage application per eruption. frame_changed can fire more than once
 # for a frame if the animation is restarted, and every character here carries
@@ -371,8 +384,8 @@ func _ready() -> void:
 		queue_free()
 		return
 
-	# BEFORE ANYTHING READS telegraph_seconds, which _process() does on the very
-	# next frame. This is also why bossenemy.gd sets element, damage, scale and
+	# BEFORE ANYTHING READS telegraph_seconds, which the ring below does at
+	# once. This is also why bossenemy.gd sets element, damage, scale and
 	# telegraph_seconds BEFORE add_child() rather than after: add_child is what
 	# runs _ready(), so a profile applied here would otherwise be multiplying
 	# values the caller has not set yet. poisonslime.gd's _spawn_slime() carries
@@ -387,7 +400,18 @@ func _ready() -> void:
 	anim.frame_changed.connect(_on_frame_changed)
 	anim.animation_finished.connect(_on_animation_finished)
 
-	queue_redraw()
+	# THE RING, AND THE WARNING'S CLOCK, ARE THE CONTAINER'S (0.137.5). Each
+	# spike drew its own ring - a fill and an outline, two draw calls, drawn
+	# again every frame it warned - and three bosses' patterns were hundreds of
+	# them. spikefx.gd draws every ring in the container at once, grows each
+	# fill in its shader, and calls telegraph_over() when this one is up. It
+	# reads where this spike stands at the end of the frame:
+	# bossenemy.gd places it after adding it.
+	_fx = SpikeFx.of(get_parent())
+	if _fx != null:
+		_fx.add_ring(self, telegraph_seconds, ring_radius, ring_color)
+	else:
+		telegraph_over.call_deferred()
 
 
 func _validate_animation() -> bool:
@@ -409,19 +433,18 @@ func _validate_animation() -> bool:
 	return true
 
 
-func _process(delta: float) -> void:
-	if _erupting:
-		return
-
-	_telegraph_age += delta
-
-	# Redrawn every frame ONLY while the ring is filling — this is the one
-	# thing here that actually animates, and _draw returns immediately once
-	# the spike takes over, so there is no per-frame cost afterwards.
-	queue_redraw()
-
-	if _telegraph_age >= telegraph_seconds:
+func telegraph_over() -> void:
+	"""The warning is up: spikefx.gd calls this telegraph_seconds after the
+	spike was added, timed by the frame as the spike's own _process timed it."""
+	if not _erupting:
 		_erupt()
+
+
+func _exit_tree() -> void:
+	# Gone before it erupted (its boss died, the area changed): its ring goes
+	# with it.
+	if not _erupting and _fx != null and is_instance_valid(_fx):
+		_fx.remove_ring(self)
 
 
 func _erupt() -> void:
@@ -429,7 +452,8 @@ func _erupt() -> void:
 	anim.visible = true
 	anim.play(RISE_ANIM)
 	# Clears the ring in the same frame the spike appears.
-	queue_redraw()
+	if _fx != null and is_instance_valid(_fx):
+		_fx.remove_ring(self)
 
 	# ON THE ERUPTION, not on the telegraph. The burst is the spike arriving;
 	# throwing it while the ring is still filling would announce the hit early
@@ -497,134 +521,48 @@ func _apply_spike_tint() -> void:
 	if anim.material != null:
 		return
 
-	var mat := ShaderMaterial.new()
-	mat.shader = SPIKE_SHADER
-	mat.set_shader_parameter("warmth", 1.0)
-	mat.set_shader_parameter("warm_tint", Element.colour_for(element))
-	mat.set_shader_parameter("lift", SPIKE_LIFT)
+	# AND ONE FOR ALL OF THEM (0.137.5). It made one a spike - dark, lightning
+	# and poison have no scene - and sprites with materials of their own are
+	# never drawn together: a draw call each.
+	var mat: ShaderMaterial = _tints.get(element) as ShaderMaterial
+	if mat == null:
+		mat = ShaderMaterial.new()
+		mat.shader = SPIKE_SHADER
+		mat.set_shader_parameter("warmth", 1.0)
+		mat.set_shader_parameter("warm_tint", Element.colour_for(element))
+		mat.set_shader_parameter("lift", SPIKE_LIFT)
+		_tints[element] = mat
 	anim.material = mat
 
 
 func _burst_sparks() -> void:
-	# A STANDALONE EMITTER, NOT A CHILD, and that is the whole reason this is
-	# not four lines. This node queue_free()s the moment its rise animation
-	# ends, and a child emitter dies with it - so the last third of every burst
-	# would be cut off mid-air. Parenting into the same ground container the
-	# slag uses lets the sparks outlive the spike that threw them, which is what
-	# they have to do to look like anything.
-	#
-	# Built in code rather than added to bossprojectile.tscn for the reason the
-	# firepit's embers are: the editor rewrites an open scene from its in-memory
-	# copy on save, and this project has already lost committed .tscn edits that
-	# way. A node the script makes cannot be clobbered by a save that did not
-	# know about it.
+	# THE CONTAINER'S SPARKS (0.137.5). Each eruption made a CPUParticles2D of
+	# its own, left in the container until its sparks were done - a draw call
+	# each, 130 to 500 alive with three bosses casting - and freed by a timer.
+	# spikefx.gd draws every burst in the container at once: this writes one
+	# instance, and its shader flies the sparks as the emitter did (a patch
+	# across the spike's foot, up and spread by the element, under its
+	# gravity, the same ramp from bright to gone). They outlive the spike, as
+	# they had to.
 	if not ELEMENT_SPARKS.has(element):
 		return
-
-	var p: Dictionary = ELEMENT_SPARKS[element]
-
-	var container: Node = get_tree().get_first_node_in_group("groundeffects")
-	if container == null:
-		container = get_tree().current_scene
-	if container == null:
+	if _fx == null or not is_instance_valid(_fx):
 		return
-
-	var burst := CPUParticles2D.new()
-	burst.name = "spikesparks"
-	burst.emitting = false
-	burst.one_shot = true
-
-	# EXPLOSIVENESS 1.0 is what makes this a burst rather than a fountain: every
-	# particle is emitted on the same frame instead of spread across `lifetime`.
-	burst.explosiveness = 1.0
-	burst.amount = int(p["count"])
-	burst.lifetime = float(p["life"])
-
-	# Emitted into world space so the sparks keep travelling after this spike is
-	# gone, rather than being dragged around by a transform that no longer
-	# exists.
-	burst.local_coords = false
-
-	burst.direction = Vector2.UP
-	burst.spread = float(p["spread"])
-	burst.gravity = p["gravity"]
-	burst.initial_velocity_min = float(p["vmin"])
-	burst.initial_velocity_max = float(p["vmax"])
-	burst.scale_amount_min = float(p["smin"])
-	burst.scale_amount_max = float(p["smax"])
-
-	# Emitted across the spike's footprint rather than from a single point, so a
-	# big earth spike throws a wide shower and a small wind one does not.
-	burst.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	burst.emission_rect_extents = Vector2(ring_radius * 0.5, 3.0) * scale
-
-	burst.color_ramp = _spark_ramp()
-	burst.z_index = 1
-
-	container.add_child(burst)
-	burst.global_position = global_position
-	burst.reset_physics_interpolation()
-	burst.emitting = true
-
-	_free_after(burst, float(p["life"]) + 0.25)
-
-
-func _spark_ramp() -> Gradient:
-	# A RAW Gradient. CPUParticles2D.color_ramp is typed Gradient; it is
-	# ParticleProcessMaterial, which the GPU emitter uses, whose equivalent is a
-	# GradientTexture1D. The two read the same-named property as different
-	# types, and wrapping this would be a hard parse error.
-	var tint: Color = Element.colour_for(element)
-
-	var ramp := Gradient.new()
-	ramp.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
-	ramp.colors = PackedColorArray([
-		# Starts brighter than the element's own colour so the spark reads as
-		# something hot rather than as a coloured dot, then settles onto the
-		# element and fades out.
-		Color(minf(tint.r + 0.35, 1.0), minf(tint.g + 0.35, 1.0), minf(tint.b + 0.35, 1.0), 1.0),
-		Color(tint.r, tint.g, tint.b, 0.8),
-		Color(tint.r * 0.5, tint.g * 0.5, tint.b * 0.5, 0.0),
-	])
-	return ramp
-
-
-func _free_after(node: Node, seconds: float) -> void:
-	# A one_shot emitter stops emitting but does not free itself, and these are
-	# spawned sixty-five at a time. Without this a long fight leaves a few
-	# thousand finished emitters parented to the ground container.
-	await get_tree().create_timer(seconds).timeout
-
-	# PAST AN AWAIT. A SceneTreeTimer belongs to the tree rather than to either
-	# node here, so it outlives a scene change - the same guard every await in
-	# src/world/ carries.
-	if is_instance_valid(node):
-		node.queue_free()
+	# Across the spike's footprint, so a big earth spike throws a wide shower
+	# and a small wind one does not.
+	_fx.burst(global_position, element, Vector2(ring_radius * 0.5, 3.0) * scale, ELEMENT_SPARKS[element])
 
 
 # =============================================================================
 # THE RING
 # =============================================================================
-
-func _draw() -> void:
-	# Drawn rather than authored as a sprite because the fill has to track a
-	# tunable duration. A pre-rendered ring animation would silently stop
-	# matching telegraph_seconds the moment anyone changed it.
-	if _erupting:
-		return
-
-	var progress: float = clampf(
-		_telegraph_age / maxf(telegraph_seconds, 0.001), 0.0, 1.0)
-
-	# The fill grows from the centre outward, so "full" reads as "now" without
-	# the player having to time anything consciously.
-	var fill: Color = ring_color
-	fill.a = ring_color.a * 0.3
-	draw_circle(Vector2.ZERO, ring_radius * progress, fill)
-
-	# The outline is at full radius from the first frame, so the dangerous area
-	# is known immediately — only the timing is in question, never the extent.
-	draw_arc(Vector2.ZERO, ring_radius, 0.0, TAU, 32, ring_color, 2.0, true)
+#
+# Drawn by spikefx.gd (spikerings.gdshader), not here: the fill grows from
+# the centre outward over telegraph_seconds, so "full" reads as "now" without
+# the player having to time anything consciously, and the outline is at full
+# radius from the first frame, so the dangerous area is known immediately -
+# only the timing is in question, never the extent. Drawn rather than
+# authored as a sprite because the fill has to track a tunable duration.
 
 
 # =============================================================================
@@ -715,17 +653,19 @@ func _leave_puddle() -> void:
 	# node that is on its way out.
 	var landing: Vector2 = global_position
 
-	# The y-sorted ground container, so acid draws UNDER characters. Same
-	# lookup and same fallback as poisonprojectile.gd and bushmage's vine — a
-	# level missing the container still gets its puddle, just sorted wrong.
+	# The ground container's floor, so acid draws UNDER characters - and,
+	# since 0.137.5, under every standing thing and the warning rings, with
+	# the other pools of its element (spikefx.gd puddles_for()). Same lookup
+	# and same fallback as poisonprojectile.gd and bushmage's vine.
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene
 	if container == null:
 		return
+	var holder: Node = SpikeFx.pool_holder(container, element)
 
 	for offset in plan:
-		_drop_one_puddle(container, landing + offset)
+		_drop_one_puddle(holder, landing + offset)
 
 
 func puddle_plan() -> Array[Vector2]:
