@@ -2729,6 +2729,84 @@ screenshot of the readout in the chip's Big Field at 16x - 8,604 monsters,
   stress copies, the swell: put to sleep before add_child), the flags go
   off once it is ready. `_test_far_enemies_sleep()` checks all three.
 
+### The elements mix: one phase three, the mixes, a tide you feel, the mirrors' shield (0.144.0)
+
+After playing 0.143.0 the owner: "there is a lot going on with 3 bosses
+makes me worried i took a bad approach"; then "when player walks into lava
+they catch fire when water floods the land feels like nothing happens
+mirrors feel like they have no objective other then reflecting particles",
+"spike wall need to be more like a box that traps players in", "the main
+thing we need is elements to mix also", and "lets build them all". The rule
+that came out of it: **a hazard works when you feel it the moment it touches
+you, and where two arenas' hazards meet they turn into one new thing instead
+of both happening** - fewer things on the floor, each easier to read. Parts B
+and C of the Docs plan's "When bosses fight together", built together.
+
+- **One boss in phase three** (lightarena.gd `arena_phase()`, every arena's
+  phase goes through it): with partners loose, the first arena of the room
+  whose boss reaches phase three holds it (`_ultimate`, by room); the others
+  play phase two until it falls or ends. Alone, as ever. Each game decides
+  from its own bosses' health (the server's), so two crossing within one
+  tick could disagree for that tick.
+- **The mixes** (`react()` floats the word up there in the element's colour,
+  once within `REACT_SPACE` 90 px in `REACT_GAP` 2 s - one mix in one place;
+  readout `+`, "elements mix"). Arenas find each other with
+  `LightArena.partner(arena, group)` (same room, not ending), by group name,
+  so none preloads another:
+  - **Thaw** (icearena.gd `_age()`): frost on the Fire boss's lava or by a
+    burning pool (`in_pool()`) melts - the patch's fourth field; drawn as
+    rippling water (`PUDDLE`); in it you are soaked every `CHILL_GAP`, no
+    skid, no chill (`in_puddle()`; `on_frost()` passes it over).
+  - **Steam** (icearena.gd `_land()`): hail on the lava or a pool is a cloud
+    (`add_steam()`, `STEAM_RADIUS` 64, `STEAM_LIFE` 3 s, drawn over everyone
+    on the air layer) and hurts nobody; more hail there swells the same
+    cloud.
+  - **Pocket** (firearena.gd `in_lava()` asks eartharena.gd `holds_back()`;
+    `lava_covers()` is the lava regardless): a risen box keeps the lava out,
+    drawn as `CRUST` over the lava it covers (`pockets()`), and says so as it
+    rises in the lava.
+  - **Shatter** (eartharena.gd `_land()`): a rock within `ROCK_RADIUS` of a
+    standing ice wall (icearena.gd `wall_near()`) breaks it, on every screen
+    from the same rock and wall (no lever message).
+  - **Upwind** (waterarena.gd `_lead()`): with the Wind boss here the leader
+    sends the tide from the side the wind comes from (`upwind_side()` of
+    `angle_to`), `UPWIND_DEPTH` (1.3) as far (held to `TIDE_DEEPEST` 0.6),
+    `"d"` with the tide; and in the water the wind carries you `WET_DRIFT`
+    (1.5) as hard (windarena.gd `_carry()`), the water's own current standing
+    aside.
+  - **Rain** (waterarena.gd `_lead_rain()`): the leader sees the tornado
+    (windarena.gd `twister`) over the standing water and sends `h: "rain"`:
+    `RAIN_SECONDS` (3) of rain - a MultiMesh of `RAIN_DROPS` streaks placed
+    by `RAIN_SHADER`, half on a phone - everyone in the room soaked, and the
+    water goes out at once.
+  - **Spray** (windarena.gd `_blow()`, `gust_wet()`): a gust whose lane
+    crosses the water (sampled every `SPRAY_LOOK` px) throws drops down it
+    (the gust's fifth field) and soaks as well as hits.
+- **The box** (eartharena.gd, see the Earth section): the fault line became
+  a square round a player; trapped in a risen one, phase two's rock comes
+  down on you (`boxed()`).
+- **A tide you feel** (waterarena.gd, A TIDE YOU FEEL): its soak and slow
+  were real and silent. Now **the crest** - coming in, a band of foam
+  `CREST_DEPTH` (22) deep at its front; caught by it, `CREST_SHARE` (4%),
+  soaked and thrown inland (`inland()`), once a tide - **the current**
+  (`CURRENT` 34 px/s along the water, its way from the tide's seed, a drift),
+  "Soaked" over your head as you step in (the soak used to be quiet),
+  splashes round every feet in the water (`_splashers`, looked up every
+  `SPLASH_LOOK`), and wading at `WADE_SCALE` 0.55 (it was 0.7).
+- **The mirrors shield the boss** (lightarena.gd, THE MIRRORS SHIELD THE
+  BOSS; he chose it over turning them to aim the light): each standing mirror
+  beams to the Light Keeper (`_draw_beams()`, `BEAM_Z` 16, a bead running to
+  the boss) and takes `MIRROR_SHIELD` (20%) off every hit it takes -
+  `shield()`, all four 80%. bossenemy.gd `take_damage()` cuts this game's own
+  hits where they are made (`_net_applying_remote` passes another game's,
+  already cut there), so the leader and the server hear the cut hit.
+- **Pictures**: mixes_built.png (zz/mix/shots.gd, MODE wave3 / wave2 /
+  mirrors).
+
+`_test_the_elements_mix()`, `_test_the_tide_and_the_wind()`,
+`_test_the_mirrors_shield()` (testrunner_11), and the Earth test rewritten
+for the box. Not yet played, in a party or alone.
+
 ### When bosses fight together: one gate at a time, turns, the floor, one hit (0.143.0)
 
 The owner, once all six arenas were built: "we need to make sure that 3
@@ -2881,15 +2959,16 @@ the real code before it went to his PC (earth_built.png); of the fault
 walls, "Walking only". `src/enemies/eartharena.gd` (no class_name), kit
 `"arena": &"earth"`.
 
-- **Fault lines** (phase one on): every `FAULT_GAP` (8 / 7 / 6 s) the leader
-  cracks the floor across the line from the boss to a player, `FAULT_ALONG`
-  of the way along it, turned up to `FAULT_TURN` from square, `FAULT_HALF`
-  either way cut to the room (`h: "fault"`). A crack of dust widens over
-  `FAULT_WARN` (1.6 s), then stalagmites rise for `FAULT_LIFE` (4 s): pieces
-  of `PIECE` px (`Ridge`, an inner class), each its own node sorted by its
-  feet with its own body on layer 2 - walking only, the orbs fly over (no
-  bullet wall). Risen within `FAULT_UNDER` of you: `FAULT_SHARE` (6%) and
-  thrown off to your side.
+- **Fault lines** (phase one on) - **a box since 0.144.0** (the owner:
+  "spike wall need to be more like a box that traps players in"; see "The
+  elements mix"): every `FAULT_GAP` (8 / 7 / 6 s) the leader cracks a square
+  of dust round a player (`h: "box"`), `BOX_HALF` (52) each way, kept inside
+  the room; after `FAULT_WARN` (1.6 s) stalagmites rise on its four sides
+  for `FAULT_LIFE` (3.5 s), each side in `PIECE`-long Ridge pieces - solid to
+  walking, never to an orb. Inside, you are trapped with the boss's orbs; on
+  a side as it rises, `FAULT_SHARE` and thrown to the side most of you was
+  on. (Until 0.144.0 it was one line across the room between the boss and a
+  player.)
 - **Falling rock** (phase two on): a shadow of grit near each player every
   `ROCK_GAP` (`h: "rock"`); after `ROCK_WARN` it lands - within
   `ROCK_RADIUS`, `ROCK_SHARE` (6%) as earth, and rooted.

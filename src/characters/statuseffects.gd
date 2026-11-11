@@ -232,7 +232,9 @@ var drift_left: float = 0.0
 # WADING (0.141.0, the Water boss's tide - waterarena.gd): your walk times
 # WADE_SCALE while you stand in the water, renewed every frame (wade()), gone
 # a moment after you are out. Weather, like a drift: never on the strip.
-const WADE_SCALE := 0.7
+# 0.55 since 0.144.0 (it was 0.7; the owner: "when water floods the land
+# feels like nothing happens").
+const WADE_SCALE := 0.55
 var wade_left: float = 0.0
 var dazzle_left: float = 0.0
 var wither_left: float = 0.0

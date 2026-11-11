@@ -2985,6 +2985,17 @@ func _mark_aimed(body: Node) -> void:
 		_last_aimed[body.get_instance_id()] = Time.get_ticks_msec()
 
 
+func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
+	# THE MIRRORS SHIELD THE BOSS (0.144.0, lightarena.gd shield()): this
+	# game's own hits on a boss whose arena shields it keep shield() of their
+	# damage, cut here, where they are made, before the leader or the server
+	# hears them. Somebody else's arrive already cut by their game.
+	if not _net_applying_remote and not gated and _arena != null and is_instance_valid(_arena) \
+			and _arena.has_method(&"shield"):
+		amount = maxi(1, roundi(float(amount) * float(_arena.call(&"shield"))))
+	super.take_damage(amount, element)
+
+
 func wave_pace() -> float:
 	"""(For its arena, lightarena.gd paced().) _pace()."""
 	return _pace()

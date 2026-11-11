@@ -7,16 +7,21 @@
 # (never the Endless's corridor), as "eartharena<its shared number>". Gone
 # with its boss.
 #
-#   one    FAULT LINES: every FAULT_GAP the leader cracks the floor across
-#          the line between the boss and a player, part way along it. A crack
-#          of dust warns for FAULT_WARN, then a wall of stalagmites rises along
-#          it for FAULT_LIFE: solid to walking (the walls layer), never to an
-#          orb - the spikes are low and the orbs fly over - so you are on the
-#          boss's side of it or you are not. Risen under you, it hits
-#          (FAULT_SHARE) and throws you off to your side.
+#   one    THE BOX (0.144.0; it was a fault line across the room - the owner:
+#          "spike wall need to be more like a box that traps players in"):
+#          every FAULT_GAP the leader cracks a square of dust round a player,
+#          BOX_HALF each way, for FAULT_WARN; then stalagmites rise on its four
+#          sides for FAULT_LIFE: solid to walking (the walls layer), never to
+#          an orb - the spikes are low and the orbs fly over - so whoever is
+#          inside is trapped with the boss's orbs. Risen under you, it hits
+#          (FAULT_SHARE) and throws you to the side most of you was on.
 #   two    and FALLING ROCK: a shadow of grit near each player for ROCK_WARN,
 #          then the rock lands - within ROCK_RADIUS, ROCK_SHARE as earth, and
-#          rooted.
+#          rooted. Into a box with somebody in it, on them.
+#
+# THE ELEMENTS MIX (0.144.0, lightarena.gd react()): a rock on an ice wall
+# shatters it (SHATTER); a box risen in the Fire boss's lava holds it back
+# (POCKET - firearena.gd asks holds_back()).
 #   three  and THE QUAKE: pieces of the floor crack (PIT_WARN) and drop away
 #          for PIT_LIFE, then knit back - the Crowned's floor tear, fewer and
 #          smaller. Standing in one as it opens, or walking in, you fall: a
@@ -53,11 +58,9 @@ const ROCK_LIT := Color(0.62, 0.53, 0.42)
 # stalagmites stand, a piece's length, the spikes' height, how near the line
 # counts as under it, and its share.
 const FAULT_GAP := [8.0, 7.0, 6.0]
-const FAULT_ALONG := Vector2(0.35, 0.65)
-const FAULT_TURN := 0.4
-const FAULT_HALF := 400.0
+const BOX_HALF := 52.0
 const FAULT_WARN := 1.6
-const FAULT_LIFE := 4.0
+const FAULT_LIFE := 3.5
 const FAULT_RISE := 0.25
 const PIECE := 48.0
 const SPIKE_HIGH := 24.0
@@ -72,6 +75,8 @@ const ROCK_WARN := 1.0
 const ROCK_RADIUS := 20.0
 const ROCK_NEAR := 40.0
 const ROCK_SHARE := 0.06
+const ICE_GROUP := &"ice_arena"
+const FIRE_GROUP := &"fire_arena"
 
 # THE QUAKE (phase three): how often, how far from a player, the pit's size,
 # the warning, how long it stays open, its share and how often it takes it,
@@ -213,7 +218,7 @@ func _process(delta: float) -> void:
 	if not _boss_here():
 		_end()
 		return
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = LightArena.arena_phase(self)
 	if now != phase:
 		phase = now
 	if name != name_for(boss):
@@ -265,21 +270,18 @@ func _lead(delta: float) -> void:
 	_fault_clock -= delta
 	if _fault_clock <= 0.0:
 		_fault_clock = LightArena.paced(self, _p(FAULT_GAP))
-		var who: Vector2 = Targets.body_point(bodies[randi() % bodies.size()])
-		var from_boss: Vector2 = who - boss.global_position
-		if from_boss.length() < 8.0:
-			from_boss = Vector2.DOWN * 8.0
-		var at: Vector2 = boss.global_position + from_boss * randf_range(FAULT_ALONG.x, FAULT_ALONG.y)
-		var a: float = from_boss.orthogonal().angle() + randf_range(-FAULT_TURN, FAULT_TURN)
-		add_fault(at, a)
-		_send({"h": "fault", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1), "a": snappedf(a, 0.0001)})
+		var at: Vector2 = Targets.body_point(bodies[randi() % bodies.size()])
+		add_box(at)
+		_send({"h": "box", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1)})
 	var gap: float = _p(ROCK_GAP)
 	if gap > 0.0:
 		_rock_clock -= delta
 		if _rock_clock <= 0.0:
 			_rock_clock = LightArena.paced(self, gap)
 			for body in bodies:
-				var at: Vector2 = _inside(Targets.body_point(body) + Vector2.from_angle(randf() * TAU) * randf() * ROCK_NEAR)
+				var who: Vector2 = Targets.body_point(body)
+				# Trapped in a box: the rock comes down on you.
+				var at: Vector2 = who if boxed(who) else _inside(who + Vector2.from_angle(randf() * TAU) * randf() * ROCK_NEAR)
 				add_rock(at)
 				_send({"h": "rock", "x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1)})
 	if phase >= 2:
@@ -314,8 +316,8 @@ func hear(event: Dictionary) -> void:
 	if at.distance_to(boss.global_position) > EVENT_REACH:
 		return
 	match str(event.get("h", "")):
-		"fault":
-			add_fault(at, float(event.get("a", 0.0)))
+		"box":
+			add_box(at)
 		"rock":
 			add_rock(at)
 		"pit":
@@ -326,86 +328,97 @@ func hear(event: Dictionary) -> void:
 # THE FAULTS
 # =============================================================================
 
-func add_fault(at: Vector2, a: float) -> void:
-	"""A crack through `at` at `a`, FAULT_HALF either way, cut to the room."""
-	var way: Vector2 = Vector2.from_angle(a)
-	var ends: Array = _clip(at - way * FAULT_HALF, at + way * FAULT_HALF)
-	if ends.is_empty():
-		return
-	var from: Vector2 = ends[0]
-	var to: Vector2 = ends[1]
+# A box is [middle, age, ridges, risen, sides]: sides its four [from, to].
+
+func add_box(at: Vector2) -> void:
+	"""A box of stalagmites round `at` (kept inside the room), BOX_HALF each
+	way: dust for FAULT_WARN, then it rises."""
+	var m: Vector2 = at.clamp(_room.position + Vector2.ONE * (BOX_HALF + 8.0), _room.end - Vector2.ONE * (BOX_HALF + 8.0))
+	var h: float = BOX_HALF
+	var corners: Array = [m + Vector2(-h, -h), m + Vector2(h, -h), m + Vector2(h, h), m + Vector2(-h, h)]
+	var sides: Array = []
 	var ridges: Array = []
-	var length: float = from.distance_to(to)
-	var count: int = maxi(1, ceili(length / PIECE))
-	for k in count:
-		var ridge := Ridge.new()
-		ridge.name = "ridge%d_%d" % [faults.size(), k]
-		ridge.seed_no = k * 7 + faults.size()
-		add_child(ridge)
-		ridge.global_position = from.lerp(to, (float(k) + 0.5) / count)
-		ridge.reset_physics_interpolation()
-		ridge.build(way, length / count)
-		ridges.append(ridge)
-	faults.append([from, to, 0.0, ridges, false])
+	for s in 4:
+		var from: Vector2 = corners[s]
+		var to: Vector2 = corners[(s + 1) % 4]
+		sides.append([from, to])
+		var length: float = from.distance_to(to)
+		var count: int = maxi(1, ceili(length / PIECE))
+		var way: Vector2 = (to - from).normalized()
+		for k in count:
+			var ridge := Ridge.new()
+			ridge.name = "ridge%d_%d_%d" % [faults.size(), s, k]
+			ridge.seed_no = k * 7 + s * 3 + faults.size()
+			add_child(ridge)
+			ridge.global_position = from.lerp(to, (float(k) + 0.5) / count)
+			ridge.reset_physics_interpolation()
+			ridge.build(way, length / count)
+			ridges.append(ridge)
+	faults.append([m, 0.0, ridges, false, sides])
 	PerfOverlay.mark(&"faults crack")
 
 
-func _clip(a: Vector2, b: Vector2) -> Array:
-	var t0: float = 0.0
-	var t1: float = 1.0
-	var d: Vector2 = b - a
-	for axis in 2:
-		var lo: float = _room.position[axis]
-		var hi: float = _room.end[axis]
-		if absf(d[axis]) < 0.0001:
-			if a[axis] < lo or a[axis] > hi:
-				return []
-			continue
-		var u0: float = (lo - a[axis]) / d[axis]
-		var u1: float = (hi - a[axis]) / d[axis]
-		t0 = maxf(t0, minf(u0, u1))
-		t1 = minf(t1, maxf(u0, u1))
-	if t0 >= t1:
-		return []
-	return [a + d * t0, a + d * t1]
+func box_rect(box: Array) -> Rect2:
+	return Rect2((box[0] as Vector2) - Vector2.ONE * BOX_HALF, Vector2.ONE * BOX_HALF * 2.0)
 
 
-func _rise(fault: Array) -> void:
-	fault[4] = true
-	for ridge in fault[3]:
+func boxed(at: Vector2) -> bool:
+	"""Inside a box that has risen."""
+	for box in faults:
+		if bool(box[3]) and box_rect(box).has_point(at):
+			return true
+	return false
+
+
+func holds_back(at: Vector2) -> bool:
+	"""(POCKET, firearena.gd in_lava().) A risen box keeps the lava out."""
+	return boxed(at)
+
+
+func _rise(box: Array) -> void:
+	box[3] = true
+	for ridge in box[2]:
 		(ridge as Ridge).set_solid(true)
+	var m: Vector2 = box[0]
 	var fx: Node2D = SpikeFx.of(get_parent())
 	if fx != null and BossProjectile.ELEMENT_SPARKS.has(Element.Type.EARTH):
-		var mid: Vector2 = ((fault[0] as Vector2) + (fault[1] as Vector2)) * 0.5
-		fx.call(&"burst", mid, Element.Type.EARTH, Vector2((fault[0] as Vector2).distance_to(fault[1]) * 0.5, 4.0),
-			BossProjectile.ELEMENT_SPARKS[Element.Type.EARTH])
-	# Risen under this game's player: a hit, and thrown off to its side.
+		for side in box[4]:
+			var mid: Vector2 = ((side[0] as Vector2) + (side[1] as Vector2)) * 0.5
+			fx.call(&"burst", mid, Element.Type.EARTH, Vector2(BOX_HALF, 4.0), BossProjectile.ELEMENT_SPARKS[Element.Type.EARTH])
+	# POCKET: risen in the Fire boss's lava, it holds the lava back.
+	var fire: Node = LightArena.partner(self, FIRE_GROUP)
+	if fire != null and fire.has_method(&"lava_covers") and bool(fire.call(&"lava_covers", m)):
+		LightArena.react(self, m, "Pocket", Element.Type.EARTH)
+	# Risen under this game's player: a hit, and thrown to the side most of
+	# it was on - in, or out.
 	var me: Node2D = _me()
 	if me == null:
 		return
 	var at: Vector2 = Targets.body_point(me)
-	var from: Vector2 = fault[0]
-	var to: Vector2 = fault[1]
-	var on: Vector2 = Geometry2D.get_closest_point_to_segment(at, from, to)
-	if at.distance_to(on) > FAULT_UNDER:
+	var nearest: float = INF
+	for side in box[4]:
+		var on: Vector2 = Geometry2D.get_closest_point_to_segment(at, side[0], side[1])
+		nearest = minf(nearest, at.distance_to(on))
+	if nearest > FAULT_UNDER:
 		return
-	var face: Vector2 = (to - from).orthogonal().normalized()
-	var side: float = 1.0 if (at - on).dot(face) >= 0.0 else -1.0
-	_hit(me, FAULT_SHARE, "fault", &"", on)
-	if StatusEffects.apply_to(me, StatusEffects.SHOVE, 0, at - face * side * 20.0, false, 1.0):
+	var way: Vector2 = (m - at) if box_rect(box).has_point(at) else (at - m)
+	if way.length() < 0.5:
+		way = Vector2.DOWN
+	_hit(me, FAULT_SHARE, "spike box", &"", at)
+	if StatusEffects.apply_to(me, StatusEffects.SHOVE, 0, at - way.normalized() * 20.0, false, 1.0):
 		StatusEffects.slide(me, 1.2, 0.3)
 
 
-func _sink(fault: Array) -> void:
-	for ridge in fault[3]:
+func _sink(box: Array) -> void:
+	for ridge in box[2]:
 		if is_instance_valid(ridge):
 			(ridge as Node).queue_free()
 
 
 func standing_faults() -> int:
 	var n: int = 0
-	for fault in faults:
-		if bool(fault[4]):
+	for box in faults:
+		if bool(box[3]):
 			n += 1
 	return n
 
@@ -427,6 +440,14 @@ func _land(at: Vector2) -> void:
 	var fx: Node2D = SpikeFx.of(get_parent())
 	if fx != null and BossProjectile.ELEMENT_SPARKS.has(Element.Type.EARTH):
 		fx.call(&"burst", at, Element.Type.EARTH, Vector2(8, 3), BossProjectile.ELEMENT_SPARKS[Element.Type.EARTH])
+	# SHATTER: a rock on the Ice boss's wall breaks it, a door early. Every
+	# screen has the rock and the wall, so each breaks its own.
+	var ice: Node = LightArena.partner(self, ICE_GROUP)
+	if ice != null and ice.has_method(&"wall_near"):
+		var wall: Variant = ice.call(&"wall_near", at, ROCK_RADIUS)
+		if wall != null:
+			ice.call(&"break_wall", wall, false)
+			LightArena.react(self, at, "Shatter", Element.Type.ICE)
 	var me: Node2D = _me()
 	if me != null and Targets.body_point(me).distance_to(at) <= ROCK_RADIUS:
 		_hit(me, ROCK_SHARE, "rock", StatusEffects.ROOT, at)
@@ -471,19 +492,20 @@ func _pits_on_you(delta: float) -> void:
 func _age(delta: float) -> void:
 	var i: int = 0
 	while i < faults.size():
-		var fault: Array = faults[i]
-		fault[2] = float(fault[2]) + delta
-		var age: float = float(fault[2])
-		if not bool(fault[4]) and age >= FAULT_WARN:
-			_rise(fault)
+		var box: Array = faults[i]
+		box[1] = float(box[1]) + delta
+		var age: float = float(box[1])
+		if not bool(box[3]) and age >= FAULT_WARN:
+			_rise(box)
 		var rise: float = clampf((age - FAULT_WARN) / FAULT_RISE, 0.0, 1.0)
 		var sink: float = clampf((FAULT_WARN + FAULT_LIFE - age) / FAULT_RISE, 0.0, 1.0)
-		for ridge in fault[3]:
-			if is_instance_valid(ridge):
-				(ridge as Ridge).rise = minf(rise, sink)
+		var now: float = minf(rise, sink)
+		for ridge in box[2]:
+			if is_instance_valid(ridge) and not is_equal_approx((ridge as Ridge).rise, now):
+				(ridge as Ridge).rise = now
 				(ridge as Ridge).queue_redraw()
 		if age >= FAULT_WARN + FAULT_LIFE:
-			_sink(fault)
+			_sink(box)
 			faults.remove_at(i)
 			continue
 		i += 1
@@ -562,14 +584,15 @@ func _crack(from: Vector2, to: Vector2, width: float, colour: Color, jag: float)
 func _draw_floor() -> void:
 	var o: Vector2 = _floor.global_position
 	var fade: float = 1.0 if _ending < 0.0 else clampf(1.0 - _ending / END_SECONDS, 0.0, 1.0)
-	for fault in faults:
-		var age: float = float(fault[2])
+	for box in faults:
+		var age: float = float(box[1])
 		var warn: float = clampf(age / FAULT_WARN, 0.0, 1.0)
-		var from: Vector2 = (fault[0] as Vector2) - o
-		var to: Vector2 = (fault[1] as Vector2) - o
-		if not bool(fault[4]):
-			_crack(from, to, 2.0 + 6.0 * warn, Color(DUST, (0.25 + 0.4 * warn) * fade), 0.0)
-		_crack(from, to, 1.5, Color(0.12, 0.09, 0.07, 0.8 * fade), 6.0)
+		for side in box[4]:
+			var from: Vector2 = (side[0] as Vector2) - o
+			var to: Vector2 = (side[1] as Vector2) - o
+			if not bool(box[3]):
+				_crack(from, to, 2.0 + 6.0 * warn, Color(DUST, (0.25 + 0.4 * warn) * fade), 0.0)
+			_crack(from, to, 1.5, Color(0.12, 0.09, 0.07, 0.8 * fade), 4.0)
 	for stone in rocks:
 		var m: Vector2 = (stone[0] as Vector2) - o
 		var grow: float = clampf(float(stone[1]) / ROCK_WARN, 0.0, 1.0)

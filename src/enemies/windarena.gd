@@ -102,6 +102,16 @@ const TWISTER_FLING := 2.0
 const TWISTER_FLING_SECONDS := 0.6
 const TWISTER_GAP := 1.5
 const SWIRL_RATE := 2.2
+
+# THE ELEMENTS MIX (0.144.0, lightarena.gd react()), with the Water boss:
+#   SPRAY    a gust whose lane crosses the water throws spray down it: drawn
+#            as drops, and its blow soaks you as well.
+#   DRAGGED  in the water the wind carries you WET_DRIFT times as hard (the
+#            water's own current stands aside, waterarena.gd).
+# (The tide from upwind and the rain from the tornado are the Water boss's.)
+const WATER_GROUP := &"water_arena"
+const WET_DRIFT := 1.5
+const SPRAY_LOOK := 20.0
 # Furthest from its boss anything the leader sends may be put.
 const EVENT_REACH := 1200.0
 
@@ -266,7 +276,7 @@ func _process(delta: float) -> void:
 		_end()
 		return
 	_fade = minf(1.0, _fade + delta)
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = LightArena.arena_phase(self)
 	if now != phase:
 		_to_phase(now)
 	if name != name_for(boss):
@@ -398,11 +408,33 @@ func _carry(way: Vector2) -> void:
 		return
 	var fx: Node = StatusEffects.of(me)
 	if fx != null and fx.has_method(&"drift"):
-		fx.call(&"drift", way * float(WIND_DRIFT[clampi(phase, 0, 2)]))
+		var push: float = float(WIND_DRIFT[clampi(phase, 0, 2)])
+		# DRAGGED: in the Water boss's water, harder.
+		var water: Node = LightArena.partner(self, WATER_GROUP)
+		if water != null and (water.call(&"flood") as Rect2).has_point(at):
+			push *= WET_DRIFT
+		fx.call(&"drift", way * push)
 
 
 func add_gust(through: Vector2, a: float) -> void:
-	gusts.append([through, a, 0.0, false])
+	gusts.append([through, a, 0.0, false, false])
+
+
+func gust_wet(gust: Array) -> Vector2:
+	"""(SPRAY.) Where the gust's lane crosses the Water boss's water, or INF."""
+	var water: Node = LightArena.partner(self, WATER_GROUP)
+	if water == null:
+		return Vector2.INF
+	var wet: Rect2 = water.call(&"flood")
+	if not wet.has_area():
+		return Vector2.INF
+	var way: Vector2 = Vector2.from_angle(float(gust[1]))
+	var steps: int = ceili(GUST_LONG * 2.0 / SPRAY_LOOK)
+	for k in steps + 1:
+		var at: Vector2 = (gust[0] as Vector2) + way * (-GUST_LONG + float(k) * SPRAY_LOOK)
+		if wet.has_point(at):
+			return at
+	return Vector2.INF
 
 
 func in_gust(gust: Array, at: Vector2) -> bool:
@@ -427,6 +459,11 @@ func _age_gusts(delta: float) -> void:
 
 func _blow(gust: Array) -> void:
 	PerfOverlay.mark(&"gusts blow")
+	# SPRAY: across the water, the gust throws it down its lane.
+	var wet: Vector2 = gust_wet(gust)
+	if wet != Vector2.INF:
+		gust[4] = true
+		LightArena.react(self, wet, "Spray", Element.Type.WATER)
 	var me: Node2D = _me()
 	if me == null or not me.has_method(&"take_damage"):
 		return
@@ -437,6 +474,8 @@ func _blow(gust: Array) -> void:
 	var amount: int = maxi(1, roundi(float(me.get(&"max_hp")) * GUST_SHARE))
 	HitSource.blame(HitSource.of(boss, "gust"))
 	me.call(&"take_damage", amount, Element.Type.WIND)
+	if bool(gust[4]):
+		StatusEffects.apply_to(me, StatusEffects.SOAKED, amount, at - way * 20.0, false, 1.0)
 	if StatusEffects.apply_to(me, StatusEffects.SHOVE, 0, at - way * 20.0, false, 1.0):
 		StatusEffects.slide(me, GUST_SLIDE, GUST_SLIDE_SECONDS)
 
@@ -529,6 +568,13 @@ func _draw_wind() -> void:
 			var off: float = (fmod(float(k) * 0.618, 1.0) - 0.5) * 1.6
 			var p: Vector2 = a.lerp(b, f) + g_across * off
 			_bar(p, p + g_way * 26.0, 2.0, Color(1, 1, 1, (0.35 + 0.4 * grow) * fade))
+		# SPRAY: drops thrown down the lane.
+		if blowing and gust.size() > 4 and bool(gust[4]):
+			for k in 22:
+				var f: float = fmod(float(k) * 0.29 + _clock * 4.0, 1.0)
+				var off: float = (fmod(float(k) * 0.53, 1.0) - 0.5) * 1.8
+				var d: Vector2 = a.lerp(b, f) + g_across * off + Vector2(0, -6.0 * sin(f * PI))
+				_fill(d + Vector2(-2, 0), d + Vector2(0, -2), d + Vector2(2, 0), d + Vector2(0, 2), Color(0.78, 0.9, 1.0, 0.85 * fade))
 	# The tornado: its reach on the floor, then a funnel of turning rings.
 	if twister != Vector2.INF:
 		var foot: Vector2 = twister - origin

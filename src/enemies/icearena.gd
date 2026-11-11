@@ -93,6 +93,20 @@ const HAIL_RADIUS := 18.0
 const HAIL_NEAR := 40.0
 const HAIL_SHARE := 0.05
 
+# THE ELEMENTS MIX (0.144.0, lightarena.gd react()), with the Fire boss:
+#   THAW   frost on the lava or by a burning pool melts into a puddle: it
+#          soaks you (every CHILL_GAP) instead of making you skid and chill.
+#   STEAM  hail landing on the lava or a pool bursts into a cloud of steam,
+#          STEAM_RADIUS, for STEAM_LIFE, over everyone (you cannot see
+#          through it) - and hurts nobody.
+# And a rock of the Earth boss's on a wall breaks it (eartharena.gd SHATTER,
+# through wall_near() and break_wall()).
+const FIRE_GROUP := &"fire_arena"
+const PUDDLE := Color(0.32, 0.56, 0.86)
+const STEAM_RADIUS := 64.0
+const STEAM_LIFE := 3.0
+const STEAM := Color(0.9, 0.92, 0.95)
+
 # THE BLIZZARD: how long it takes to close in, the snow (half on a phone),
 # and the fog: the clear middle and the thickest at the edges (shares of the
 # screen's height from its middle), its layer (under the dazzle's 40).
@@ -263,6 +277,9 @@ var frost: Array = []
 var walls: Array = []
 # [where, age] each.
 var hail: Array = []
+# [middle, age] of each cloud of steam (STEAM).
+var steam: Array = []
+var _steam_shown: bool = false
 var blizzard: float = 0.0
 var _frost_clock: float = 1.5
 var _wall_clock: float = 3.0
@@ -322,6 +339,7 @@ func _ready() -> void:
 	_air.name = "snow"
 	_air.z_index = SNOW_Z
 	_air.z_as_relative = false
+	_air.draw.connect(_quads.paint.bind(_air, _draw_steam))
 	add_child(_air)
 	_make_snow()
 	# THE FOG UNDER THE HUD (0.143.0, the refinement): it was a CanvasLayer at
@@ -370,7 +388,7 @@ func _process(delta: float) -> void:
 	if not _boss_here():
 		_end()
 		return
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = LightArena.arena_phase(self)
 	if now != phase:
 		phase = now
 	if name != name_for(boss):
@@ -383,6 +401,9 @@ func _process(delta: float) -> void:
 	_show_fog()
 	if QuadBatch.turn(self, QuadBatch.FLOOR_EVERY):
 		_floor.queue_redraw()
+	if not steam.is_empty() or _steam_shown:
+		_steam_shown = not steam.is_empty()
+		_air.queue_redraw()
 
 
 func _boss_here() -> bool:
@@ -485,7 +506,7 @@ func hear(event: Dictionary) -> void:
 
 
 func add_frost(at: Vector2, r: float) -> void:
-	frost.append([at, r, 0.0])
+	frost.append([at, r, 0.0, false])
 	while frost.size() > FROST_MOST:
 		frost.pop_front()
 	PerfOverlay.mark(&"frost forms")
@@ -493,6 +514,34 @@ func add_frost(at: Vector2, r: float) -> void:
 
 func add_hail(at: Vector2) -> void:
 	hail.append([at, 0.0])
+
+
+func add_steam(at: Vector2) -> void:
+	"""A cloud of steam at `at` - or, one there already, it swells again."""
+	for cloud in steam:
+		if (cloud[0] as Vector2).distance_to(at) < STEAM_RADIUS * 0.75:
+			cloud[1] = minf(float(cloud[1]), 0.3)
+			return
+	steam.append([at, 0.0])
+
+
+func in_steam(at: Vector2) -> bool:
+	for cloud in steam:
+		if (cloud[0] as Vector2).distance_to(at) <= STEAM_RADIUS:
+			return true
+	return false
+
+
+func wall_near(at: Vector2, reach: float) -> Variant:
+	"""(SHATTER, eartharena.gd.) A standing wall within `reach` of `at`."""
+	for wall in walls:
+		if not is_instance_valid(wall) or not (wall as Wall).stands():
+			continue
+		var middle: Vector2 = (wall as Wall).global_position
+		var on: Vector2 = Geometry2D.get_closest_point_to_segment(at, middle - (wall as Wall).half, middle + (wall as Wall).half)
+		if on.distance_to(at) <= reach + WALL_THICK:
+			return wall
+	return null
 
 
 func add_wall(at: Vector2, a: float, n: int) -> void:
@@ -580,11 +629,26 @@ func standing_walls() -> int:
 # =============================================================================
 
 func _age(delta: float) -> void:
+	var fire: Node = LightArena.partner(self, FIRE_GROUP)
 	var i: int = 0
 	while i < frost.size():
-		frost[i][2] = float(frost[i][2]) + delta
-		if float(frost[i][2]) >= FROST_FORM + FROST_LIFE:
+		var patch: Array = frost[i]
+		patch[2] = float(patch[2]) + delta
+		if float(patch[2]) >= FROST_FORM + FROST_LIFE:
 			frost.remove_at(i)
+			continue
+		# THAW: on the lava or by a pool, the frost melts.
+		if fire != null and patch.size() > 3 and not bool(patch[3]):
+			var m: Vector2 = patch[0]
+			if bool(fire.call(&"in_lava", m)) or bool(fire.call(&"in_pool", m, float(patch[1]) * 0.5)):
+				patch[3] = true
+				LightArena.react(self, m, "Thaw", Element.Type.WATER)
+		i += 1
+	i = 0
+	while i < steam.size():
+		steam[i][1] = float(steam[i][1]) + delta
+		if float(steam[i][1]) >= STEAM_LIFE:
+			steam.remove_at(i)
 			continue
 		i += 1
 	for wall in walls.duplicate():
@@ -611,6 +675,12 @@ func _age(delta: float) -> void:
 
 func _land(at: Vector2) -> void:
 	PerfOverlay.mark(&"hail lands")
+	# STEAM: on the lava or a pool, the hail bursts into steam, and hurts nobody.
+	var fire: Node = LightArena.partner(self, FIRE_GROUP)
+	if fire != null and (bool(fire.call(&"in_lava", at)) or bool(fire.call(&"in_pool", at, HAIL_RADIUS * 0.5))):
+		add_steam(at)
+		LightArena.react(self, at, "Steam", Element.Type.WATER)
+		return
 	var fx: Node2D = SpikeFx.of(get_parent())
 	if fx != null and BossProjectile.ELEMENT_SPARKS.has(Element.Type.ICE):
 		fx.call(&"burst", at, Element.Type.ICE, Vector2(6, 3), BossProjectile.ELEMENT_SPARKS[Element.Type.ICE])
@@ -633,9 +703,18 @@ func _me() -> Node2D:
 
 
 func on_frost(at: Vector2) -> bool:
-	"""On a patch that has formed."""
+	"""On a patch that has formed (and not thawed)."""
 	for patch in frost:
-		if float(patch[2]) >= FROST_FORM and at.distance_to(patch[0]) <= float(patch[1]):
+		if float(patch[2]) >= FROST_FORM and at.distance_to(patch[0]) <= float(patch[1]) \
+				and not (patch.size() > 3 and bool(patch[3])):
+			return true
+	return false
+
+
+func in_puddle(at: Vector2) -> bool:
+	"""(THAW.) In frost that has melted."""
+	for patch in frost:
+		if patch.size() > 3 and bool(patch[3]) and at.distance_to(patch[0]) <= float(patch[1]):
 			return true
 	return false
 
@@ -666,6 +745,13 @@ func _on_you(delta: float) -> void:
 	if moving is Vector2:
 		own = moving
 	var at: Vector2 = Targets.body_point(me)
+	if in_puddle(at) and LightArena.in_room(self, at):
+		# THAW: a puddle soaks you; no skid.
+		_glide = own
+		if _chill_left <= 0.0:
+			_chill_left = CHILL_GAP
+			StatusEffects.apply_to(me, StatusEffects.SOAKED, 0, Vector2.INF, true, 1.0)
+		return
 	if not on_frost(at) or not LightArena.in_room(self, at):
 		_glide = own
 		return
@@ -706,6 +792,13 @@ func _draw_floor() -> void:
 		var form: float = clampf(age / FROST_FORM, 0.0, 1.0)
 		var going: float = clampf((FROST_FORM + FROST_LIFE - age) / 1.0, 0.0, 1.0)
 		var a: float = form * going * fade
+		if patch.size() > 3 and bool(patch[3]):
+			# THAW: water where the frost was, rippling.
+			_ring(_floor, m, r, r * 0.6, Color(PUDDLE, 0.38 * a), true)
+			var ripple: float = fmod(_clock * 0.5 + float(r) * 0.1, 1.0)
+			_ring(_floor, m, r * ripple, r * 0.6 * ripple, Color(1, 1, 1, 0.35 * (1.0 - ripple) * a), false)
+			_ring(_floor, m, r, r * 0.6, Color(PUDDLE.lightened(0.4), 0.55 * a), false)
+			continue
 		_ring(_floor, m, r * (0.6 + 0.4 * form), r * 0.6 * (0.6 + 0.4 * form), Color(FROST_INK, 0.32 * a), true)
 		_ring(_floor, m, r, r * 0.6, Color(1, 1, 1, 0.5 * a), false)
 		for k in 6:
@@ -717,6 +810,21 @@ func _draw_floor() -> void:
 		var grow: float = clampf(float(stone[1]) / HAIL_WARN, 0.0, 1.0)
 		_ring(_floor, m, HAIL_RADIUS * grow, HAIL_RADIUS * 0.55 * grow, Color(0, 0, 0, (0.2 + 0.3 * grow) * fade), true)
 		_ring(_floor, m, HAIL_RADIUS, HAIL_RADIUS * 0.55, Color(ICE, (0.3 + 0.5 * grow) * fade), false)
+
+
+func _draw_steam() -> void:
+	# STEAM: each cloud a heap of puffs swelling and fading, over everyone.
+	var o: Vector2 = _air.global_position
+	for cloud in steam:
+		var m: Vector2 = (cloud[0] as Vector2) - o
+		var age: float = float(cloud[1])
+		var a: float = clampf(age / 0.3, 0.0, 1.0) * clampf((STEAM_LIFE - age) / 0.8, 0.0, 1.0)
+		var swell: float = 0.75 + 0.25 * clampf(age / STEAM_LIFE, 0.0, 1.0)
+		for k in 6:
+			var turn: float = float(k) * TAU / 6.0 + age * 0.4
+			var puff: Vector2 = m + Vector2(cos(turn), sin(turn) * 0.55) * STEAM_RADIUS * 0.45 * swell + Vector2(0, -age * 6.0)
+			_ring(_air, puff, STEAM_RADIUS * 0.55 * swell, STEAM_RADIUS * 0.4 * swell, Color(STEAM, 0.45 * a), true)
+		_ring(_air, m + Vector2(0, -age * 6.0), STEAM_RADIUS * 0.6 * swell, STEAM_RADIUS * 0.42 * swell, Color(STEAM, 0.6 * a), true)
 
 
 func _make_snow() -> void:

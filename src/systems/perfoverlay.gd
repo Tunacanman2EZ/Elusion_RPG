@@ -192,6 +192,7 @@ const MARK_LETTERS := {
 	&"floor drops": "Z",
 	&"vents erupt": "N",
 	&"lava burns": "~",
+	&"elements mix": "+",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many

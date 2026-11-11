@@ -84,6 +84,9 @@ const LAVA_KEEP := Vector2(0.45, 0.5)
 # square alone, while another boss is loose here, and creeps back to LAVA_KEEP
 # over LAVA_RISE once Fire fights alone.
 const LAVA_KEEP_SHARED := Vector2(0.7, 0.72)
+const EARTH_GROUP := &"earth_arena"
+# POCKET: the crust a box holds over the lava (0.144.0).
+const CRUST := Color(0.24, 0.19, 0.16)
 # Glints drifting on the lava (24: the refinement; it was 40).
 const GLINTS := 24
 const LAVA_RISE := 3.0
@@ -178,7 +181,7 @@ func _process(delta: float) -> void:
 	if not _boss_here():
 		_end()
 		return
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = LightArena.arena_phase(self)
 	if now != phase:
 		phase = now
 	if name != name_for(boss):
@@ -316,9 +319,40 @@ func dry() -> Rect2:
 	return Rect2(_room.get_center() - left * 0.5, left)
 
 
-func in_lava(at: Vector2) -> bool:
-	"""In the risen lava: in the room, out of what it leaves dry."""
+func lava_covers(at: Vector2) -> bool:
+	"""Where the risen lava reaches: in the room, out of what it leaves dry."""
 	return lava > 0.0 and _room.has_point(at) and not dry().has_point(at)
+
+
+func in_lava(at: Vector2) -> bool:
+	"""In the risen lava - not where the Earth boss's box holds it back
+	(POCKET, eartharena.gd holds_back())."""
+	if not lava_covers(at):
+		return false
+	var earth: Node = LightArena.partner(self, EARTH_GROUP)
+	return earth == null or not bool(earth.call(&"holds_back", at))
+
+
+func in_pool(at: Vector2, reach: float = 0.0) -> bool:
+	"""(THAW and STEAM, icearena.gd.) Within `reach` of a burning pool."""
+	for pool in pools:
+		if at.distance_to(pool[0]) <= POOL_RADIUS + reach:
+			return true
+	return false
+
+
+func pockets() -> Array:
+	"""(Drawing.) The Earth boss's risen boxes the lava reaches, as rects."""
+	var earth: Node = LightArena.partner(self, EARTH_GROUP)
+	if earth == null or lava <= 0.0:
+		return []
+	var out: Array = []
+	for box in earth.get(&"faults"):
+		if bool(box[3]):
+			var rect: Rect2 = earth.call(&"box_rect", box)
+			if lava_covers(rect.get_center()) or not dry().encloses(rect):
+				out.append(rect)
+	return out
 
 
 func takes_floor(at: Vector2) -> bool:
@@ -423,6 +457,18 @@ func _draw_floor() -> void:
 		_fill(_floor, Vector2(inner.position.x, inner.end.y - 2), Vector2(inner.end.x, inner.end.y - 2), inner.end, Vector2(inner.position.x, inner.end.y), edge)
 		_fill(_floor, inner.position, inner.position + Vector2(2, 0), Vector2(inner.position.x + 2, inner.end.y), Vector2(inner.position.x, inner.end.y), edge)
 		_fill(_floor, Vector2(inner.end.x - 2, inner.position.y), Vector2(inner.end.x, inner.position.y), inner.end, Vector2(inner.end.x - 2, inner.end.y), edge)
+		# POCKET: what a box holds back is cooled crust, where the lava was.
+		var bands: Array = [Rect2(outer.position, Vector2(outer.size.x, inner.position.y - outer.position.y)),
+			Rect2(Vector2(outer.position.x, inner.end.y), Vector2(outer.size.x, outer.end.y - inner.end.y)),
+			Rect2(Vector2(outer.position.x, inner.position.y), Vector2(inner.position.x - outer.position.x, inner.size.y)),
+			Rect2(Vector2(inner.end.x, inner.position.y), Vector2(outer.end.x - inner.end.x, inner.size.y))]
+		for pocket in pockets():
+			var held := Rect2((pocket as Rect2).position - o, (pocket as Rect2).size)
+			for band in bands:
+				var cut: Rect2 = (band as Rect2).intersection(held)
+				if cut.has_area():
+					_fill(_floor, cut.position, Vector2(cut.end.x, cut.position.y), cut.end, Vector2(cut.position.x, cut.end.y),
+						Color(CRUST, 0.9 * fade))
 
 
 func _on_band(outer: Rect2, along: float, into: float) -> Vector2:

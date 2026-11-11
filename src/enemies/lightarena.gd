@@ -35,6 +35,16 @@
 # light goes out. It grows back at the next phase. Solid while it stands (the
 # walls layer, as a boss gate's bars), so nobody walks through glass.
 #
+# THE MIRRORS SHIELD THE BOSS (0.144.0). The owner: "mirrors feel like they
+# have no objective other then reflecting particles"; he chose this over
+# turning them to aim the light. Each standing mirror throws a beam of light
+# to the Light Keeper (drawn at BEAM_Z) and takes MIRROR_SHIELD off every
+# hit it takes (shield(): all four, 80% off) - so breaking them is how you
+# hurt it. They grow back at each phase, and in the eclipse they are the only
+# lights: which do you break? Each game shields its own hits where they are
+# made (bossenemy.gd take_damage()), before the server hears them, and every
+# game knows the same mirrors.
+#
 # THE SAME ON EVERY SCREEN. The panes stand where the room says (its floor's
 # middle, the same in every game), and the phase is the boss's health. A flare is the
 # leader's: its game picks the spots and sends them ("la", monstersync.gd),
@@ -53,6 +63,7 @@ const BossProjectile := preload("res://src/projectiles/bossprojectile.gd")
 const Targets := preload("res://src/shared/targets.gd")
 const HitSource := preload("res://src/shared/hitsource.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 
 const GROUP := &"light_arena"
 # Where an arena may stand: the Boss Arena's gauntlet and the Endless. The
@@ -109,6 +120,11 @@ const LIGHT_OTHERS := 34.0
 const LIGHTS_MOST := 12
 const ECLIPSE_Z := 15
 const FLARE_Z := 17
+# THE MIRRORS SHIELD THE BOSS: each standing one's share off its hits, and
+# its beam to the boss.
+const MIRROR_SHIELD := 0.2
+const BEAM_Z := 16
+const BEAM_LIGHT := Color(1.0, 0.95, 0.62)
 # How far past the bullets' floor the dark reaches: past any view.
 const DARK_MARGIN := 700.0
 # How long the arena takes to go once its boss has.
@@ -281,6 +297,9 @@ var eclipse: float = 0.0
 var _flare_clock: float = 0.0
 var _zone: BulletZone = null
 var _flare_layer: Node2D = null
+var _beam_layer: Node2D = null
+var _beam_clock: float = 0.0
+var _beams := QuadBatch.new()
 var _dark: Node2D = null
 var _dark_material: ShaderMaterial = null
 var _ending: float = -1.0
@@ -462,6 +481,85 @@ func takes_floor(_at: Vector2) -> bool:
 	return false
 
 
+# =============================================================================
+# THE ELEMENTS MIX (0.144.0)
+# =============================================================================
+# The owner, after playing them: "the main thing we need is elements to mix",
+# and of three bosses at once, "there is a lot going on". Two rules here:
+#   ONE BOSS IN PHASE THREE  arena_phase(): with partners, the first arena
+#              whose boss reaches phase three holds it (its lava, quake or
+#              blizzard); the others stay at phase two until it falls.
+#   ONE MIX IN ONE PLACE     react(): where two arenas' hazards meet they turn
+#              into one new thing, and the word for it ("Thaw", "Steam",
+#              "Pocket", "Shatter", ...) floats up there in the element's
+#              colour - once within REACT_SPACE in REACT_GAP, so it stays
+#              readable. The mixes themselves are in the arenas.
+const REACT_SPACE := 90.0
+const REACT_GAP := 2.0
+static var _said: Array = []
+static var _ultimate: Dictionary = {}
+
+
+static func partner(arena: Node, group: StringName) -> Node:
+	"""The arena in `group` that shares `arena`'s room and is not ending."""
+	for other in arena.get_tree().get_nodes_in_group(group):
+		if other == arena or not is_instance_valid(other) or not other.is_inside_tree():
+			continue
+		if float(other.get(&"_ending")) >= 0.0:
+			continue
+		if _shares_room(arena, other):
+			return other
+	return null
+
+
+static func arena_phase(arena: Node) -> int:
+	"""The phase `arena` plays: its boss's, but phase three (2) only for the
+	one arena of the room that holds it (ONE BOSS IN PHASE THREE)."""
+	var for_boss: Node = arena.get(&"boss")
+	var real: int = int(for_boss.call(&"_current_phase"))
+	var key: String = str(_arena_room(arena))
+	var holder: Object = instance_from_id(int(_ultimate.get(key, 0))) if _ultimate.has(key) else null
+	if real < 2:
+		if holder == arena:
+			_ultimate.erase(key)
+		return real
+	var free: bool = holder == null or holder == arena or not is_instance_valid(holder) \
+		or not (holder as Node).is_inside_tree() or float(holder.get(&"_ending")) >= 0.0
+	if free or partners(for_boss) == 0:
+		_ultimate[key] = arena.get_instance_id()
+		return real
+	return 1
+
+
+static func react(node: Node, at: Vector2, word: String, element: int) -> bool:
+	"""Two arenas' hazards mixed at `at`: float `word` up there - unless a mix
+	was said within REACT_SPACE in the last REACT_GAP. Whether it was said."""
+	var now: int = Time.get_ticks_msec()
+	var kept: Array = []
+	for said in _said:
+		if now - int(said[1]) < int(REACT_GAP * 1000.0):
+			kept.append(said)
+	_said = kept
+	for said in _said:
+		if (said[0] as Vector2).distance_to(at) < REACT_SPACE:
+			return false
+	_said.append([at, now])
+	PerfOverlay.mark(&"elements mix")
+	if not node.is_inside_tree():
+		return true
+	var container: Node = node.get_tree().get_first_node_in_group(&"floatinglabels")
+	if container == null:
+		container = node.get_tree().current_scene
+	if container == null:
+		return true
+	var lbl: FloatingLabel = FloatingLabel.take(container)
+	lbl.global_position = at + Vector2(0, -24)
+	lbl.reset_physics_interpolation()
+	lbl.modulate = Element.colour_for(element).lerp(Color.WHITE, 0.25)
+	lbl.show_text(word, FloatingLabel.Type.NOTICE, 1.1, 0.9)
+	return true
+
+
 static func paced(arena: Node, seconds: float) -> float:
 	"""`seconds` stretched by its boss's wave pace (1 alone)."""
 	var for_boss: Variant = arena.get(&"boss")
@@ -483,6 +581,12 @@ func _ready() -> void:
 	_flare_layer.z_as_relative = false
 	_flare_layer.draw.connect(_draw_flares)
 	add_child(_flare_layer)
+	_beam_layer = Node2D.new()
+	_beam_layer.name = "beams"
+	_beam_layer.z_index = BEAM_Z
+	_beam_layer.z_as_relative = false
+	_beam_layer.draw.connect(_beams.paint.bind(_beam_layer, _draw_beams))
+	add_child(_beam_layer)
 	_dark = Node2D.new()
 	_dark.name = "eclipse"
 	_dark.z_index = ECLIPSE_Z
@@ -550,6 +654,35 @@ func _paint(k: int, on: bool) -> void:
 	_zone.paint_mirror(k, pane.global_position - pane.half, pane.global_position + pane.half, on)
 
 
+func shield() -> float:
+	"""(bossenemy.gd take_damage().) What a hit on the boss keeps: 1 less
+	MIRROR_SHIELD for each mirror standing."""
+	if _ending >= 0.0:
+		return 1.0
+	return clampf(1.0 - MIRROR_SHIELD * float(standing()), 0.0, 1.0)
+
+
+func _draw_beams() -> void:
+	# A beam from each standing mirror to the boss, pulsing.
+	if _ending >= 0.0 or not is_instance_valid(boss):
+		return
+	var o: Vector2 = _beam_layer.global_position
+	var to: Vector2 = boss.global_position + Vector2(0, -22) - o
+	for k in panes.size():
+		var pane: Variant = panes[k]
+		if pane == null or not (pane as Pane).stands():
+			continue
+		var from: Vector2 = (pane as Pane).global_position + Vector2(0, -PANE_HIGH * 0.6) - o
+		var side: Vector2 = (to - from).orthogonal().normalized()
+		var pulse: float = 0.6 + 0.4 * sin(_beam_clock * 5.0 + float(k) * 1.7)
+		_beams.quad(from - side * 4.0, to - side * 4.0, to + side * 4.0, from + side * 4.0, Color(BEAM_LIGHT, 0.18 * pulse))
+		_beams.quad(from - side * 1.2, to - side * 1.2, to + side * 1.2, from + side * 1.2, Color(BEAM_LIGHT, 0.75 * pulse))
+		# A bead of light running along it, to the boss.
+		var run: float = fmod(_beam_clock * 0.8 + float(k) * 0.25, 1.0)
+		var bead: Vector2 = from.lerp(to, run)
+		_beams.oval(bead, 3.0, 3.0, Color(1, 1, 1, 0.9 * pulse))
+
+
 func standing() -> int:
 	"""How many mirrors stand."""
 	var n: int = 0
@@ -570,7 +703,7 @@ func _process(delta: float) -> void:
 	if not _boss_here():
 		_end()
 		return
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = arena_phase(self)
 	if now != phase:
 		_to_phase(now)
 	if name != name_for(boss):
@@ -585,6 +718,8 @@ func _process(delta: float) -> void:
 	_age_flares(delta)
 	_flash_panes()
 	_step_eclipse(delta, phase == 2)
+	_beam_clock += delta
+	_beam_layer.queue_redraw()
 
 
 func _boss_here() -> bool:
@@ -811,5 +946,7 @@ func show_tests() -> void:
 			(pane as Node2D).visible = not off
 	if _flare_layer != null:
 		_flare_layer.visible = not off
+	if _beam_layer != null:
+		_beam_layer.visible = not off
 	if _dark != null:
 		_dark.visible = eclipse > 0.0 and not off

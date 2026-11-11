@@ -21,6 +21,26 @@
 #                pulls you toward it (a pull - walking beats it), and its
 #                core drags you under (WHIRL_SHARE, at most every WHIRL_GAP).
 #
+# A TIDE YOU FEEL (0.144.0). The owner: "when water floods the land feels
+# like nothing happens" - its soak and its slow were real and quiet. Now:
+#   THE CREST    the water comes in behind a band of foam, CREST_DEPTH deep;
+#                caught by it you are hit (CREST_SHARE), soaked and thrown
+#                inland (once a tide).
+#   THE CURRENT  in the water you are carried along it (CURRENT px/s, its way
+#                from the tide's seed) - with the Wind boss here, its wind
+#                carries you instead (windarena.gd, harder in the water).
+#   "Soaked"     over your head as you step in; wading is StatusEffects'
+#                WADE_SCALE (0.55, it was 0.7); splashes round every feet in
+#                it.
+#
+# THE ELEMENTS MIX (0.144.0, lightarena.gd react()), with the Wind boss:
+#   UPWIND   the leader sends the tide from the side the wind comes from, and
+#            it comes UPWIND_DEPTH times as far ("d" with the tide).
+#   RAIN     the tornado crossing the water lifts it: the leader sends "rain";
+#            for RAIN_SECONDS everyone in the room is soaked, rain falls (on
+#            the card, as the Ice boss's snow) and the water drains away.
+# (A gust over the water throwing spray is the Wind boss's, windarena.gd.)
+#
 # ON THE FLOOR: drawn under everyone standing in it - its layer sorted before
 # everything in the effects container (above the floor's own tiles, under the
 # spikes' rings, as spikefx.gd's SORT_Y) - in quads only (one draw call for
@@ -72,6 +92,35 @@ const WHIRL_CORE := 18.0
 const WHIRL_SHARE := 0.06
 const WHIRL_GAP := 1.5
 
+# A TIDE YOU FEEL and THE ELEMENTS MIX (above).
+const CREST_DEPTH := 22.0
+const CREST_SHARE := 0.04
+const CREST_SLIDE := 1.4
+const CURRENT := 34.0
+const SPLASH_LOOK := 0.25
+const WIND_GROUP := &"wind_arena"
+const UPWIND_DEPTH := 1.3
+const TIDE_DEEPEST := 0.6
+const RAIN_SECONDS := 3.0
+const RAIN_DROPS := 220
+const RAIN_SHADER := """
+shader_type canvas_item;
+uniform vec4 room;
+uniform float amount = 0.0;
+varying float keep;
+void vertex() {
+	float k = float(INSTANCE_ID);
+	float x = fract(k * 0.6180339);
+	float fall = fract(k * 0.3713 + TIME * 1.6);
+	vec2 at = vec2(room.x + x * (room.z - room.x) + fall * 40.0, room.y + fall * (room.w - room.y));
+	keep = 1.0;
+	VERTEX = at + VERTEX;
+}
+void fragment() {
+	COLOR = vec4(0.78, 0.88, 1.0, 0.7 * amount);
+}
+"""
+
 # Ripples drawn on the water (half on a phone).
 const RIPPLES := 50
 const END_SECONDS := 1.0
@@ -89,6 +138,15 @@ var bubbles: Array = []
 var _next_tide: float = FIRST_TIDE
 var _soak_left: float = 0.0
 var _whirl_left: float = 0.0
+var _crest_caught: int = -1
+var _wading: bool = false
+var _splashers: Array = []
+var _splash_look: float = 0.0
+var rain_left: float = 0.0
+var _rain: MultiMeshInstance2D = null
+var _rain_material: ShaderMaterial = null
+var _rain_shown: float = -1.0
+var _tides: int = 0
 var _bubble_rng := RandomNumberGenerator.new()
 var _bubbles_made: int = 0
 var _zone: BulletZone = null
@@ -131,7 +189,44 @@ func _ready() -> void:
 	_layer.draw.connect(_quads.paint.bind(_layer, _draw_water))
 	add_child(_layer)
 	_layer.reset_physics_interpolation()
+	_make_rain()
 	show_tests()
+
+
+func _make_rain() -> void:
+	"""RAIN: one MultiMesh of streaks over the room, placed on the card."""
+	var streak := ArrayMesh.new()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector2Array([Vector2(-0.6, -6), Vector2(0.6, -6), Vector2(1.6, 4), Vector2(0.4, 4)])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	streak.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_2D
+	multi.mesh = streak
+	multi.instance_count = RAIN_DROPS
+	multi.visible_instance_count = (RAIN_DROPS >> 1) if SettingsScript.on_phone() else RAIN_DROPS
+	multi.custom_aabb = AABB(Vector3(-1.0e6, -1.0e6, -1.0), Vector3(2.0e6, 2.0e6, 2.0))
+	for k in RAIN_DROPS:
+		multi.set_instance_transform_2d(k, Transform2D.IDENTITY)
+	_rain_material = ShaderMaterial.new()
+	var shader := Shader.new()
+	shader.code = RAIN_SHADER
+	_rain_material.shader = shader
+	_rain = MultiMeshInstance2D.new()
+	_rain.name = "rain"
+	_rain.multimesh = multi
+	_rain.material = _rain_material
+	_rain.visible = false
+	_rain.top_level = true
+	_rain.z_index = 17
+	_rain.z_as_relative = false
+	# Placed by its shader, never moved between two buffers.
+	_rain.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	RenderingServer.multimesh_set_physics_interpolated(multi.get_rid(), false)
+	add_child(_rain)
+	_rain.global_position = Vector2.ZERO
+	_rain_material.set_shader_parameter(&"room", Vector4(_room.position.x, _room.position.y, _room.end.x, _room.end.y))
 
 
 # =============================================================================
@@ -200,13 +295,14 @@ func tide_over() -> bool:
 	return side < 0 or tide_age >= TIDE_WARN + TIDE_IN + TIDE_HOLD + TIDE_OUT
 
 
-func start_tide(from_side: int, sent_seed: int) -> void:
+func start_tide(from_side: int, sent_seed: int, deeper: float = 1.0) -> void:
 	"""A tide from `from_side`, with `sent_seed` for its bubbles - here and,
-	from the leader, on every screen."""
+	from the leader, on every screen; `deeper` times as far (UPWIND)."""
 	side = clampi(from_side, 0, SIDES - 1)
 	tide_seed = sent_seed
 	tide_age = 0.0
-	tide_depth = float(TIDE_DEPTH[clampi(phase, 0, 2)])
+	_tides += 1
+	tide_depth = minf(float(TIDE_DEPTH[clampi(phase, 0, 2)]) * clampf(deeper, 1.0, UPWIND_DEPTH), TIDE_DEEPEST)
 	bubbles.clear()
 	_bubbles_made = 0
 	_bubble_rng.seed = sent_seed
@@ -222,13 +318,15 @@ func _process(delta: float) -> void:
 	if _ending >= 0.0:
 		_ending += delta
 		_layer.queue_redraw()
+		if _rain != null:
+			_rain.visible = false
 		if _ending >= END_SECONDS:
 			queue_free()
 		return
 	if not _boss_here():
 		_end()
 		return
-	var now: int = int(boss.call(&"_current_phase"))
+	var now: int = LightArena.arena_phase(self)
 	if now != phase:
 		phase = now
 	if name != name_for(boss):
@@ -237,10 +335,25 @@ func _process(delta: float) -> void:
 		tide_age += delta
 	if not bool(boss.get(&"net_mirror")):
 		_lead(delta)
+		_lead_rain()
 	if phase >= 1 and standing():
 		_make_bubbles()
+	rain_left = maxf(0.0, rain_left - delta)
+	_show_rain()
+	_splash_look -= delta
+	if _splash_look <= 0.0:
+		_splash_look = SPLASH_LOOK
+		_splashers = Targets.all(get_tree()).filter(func(b: Variant) -> bool: return b is Node2D and is_instance_valid(b))
 	_wet(delta)
 	_layer.queue_redraw()
+
+
+func _show_rain() -> void:
+	var amount: float = clampf(minf(rain_left, RAIN_SECONDS - rain_left) / 0.4, 0.0, 1.0) if rain_left > 0.0 else 0.0
+	_rain.visible = amount > 0.0 and not LagTests.hide_arena
+	if _rain.visible and not is_equal_approx(amount, _rain_shown):
+		_rain_shown = amount
+		_rain_material.set_shader_parameter(&"amount", amount)
 
 
 func _boss_here() -> bool:
@@ -261,17 +374,59 @@ func _lead(delta: float) -> void:
 	var next: int = randi() % SIDES
 	if next == side:
 		next = (next + 1 + randi() % (SIDES - 1)) % SIDES
+	var deeper: float = 1.0
+	# UPWIND: with the Wind boss here, from where the wind comes, and further.
+	var wind: Node = LightArena.partner(self, WIND_GROUP)
+	if wind != null:
+		next = upwind_side(Vector2.from_angle(float(wind.get(&"angle_to"))))
+		deeper = UPWIND_DEPTH
 	var sent: int = randi() % 1000000
-	start_tide(next, sent)
+	start_tide(next, sent, deeper)
+	if deeper > 1.0:
+		LightArena.react(self, _room.get_center(), "Upwind", Element.Type.WIND)
 	if boss.has_method(&"arena_event"):
-		boss.call(&"arena_event", {"k": "la", "h": "tide", "s": next, "n": sent})
+		boss.call(&"arena_event", {"k": "la", "h": "tide", "s": next, "n": sent, "d": snappedf(deeper, 0.01)})
+
+
+static func upwind_side(blowing: Vector2) -> int:
+	"""The side of the room the wind comes from: blowing right, the left."""
+	if absf(blowing.x) >= absf(blowing.y):
+		return 0 if blowing.x > 0.0 else 1
+	return 2 if blowing.y > 0.0 else 3
+
+
+func _lead_rain() -> void:
+	"""(Leader.) RAIN: the Wind boss's tornado over the standing water."""
+	if rain_left > 0.0 or not standing():
+		return
+	var wind: Node = LightArena.partner(self, WIND_GROUP)
+	if wind == null:
+		return
+	var twister: Vector2 = wind.get(&"twister")
+	if twister != Vector2.INF and flood().has_point(twister):
+		start_rain(twister)
+		if boss.has_method(&"arena_event"):
+			boss.call(&"arena_event", {"k": "la", "h": "rain", "x": snappedf(twister.x, 0.1), "y": snappedf(twister.y, 0.1)})
+
+
+func start_rain(at: Vector2) -> void:
+	"""RAIN: the water lifted - it rains RAIN_SECONDS and the floor drains."""
+	rain_left = RAIN_SECONDS
+	if not tide_over():
+		# The water goes out now.
+		tide_age = maxf(tide_age, TIDE_WARN + TIDE_IN + TIDE_HOLD)
+	LightArena.react(self, at, "Rain", Element.Type.WATER)
 
 
 func hear(event: Dictionary) -> void:
 	"""(Follower, from the leader's "la".) A tide - only what it knows."""
-	if _ending >= 0.0 or str(event.get("h", "")) != "tide":
+	if _ending >= 0.0:
 		return
-	start_tide(int(event.get("s", 0)), int(event.get("n", 0)))
+	match str(event.get("h", "")):
+		"tide":
+			start_tide(int(event.get("s", 0)), int(event.get("n", 0)), float(event.get("d", 1.0)))
+		"rain":
+			start_rain(Vector2(float(event.get("x", 0.0)), float(event.get("y", 0.0))))
 
 
 func _make_bubbles() -> void:
@@ -284,6 +439,36 @@ func _make_bubbles() -> void:
 			water.position.y + _bubble_rng.randf() * water.size.y)
 		bubbles.append([at, tide_age, false])
 		_bubbles_made += 1
+
+
+func inland() -> Vector2:
+	"""The way the tide comes in."""
+	match side:
+		0:
+			return Vector2.RIGHT
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.DOWN
+	return Vector2.UP
+
+
+func coming_in() -> bool:
+	var t: float = tide_age - TIDE_WARN
+	return side >= 0 and t > 0.0 and t < TIDE_IN
+
+
+func _from_front(at: Vector2) -> float:
+	"""How far behind the water's front `at` is."""
+	var water: Rect2 = flood()
+	match side:
+		0:
+			return water.end.x - at.x
+		1:
+			return at.x - water.position.x
+		2:
+			return water.end.y - at.y
+	return at.y - water.position.y
 
 
 func whirlpool() -> Vector2:
@@ -323,15 +508,33 @@ func _wet(delta: float) -> void:
 			bubble[2] = true
 			_hit(me, BUBBLE_SHARE, "bubble", bubble[0])
 			PerfOverlay.mark(&"bubbles pop")
+	# RAIN: soaked wherever you stand in the room.
+	if rain_left > 0.0 and LightArena.in_room(self, at) and _soak_left <= 0.0:
+		_soak_left = SOAK_GAP
+		StatusEffects.apply_to(me, StatusEffects.SOAKED, 0, Vector2.INF, true, 1.0)
 	var water: Rect2 = flood()
 	if water.size.x <= 0.0 or not water.has_point(at) or not LightArena.in_room(self, at):
+		_wading = false
 		return
 	var fx: Node = StatusEffects.of(me)
 	if fx != null and fx.has_method(&"wade"):
 		fx.call(&"wade")
-	if _soak_left <= 0.0:
+	var inward: Vector2 = inland()
+	# THE CREST: caught by the front coming in - hit, soaked, thrown inland.
+	if _crest_caught != _tides and coming_in() and _from_front(at) <= CREST_DEPTH:
+		_crest_caught = _tides
+		_hit(me, CREST_SHARE, "wave", at - inward * 20.0)
+		if StatusEffects.apply_to(me, StatusEffects.SHOVE, 0, at - inward * 20.0, false, 1.0):
+			StatusEffects.slide(me, CREST_SLIDE, 0.4)
+	# Stepping in: soaked, and it says so.
+	if not _wading or _soak_left <= 0.0:
 		_soak_left = SOAK_GAP
-		StatusEffects.apply_to(me, StatusEffects.SOAKED, 0, Vector2.INF, true, 1.0)
+		StatusEffects.apply_to(me, StatusEffects.SOAKED, 0, Vector2.INF, _wading, 1.0)
+	_wading = true
+	# THE CURRENT: carried along the water (the wind does it with the Wind boss here).
+	if fx != null and fx.has_method(&"drift") and LightArena.partner(self, WIND_GROUP) == null:
+		var along: Vector2 = inward.orthogonal() * (1.0 if tide_seed % 2 == 0 else -1.0)
+		fx.call(&"drift", along * CURRENT)
 	var pool: Vector2 = whirlpool()
 	if pool == Vector2.INF:
 		return
@@ -406,6 +609,28 @@ func _draw_water() -> void:
 			edge = local.position.y
 	var span: float = local.size.y if along_y else local.size.x
 	var start: float = local.position.y if along_y else local.position.x
+	# THE CREST: coming in, a deep band of foam at its front.
+	if coming_in():
+		var back: float = -CREST_DEPTH if side == 0 or side == 2 else CREST_DEPTH
+		for k in 18:
+			var a0: float = start + float(k) / 18.0 * span
+			var a1: float = start + float(k + 1) / 18.0 * span
+			var lip: float = sin(_clock * 9.0 + float(k) * 1.3) * 3.0
+			if along_y:
+				_fill(Vector2(edge + back, a0), Vector2(edge + lip, a0), Vector2(edge + lip, a1), Vector2(edge + back, a1), Color(FOAM, 0.55 * fade))
+			else:
+				_fill(Vector2(a0, edge + back), Vector2(a1, edge + back), Vector2(a1, edge + lip), Vector2(a0, edge + lip), Color(FOAM, 0.55 * fade))
+	# Splashes round every feet in it.
+	for body in _splashers:
+		if not is_instance_valid(body):
+			continue
+		var feet: Vector2 = Targets.body_point(body)
+		if not water.has_point(feet):
+			continue
+		var f: Vector2 = feet - o
+		for ring in 2:
+			var grow: float = fmod(_clock * 1.6 + float(ring) * 0.5, 1.0)
+			_quads.band(f, 6.0 + 12.0 * grow, (6.0 + 12.0 * grow) * 0.5, 0.8, Color(FOAM, 0.6 * (1.0 - grow) * fade))
 	for k in 28:
 		var a: float = start + (float(k) + fmod(_clock * 0.8, 1.0)) / 28.0 * span
 		if along_y:

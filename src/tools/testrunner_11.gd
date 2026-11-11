@@ -1690,37 +1690,38 @@ func _test_the_earth_arena() -> void:
 	check("the loose Earth boss makes its arena, its cracks drawn on the floor",
 		str(arena.name) == "eartharena0" and (arena.get_node("ground") as Node2D).position.y < Fx.SORT_Y)
 
-	# A FAULT: across the line from the boss to you, so it parts you.
+	# THE BOX (0.144.0; the owner: "spike wall need to be more like a box
+	# that traps players in"): dust round you, then stalagmites on four sides.
+	var trapped_at: Vector2 = _arena_point(me)
 	arena.set("_fault_clock", 0.0)
 	arena.call("_process", 0.01)
 	var faults: Array = arena.get("faults")
-	var parts: bool = false
-	var warned: bool = false
-	if faults.size() == 1:
-		var a: Vector2 = faults[0][0]
-		var b: Vector2 = faults[0][1]
-		var face: Vector2 = (b - a).orthogonal()
-		parts = signf((boss.global_position - a).dot(face)) != signf((_arena_point(me) - a).dot(face))
-		warned = not bool(faults[0][4])
-	var ridges: Array = faults[0][3] if faults.size() == 1 else []
-	# Stood on the crack as it rises.
-	var on: Vector2 = Geometry2D.get_closest_point_to_segment(_arena_point(me), faults[0][0], faults[0][1])
-	me.global_position += on - _arena_point(me)
+	var warned: bool = faults.size() == 1 and not bool(faults[0][3])
+	var round_you: bool = faults.size() == 1 and (arena.call("box_rect", faults[0]) as Rect2).has_point(trapped_at)
+	var ridges: Array = faults[0][2] if faults.size() == 1 else []
 	me.taken.clear()
 	arena.set("_fault_clock", 99.0)
 	arena.call("_process", Arena.FAULT_WARN)
 	Hits.take()
 	await get_tree().physics_frame
 	var solid: bool = not ridges.is_empty() and ridges.all(func(r): return not ((r as Node).get_node("rock").get_child(0) as CollisionShape2D).disabled)
-	var mid: Vector2 = ((faults[0][0] as Vector2) + (faults[0][1] as Vector2)) * 0.5
-	check("the leader cracks the floor across the line from the boss to you; it warns, then stalagmites rise along it",
-		parts and warned and bool(faults[0][4]) and solid and ridges.size() >= 2, [parts, warned, ridges.size()])
-	check("  solid to walking, never to an orb; risen under you, it hits and throws you off",
-		not zone.field.is_wall(mid) and me.taken == [[roundi(1000.0 * Arena.FAULT_SHARE), Element.Type.EARTH]]
-		and float(fx.get("shove_left")) > 0.0, me.taken)
+	var side_mid: Vector2 = ((faults[0][4][0][0] as Vector2) + (faults[0][4][0][1] as Vector2)) * 0.5
+	check("the leader cracks a square round you; it warns, then stalagmites rise on all four sides and you are trapped",
+		warned and round_you and bool(faults[0][3]) and solid and (faults[0][4] as Array).size() == 4
+		and bool(arena.call("boxed", trapped_at)) and me.taken.is_empty(), [warned, round_you, ridges.size(), me.taken])
+	check("  solid to walking, never to an orb", not zone.field.is_wall(side_mid))
 	arena.call("_process", Arena.FAULT_LIFE)
 	check("  and it sinks when its time is up", (arena.get("faults") as Array).is_empty()
 		and ridges.all(func(r): return not is_instance_valid(r) or (r as Node).is_queued_for_deletion()))
+	# Stood on its edge as it rises: hit, and thrown to the side most of you is on.
+	arena.call("add_box", _arena_point(me) + Vector2(Arena.BOX_HALF - 4.0, 0.0))
+	me.taken.clear()
+	fx.call("clear_all")
+	arena.call("_process", Arena.FAULT_WARN)
+	Hits.take()
+	check("  risen under you, it hits and throws you off", me.taken == [[roundi(1000.0 * Arena.FAULT_SHARE), Element.Type.EARTH]]
+		and float(fx.get("shove_left")) > 0.0, me.taken)
+	arena.call("_process", Arena.FAULT_LIFE)
 
 	# PHASE TWO: falling rock.
 	fx.call("clear_all")
@@ -1738,6 +1739,18 @@ func _test_the_earth_arena() -> void:
 	check("phase two: rock falls near each player after its shadow - near it, a share of your health as earth, and rooted",
 		near and me.taken == [[roundi(1000.0 * Arena.ROCK_SHARE), Element.Type.EARTH]] and (fx.get("started") as Array).has(FX.ROOT),
 		me.taken)
+	arena.call("add_box", _arena_point(me))
+	arena.call("_process", Arena.FAULT_WARN)
+	(arena.get("rocks") as Array).clear()
+	arena.set("_rock_clock", 0.0)
+	arena.set("_look_left", 0.0)
+	arena.call("_process", 0.01)
+	var on_you: Array = arena.get("rocks")
+	check("  trapped in a box, the rock comes down on you", on_you.size() == 1
+		and (on_you[0][0] as Vector2).distance_to(_arena_point(me)) < 0.5, on_you)
+	arena.call("_process", Arena.FAULT_LIFE)
+	(arena.get("rocks") as Array).clear()
+	arena.set("_rock_clock", 99.0)
 
 	# PHASE THREE: the quake.
 	fx.call("clear_all")
@@ -1759,8 +1772,8 @@ func _test_the_earth_arena() -> void:
 		and float(fx.get("shove_left")) > 0.0, [cracked, me.taken])
 	arena.call("hear", {"h": "pit", "x": origin.x + 5000.0, "y": origin.y})
 	arena.call("hear", {"h": "rock", "x": me.global_position.x, "y": me.global_position.y})
-	arena.call("hear", {"h": "fault", "x": me.global_position.x, "y": me.global_position.y, "a": 0.0})
-	check("  a follower makes the leader's faults, rocks and pits; nothing from far off",
+	arena.call("hear", {"h": "box", "x": me.global_position.x, "y": me.global_position.y})
+	check("  a follower makes the leader's boxes, rocks and pits; nothing from far off",
 		(arena.get("pits") as Array).size() == 1 and (arena.get("rocks") as Array).size() == 1 and (arena.get("faults") as Array).size() == 1)
 	Lag.set_test("arena", true, get_tree())
 	var hidden: bool = not (arena.get_node("ground") as CanvasItem).visible
@@ -1768,7 +1781,7 @@ func _test_the_earth_arena() -> void:
 	check("  the GM panel's Arena lag test hides its cracks and pits", hidden and (arena.get_node("ground") as CanvasItem).visible)
 
 	# GONE WITH ITS BOSS.
-	var last: Array = ((arena.get("faults") as Array)[0] as Array)[3]
+	var last: Array = ((arena.get("faults") as Array)[0] as Array)[2]
 	boss.set("_dying", true)
 	arena.call("_process", 0.05)
 	arena.call("_process", Arena.END_SECONDS + 0.1)
@@ -2238,3 +2251,351 @@ func _test_bosses_share_the_arena() -> void:
 	follower.queue_free()
 	await get_tree().process_frame
 	print("  (when bosses fight together: done)")
+
+
+func _test_the_elements_mix() -> void:
+	section("THE ELEMENTS MIX - ONE PHASE THREE, THAW, STEAM, POCKET, SHATTER (0.144.0)")
+	# The owner: "the main thing we need is elements to mix also", "there is
+	# a lot going on with 3 bosses", and "lets build them all".
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const Ice := preload("res://src/enemies/icearena.gd")
+	const Earth := preload("res://src/enemies/eartharena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+
+	var origin := Vector2(-44000, -44000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 40)
+	var fx: Node = FX.attach(me)
+	var bosses: Array = []
+	for pair in [["fireboss", Vector2(175, -172)], ["iceboss", Vector2(-175, -172)], ["earthboss", Vector2(0, -190)]]:
+		var b: Node2D = (load("res://scene/enemy/%s.tscn" % pair[0]) as PackedScene).instantiate()
+		b.position = origin + (pair[1] as Vector2)
+		world.add_child(b)
+		bosses.append(b)
+	await get_tree().process_frame
+	Light.everywhere = true
+	var arenas: Array = []
+	for b in bosses:
+		(b as Node).process_mode = Node.PROCESS_MODE_DISABLED
+		b.call("_keep_arena", 1.0)
+		arenas.append(b.call("arena"))
+	Light.everywhere = false
+	if arenas.has(null):
+		check("three loose bosses make three arenas", false, arenas)
+		world.queue_free()
+		return
+	for a in arenas:
+		(a as Node).set_process(false)
+	var fire: Node2D = arenas[0]
+	var ice: Node2D = arenas[1]
+	var earth: Node2D = arenas[2]
+	(Light._said as Array).clear()
+
+	# ONE BOSS IN PHASE THREE.
+	for b in bosses:
+		b.set("hp", int(float(b.get("max_hp")) * 0.2))
+	var phases: Array = []
+	for a in arenas:
+		phases.append(Light.arena_phase(a))
+	check("all three bosses in phase three: only the first arena plays it, the others hold at phase two",
+		phases == [2, 1, 1], phases)
+	bosses[0].set("_dying", true)
+	fire.call("_process", 0.01)
+	var next: Array = [Light.arena_phase(ice), Light.arena_phase(earth)]
+	check("  it falls, and the next takes phase three", next == [2, 1], next)
+	bosses[0].set("_dying", false)
+	bosses[0].set("gated", true)
+	bosses[1].set("gated", true)
+	var alone: int = Light.arena_phase(earth)
+	bosses[0].set("gated", false)
+	bosses[1].set("gated", false)
+	check("  alone, a boss plays its own phase three as ever", alone == 2, alone)
+
+	# THAW: frost by a burning pool melts into a puddle that soaks.
+	var pool_at: Vector2 = origin + Vector2(-120, 60)
+	(fire.get("pools") as Array).append([pool_at, 0.0])
+	fire.set("_ending", -1.0)
+	ice.call("add_frost", pool_at + Vector2(10, 0), 40.0)
+	ice.call("_age", Ice.FROST_FORM)
+	var patch: Array = (ice.get("frost") as Array)[0]
+	check("THAW: frost by a burning pool melts into a puddle, and says so", bool(patch[3])
+		and (Light._said as Array).size() == 1, [patch, (Light._said as Array).size()])
+	me.global_position += (pool_at + Vector2(10, 0)) - _arena_point(me)
+	fx.call("clear_all")
+	ice.set("_chill_left", 0.0)
+	ice.call("_on_you", 0.01)
+	var started: Array = fx.get("started")
+	check("  in it you are soaked, not skidding or chilled", started.has(FX.SOAKED) and not started.has(FX.CHILL)
+		and not bool(ice.call("on_frost", _arena_point(me))), started)
+
+	# STEAM: hail on a pool bursts into a cloud and hurts nobody.
+	me.taken.clear()
+	me.remove_meta(&"arena_hit")
+	ice.call("_land", _arena_point(me))
+	Hits.take()
+	check("STEAM: hail landing on a pool is a cloud of steam, not a hit", me.taken.is_empty()
+		and (ice.get("steam") as Array).size() == 1 and bool(ice.call("in_steam", _arena_point(me))), me.taken)
+	ice.call("_land", _arena_point(me) + Vector2(10, 0))
+	check("  more hail there swells the same cloud", (ice.get("steam") as Array).size() == 1)
+	ice.call("_age", Ice.STEAM_LIFE)
+	check("  and it clears", (ice.get("steam") as Array).is_empty())
+
+	# POCKET: a box risen in the lava holds it back.
+	fire.set("lava", 1.0)
+	var room: Rect2 = fire.get("_room")
+	var in_the_lava: Vector2 = room.position + Vector2(70, room.size.y * 0.5)
+	var covered: bool = bool(fire.call("lava_covers", in_the_lava)) and bool(fire.call("in_lava", in_the_lava))
+	var said: int = (Light._said as Array).size()
+	earth.call("add_box", in_the_lava)
+	earth.call("_age", Earth.FAULT_WARN)
+	var pocket: Vector2 = ((earth.get("faults") as Array)[0] as Array)[0]
+	check("POCKET: a spike box risen in the lava holds it back - inside it is dry - and says so",
+		covered and bool(fire.call("lava_covers", pocket)) and not bool(fire.call("in_lava", pocket))
+		and not bool(fire.call("takes_floor", pocket)) and (Light._said as Array).size() == said + 1
+		and (fire.call("pockets") as Array).size() == 1, [covered, (Light._said as Array).size() - said])
+	earth.call("_age", Earth.FAULT_LIFE)
+	check("  and when the box sinks the lava comes back", bool(fire.call("in_lava", pocket)))
+
+	# SHATTER: a rock on an ice wall breaks it.
+	var wall_at: Vector2 = origin + Vector2(150, 80)
+	ice.call("add_wall", wall_at, 0.0, 1)
+	ice.call("_age", Ice.WALL_WARN + 0.01)
+	var wall: Node = (ice.get("walls") as Array)[0]
+	var stood: bool = bool(wall.call("stands"))
+	said = (Light._said as Array).size()
+	earth.call("_land", wall_at + Vector2(0, 6))
+	check("SHATTER: the Earth boss's rock on an ice wall breaks it, a door early, and says so",
+		stood and bool(wall.get("broken")) and (Light._said as Array).size() == said + 1, [stood, wall.get("broken")])
+
+	# ONE MIX IN ONE PLACE.
+	said = (Light._said as Array).size()
+	var again: bool = Light.react(ice, wall_at + Vector2(20, 0), "Steam", Element.Type.WATER)
+	check("one mix said in one place at a time: another word right there waits", not again
+		and (Light._said as Array).size() == said)
+	check("  and the readout marks a mix (+)", PerfOverlay.MARK_LETTERS.get(&"elements mix") == "+")
+	(Light._said as Array).clear()
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the elements mix: done)")
+
+
+func _test_the_tide_and_the_wind() -> void:
+	section("A TIDE YOU FEEL, AND WIND MEETS WATER - CREST, CURRENT, UPWIND, RAIN, SPRAY (0.144.0)")
+	# The owner: "when water floods the land feels like nothing happens", and
+	# of the mixes, "lets build them all".
+	const Light := preload("res://src/enemies/lightarena.gd")
+	const Water := preload("res://src/enemies/waterarena.gd")
+	const Wind := preload("res://src/enemies/windarena.gd")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const Hits := preload("res://src/shared/hitsource.gd")
+
+	var origin := Vector2(-48000, -48000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var me := ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin + Vector2(0, 40)
+	var fx: Node = FX.attach(me)
+	var water_boss: Node2D = (load("res://scene/enemy/waterboss.tscn") as PackedScene).instantiate()
+	water_boss.position = origin + Vector2(-175, -172)
+	world.add_child(water_boss)
+	await get_tree().process_frame
+	water_boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	water_boss.call("_keep_arena", 1.0)
+	var water: Node2D = water_boss.call("arena")
+	if water == null:
+		check("the Water boss makes its arena", false)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	water.set_process(false)
+	(Light._said as Array).clear()
+
+	# THE CREST: alone, a tide from the left; standing where its front passes.
+	var room: Rect2 = water.get("_room")
+	water.call("start_tide", 0, 2, 1.0)
+	water.call("_process", Water.TIDE_WARN + Water.TIDE_IN * 0.5)
+	var front: float = (water.call("flood") as Rect2).end.x
+	me.global_position += Vector2(front - 6.0, room.get_center().y) - _arena_point(me)
+	me.taken.clear()
+	fx.call("clear_all")
+	me.remove_meta(&"arena_hit")
+	water.set("_soak_left", 0.0)
+	water.call("_wet", 0.01)
+	Hits.take()
+	var started: Array = fx.get("started")
+	check("THE CREST: caught by the water's front coming in, you are hit, soaked and thrown inland",
+		me.taken == [[roundi(1000.0 * Water.CREST_SHARE), Element.Type.WATER]] and started.has(FX.SOAKED)
+		and float(fx.get("shove_left")) > 0.0, [me.taken, started])
+	me.taken.clear()
+	me.remove_meta(&"arena_hit")
+	water.call("_wet", 0.01)
+	Hits.take()
+	check("  once a tide", me.taken.is_empty(), me.taken)
+	water.call("_process", Water.TIDE_IN)
+	fx.call("clear_all")
+	water.call("_wet", 0.01)
+	var along: Vector2 = fx.get("drift_velocity")
+	check("THE CURRENT: in the water alone you are carried along it", float(fx.get("drift_left")) > 0.0
+		and absf(along.length() - Water.CURRENT) < 0.5 and absf(along.x) < 0.5, along)
+	check("  and wading is slower (x%.2f)" % FX.WADE_SCALE, FX.WADE_SCALE == 0.55 and float(fx.get("wade_left")) > 0.0)
+
+	# WIND MEETS WATER.
+	var wind_boss: Node2D = (load("res://scene/enemy/windboss.tscn") as PackedScene).instantiate()
+	wind_boss.position = origin + Vector2(175, -172)
+	world.add_child(wind_boss)
+	await get_tree().process_frame
+	wind_boss.process_mode = Node.PROCESS_MODE_DISABLED
+	wind_boss.call("_keep_arena", 1.0)
+	var wind: Node2D = wind_boss.call("arena")
+	if wind == null:
+		check("the Wind boss makes its arena beside it", false)
+		Light.everywhere = false
+		world.queue_free()
+		return
+	wind.set_process(false)
+	# UPWIND: the wind blows to the left, so the tide comes from the right.
+	wind.set("angle_to", PI)
+	wind.set("angle", PI)
+	water.call("_process", 30.0)
+	water.set("_next_tide", 0.0)
+	water.set("_look_left", 0.0)
+	water.call("_lead", 0.01)
+	check("UPWIND: with the Wind boss here, the tide comes from where the wind blows from, and further",
+		int(water.get("side")) == 1 and absf(float(water.get("tide_depth")) - minf(float(Water.TIDE_DEPTH[0]) * Water.UPWIND_DEPTH, Water.TIDE_DEEPEST)) < 0.001,
+		[water.get("side"), water.get("tide_depth")])
+	check("  (the side the wind comes from, each way)", Water.upwind_side(Vector2.RIGHT) == 0 and Water.upwind_side(Vector2.LEFT) == 1
+		and Water.upwind_side(Vector2.DOWN) == 2 and Water.upwind_side(Vector2.UP) == 3)
+	# DRAGGED: in the water the wind carries you harder, and the current stands aside.
+	water.call("_process", Water.TIDE_WARN + Water.TIDE_IN)
+	var wet: Rect2 = water.call("flood")
+	me.global_position += wet.get_center() - _arena_point(me)
+	fx.call("clear_all")
+	wind.set("phase", 0)
+	wind.call("_carry", Vector2.LEFT)
+	var dragged: Vector2 = fx.get("drift_velocity")
+	check("DRAGGED: in the water the wind carries you %.1f times as hard" % Wind.WET_DRIFT,
+		absf(dragged.length() - float(Wind.WIND_DRIFT[0]) * Wind.WET_DRIFT) < 0.5, dragged)
+	# SPRAY: a gust through the water.
+	var said: int = (Light._said as Array).size()
+	wind.call("add_gust", _arena_point(me), PI)
+	var gust: Array = (wind.get("gusts") as Array).back()
+	gust[2] = Wind.GUST_WARN
+	fx.call("clear_all")
+	me.taken.clear()
+	me.remove_meta(&"arena_hit")
+	wind.call("_blow", gust)
+	gust[3] = true
+	Hits.take()
+	check("SPRAY: a gust across the water throws spray down its lane, soaks you as it hits, and says so",
+		bool(gust[4]) and me.taken.size() == 1 and (fx.get("started") as Array).has(FX.SOAKED)
+		and (Light._said as Array).size() >= said + 1, [gust, me.taken])
+	# RAIN: the tornado over the standing water.
+	(Light._said as Array).clear()
+	wind.set("twister", wet.get_center())
+	var was_age: float = float(water.get("tide_age"))
+	water.call("_lead_rain")
+	check("RAIN: the tornado over the water lifts it - it rains, the water goes out, and it says so",
+		float(water.get("rain_left")) == Water.RAIN_SECONDS and float(water.get("tide_age")) >= Water.TIDE_WARN + Water.TIDE_IN + Water.TIDE_HOLD
+		and was_age < Water.TIDE_WARN + Water.TIDE_IN + Water.TIDE_HOLD and (Light._said as Array).size() == 1)
+	me.global_position += Vector2(room.get_center().x, room.position.y + 30.0) - _arena_point(me)
+	fx.call("clear_all")
+	water.set("_soak_left", 0.0)
+	water.call("_wet", 0.01)
+	check("  in the rain you are soaked out of the water too", (fx.get("started") as Array).has(FX.SOAKED))
+	water.set("rain_left", Water.RAIN_SECONDS - 0.5)
+	water.call("_show_rain")
+	check("  and it falls on the card over the room", (water.get_node("rain") as CanvasItem).visible)
+	water.call("hear", {"h": "rain", "x": wet.get_center().x, "y": wet.get_center().y})
+	check("  a follower rains when the leader says", float(water.get("rain_left")) == Water.RAIN_SECONDS)
+	(Light._said as Array).clear()
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the tide and the wind: done)")
+
+
+func _test_the_mirrors_shield() -> void:
+	section("THE MIRRORS SHIELD THE BOSS - BREAK THEM TO HURT IT (0.144.0)")
+	# The owner: "mirrors feel like they have no objective other then
+	# reflecting particles"; of the two ways, the shield.
+	const Light := preload("res://src/enemies/lightarena.gd")
+	var origin := Vector2(-52000, -52000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(352, 224), Vector2(704, 448))
+	var boss: Node2D = (load("res://scene/enemy/lightboss.tscn") as PackedScene).instantiate()
+	boss.position = origin + Vector2(0, -120)
+	world.add_child(boss)
+	await get_tree().process_frame
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	Light.everywhere = true
+	boss.call("_keep_arena", 1.0)
+	var arena: Node2D = boss.call("arena")
+	Light.everywhere = false
+	if arena == null:
+		check("the Light Keeper makes its arena", false)
+		world.queue_free()
+		return
+	arena.set_process(false)
+	var standing: int = int(arena.call("standing"))
+	var before: int = int(boss.get("hp"))
+	boss.call("take_damage", 100, Element.Type.FIRE)
+	var took: int = before - int(boss.get("hp"))
+	check("four mirrors standing shield the Light Keeper: a hit of 100 takes %d" % roundi(100.0 * (1.0 - Light.MIRROR_SHIELD * 4)),
+		standing == 4 and took == roundi(100.0 * (1.0 - Light.MIRROR_SHIELD * 4)), [standing, took])
+	arena.call("break_pane", 0, true)
+	arena.call("break_pane", 1, true)
+	before = int(boss.get("hp"))
+	boss.call("take_damage", 100, Element.Type.FIRE)
+	took = before - int(boss.get("hp"))
+	check("  break two and it takes %d" % roundi(100.0 * (1.0 - Light.MIRROR_SHIELD * 2)),
+		int(arena.call("standing")) == 2 and took == roundi(100.0 * (1.0 - Light.MIRROR_SHIELD * 2)), took)
+	boss.set("_net_applying_remote", true)
+	before = int(boss.get("hp"))
+	boss.call("take_damage", 100, Element.Type.FIRE)
+	took = before - int(boss.get("hp"))
+	boss.set("_net_applying_remote", false)
+	check("  a party member's hit arrives already cut by their game, and is not cut twice", took == 100, took)
+	var beams: Node2D = arena.get_node("beams")
+	check("  each standing mirror's beam is drawn to the boss, above everyone and under the orbs",
+		beams.z_index == Light.BEAM_Z and not beams.z_as_relative and Light.BEAM_Z < 20)
+	arena.call("break_pane", 2, true)
+	arena.call("break_pane", 3, true)
+	before = int(boss.get("hp"))
+	boss.call("take_damage", 100, Element.Type.FIRE)
+	check("  all broken, every hit lands whole", before - int(boss.get("hp")) == 100)
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (the mirrors shield: done)")
