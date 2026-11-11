@@ -384,6 +384,10 @@ var _phone_steps: int = 0
 var _last_input_msec: int = 0
 var _last_rest_check_msec: int = 0
 var _resting: bool = false
+# A phone left alone (IDLE_AFTER, 0.147.0): held at BACKGROUND_FPS, no veil.
+var _idle: bool = false
+# For the suite: check_rest() treats this game as a phone's for the idle hold.
+var pretend_idle_phone: bool = false
 var _rest_timer: Timer = null
 var _rest_words: Label = null
 var _rest_moved_msec: int = 0
@@ -1019,7 +1023,14 @@ const PHYSICS_TICKS := {"smooth": 80, "light": 60}
 # How many physics ticks one frame may run to catch up after a slow one -
 # Godot's default 8 for smooth. At 4, a frame slower than 4 ticks lets the
 # game's clock slip a little instead of spending the next frame catching up.
-const PHYSICS_CATCH_UP := {"smooth": 8, "light": 4}
+#
+# TWO ON LIGHT (0.147.0, was 4). The owner's phone at the 16x stress test:
+# 17 fps, physics 9.8 ms a tick run 3.2 times a frame - a slow frame owed
+# more ticks, which made the next slower, and the phone ran hot within 30
+# seconds. At 2 a frame that falls behind slips the game's clock a little
+# instead (at 30 a second a frame is 2 ticks, so a phone on time loses
+# nothing). "Darza can manage no overheating in mobile play".
+const PHYSICS_CATCH_UP := {"smooth": 8, "light": 2}
 
 # While the window is in the background. Low enough to cost almost nothing,
 # high enough that nothing time-driven stutters when you look back.
@@ -1283,6 +1294,34 @@ static func rest_due(idle_seconds: float, on: bool) -> bool:
 	return on and idle_seconds >= REST_AFTER
 
 
+# A PHONE LEFT ALONE DRAWS LESS (0.147.0). The owner: "within 30 seconds my
+# phone is hot", and of standing still for a few seconds dropping to 15 frames
+# a second until the next touch, "lets built them". On a phone, IDLE_AFTER
+# seconds with no touch and no finger down - a thumb held on the stick or on
+# Attack is playing, and makes no events while it rests - hold the game at
+# BACKGROUND_FPS, with no veil and no words; the next touch brings it back
+# (note_input()). Not while the performance readout is up, as the rest.
+const IDLE_AFTER := 8.0
+
+
+static func idle_due(idle_seconds: float, phone: bool, touching: bool) -> bool:
+	return phone and not touching and idle_seconds >= IDLE_AFTER
+
+
+static func fingers_down() -> bool:
+	"""Whether a finger is on the touch pad or the world now (TouchControls)."""
+	var pad: Object = Engine.get_main_loop().root.get_node_or_null(^"TouchControls") \
+		if Engine.get_main_loop() is SceneTree else null
+	if pad == null:
+		return false
+	return bool(pad.get("stick_held")) or bool(pad.get("attack_held")) or bool(pad.get("skill_held")) \
+		or bool(pad.get("use_held")) or int(pad.call("world_finger")) >= 0
+
+
+func is_idle() -> bool:
+	return _idle
+
+
 static func power_hint() -> String:
 	"""Under the Battery saver and Rest the screen in Options: what each does."""
 	return "Battery saver draws %d frames a second. Rest the screen dims it after %d minutes untouched." \
@@ -1301,6 +1340,8 @@ func held_reason() -> String:
 	8x crowd costing a 66 ms frame."""
 	if _resting:
 		return "resting"
+	if _idle:
+		return "idle"
 	if not _focused and bool(get_value("background_fps_limit")):
 		return "background"
 	return ""
@@ -1317,6 +1358,13 @@ func note_input() -> void:
 	_last_input_msec = Time.get_ticks_msec()
 	if _resting:
 		_set_resting(false)
+	if _idle:
+		_set_idle(false)
+
+
+func _set_idle(on: bool) -> void:
+	_idle = on
+	_apply_fps_cap()
 
 
 func _start_rest_watch() -> void:
@@ -1346,7 +1394,15 @@ func check_rest() -> void:
 	if _readout_watching():
 		_last_input_msec = now
 		return
-	if rest_due(float(now - _last_input_msec) / 1000.0, bool(get_value("screen_rest"))):
+	var idle_seconds: float = float(now - _last_input_msec) / 1000.0
+	var fingers: bool = fingers_down()
+	if fingers:
+		# A held thumb is a person here, for the rest too.
+		_last_input_msec = now
+		idle_seconds = 0.0
+	if not _idle and idle_due(idle_seconds, on_phone() or pretend_idle_phone, fingers):
+		_set_idle(true)
+	if rest_due(idle_seconds, bool(get_value("screen_rest"))):
 		_set_resting(true)
 
 
@@ -1453,12 +1509,12 @@ func _apply_fps_cap() -> void:
 	# THE ONLY PLACE max_fps IS WRITTEN - see "frame_cap" in _apply().
 	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
 		bool(get_value("background_fps_limit")), current_screen_hz(),
-		bool(get_value("battery_saver")), on_phone(), _resting)
+		bool(get_value("battery_saver")), on_phone(), _resting or _idle)
 	# Uncapped for the readout (set_uncapped()): no cap of the player's, the
 	# battery saver's or a phone's - but the background and rest holds stand.
 	if uncapped:
 		want = fps_cap_for(0, _focused, bool(get_value("background_fps_limit")), current_screen_hz(),
-			false, false, _resting)
+			false, false, _resting or _idle)
 	if Engine.max_fps != want:
 		Engine.max_fps = want
 

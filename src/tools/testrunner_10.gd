@@ -5958,8 +5958,8 @@ func _test_phones_move_the_world_lighter() -> void:
 	check("a PC keeps 80 a second and Godot's 8 ticks of catch-up: Smooth is the default",
 		SettingsScript.DEFAULTS.get("physics_rate") == "smooth"
 		and SettingsScript.PHYSICS_TICKS["smooth"] == 80 and SettingsScript.PHYSICS_CATCH_UP["smooth"] == 8)
-	check("  Light is 60 a second, a quarter less physics, and catches up at most 4 ticks",
-		SettingsScript.PHYSICS_TICKS["light"] == 60 and SettingsScript.PHYSICS_CATCH_UP["light"] == 4)
+	check("  Light is 60 a second, a quarter less physics, and catches up at most 2 ticks (0.147.0, was 4)",
+		SettingsScript.PHYSICS_TICKS["light"] == 60 and SettingsScript.PHYSICS_CATCH_UP["light"] == 2)
 	check("  a phone is put on Light once, as a step of its own, and its first launch has it",
 		SettingsScript.PHONE_STEPS.back() == {"physics_rate": "light"}
 		and SettingsScript.PHONE_DEFAULTS.get("physics_rate") == "light"
@@ -5971,8 +5971,8 @@ func _test_phones_move_the_world_lighter() -> void:
 	var light_ticks: int = Engine.physics_ticks_per_second
 	var light_catch: int = Engine.max_physics_steps_per_frame
 	Settings.set_value("physics_rate", "smooth")
-	check("choosing it changes the engine at once: Light 60 and 4, Smooth 80 and 8",
-		light_ticks == 60 and light_catch == 4 and Engine.physics_ticks_per_second == 80
+	check("choosing it changes the engine at once: Light 60 and 2, Smooth 80 and 8",
+		light_ticks == 60 and light_catch == 2 and Engine.physics_ticks_per_second == 80
 		and Engine.max_physics_steps_per_frame == 8, [light_ticks, light_catch, Engine.physics_ticks_per_second])
 	Settings.set_value("physics_rate", was)
 	var options: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()

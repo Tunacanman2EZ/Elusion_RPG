@@ -1108,6 +1108,8 @@ func _cap_short() -> String:
 	match Settings.held_reason():
 		"resting":
 			return "held at %d - the screen is resting" % Settings.BACKGROUND_FPS
+		"idle":
+			return "held at %d - the phone is left alone" % Settings.BACKGROUND_FPS
 		"background":
 			return "held at %d - in the background" % Settings.BACKGROUND_FPS
 	if Settings.uncapped:
@@ -1285,6 +1287,8 @@ func _cap_note() -> String:
 	match Settings.held_reason():
 		"resting":
 			return "   [held at %d: the screen is resting - press a key]" % Settings.BACKGROUND_FPS
+		"idle":
+			return "   [held at %d: the phone is left alone - touch it]" % Settings.BACKGROUND_FPS
 		"background":
 			return "   [held at %d: the game is in the background - click it]" % Settings.BACKGROUND_FPS
 	var r: Dictionary = Settings.pacing_report()

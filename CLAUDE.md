@@ -13914,6 +13914,36 @@ hitch, so the smoothest 30 read as every frame a hitch.
 - **Next, his phone's numbers**: the readout panel at 16x on the phone - which
   of physics, scripts, drawing and the graphics card is over 33 ms.
 
+### A phone left alone draws less; physics catches up 2 ticks (0.147.0)
+
+His phone's readout at the 16x stress test (6,845 monsters, 211 awake): 17
+fps, 55.6 ms a frame - physics 9.8 ms a tick run 3.2 times a frame (31 ms),
+scripts 7.8, drawing 9.4, the graphics card 7.9. A frame that ran late owed
+more ticks, the next ran later, and the phone was hot within 30 seconds. In
+the sandbox at a phone's settings (zz/phonebench.gd, headless): town is about
+1 ms of the game's own work a frame and 0.5 ms a physics tick, and a 1x Big
+Field fight held 30 a second with 5 of 571 monsters awake - normal play asks
+little of a phone's processor. He chose the two below, "lets built them",
+and: "darza can manage no overheating in mobil play".
+
+- **Light catches up 2 ticks a frame** (settings.gd `PHYSICS_CATCH_UP`, was
+  4; 3.2 never reached it). At 30 a second a frame is 2 ticks, so a phone on
+  time loses nothing; one behind slips the game's clock instead of spiralling.
+- **A phone left alone draws 15 a second** (`IDLE_AFTER` 8 s, `idle_due()`,
+  `_idle`, `pretend_idle_phone` for the suite): no touch and no finger down
+  (`fingers_down()` - a thumb held on the stick or Attack makes no events,
+  and is playing) holds it at `BACKGROUND_FPS`, no veil, no words; the next
+  touch (`note_input()`) brings it back. `held_reason()` "idle", and the
+  readout says "held at 15 - the phone is left alone". Not while the readout
+  is up. **A held finger now counts as a person for the screen rest too**:
+  `check_rest()` restarts the idle clock while one is down (holding Attack
+  for two minutes no longer rests the screen mid-fight).
+- `_test_a_phone_left_alone()` (testrunner_11); testrunner_10's 0.134.6
+  checks read 2. Whole suite on a clean clone: 6,755 passed, 0 failed.
+- **Why a browser runs hotter than Darza** (native): WebGL through the
+  browser, WebAssembly, one thread ([threading] is off). A native Android
+  export would be the big step, if he wants it.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

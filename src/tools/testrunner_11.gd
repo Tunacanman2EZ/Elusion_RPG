@@ -2921,3 +2921,56 @@ func _test_thirty_on_a_phone() -> void:
 		[data.get("budget"), data.get("hitch_ms")])
 	await get_tree().process_frame
 	print("  (thirty on a phone: done)")
+
+
+# =============================================================================
+# A PHONE LEFT ALONE DRAWS LESS; PHYSICS CATCHES UP 2 TICKS (0.147.0)
+# =============================================================================
+# The owner, of his phone at the 16x stress test running hot: "lets built
+# them", and "darza can manage no overheating in mobil play".
+func _test_a_phone_left_alone() -> void:
+	section("A PHONE LEFT ALONE DRAWS LESS - 8 s untouched is 15 a second; physics catches up 2 ticks on Light (0.147.0)")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	check("Light catches up at most 2 ticks a frame: a phone that falls behind slips, not spirals",
+		SettingsScript.PHYSICS_CATCH_UP["light"] == 2 and SettingsScript.PHYSICS_CATCH_UP["smooth"] == 8)
+	check("idle after IDLE_AFTER (8 s) untouched on a phone; never with a finger down, never on a computer",
+		SettingsScript.idle_due(8.0, true, false) and not SettingsScript.idle_due(7.9, true, false)
+		and not SettingsScript.idle_due(600.0, true, true) and not SettingsScript.idle_due(600.0, false, false))
+	var was_shown: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	var cap_before: int = Engine.max_fps
+	Settings.pretend_idle_phone = true
+	var now: int = Time.get_ticks_msec()
+	Settings._last_rest_check_msec = now
+	Settings._last_input_msec = now - 9000
+	Settings.check_rest()
+	var idle_cap: int = Engine.max_fps
+	var idle_reason: String = Settings.held_reason()
+	var idled: bool = Settings.is_idle()
+	var rested: bool = Settings.is_resting()
+	Settings.note_input()
+	check("  9 s untouched: held at BACKGROUND_FPS (15), and the readout says why - no veil, no rest",
+		idled and idle_cap == SettingsScript.BACKGROUND_FPS and idle_reason == "idle" and not rested,
+		[idled, idle_cap, idle_reason, rested])
+	check("  the next touch brings it back at once", not Settings.is_idle() and Engine.max_fps == cap_before
+		and Settings.held_reason() != "idle", [Settings.is_idle(), Engine.max_fps, cap_before])
+	TouchControls.stick_held = true
+	now = Time.get_ticks_msec()
+	Settings._last_rest_check_msec = now
+	Settings._last_input_msec = now - 9000
+	Settings.check_rest()
+	var held_idle: bool = Settings.is_idle()
+	var clock_reset: bool = Time.get_ticks_msec() - Settings._last_input_msec < 1000
+	TouchControls.stick_held = false
+	check("  a thumb resting on the stick is playing: no hold, and the idle clock starts again",
+		not held_idle and clock_reset, [held_idle, clock_reset])
+	Settings.pretend_idle_phone = false
+	now = Time.get_ticks_msec()
+	Settings._last_rest_check_msec = now
+	Settings._last_input_msec = now - 9000
+	Settings.check_rest()
+	check("  and a computer left alone 9 s is not held", not Settings.is_idle())
+	Settings.note_input()
+	PerfOverlay.set_shown(was_shown)
+	await get_tree().process_frame
+	print("  (a phone left alone: done)")
