@@ -53,6 +53,33 @@ const TARGET_FRAME_MS := 1000.0 / 60.0
 # lands a hair either side of 16.67 ms, and counting those counts nothing.
 const HITCH_MS := TARGET_FRAME_MS * 1.5
 
+# THE BUDGET IS THE CAP IN FORCE (0.146.0). The owner, of a 16x stress test on
+# his phone: "puts everything in red we are optimizing for 30fps now". A phone
+# draws at most 30 a second (Settings.PHONE_FPS, the battery saver), so every
+# frame took 33 ms, past the 25 ms that is a hitch at 60, and the readout
+# called every frame a hitch however smooth it ran. A frame is judged against
+# the cap the game plays at (Settings.playing_cap()) when that is under 60:
+# 33.3 ms on time at 30, a hitch past 50. Uncapped or capped at 60 or more,
+# 60 as before (TARGET_FRAME_MS, HITCH_MS).
+const HITCH_TIMES := 1.5
+
+
+static func target_fps(cap: int) -> float:
+	"""The frame rate a frame is judged against, for a cap of `cap` (0 is
+	none): the cap when it is under 60, else 60."""
+	return float(cap) if cap > 0 and cap < 60 else 1000.0 / TARGET_FRAME_MS
+
+
+func budget_ms() -> float:
+	"""A frame's budget now, in ms: TARGET_FRAME_MS, or the cap's under 60."""
+	var cap: int = int(Settings.call("playing_cap")) if Settings.has_method("playing_cap") else 0
+	return 1000.0 / target_fps(cap)
+
+
+func hitch_ms() -> float:
+	"""A hitch now: a frame HITCH_TIMES its budget."""
+	return budget_ms() * HITCH_TIMES
+
 # LOADS ARE NOT HITCHES, AND A HITCH SAYS WHERE IT WAS (0.134.3). The owner's
 # screenshot after a fight: process worst 241 ms, physics worst 22.5 ms, frame
 # worst 31.25 - and no way to tell whether that was the fight or walking into
@@ -483,10 +510,10 @@ func _process(delta: float) -> void:
 		_row("frame", "%.2f ms   (worst %.2f)   budget %.2f" % [
 			1000.0 / maxf(fps, 0.001),
 			_worst_frame_ms,
-			TARGET_FRAME_MS,
+			budget_ms(),
 		]),
 		_row("hitches", "%s of %s frames over %.0f ms   (%.1f%%)" % [
-			_thousands(_hitches), _thousands(_frames), HITCH_MS,
+			_thousands(_hitches), _thousands(_frames), hitch_ms(),
 			100.0 * float(_hitches) / float(maxi(_frames, 1))]),
 		_row("loads", loads_text()),
 
@@ -676,8 +703,9 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
 	var scripts: float = float(sample.get("scripts", _process_ms()))
 	var drawing: float = float(sample.get("drawing", 0.0))
-	var hitched: bool = ms > HITCH_MS
-	if ms <= TARGET_FRAME_MS * 1.05:
+	var budget: float = budget_ms()
+	var hitched: bool = ms > budget * HITCH_TIMES
+	if ms <= budget * 1.05:
 		_on_time += 1
 	var marks: Dictionary = sample.get("marks", {})
 	var part: String = str(spike_cause({"ms": ms, "physics": physics, "scripts": scripts, "drawing": drawing})["kind"]) \
@@ -919,7 +947,7 @@ func verdicts() -> Array:
 		if on_time >= 0.95:
 			great.append("%d%% of frames on time" % floori(on_time * 100.0))
 	var inside: PackedStringArray = []
-	if float(_split.get("scripts", TARGET_FRAME_MS)) < TARGET_FRAME_MS * 0.25:
+	if float(_split.get("scripts", budget_ms())) < budget_ms() * 0.25:
 		inside.append("scripts")
 	if _physics_ms() < 0.4 * 1000.0 / float(Engine.physics_ticks_per_second):
 		inside.append("physics")
@@ -1022,11 +1050,11 @@ func panel_data(now_msec: int) -> Dictionary:
 		"fps": fps if split.is_empty() or fps > 1.5 else 1000.0 / maxf(float(split.get("ms", 1000.0)), 0.001),
 		"frame_ms": float(split.get("ms", 1000.0 / maxf(fps, 0.001))),
 		"worst_ms": _worst_frame_ms,
-		"budget": TARGET_FRAME_MS,
-		"hitch_ms": HITCH_MS,
+		"budget": budget_ms(),
+		"hitch_ms": hitch_ms(),
 		"graph": graph_frames(),
 		"hitches": "hitches   %s of %s frames over %.0f ms   (%.1f%%)" % [_thousands(_hitches), _thousands(_frames),
-			HITCH_MS, 100.0 * float(_hitches) / float(maxi(_frames, 1))],
+			hitch_ms(), 100.0 * float(_hitches) / float(maxi(_frames, 1))],
 		"loads": "loads: " + ("none since switched on"
 			if _loads == 0 else "%s, the last %.0f ms into %s" % [_thousands(_loads), _last_load_ms,
 				AreaRegistry.display_name(_last_load_area) if _last_load_area != "" else "an area"]),

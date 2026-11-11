@@ -2873,3 +2873,51 @@ func _test_attack_goes_where_the_thumb_is() -> void:
 	TouchControls.set_active(was_active)
 	await get_tree().process_frame
 	print("  (attack goes where the thumb is: done)")
+
+
+# =============================================================================
+# THIRTY ON A PHONE, AND THE READOUT JUDGES THE CAP (0.146.0)
+# =============================================================================
+# The owner, of a 16x stress test on his phone: "puts everything in red we are
+# optimizing for 30fps now", then "lets fix phone because within 30 seconds
+# my phone is hot".
+func _test_thirty_on_a_phone() -> void:
+	section("THIRTY ON A PHONE - no cap is 30 there, and the readout judges a frame against the cap in force (0.146.0)")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	const OverlayScript := preload("res://src/systems/perfoverlay.gd")
+	check("a phone with no cap of its own draws 30 a second (it was 60), saver or not",
+		SettingsScript.PHONE_FPS == 30 and SettingsScript.fps_cap_for(0, true, true, 0.0, false, true) == 30
+		and SettingsScript.fps_cap_for(0, true, true, 0.0, true, true) == 30)
+	check("  a cap the player picks is still theirs, and a computer is as it was",
+		SettingsScript.fps_cap_for(60, true, true, 0.0, false, true) == 60
+		and SettingsScript.fps_cap_for(0, true, true, 0.0, false, false) == 0)
+	check("the readout judges against the cap when it is under 60, else 60",
+		is_equal_approx(OverlayScript.target_fps(30), 30.0) and is_equal_approx(OverlayScript.target_fps(0), 60.0)
+		and is_equal_approx(OverlayScript.target_fps(60), 60.0) and is_equal_approx(OverlayScript.target_fps(144), 60.0)
+		and is_equal_approx(OverlayScript.target_fps(20), 20.0))
+	var kept: Dictionary = Settings._values.duplicate()
+	Settings._values["frame_cap"] = 0
+	Settings._values["battery_saver"] = false
+	var open_budget: float = PerfOverlay.budget_ms()
+	Settings._values["battery_saver"] = true
+	var saver_budget: float = PerfOverlay.budget_ms()
+	var saver_hitch: float = PerfOverlay.hitch_ms()
+	var frames: int = PerfOverlay._frames
+	var hitches: int = PerfOverlay._hitches
+	var on_time: int = PerfOverlay._on_time
+	PerfOverlay._note_frame(1.0 / 30.0)
+	PerfOverlay._note_frame(0.045)
+	PerfOverlay._note_frame(0.055)
+	var counted: Array = [PerfOverlay._frames - frames, PerfOverlay._hitches - hitches, PerfOverlay._on_time - on_time]
+	var data: Dictionary = PerfOverlay.panel_data(Time.get_ticks_msec())
+	Settings._values = kept
+	check("  at 30 a frame's budget is 33.3 ms and a hitch is past 50; uncapped, 16.7 as ever",
+		is_equal_approx(saver_budget, 1000.0 / 30.0) and is_equal_approx(saver_hitch, 50.0)
+		and is_equal_approx(open_budget, 1000.0 / 60.0), [open_budget, saver_budget, saver_hitch])
+	check("  a 33 ms frame at 30 is on time, not a hitch; 45 ms is late but no hitch; 55 ms is one",
+		counted == [3, 1, 1], counted)
+	check("  and the panel draws its colours and lines against that budget",
+		is_equal_approx(float(data.get("budget", 0.0)), 1000.0 / 30.0) and is_equal_approx(float(data.get("hitch_ms", 0.0)), 50.0),
+		[data.get("budget"), data.get("hitch_ms")])
+	await get_tree().process_frame
+	print("  (thirty on a phone: done)")

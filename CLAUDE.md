@@ -13889,6 +13889,31 @@ GitHub has it): 11 failures, all fixed, then 6,743 passed, 0 failed:
 a clean clone** (`git clone` the public repo, `--import`, then the suite):
 the targeted runs passed while this went red for thirteen versions.
 
+### Thirty on a phone; the readout judges the cap (0.146.0)
+
+The owner: "a 16x test on my phone puts everything in red we are optimizing
+for 30fps now", then "lets fix phone because within 30 seconds my phone is
+hot". The phone was capped at 30 (the battery saver, on there by default), and
+the readout judged every frame against 60: a 33 ms frame is past the 25 ms
+hitch, so the smoothest 30 read as every frame a hitch.
+
+- **No cap is 30 on a phone** (settings.gd `PHONE_FPS`, was 60): with the
+  saver off it drew 60 - twice the frames, twice their heat. A cap the
+  player picks in Options is still theirs.
+- **The readout's budget is the cap in force** (perfoverlay.gd
+  `target_fps()`, `budget_ms()`, `hitch_ms()`, `HITCH_TIMES`; settings.gd
+  `playing_cap()` - the cap while played, not the background or rest
+  hold): under 60 it is the cap's (33.3 ms at 30, a hitch past 50), else 60
+  as before. The frame and hitches rows, "on time", the scripts verdict and
+  the panel's colours and lines (`panel_data()` "budget", "hitch_ms") all
+  read it. The physics row keeps its own per tick.
+- `_test_thirty_on_a_phone()` (testrunner_11).
+- **A flaky check, noted**: `_test_the_descent()`'s "a fall off the Descent
+  is an ordinary death" failed once in a whole clean-clone run and passed
+  the next (and always alone); it now prints which part was wrong.
+- **Next, his phone's numbers**: the readout panel at 16x on the phone - which
+  of physics, scripts, drawing and the graphics card is over 33 ms.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

@@ -4191,7 +4191,11 @@ func _test_the_descent() -> void:
 	check("  a fall off the Descent is an ordinary death; in it, you wake at the front on 1 health and the run is over",
 		elsewhere and caught and int(body.get("hp")) == 1 and body.global_position == run.get("entry_spot")
 		and int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You fell")
-		and (run.get("monsters") as Array).is_empty() and not Boons.active)
+		and (run.get("monsters") as Array).is_empty() and not Boons.active,
+		# WHICH PART, when it fails (0.146.0): it failed once in a whole run
+		# on a clean clone and passed the next, and alone it always passes.
+		[elsewhere, caught, body.get("hp"), body.global_position, run.get("entry_spot"), run.get("state"),
+			run.get("last_result"), (run.get("monsters") as Array).size(), Boons.active])
 	room.queue_free()
 	await get_tree().process_frame
 	# THE CARD: the owner's alone; Go travels there; inside, Leave.

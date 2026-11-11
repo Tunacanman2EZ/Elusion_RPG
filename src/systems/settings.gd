@@ -1029,7 +1029,14 @@ const BACKGROUND_FPS := 15
 # phone". A phone's browser paces the game by its screen, and a 90 or 120 Hz
 # phone draws every frame twice as often as one is needed - so "no cap" is
 # PHONE_FPS there. Battery saver is SAVER_FPS anywhere.
-const PHONE_FPS := 60
+#
+# THIRTY ON A PHONE (0.146.0). The owner: "we are optimizing for 30fps now",
+# and "lets fix phone because within 30 seconds my phone is hot". A phone with
+# the saver switched off drew 60 a second; now no cap is 30 there too - half
+# the frames drawn, half the heat for them. A cap the player picks is still
+# theirs. The readout judges a frame against the cap in force
+# (PerfOverlay.target_fps()), so 30 a second on time reads as on time.
+const PHONE_FPS := 30
 const SAVER_FPS := 30
 # WHAT A PHONE STARTS WITH, once (load_settings(), PHONE_TUNED_KEY): the two
 # measured above, on a phone. Its screen packs 2-3 pixels into each one a
@@ -1454,6 +1461,17 @@ func _apply_fps_cap() -> void:
 			false, false, _resting)
 	if Engine.max_fps != want:
 		Engine.max_fps = want
+
+
+func playing_cap() -> int:
+	"""The cap while the game is played - in front, not resting - as
+	_apply_fps_cap() works it out (0 is none). The readout judges a frame
+	against it (PerfOverlay.target_fps(), 0.146.0): the background and rest
+	holds are not what a player sees."""
+	if uncapped:
+		return fps_cap_for(0, true, bool(get_value("background_fps_limit")), current_screen_hz())
+	return fps_cap_for(int(get_value("frame_cap")), true, bool(get_value("background_fps_limit")),
+		current_screen_hz(), bool(get_value("battery_saver")), on_phone(), false)
 
 
 # UNCAPPED FOR THE READOUT (0.137.0). The owner, of the readout: a switch to
