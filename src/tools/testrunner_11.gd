@@ -2858,8 +2858,12 @@ func _test_attack_goes_where_the_thumb_is() -> void:
 	TouchControls._physics_process(0.0)
 	TouchControls._physics_process(0.0)
 	TouchControls._aim_frame = -1
-	check("  lifted, it aims nowhere of its own", not bool(TouchControls.attack_aimed) and TouchControls.aim_for(body) == null,
-		TouchControls.aim_for(body))
+	# Not "null": in the whole suite an earlier section's monster may still be
+	# near, and the nearest is aimed at then - which is right.
+	var lifted_aim: Variant = TouchControls.aim_for(body)
+	check("  lifted, it aims nowhere of its own - not where the thumb was",
+		not bool(TouchControls.attack_aimed)
+		and not (lifted_aim is Vector2 and (lifted_aim as Vector2).is_equal_approx(Vector2(740, 400) * 2.0)), lifted_aim)
 	var pad: Control = PadScript.new()
 	check("the pad's Attack is wired to it", pad.attack.touched_at.is_connected(TouchControls.aim_attack_at))
 	pad.free()

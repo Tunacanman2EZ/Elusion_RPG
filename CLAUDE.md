@@ -13861,6 +13861,34 @@ thumb. The auto-aim at the nearest is left for an Attack held with no point
 of its own. The Controls card: "Tap where to strike; hold to keep on".
 `_test_attack_goes_where_the_thumb_is()` (testrunner_11).
 
+### GitHub's run green again (0.145.2)
+
+The owner: "tests.yml is failing my email is being blown up says node.js 20
+is depreciated". The Node.js 20 line was a warning in the same email; the
+failure was the suite itself (step "Run the suite", exit 1), on every push
+since 0.132.0 (#159) - nobody had run the whole suite since, only the
+targeted sections. Run on a clean clone of the public repo (no art/pack, as
+GitHub has it): 11 failures, all fixed, then 6,743 passed, 0 failed:
+- **The GM panel was 379 wide, past its 370** - eight checks on its tabs.
+  The panel takes its widest tab (`use_hidden_tabs_for_min_size`), and
+  0.139.0's fifth lag-test toggle (Arena) made the Testing tab's `laggrid`
+  323. `LAG_GAP` (3, was 6) between the toggles: 308.
+- **The rain was placed without a reset** (waterarena.gd `_make_rain()`,
+  0.144.0): `reset_physics_interpolation()` after its position, for the
+  placed-nodes scan, though its interpolation is off.
+- **Two checks that read the whole suite's leftovers as misses**: the
+  damage-number pool counted after a second take (earlier sections leave
+  spares, rightly handed out), and 0.145.1's "lifted, it aims nowhere"
+  wanted null where an earlier section's monster was still near.
+- **The Node.js 20 warning is tests.yml's** (`actions/cache@v4`,
+  `actions/upload-artifact@v4`): `actions/cache@v5` and
+  `actions/upload-artifact@v6` run on Node 24. That file is the owner's to
+  edit; the steps were given to him.
+
+**Before a ship that touches a window or a test, run the whole suite once on
+a clean clone** (`git clone` the public repo, `--import`, then the suite):
+the targeted runs passed while this went red for thirteen versions.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

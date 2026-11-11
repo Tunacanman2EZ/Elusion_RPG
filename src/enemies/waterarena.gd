@@ -226,6 +226,9 @@ func _make_rain() -> void:
 	RenderingServer.multimesh_set_physics_interpolated(multi.get_rid(), false)
 	add_child(_rain)
 	_rain.global_position = Vector2.ZERO
+	# PLACED, NOT MOVED (the placed-nodes scan): its interpolation is off, but
+	# the rule is one rule.
+	_rain.reset_physics_interpolation()
 	_rain_material.set_shader_parameter(&"room", Vector4(_room.position.x, _room.position.y, _room.end.x, _room.end.y))
 
 

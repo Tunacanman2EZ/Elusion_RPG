@@ -618,6 +618,8 @@ const SWITCH_NAMES := {
 # LAG TESTS (0.138.0): switch one thing off, watch whether the readout's
 # hitches stop - the only way to tell a graphics card drawing too much from a
 # browser stalling, where the card cannot be timed. lagtests.gd has them.
+# Between the lag tests' toggles (0.145.2, _add_lag_tests()).
+const LAG_GAP := 3
 const LAG_TESTS := [
 	["rings", "Rings", "Hides boss spikes' warning rings."],
 	["sparks", "Sparks", "Hides the sparks spikes throw."],
@@ -707,10 +709,15 @@ func _add_lag_tests(testing: Node, at: int) -> void:
 	"""LAG TESTS and its toggles (five since 0.139.0, the boss arena's), all
 	on one row: the window holds its tallest tab, and this tab had three
 	pixels to spare (two hints above went to one line each to make the
-	row's room)."""
+	row's room).
+
+	THREE PIXELS APART (0.145.2): the fifth toggle made the row 323 wide,
+	and the panel's widest tab sizes it - 379, past the 370 it is drawn at,
+	which every GM panel tab's width check (and GitHub's run) caught. At 3
+	apart the row is 308."""
 	var row := HBoxContainer.new()
 	row.name = "laggrid"
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", LAG_GAP)
 	testing.add_child(row)
 	testing.move_child(row, at)
 	var head: Label = _section_head("LAG TESTS")

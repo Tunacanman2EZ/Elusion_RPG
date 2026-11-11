@@ -1404,10 +1404,14 @@ func _test_numbers_are_reused() -> void:
 		is_instance_valid(first) and not first.visible and not first.is_processing() and first.label.text == ""
 		and FloatingLabel.spares() == spares_before + 1)
 	var other: FloatingLabel = FloatingLabel.take(box)
+	# Counted here, not after the next take (0.145.2): in the whole suite the
+	# earlier sections leave spares behind, and the next take hands one of
+	# them out - which is right, and read as a miss.
+	var spares_after_one: int = FloatingLabel.spares()
 	other.show_number(5, FloatingLabel.Type.DAMAGE)
 	var again: FloatingLabel = FloatingLabel.take(box)
 	check("  the next one is a spare (one was kept), handed out fresh: shown, running, white, the newest child",
-		FloatingLabel.spares() == spares_before and (other == first or again == first)
+		spares_after_one == spares_before and (other == first or again == first)
 		and first.visible and first.is_processing() and first.modulate == Color.WHITE
 		and box.get_child(box.get_child_count() - 1) == again)
 	again.show_text("Chilled", FloatingLabel.Type.NOTICE)

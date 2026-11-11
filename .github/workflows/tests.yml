@@ -39,7 +39,7 @@ jobs:
 
       - name: Cache the engine
         id: engine
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/godot
           key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
@@ -65,7 +65,7 @@ jobs:
 
       - name: Keep the transcript
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: game-test-results
           path: test_results.txt
