@@ -3297,3 +3297,69 @@ func _test_the_endless_lag_tests() -> void:
 	Lag.hide_spikes = false
 	await get_tree().process_frame
 	print("  (the Endless's lag tests: done)")
+
+
+# =============================================================================
+# SPAWN (0.151.0)
+# =============================================================================
+# The owner: "i could test certain mobs like archers only or slimes or bosses
+# or elites and i can measure out better" - the stress test works only in the
+# Big Field.
+
+func _test_the_gm_spawner() -> void:
+	section("SPAWN (0.151.0): any monster round the owner, in any area, as test copies worth nothing")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	var listed: Array = Spawner.catalogue()
+	var scenes: int = 0
+	for entry in ResourceLoader.list_directory(Spawner.FOLDER):
+		if String(entry).ends_with(".tscn"):
+			scenes += 1
+	var labels: Dictionary = {}
+	for entry in listed:
+		labels[str(entry["label"])] = true
+	check("the picker lists every monster scene, each by a name of its own (%d)" % listed.size(),
+		listed.size() == scenes and scenes > 40 and labels.size() == listed.size(), [listed.size(), scenes, labels.size()])
+	check("  named for a person: an element and a kind",
+		Spawner.label_of("windbushsniper") == ["Wind archer", 2] and str(Spawner.label_of("skeletonelite")[0]) == "Skeleton elite"
+		and str(Spawner.label_of("darkslimelarge")[0]) == "Dark large slime" and str(Spawner.label_of("bossenemy")[0]) == "Dark boss"
+		and str(Spawner.label_of("fireboss")[0]) == "Fire boss")
+	var at := Vector2(9000, 9000)
+	var made: int = Spawner.spawn(get_tree(), "res://scene/enemy/lightslime.tscn", 3, at)
+	await get_tree().process_frame
+	var spawned: Array = get_tree().get_nodes_in_group(Spawner.GROUP)
+	var all_copies: bool = spawned.size() == 3
+	for monster in spawned:
+		var away: float = (monster as Node2D).global_position.distance_to(at)
+		if not monster.has_meta(&"stress_copy") or str(monster.call("get_enemy_id")) != "" \
+				or away < Spawner.NEAR - 1.0 or away > Spawner.FAR + 1.0 or float(monster.get("notice_range")) != Spawner.NOTICE:
+			all_copies = false
+	check("Spawn: that many round you, each a test copy - no kill report (no loot, no XP), after you from where it stands",
+		made == 3 and all_copies, [made, spawned.size()])
+	var over: int = Spawner.spawn(get_tree(), "res://scene/enemy/lightslime.tscn", Spawner.MOST + 50, at)
+	var cleared: int = Spawner.clear(get_tree())
+	await get_tree().process_frame
+	check("  at most %d a press; Clear takes every one away" % Spawner.MOST,
+		over == Spawner.MOST and cleared == 3 + Spawner.MOST and Spawner.alive(get_tree()) == 0, [over, cleared])
+	# ---- the panel ---------------------------------------------------------------------
+	var was_role: String = Api.role
+	var was_owner: bool = Api.is_owner
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var pick: OptionButton = gm.find_child("spawnpick", true, false) as OptionButton
+	var items: int = 0
+	if pick != null:
+		for i in pick.item_count:
+			if not pick.is_item_separator(i):
+				items += 1
+	check("the GM panel's Testing tab has SPAWN - the picker, how many, Spawn and Clear - and still fits 370 (%d)"
+		% PanelWindow.content_minimum(gm).x,
+		pick != null and items == listed.size() and gm.find_child("spawncount", true, false) is SpinBox
+		and gm.find_child("spawnbutton", true, false) is Button and gm.find_child("spawnclearbutton", true, false) is Button
+		and PanelWindow.content_minimum(gm).x <= 370.0, items)
+	gm.queue_free()
+	Api.role = was_role
+	Api.is_owner = was_owner
+	await get_tree().process_frame
+	print("  (spawn: done)")

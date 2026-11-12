@@ -14084,6 +14084,39 @@ fit), 11.5 ms a step and 19 at worst in the container.
 - `_test_five_thousand_smaller_slimes()`: the room is worked out a part at a
   time (84 of 261 after the first of three).
 
+### Spawn: any monster round the owner, in any area (0.151.0)
+
+The owner: "i need a gm tool to spawn enemies into the map or skip time",
+then, of the stress test (Big Field only): "stress test douse not work on
+minigame ... i could test certain mobs like archers only or slimes or bosses
+or elites and i can measure out better".
+
+- **GM panel > Testing, the row under the stress test** (ownerpanel.gd
+  `_add_spawner()`, `spawnrow`): a picker of every monster scene
+  (`spawnpick`, by kind then name, a separator between kinds), how many
+  (`spawncount`, 1 to `GmSpawner.MOST`, 200 a press), **Spawn** and
+  **Clear**. The ON strip says "Spawned N" while any stand.
+- **The panel is at its height limit**: its scene's 629 px must hold its
+  tallest tab and clear the menu bar on a 720 screen (testrunner_5, "its
+  default size holds its tallest tab"). So STRESS TEST's head is on its own
+  row now, and the spawn row has no head (its tooltip says what it is) -
+  626 tall, 358 wide. A new Testing row has to give room back somewhere.
+- **src/world/gmspawner.gd** (no class_name): `catalogue()` reads
+  scene/enemy/ with `ResourceLoader.list_directory()` (an exported build
+  too) and names each from its file - an element and a kind (`label_of()`:
+  "windbushsniper" is "Wind archer", "bossenemy" "Dark boss"). `spawn()`
+  puts them `NEAR` to `FAR` (120-320 px) round the owner - on the
+  navigation where the area has one, on the Endless's floor in the Endless
+  (endlessrun.gd `on_floor()`) - in ysortworld/enemies, after the owner
+  (`notice_range` and `leash_range` `NOTICE`, 900). `clear()` frees them.
+- **Test copies, worth nothing**: the stress test's mark (stresscrowd.gd
+  `META`), so `get_enemy_id()` is "" (no kill report: no XP, no bag, nothing
+  for the kill ceilings or the Endless's chest), never shared by
+  monstersync.gd, never counted by the respawner. In the group `gm_spawned`;
+  gone at Clear or with the area.
+- Skipping time (an Endless stage jump) is not built: his call, later.
+- `_test_the_gm_spawner()` (testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

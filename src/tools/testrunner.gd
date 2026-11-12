@@ -260,6 +260,7 @@ func _run_all() -> void:
 	await _test_five_thousand_smaller_slimes()
 	await _test_see_through_spikes_and_a_busy_computer()
 	await _test_the_endless_lag_tests()
+	await _test_the_gm_spawner()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

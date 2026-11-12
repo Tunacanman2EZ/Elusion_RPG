@@ -94,6 +94,7 @@ const TEXT_SIZE := 13
 const STALE_SECONDS := 10.0
 const LIVE_SECONDS := 30.0
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
+const GmSpawner := preload("res://src/world/gmspawner.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 const StatusEffectsScript := preload("res://src/characters/statuseffects.gd")
 
@@ -707,9 +708,96 @@ func _dress_testing() -> void:
 		var said: Label = stress.get_node_or_null("label") as Label
 		if said != null:
 			said.text = "Big Field monsters"
+		# ON ITS ROW, not over it (0.151.0): the panel is as tall as it may
+		# be (clear of the menu bar on a 720 screen) and SPAWN needed room.
 		var stress_head: Label = _section_head("STRESS TEST")
-		testing.add_child(stress_head)
-		testing.move_child(stress_head, stress.get_index())
+		stress.add_child(stress_head)
+		stress.move_child(stress_head, 0)
+		_add_spawner(testing, stress.get_index() + 1)
+
+
+# SPAWN (0.151.0): gmspawner.gd. The owner: "stress test douse not work on
+# minigame ... i could test certain mobs like archers only or slimes or bosses
+# or elites and i can measure out better".
+func _add_spawner(testing: Node, at: int) -> void:
+	"""The spawn row: a monster, how many, Spawn and Clear - test copies
+	round you, in any area, worth nothing."""
+	if testing.get_node_or_null("spawnrow") != null:
+		return
+	var row := HBoxContainer.new()
+	row.name = "spawnrow"
+	row.add_theme_constant_override("separation", 4)
+	testing.add_child(row)
+	testing.move_child(row, at)
+	# No head of its own (0.151.0): the panel's height is spent and the row's
+	# width goes to the monster's name; the Spawn button says what it is.
+	row.tooltip_text = "Any monster, round you, in any area (the Endless too).\nTest copies: no loot, no XP, only in your game. Clear takes them away."
+	var pick := OptionButton.new()
+	pick.name = "spawnpick"
+	pick.fit_to_longest_item = false
+	pick.clip_text = true
+	pick.custom_minimum_size = Vector2(80.0, 0.0)
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pick.add_theme_font_size_override("font_size", 11)
+	pick.tooltip_text = "Which monster: slimes, archers, mages, sprites, skeletons, bosses."
+	var kind_was: int = -1
+	for entry in GmSpawner.catalogue():
+		if kind_was != -1 and int(entry["kind"]) != kind_was:
+			pick.add_separator()
+		kind_was = int(entry["kind"])
+		pick.add_item(str(entry["label"]))
+		pick.set_item_metadata(pick.item_count - 1, str(entry["path"]))
+	row.add_child(pick)
+	var count := SpinBox.new()
+	count.name = "spawncount"
+	count.min_value = 1
+	count.max_value = GmSpawner.MOST
+	count.value = 10
+	count.tooltip_text = "How many (at most %d a press)." % GmSpawner.MOST
+	count.add_theme_font_size_override("font_size", 11)
+	# Three figures wide, so the picker has the room for a monster's name.
+	count.get_line_edit().add_theme_constant_override("minimum_character_width", 2)
+	count.get_line_edit().add_theme_font_size_override("font_size", 11)
+	row.add_child(count)
+	var go := Button.new()
+	go.name = "spawnbutton"
+	go.text = "Spawn"
+	go.tooltip_text = "Round you, on the floor. Test copies: no loot, no XP, only in your game."
+	go.add_theme_font_size_override("font_size", 11)
+	go.pressed.connect(_on_spawn_pressed)
+	row.add_child(go)
+	var clear := Button.new()
+	clear.name = "spawnclearbutton"
+	clear.text = "Clear"
+	clear.tooltip_text = "Takes away every monster spawned here."
+	clear.add_theme_font_size_override("font_size", 11)
+	clear.pressed.connect(_on_spawn_clear_pressed)
+	row.add_child(clear)
+
+
+func _on_spawn_pressed() -> void:
+	if not Api.is_owner:
+		return
+	var pick: OptionButton = find_child("spawnpick", true, false) as OptionButton
+	var count: SpinBox = find_child("spawncount", true, false) as SpinBox
+	if pick == null or count == null or pick.selected < 0 or not is_inside_tree():
+		return
+	var me: Node2D = get_tree().get_first_node_in_group("player") as Node2D
+	if me == null:
+		_set_testing_status("[GM] spawn: no character in the world.")
+		return
+	var made: int = GmSpawner.spawn(get_tree(), str(pick.get_item_metadata(pick.selected)), int(count.value),
+		me.global_position)
+	_set_testing_status("[GM] spawned %d × %s round you - test copies: no loot, no XP, only in your game."
+		% [made, pick.get_item_text(pick.selected)])
+	paint_active()
+
+
+func _on_spawn_clear_pressed() -> void:
+	if not is_inside_tree():
+		return
+	_set_testing_status("[GM] cleared %d spawned." % GmSpawner.clear(get_tree()))
+	paint_active()
 
 
 func _add_lag_tests(testing: Node, at: int) -> void:
@@ -828,6 +916,9 @@ func active_now() -> Array:
 		on.append("1% rolls")
 	for test in LagTests.names_on():
 		on.append(test.capitalize())
+	var spawned: int = GmSpawner.alive(get_tree()) if is_inside_tree() else 0
+	if spawned > 0:
+		on.append("Spawned %d" % spawned)
 	return on
 
 
