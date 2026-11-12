@@ -83,6 +83,10 @@ func _process(delta: float) -> void:
 			run.clock_text(float(run.get("elapsed")))]
 		detail.text = "%s slain  ·  %s in the arena" % [GameConstants.commas(slain),
 			GameConstants.commas(int(run.swarm.get("alive")))]
+		# A BUSY COMPUTER HOLDS THE CROWD (endlessrun.gd, 0.149.0), said only
+		# while it holds back slimes the stage would bring.
+		if bool(run.call("held_for_busy")) and int(run.swarm.get("alive")) < int(run.call("crowd_now")):
+			detail.text += "  ·  crowd held (slow frames)"
 		if shared:
 			detail.text += "  ·  " + party_text()
 	elif state == 3:

@@ -453,9 +453,11 @@ func _erupt() -> void:
 	PerfOverlay.mark(&"spikes rise")
 	anim.visible = true
 	anim.play(RISE_ANIM)
-	# Clears the ring in the same frame the spike appears.
+	# Clears the ring in the same frame the spike appears - and stands it,
+	# so it fades while it covers the player (spikefx.gd SEE-THROUGH, 0.149.0).
 	if _fx != null and is_instance_valid(_fx):
 		_fx.remove_ring(self)
+		_fx.stand(self)
 
 	# ON THE ERUPTION, not on the telegraph. The burst is the spike arriving;
 	# throwing it while the ring is still filling would announce the hit early

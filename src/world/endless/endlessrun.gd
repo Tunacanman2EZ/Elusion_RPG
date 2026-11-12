@@ -401,6 +401,69 @@ func held_for_phones() -> bool:
 	return party != null and is_instance_valid(party) and shared() and bool(party.call("any_phone"))
 
 
+# A BUSY COMPUTER HOLDS THE CROWD (0.149.0). The owner, of 4,572 slimes and a
+# boss's spikes at 47 fps: "lets do what we can to keep my game under budget
+# and still have this devastating power". Each game watches its own frames
+# (note_frame()): over its budget (PerfOverlay.budget_ms() - 16.7 ms on a
+# computer, the cap's under 60 on a phone) by BUSY_OVER for BUSY_AFTER seconds,
+# it is busy, and the crowd stops filling - slimes slain are not replaced -
+# until its frames are back within CALM_OVER of the budget for CALM_AFTER. So
+# the crowd settles where this computer draws it on time; a fast one still
+# reaches 5,000. In a party it is the whole party's when any game says it is
+# busy ("me", the fourth number, endlessparty.gd any_busy()) - every game makes
+# the same slimes. Elites and bosses are not held, as for phones. Not counted
+# while the game is held in the background or resting
+# (Settings.held_reason()): those frames are slow on purpose.
+const BUSY_OVER := 1.1
+const BUSY_AFTER := 2.0
+const CALM_OVER := 1.05
+const CALM_AFTER := 3.0
+# Each frame's share of the average it is judged by.
+const FRAME_EASE := 0.1
+# One frame counts as at most this long (s): a load or a pause is not a crowd.
+const FRAME_MOST := 0.25
+var busy: bool = false
+var _frame_ms: float = 0.0
+# By the clock, not the frame's delta: the time the player waited for the
+# frame, which a test stepping the run in pretend seconds does not wait.
+var _last_frame_usec: int = 0
+var _busy_for: float = 0.0
+var _calm_for: float = 0.0
+
+
+func note_frame(delta: float, budget_ms: float) -> void:
+	"""One frame of `delta` seconds against a budget of `budget_ms`: busy
+	after BUSY_AFTER seconds over it, not busy after CALM_AFTER within it."""
+	var ms: float = delta * 1000.0
+	_frame_ms = ms if _frame_ms <= 0.0 else lerpf(_frame_ms, ms, FRAME_EASE)
+	if _frame_ms > budget_ms * BUSY_OVER:
+		_busy_for += delta
+		_calm_for = 0.0
+		if _busy_for >= BUSY_AFTER:
+			busy = true
+	elif _frame_ms <= budget_ms * CALM_OVER:
+		_calm_for += delta
+		_busy_for = 0.0
+		if _calm_for >= CALM_AFTER:
+			busy = false
+
+
+func held_for_busy() -> bool:
+	"""Whether the crowd is held because this game, or anybody in its party,
+	is drawing slower than its budget."""
+	if busy:
+		return true
+	return party != null and is_instance_valid(party) and shared() and bool(party.call("any_busy"))
+
+
+func _frame_budget_ms() -> float:
+	return float(PerfOverlay.call("budget_ms")) if PerfOverlay.has_method("budget_ms") else 1000.0 / 60.0
+
+
+func _slow_on_purpose() -> bool:
+	return Settings.has_method("held_reason") and str(Settings.call("held_reason")) != ""
+
+
 func crowd_now() -> int:
 	"""The crowd this stage fills toward: crowd_for(), held at PHONE_CROWD
 	when this game or anybody in its party is on a phone."""
@@ -468,6 +531,11 @@ func _process(delta: float) -> void:
 				_clear_arena()
 		return
 	elapsed += delta
+	# Every game, leader or not: a follower's is told in its "me".
+	var frame_usec: int = Time.get_ticks_usec()
+	if _last_frame_usec > 0 and not _slow_on_purpose():
+		note_frame(minf(float(frame_usec - _last_frame_usec) / 1000000.0, FRAME_MOST), _frame_budget_ms())
+	_last_frame_usec = frame_usec
 	var now: int = 1 + int(elapsed / STAGE_SECONDS)
 	if now != stage:
 		_enter_stage(now)
@@ -491,7 +559,7 @@ func _process(delta: float) -> void:
 	# THE CROWD FILLS AT A RATE, not all at once - a thousand at a stage's
 	# turn would arrive as a wall.
 	var short: int = crowd_now() - int(swarm.get("alive"))
-	if short > 0:
+	if short > 0 and not held_for_busy():
 		_spawn_owed += (SPAWN_RATE + SPAWN_RATE_STEP * float(stage)) * party_crowd(players) * delta
 		var now_count: int = mini(short, int(_spawn_owed))
 		if now_count > 0:
@@ -658,6 +726,11 @@ func start() -> void:
 	elapsed = 0.0
 	stage = 0
 	_spawn_owed = 0.0
+	busy = false
+	_frame_ms = 0.0
+	_busy_for = 0.0
+	_calm_for = 0.0
+	_last_frame_usec = 0
 	_elite_left = elite_gap(1)
 	_grace_left = START_GRACE
 	players = int(party.call("members")) if party != null and shared() else 1

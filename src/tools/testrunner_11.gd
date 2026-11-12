@@ -3058,3 +3058,130 @@ func _test_five_thousand_smaller_slimes() -> void:
 	me.queue_free()
 	await get_tree().process_frame
 	print("  (5,000 smaller slimes: done)")
+
+
+# =============================================================================
+# UNDER BUDGET, AND STILL THE HORDE (0.149.0)
+# =============================================================================
+# The owner, of a boss's spikes standing round his warrior at stage 17:
+# "character is behind wall", then "lets do what we can to keep my game under
+# budget and still have this devastating power".
+
+func _test_see_through_spikes_and_a_busy_computer() -> void:
+	section("UNDER BUDGET, AND STILL THE HORDE (0.149.0): spikes in front of you see-through, a busy computer holds the crowd")
+	const SpikeFx := preload("res://src/projectiles/spikefx.gd")
+	# ---- the rule --------------------------------------------------------------------
+	var at := Vector2(1000, 1000)
+	check("a spike just below you, over your picture, covers you; one behind you, or off to the side, does not",
+		SpikeFx.covers(at + Vector2(0, 30), 1.0, at) and not SpikeFx.covers(at + Vector2(0, 10), 1.0, at)
+		and not SpikeFx.covers(at + Vector2(0, -10), 1.0, at) and not SpikeFx.covers(at + Vector2(90, 30), 1.0, at)
+		and not SpikeFx.covers(at + Vector2(0, 70), 1.0, at) and SpikeFx.covers(at + Vector2(0, 70), 2.0, at))
+	# ---- real spikes -------------------------------------------------------------------
+	var container := Node2D.new()
+	container.y_sort_enabled = true
+	add_child(container)
+	var fx: Node2D = SpikeFx.of(container)
+	var me := Node2D.new()
+	add_child(me)
+	me.global_position = at
+	fx.set("see_for", me)
+	var scene: PackedScene = load("res://scene/projectiles/icebossprojectile.tscn")
+	var spikes: Array = []
+	for offset in [Vector2(0, 30), Vector2(0, -10), Vector2(120, 30)]:
+		var spike: Node2D = scene.instantiate()
+		spike.set("telegraph_seconds", 5.0)
+		container.add_child(spike)
+		spike.global_position = at + offset
+		spike.call("telegraph_over")
+		spikes.append(spike)
+	for i in 4:
+		fx.call("_process", 0.1)
+	var alphas: Array = spikes.map(func(s): return snappedf((s.get("anim") as CanvasItem).modulate.a, 0.01))
+	check("an erupted spike in front of you fades to SEE_THROUGH; the one behind you and the one beside you stay whole",
+		int(fx.call("standing_count")) == 3 and is_equal_approx(alphas[0], SpikeFx.SEE_THROUGH)
+		and alphas[1] == 1.0 and alphas[2] == 1.0, alphas)
+	me.global_position = at + Vector2(-300, 0)
+	for i in 4:
+		fx.call("_process", 0.1)
+	check("  step out from behind it and it is whole again",
+		is_equal_approx((spikes[0].get("anim") as CanvasItem).modulate.a, 1.0))
+	var shader: String = FileAccess.get_file_as_string("res://src/shared/hearth_warm.gdshader")
+	check("  the spikes' colour shader keeps a fade (it set COLOR from the texture alone, so a fade did nothing)",
+		shader.find("float faded = COLOR.a;") != -1 and shader.find("float faded = COLOR.a;") < shader.find("texture(TEXTURE, UV)")
+		and shader.find("COLOR.a *= faded;") > shader.find("COLOR.rgb *= brightness;"))
+	for spike in spikes:
+		spike.queue_free()
+	await get_tree().process_frame
+	fx.call("_process", 0.1)
+	check("  a spike gone is dropped from the standing", int(fx.call("standing_count")) == 0)
+	container.queue_free()
+	me.queue_free()
+	# ---- a busy computer --------------------------------------------------------------
+	const RunScript := preload("res://src/world/endless/endlessrun.gd")
+	const PartyScript := preload("res://src/world/endless/endlessparty.gd")
+	var judge: Node = RunScript.new()
+	var budget: float = 1000.0 / 60.0
+	for i in 120:
+		judge.call("note_frame", 1.0 / 60.0, budget)
+	var on_time: bool = not bool(judge.get("busy"))
+	for i in 30:
+		judge.call("note_frame", 0.05, budget)
+	var busy_at_1_5s: bool = bool(judge.get("busy"))
+	for i in 30:
+		judge.call("note_frame", 0.05, budget)
+	var busy_at_3s: bool = bool(judge.get("busy"))
+	for i in 120:
+		judge.call("note_frame", 1.0 / 60.0, budget)
+	var still_at_2s: bool = bool(judge.get("busy"))
+	# The average takes about half a second to come back under, then three
+	# seconds within it.
+	for i in 120:
+		judge.call("note_frame", 1.0 / 60.0, budget)
+	check("frames on time are not busy; two seconds of 50 ms frames are, and three seconds back on time are not",
+		on_time and not busy_at_1_5s and busy_at_3s and still_at_2s and not bool(judge.get("busy")),
+		[on_time, busy_at_1_5s, busy_at_3s, still_at_2s])
+	judge.free()
+	# The fill: held while busy, filling again once not.
+	var run: Node = RunScript.new()
+	add_child(run)
+	await get_tree().process_frame
+	run.set("state", 1)
+	run.set("stage", 1)
+	run.set("elapsed", 1.0)
+	run.set("_elite_left", 999.0)
+	run.set("busy", true)
+	for i in 20:
+		run.call("_process", 0.05)
+	var held_alive: int = int(run.get("swarm").get("alive"))
+	run.set("busy", false)
+	for i in 20:
+		run.call("_process", 0.05)
+	var filled_alive: int = int(run.get("swarm").get("alive"))
+	check("  busy, the crowd is not refilled; not busy, it fills (no slime is taken away)",
+		held_alive == 0 and filled_alive > 0, [held_alive, filled_alive])
+	run.set("busy", false)
+	# A party: any game that says so holds everybody's crowd.
+	var party: Node = PartyScript.new()
+	var link := Node.new()
+	var stub := GDScript.new()
+	stub.source_code = "extends Node\nfunc runs() -> bool:\n\treturn true\nfunc sharers() -> int:\n\treturn 1\nfunc leader_for(_a) -> int:\n\treturn 1\nfunc my_id() -> int:\n\treturn 1\nfunc remotes() -> Dictionary:\n\treturn {7: true}\n"
+	stub.reload()
+	link.set_script(stub)
+	party.set("link", link)
+	run.set("party", party)
+	party.set("_members", {7: [1, 0, 0, 0]})
+	var calm_party: bool = bool(run.call("held_for_busy"))
+	party.set("_members", {7: [1, 0, 0, 1]})
+	var busy_party: bool = bool(run.call("held_for_busy"))
+	party.set("_members", {7: [1, 0, 0]})
+	var old_game: bool = bool(party.call("any_busy"))
+	check("  in a party any game that says it is busy (the fourth number of its \"me\") holds the crowd; a game from before says nothing",
+		not calm_party and busy_party and not old_game, [calm_party, busy_party, old_game])
+	run.set("party", null)
+	if is_instance_valid(run.get("swarm")):
+		(run.get("swarm") as Node).queue_free()
+	run.queue_free()
+	party.free()
+	link.free()
+	await get_tree().process_frame
+	print("  (under budget, and still the horde: done)")

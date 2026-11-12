@@ -107,6 +107,32 @@ var _shape: Array = []
 var _tint: Array = []
 var _known: Dictionary = {}
 
+# SEE-THROUGH IN FRONT OF YOU (0.149.0). The owner, of a boss's spikes
+# standing round his warrior: "character is behind wall". A spike lower on
+# the screen than the player is drawn over them (the world's y-sort), so a
+# ring of them was a wall nobody could see through. While a spike stands
+# (stand(), from its eruption) and covers this game's player, its picture
+# eases to SEE_THROUGH; clear of them, back to whole. Only its picture: the
+# hit is the spike's, as it was. Here, once a frame for every spike, so a
+# spike still has no _process of its own.
+const SEE_THROUGH := 0.35
+# Alpha a second, so a spike fades in a few frames rather than blinking.
+const FADE_RATE := 8.0
+# What a spike's picture covers from its foot, at scale 1 (boss.png's rise,
+# frames 1-2: about 40 px wide, 44 px up from where it stands).
+const SPIKE_HALF_WIDTH := 20.0
+const SPIKE_HEIGHT := 44.0
+# What a player's picture covers from where it stands (the warrior's frames:
+# its sprite sits 13 px down and 16 up, so the feet are 13 px below the
+# origin), and where the y-sort reads it - its sprite, at the feet.
+const PLAYER_BOX := Rect2(-17.0, -22.0, 32.0, 35.0)
+const PLAYER_FEET := 13.0
+# Untyped, as _ring_spikes: one freed while standing is dropped at the next look.
+var _standing: Array = []
+# Whose picture the spikes keep clear of: the suite's stand-in, or null for
+# this game's player (the "player" group).
+var see_for: Node2D = null
+
 
 static func add_to(scene: Node) -> Node2D:
 	"""The area's: in its effects container (ysortworld/groundeffects), made
@@ -458,11 +484,61 @@ func _process(delta: float) -> void:
 		i -= 1
 	_spend_bursts()
 	_flush()
+	_see_through(delta)
 	var clock: float = fposmod(now, WRAP)
 	_ring_mat.set_shader_parameter(&"now_mod", clock)
 	_spark_mat.set_shader_parameter(&"now_mod", clock)
-	if _ring_spikes.is_empty() and _spark_end.is_empty():
+	if _ring_spikes.is_empty() and _spark_end.is_empty() and _standing.is_empty():
 		set_process(false)
+
+
+func stand(spike: Node2D) -> void:
+	"""`spike` has erupted and stands until it goes: faded while it covers
+	this game's player (SEE-THROUGH IN FRONT OF YOU)."""
+	_standing.append(spike)
+	set_process(true)
+
+
+func standing_count() -> int:
+	return _standing.size()
+
+
+static func covers(spike_at: Vector2, spike_scale: float, player_at: Vector2) -> bool:
+	"""Whether a spike standing at `spike_at` is drawn over a player at
+	`player_at`: in front of them (lower on the screen, so the y-sort draws it
+	after) and over their picture."""
+	if spike_at.y <= player_at.y + PLAYER_FEET:
+		return false
+	var half: float = SPIKE_HALF_WIDTH * spike_scale
+	var tall: float = SPIKE_HEIGHT * spike_scale
+	var spike_box := Rect2(spike_at.x - half, spike_at.y - tall, half * 2.0, tall)
+	return spike_box.intersects(Rect2(player_at + PLAYER_BOX.position, PLAYER_BOX.size))
+
+
+func _see_through(delta: float) -> void:
+	if _standing.is_empty():
+		return
+	var me: Node2D = see_for
+	if me == null and is_inside_tree():
+		me = get_tree().get_first_node_in_group(&"player") as Node2D
+	var step: float = FADE_RATE * delta
+	var i: int = _standing.size() - 1
+	while i >= 0:
+		var spike: Variant = _standing[i]
+		if not is_instance_valid(spike) or (spike as Node).is_queued_for_deletion():
+			_standing.remove_at(i)
+			i -= 1
+			continue
+		var sprite: CanvasItem = (spike as Node).get(&"anim") as CanvasItem
+		if sprite != null:
+			var at: Vector2 = (spike as Node2D).global_position
+			var want: float = SEE_THROUGH if me != null \
+				and covers(at, absf((spike as Node2D).global_scale.y), me.global_position) else 1.0
+			var colour: Color = sprite.modulate
+			if colour.a != want:
+				colour.a = move_toward(colour.a, want, step)
+				sprite.modulate = colour
+		i -= 1
 
 
 func _place(slot: int, t: Transform2D) -> void:

@@ -50,6 +50,12 @@ uniform float brightness : hint_range(0.0, 1.0) = 1.0;
 
 
 void fragment() {
+	// FADING IS KEPT (0.149.0): COLOR comes in as the node's modulate, and
+	// the lines below set it from the texture alone, so a fade on the node
+	// (a boss spike made see-through in front of the player, spikefx.gd) did
+	// nothing. Only its alpha is kept - the colour of modulate is still
+	// ignored, as the firepit's notes on this shader say it must be.
+	float faded = COLOR.a;
 	vec4 src = texture(TEXTURE, UV);
 
 	if (src.a < 0.004) {
@@ -68,4 +74,5 @@ void fragment() {
 		}
 	}
 	COLOR.rgb *= brightness;
+	COLOR.a *= faded;
 }

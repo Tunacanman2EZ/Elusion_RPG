@@ -13989,6 +13989,49 @@ is the Docs page "The Endless: 4 players vs 5,000 slimes".
   left: the wire is not the cost.
 - `_test_five_thousand_smaller_slimes()` (testrunner_11).
 
+### Under budget, and still the horde: see-through spikes, a busy computer holds the crowd (0.149.0)
+
+The owner, playing 0.148.0: "character is behind wall" - a boss's spikes
+standing round his warrior at stage 17 (4,572 slimes, 47 fps, drawing 13.2
+ms and scripts 8.3 ms a frame) - then "lets do what we can to keep my game
+under budget and still have this devastating power". Outside boss fights 5,000
+held 86-100 fps on his PC.
+
+- **Spikes in front of you are see-through** (spikefx.gd, SEE-THROUGH IN
+  FRONT OF YOU). A spike lower on the screen than the player's feet is drawn
+  over them, so a carpet of them was a wall. A spike that erupts is stood
+  (`stand()`, from bossprojectile.gd `_erupt()`), and the container, once a
+  frame for all of them, eases one that covers this game's player
+  (`covers()`: in front of `PLAYER_FEET`, its 40 x 44 px picture over
+  `PLAYER_BOX`) to `SEE_THROUGH` (0.35) at `FADE_RATE`, and back to whole
+  when clear. Only the picture; the hit is unchanged. A spike still has no
+  `_process`. `see_for` is the suite's player.
+- **hearth_warm.gdshader keeps a fade.** It set COLOR from the texture alone,
+  so the spikes' modulate did nothing - the first try faded on paper and not
+  on screen. It multiplies the incoming alpha now; the colour of modulate is
+  still ignored (the firepit's reason for the shader). The firepit and the
+  cooking screen's fire share it; neither fades on purpose.
+- **A busy computer holds the crowd** (endlessrun.gd, A BUSY COMPUTER HOLDS
+  THE CROWD). Each game times its own frames by the clock (`note_frame()` -
+  not the frame's delta, which a test steps in pretend seconds), eased by
+  `FRAME_EASE`, each at most `FRAME_MOST`. Over `PerfOverlay.budget_ms()`
+  (16.7 ms on a computer, the cap's under 60 on a phone) by `BUSY_OVER`
+  (1.1) for `BUSY_AFTER` (2 s) it is `busy`; within `CALM_OVER` (1.05) for
+  `CALM_AFTER` (3 s), not. While `held_for_busy()` the crowd is not refilled:
+  slimes slain are not replaced, none is taken away, and it fills again when
+  the frames are back. So it settles where the computer draws on time; a fast
+  one still reaches 5,000. In a party, the fourth number of "me" (any_busy(),
+  endlessparty.gd) holds everybody's, as the phone's third does; a game from
+  before says three. Not counted while `Settings.held_reason()` is set (the
+  background, rest, idle). Elites and bosses are not held. The HUD adds
+  "crowd held (slow frames)" while it holds back slimes the stage would bring.
+- **Not done, measured:** making 51 spikes is about 2 ms in the container
+  (zz/spikebench), so a reserve of spikes would save little; the 20 ms frames
+  he saw when they appear are drawing. Most of his ~21 ms "nothing marked"
+  hitches looked like V-Sync doubling a frame that ran a little over 10 ms at
+  ~100 Hz - Options > V-Sync > Adaptive is the test, his to run.
+- `_test_see_through_spikes_and_a_busy_computer()` (testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:
