@@ -811,7 +811,15 @@ func _go() -> void:
 		run.set_process(true)
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"healer run screen", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
 	flash.color.a = maxf(0.0, flash.color.a - delta / HIT_FLASH * 0.35)
 	_lay_stick()

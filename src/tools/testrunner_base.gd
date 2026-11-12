@@ -111,6 +111,10 @@ func _play_in_a_world_of_its_own() -> void:
 	# The Healer's Run's tuning (the owner's sliders) - set through the script,
 	# which has no class_name.
 	(load("res://src/world/healerrun/healerrun.gd") as GDScript).set("tune_path", "user://_suite_healerrun_tuning.cfg")
+	# A WAVE IN PARTS (0.152.0) is for a game's frames. The suite steps a
+	# minigame by hand, many frames' work in one, so every wave comes whole
+	# here; _test_a_wave_in_parts() switches it back on to hold it.
+	(load("res://src/systems/spawnbudget.gd") as GDScript).set("unlimited", true)
 	# The game copy's login files: a remembered session, the devices it was
 	# told of, and its install id - which every login on the owner's PC is
 	# bound to, so a run that lost it would end them all.

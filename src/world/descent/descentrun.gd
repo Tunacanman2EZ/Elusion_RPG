@@ -142,6 +142,8 @@ const STORY := [
 	"Enemies and elites flooded in, more than anyone could hold - and the warrior did not have unlimited stamina or magic.",
 ]
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
+const SceneWarmer := preload("res://src/systems/scenewarmer.gd")
+const SpawnBudget := preload("res://src/systems/spawnbudget.gd")
 
 enum State { WAITING, FIGHT, PICK, CLEAR, TRAVEL, COUNTDOWN }
 
@@ -445,6 +447,8 @@ var _offer_at_least: String = ""
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
 	add_to_group(&"descent_run")
 	_rng.randomize()
 	hud = (load("res://src/world/descent/descenthud.gd") as GDScript).new()
@@ -461,6 +465,29 @@ func _ready() -> void:
 	party.name = "descentparty"
 	party.set("run", self)
 	add_child(party)
+	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): every floor's
+	# monsters, elites and keeper, loaded between fights.
+	var warmer: Node = SceneWarmer.add_to(self)
+	warmer.set("calm", _calm_for_loading)
+	warmer.call("warm", scenes_to_warm())
+
+
+static func scenes_to_warm() -> Array:
+	"""Every scene the Descent brings, floor by floor: its monsters, its
+	elites, then its keeper (an Impossible room's other keeper among them)."""
+	var out: Array = []
+	for info in FLOORS:
+		for enemy_id in (info["monsters"] as Array) + (info["elites"] as Array) + [info["keeper"]]:
+			var path: String = "res://scene/enemy/%s.tscn" % str(enemy_id)
+			if not out.has(path):
+				out.append(path)
+	return out
+
+
+func _calm_for_loading() -> bool:
+	"""Anything but a fight: a load that holds a frame (the browser's)
+	stalls nobody."""
+	return state != State.FIGHT
 
 
 func tells_story() -> bool:
@@ -790,7 +817,15 @@ func _room_line() -> String:
 	return "An upgrade when it is clear"
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"descent", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	_hold_camera()
 	match state:
 		State.TRAVEL:
@@ -1316,10 +1351,14 @@ func _step_waves(delta: float) -> void:
 		var still: Array = []
 		for entry in _coming:
 			entry[4] = float(entry[4]) - delta
-			if float(entry[4]) <= 0.0:
+			# A WAVE IN PARTS (0.152.0, spawnbudget.gd): a few a frame; one
+			# whose time is up and must wait keeps its mark till the next.
+			if float(entry[4]) <= 0.0 and SpawnBudget.may_bring():
+				var from: int = Time.get_ticks_usec()
 				var monster: Node2D = _bring(str(entry[0]), entry[1], float(entry[2]))
 				if monster != null and bool(entry[3]):
 					_dress_elite(monster)
+				SpawnBudget.spent(Time.get_ticks_usec() - from)
 			else:
 				still.append(entry)
 		_coming = still
@@ -1821,3 +1860,8 @@ func _end_run(won: bool) -> void:
 	if hud != null:
 		hud.call("hide_pick")
 		hud.call("show_result", words, won)
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "The Descent - floor %d, room %d (%s)" % [floor_index + 1, room, room_kind]

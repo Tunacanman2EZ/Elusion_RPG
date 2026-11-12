@@ -20,14 +20,22 @@ extends Node
 # to the screen's refresh) against the budget, green under AMBER_AT of it,
 # amber to it, red past it. The readout is switched on here: it is what counts
 # the work.
+#
+# FIND THE LIMIT, under it (0.152.0, limitsweep.gd): one monster, more and more of it,
+# until the work reaches 80% of the budget - what one costs and how many fit,
+# kept and copied for the spreadsheet. While it sweeps it has the horde and
+# Clear all (hold_controls()), and the panel repaints every SWEEP_REPAINT.
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
+const LimitSweep := preload("res://src/world/endless/limitsweep.gd")
 const HORDES := [0, 1000, 3000, 5000]
 # Slimes made a frame while the horde fills (the swarm's own fill is a rate).
 const FILL_A_FRAME := 250
 # The slimes' strength: a mid run's (endlessrun.gd stage 10).
 const SLIME_STAGE := 10
 const REPAINT_EVERY := 0.25
+# Slower while a sweep measures: counting hundreds of monsters is work too.
+const SWEEP_REPAINT := 1.0
 const COUNT_FRAMES := 60
 const AMBER_AT := 0.8
 const COLOUR := Color(1.0, 0.86, 0.5)
@@ -43,12 +51,20 @@ var _layer: CanvasLayer = null
 var _work_label: Label = null
 var _count_label: Label = null
 var _horde_buttons: Array = []
+var _clear_button: Button = null
 var _repaint_left: float = 0.0
+var sweep: Node = null
+# A spawned monster's name a person reads, by its scene (label_of() once each).
+var _label_by_path: Dictionary = {}
 
 
 func _ready() -> void:
 	PerfOverlay.set_shown(true)
 	_set_slimes()
+	sweep = LimitSweep.new()
+	sweep.name = "limitsweep"
+	sweep.set("ground", self)
+	add_child(sweep)
 	_build()
 	paint()
 
@@ -145,6 +161,16 @@ func _build() -> void:
 	clear.add_theme_font_size_override("font_size", 12)
 	clear.pressed.connect(clear_all)
 	controls.add_child(clear)
+	_clear_button = clear
+	sweep.call("build", rows, WIDTH)
+
+
+func hold_controls(held: bool) -> void:
+	"""The horde's buttons and Clear all are the sweep's while it runs."""
+	for button in _horde_buttons:
+		(button as Button).disabled = held
+	if _clear_button != null:
+		_clear_button.disabled = held
 
 
 func set_horde(size: int) -> void:
@@ -176,7 +202,7 @@ func _process(delta: float) -> void:
 				me.global_position if me != null else Vector2(run.get("arena_rect").get_center()))
 	_repaint_left -= delta
 	if _repaint_left <= 0.0:
-		_repaint_left = REPAINT_EVERY
+		_repaint_left = SWEEP_REPAINT if sweep != null and bool(sweep.call("running")) else REPAINT_EVERY
 		paint()
 
 
@@ -191,7 +217,10 @@ func counts() -> Dictionary:
 		for monster in get_tree().get_nodes_in_group(GmSpawner.GROUP):
 			if monster.is_queued_for_deletion():
 				continue
-			var named: String = str(GmSpawner.label_of(str(monster.scene_file_path).get_file().get_basename())[0])
+			var path: String = str(monster.scene_file_path)
+			if not _label_by_path.has(path):
+				_label_by_path[path] = str(GmSpawner.label_of(path.get_file().get_basename())[0])
+			var named: String = str(_label_by_path[path])
 			out[named] = int(out.get(named, 0)) + 1
 	return out
 

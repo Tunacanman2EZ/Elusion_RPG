@@ -433,7 +433,15 @@ func _slot() -> int:
 	return int(CharacterData.active_character_index)
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"cloth screen", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
 	_banner_left = maxf(0.0, _banner_left - delta)
 	_flash_left = maxf(0.0, _flash_left - delta)

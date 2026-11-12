@@ -575,7 +575,15 @@ func _mouse_held() -> bool:
 	return Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"stand screen", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
 	var touch: bool = TouchControls.active
 	if not touch:

@@ -103,6 +103,8 @@ var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
 	_rng.randomize()
 	_make_wash()
 	_make_lights()
@@ -130,7 +132,15 @@ func _ready() -> void:
 # EACH FRAME
 # =============================================================================
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"the Crowned", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	var found: Node2D = find_boss()
 	if found != boss:
 		boss = found
@@ -523,3 +533,8 @@ func _ease(delta: float) -> void:
 	if _banner != null and _banner_left > 0.0:
 		_banner_left -= delta
 		_banner.modulate.a = clampf(minf(_banner_left / 0.5, (BANNER_SECONDS - _banner_left) / 0.3), 0.0, 1.0)
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "The Crowned - crown %d" % (crown + 1) if crown >= 0 else "The Crowned - before the crowns"

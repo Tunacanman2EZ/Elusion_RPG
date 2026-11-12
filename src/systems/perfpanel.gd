@@ -37,6 +37,9 @@ const LAG_SHOWN := 3
 const COPY_RECT := Rect2(WIDTH - PAD - 56.0, 6.0, 56.0, 17.0)
 const TITLE_LINE := 12.0
 const UNCAP_RECT := Rect2(WIDTH - PAD - 56.0 - 6.0 - 66.0, 6.0, 66.0, 17.0)
+# MEASURE HERE (0.152.0, placemeasure.gd): left of Uncap, or in its place in a
+# browser, where Uncap is not offered.
+const MEASURE_RECT := Rect2(UNCAP_RECT.position.x - 6.0 - 70.0, 6.0, 70.0, 17.0)
 
 const BACK := Color(0.05, 0.045, 0.07, 0.86)
 const EDGE := Color(0.62, 0.50, 0.28)
@@ -68,10 +71,14 @@ var copy_to: Callable = DisplayServer.clipboard_set
 var is_uncapped: Callable = func() -> bool: return Settings.uncapped
 var set_uncapped: Callable = Settings.set_uncapped
 var text_source: Callable = Callable()
+# The Measure button: what it starts and what it says (placemeasure.gd).
+var measure_start: Callable = Callable()
+var measure_word: Callable = Callable()
 
 var _data: Dictionary = {}
 var _copy: Control = null
 var _uncap: Control = null
+var _measure: Control = null
 var _copy_word: String = "Copy"
 var _copied_left: float = 0.0
 
@@ -116,6 +123,17 @@ func _ready() -> void:
 	_uncap.mouse_exited.connect(queue_redraw)
 	_uncap.visible = not OS.has_feature("web")
 	add_child(_uncap)
+	_measure = Control.new()
+	_measure.name = "measure"
+	_measure.mouse_filter = Control.MOUSE_FILTER_STOP
+	_measure.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_measure.tooltip_text = "Measure the game's own work here: 3 seconds to settle, then 120 frames.\nKept with where you are; the Testing Ground's Copy results has them all."
+	_measure.position = UNCAP_RECT.position if OS.has_feature("web") else MEASURE_RECT.position
+	_measure.size = MEASURE_RECT.size
+	_measure.gui_input.connect(_on_measure_input)
+	_measure.mouse_entered.connect(queue_redraw)
+	_measure.mouse_exited.connect(queue_redraw)
+	add_child(_measure)
 	set_process(false)
 
 
@@ -133,6 +151,19 @@ func copy_text() -> void:
 func toggle_uncapped() -> void:
 	set_uncapped.call(not bool(is_uncapped.call()))
 	queue_redraw()
+
+
+func press_measure() -> void:
+	if measure_start.is_valid():
+		measure_start.call()
+	queue_redraw()
+
+
+func _on_measure_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		press_measure()
+		_measure.accept_event()
 
 
 func _on_uncap_input(event: InputEvent) -> void:
@@ -182,6 +213,15 @@ func _draw() -> void:
 	var lit: bool = _copy != null and Rect2(Vector2.ZERO, COPY_RECT.size).has_point(_copy.get_local_mouse_position())
 	draw_rect(COPY_RECT, Color(EDGE, 0.45 if lit else 0.22))
 	draw_rect(COPY_RECT, EDGE, false, 1.0)
+	if _measure != null and measure_word.is_valid():
+		var spot := Rect2(_measure.position, MEASURE_RECT.size)
+		var said: String = str(measure_word.call())
+		var busy: bool = said != "Measure"
+		var hovered: bool = Rect2(Vector2.ZERO, MEASURE_RECT.size).has_point(_measure.get_local_mouse_position())
+		draw_rect(spot, Color(GOOD, 0.30) if busy else Color(EDGE, 0.45 if hovered else 0.22))
+		draw_rect(spot, GOOD if busy else EDGE, false, 1.0)
+		_text(font, spot.position + Vector2(0, 13), said, 11, GOOD if busy else TEXT,
+			HORIZONTAL_ALIGNMENT_CENTER, MEASURE_RECT.size.x)
 	_text(font, COPY_RECT.position + Vector2(0, 13), _copy_word, 11, TEXT, HORIZONTAL_ALIGNMENT_CENTER, COPY_RECT.size.x)
 	if _uncap != null and _uncap.visible:
 		var on: bool = bool(is_uncapped.call())

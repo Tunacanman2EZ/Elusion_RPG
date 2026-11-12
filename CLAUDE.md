@@ -14176,6 +14176,150 @@ sweep, then the spreadsheet).
   the frame, which V-Sync and a browser hold to the screen's refresh.
 - `_test_the_testing_ground()` (testrunner_11). zz/tgshot pictures it.
 
+### Find the limit: the Testing Ground sweeps a monster to the budget (0.152.0)
+
+Step 2 of the three. The owner: "i will spawn until in red ... the goal is to
+make a spread sheet with all enemies", and "lets build it" for a sweep per
+monster: settle until they fight, the median and the slow frames over 120,
+stop at 80% of the budget, ms each at 10/50/100/200 and how many fit.
+
+- **FIND THE LIMIT** under the Testing Ground's panel (limitsweep.gd, a child
+  of testingground.gd, `build()` into its rows): a picker - **Every kind**
+  (one of each kind, the horde last), **Every monster** (all 51 and the
+  horde), **Horde slimes**, then each monster - a step box (+10; a boss
+  picked +1, the horde +250; in a list bosses go +1 and the horde +250 -
+  `step_for()`), **Find the limit** (Stop while it runs), a status line, the
+  last five results, **Copy results**.
+- **A sweep** (`begin()`, `_process()`'s phases): the field cleared, you put
+  in the middle of the arena (`centre()`) in God mode (as it was after), then
+  over and over: `SETTLE_SECONDS` (3) for them to reach you, the readout's
+  work over `MEASURE_FRAMES` (120) - `PerfOverlay.work_frames()` counted each
+  frame, `work_stats()` once - a row [count, median, p95, fps, physics,
+  scripts, drawing], then +step round the middle (`GmSpawner.spawn()`; the
+  horde through `set_horde()`). The first row is the empty field: the base.
+- **It stops** (`judge()`): the median at `LIMIT_AT` (80%) of the budget
+  "limit", the slow ones (95th) past the budget "slow", `MOST` 600 (bosses
+  30, the horde 5,000) "most", nothing more on the floor "no room"; the empty
+  field already past the limit "base" (nothing to measure against).
+- **The sums** (`summarise()`): ms each the least-squares line through every
+  row (and each part's: physics, scripts, drawing), fits =
+  (80% of budget - base) / each, each at `CHECKS` (10, 50, 100, 200; the
+  horde's 250, 1,000, 2,500, 5,000) = (work - base) / count at the nearest
+  row, and `grows_with()`: each at the last row 1.5 times each at the first
+  row 0.5 ms clear of the base - a cost that grows with the crowd.
+- **Kept** in `user://limitsweep.json` (`save_path`; the suite's is
+  user://test_limitsweep.json, deleted after); **Copy** (`copy_text()`):
+  tab-separated - a line a monster (device, version, budget, base, ms each
+  and its parts, fits, stopped at, why, each at the four checks, grows,
+  when), then every sweep's rows. Step 3's spreadsheet takes that paste.
+- While it runs the horde's buttons and Clear all are held
+  (`hold_controls()`), and the panel repaints every `SWEEP_REPAINT` (1 s):
+  counting hundreds of monsters is work too (labels cached by scene).
+- Measured alone: one player. What a party adds (the others' pictures, their
+  attacks, the server) is step 3's, with bots.
+- The container cannot measure it: it draws on its CPU (llvmpipe, 36 ms with
+  nothing out, so "base"), and headless its process time is not the work.
+  The numbers are the owner's machine's.
+- `_test_find_the_limit()` (testrunner_11); one sabotage (the stop at 80%
+  off) caught. zz/sweepshot pictures it with sample results.
+
+**Measure here (the same 0.152.0)** - the owner: "you can do most of this for
+me i only need to share the real results". An area's own cost and a party's
+were readout copies to paste one by one; now the readout has **Measure**
+(perfpanel.gd `MEASURE_RECT`, left of Uncap, in Uncap's place in a browser),
+run by `src/systems/placemeasure.gd`, a child of PerfOverlay
+(`place_measure`): `SETTLE_SECONDS` (3), then `FRAMES` (120) of
+`work_stats()`, kept in `user://limitplaces.json` under `place_label()` -
+the area, in the Endless the stage, the slimes and other monsters out (the
+swarm's stand-ins, `pass_key()`, left out), a party and whether this game
+leads it - the newest `KEPT_MOST` (60), one per label. The button says Wait
+3 / Measuring / Saved. Closing the readout cancels it (`set_shown(false)`).
+The Testing Ground's **Copy results** (limitsweep.gd `copy_text()`) adds a
+Places section, so one paste carries the sweeps and every place.
+`_test_measure_here()` (testrunner_11).
+
+**A steadier slime check (the same 0.152.0).** testrunner_9's "one walking
+at a still player stops at them" failed one full run in five: the swarm's
+sway follows the clock (`_sway_msec()`), and how near the slime comes swings
+with it, 2.4 to 5.6 px at two-thirds size - under the 4 x `DRAW_SCALE` it
+asked for about a fifth of the time. It now runs on a swarm with the clock
+stopped (as testrunner_10's `_SWARM_CLOCK` does) and asks for 3 x.
+
+### The minigames measured, and their waves in parts (the same 0.152.0)
+
+The owner: "further improve my project lets work on chunking the mini games
+and measuring everything in those" (folded into 0.152.0, not yet shipped).
+Benched in the container first (zz/mgbench: a frame recorder, a driver per
+minigame, `loadcost.gd`): almost every spike was a monster's FIRST
+appearance - load() of its scene, a wind sprite 95 ms, the earth boss 304
+ms, a water slime 31 ms; making one after that is 0.3 to 0.8 ms. Then a
+whole wave in one frame, and the Forge's flood scanning its island.
+
+- **Every minigame times its own frame** (the WHO SPENT IT wrapper,
+  `_process()` -> `_timed_process()`, `PerfOverlay.spend()`): "healer run",
+  "healer run screen", "healer party", "mage's stand", "stand screen",
+  "descent", "descent screen", "descent party", "forge", "forge screen",
+  "cut the cloth" (clothrun.gd's `_physics_process()`), "cloth screen",
+  "the Crowned", "the rift" - 14, `MINIGAME_TIMERS` in testrunner_11.
+- **Measure says where in it you stand**: each run joins `minigame_run` in
+  its `_ready()` and has `measure_label()` - "The Descent - floor 3, room 2
+  (elite)", "The Healer's Run - tier 1, 4 waves done", "The Mage's Stand -
+  wave 7", "The Forge - 1:40 in", "Cut the Cloth - round 3, ice", "The
+  Crowned - crown 2" - and placemeasure.gd `place_label()` adds each.
+- **READY BEFORE THEY COME** (`src/systems/scenewarmer.gd`): each run hands
+  its warmer (`add_to(self)`, child "scenewarmer") every scene it may bring,
+  in the order it wants them (`scenes_to_warm()` in endlessrun, descentrun,
+  healerrun, magestand, clothrun; the Forge's fire sprite). On a desktop
+  build (`AreaRegistry.loads_in_background()`) they load on a worker, one at
+  a time; in the browser (no threads, a request IS a load) one a frame and
+  only when its `calm` says so - the Endless's corridor and countdown, the
+  Descent between fights, the Healer's Run at the start and between tiers,
+  the Stand between waves, the Cloth before and between rounds, the Forge
+  before it is lit. Loaded scenes are held (`held`) so the cache keeps them,
+  and go with the run. Still cold when wanted, it loads then, as before.
+  The readout: "warming" time and a "scenes warmed" mark. A Healer's Run
+  follower warms again when the leader's lands arrive (`follow_line()`).
+  **In a browser the first second or two in a corridor or on a start
+  screen can stutter while they load** - that stall used to land in a fight.
+- **A look read from the record** (healerrun.gd `look_from_state()`): the
+  Run, the Stand and the Cloth draw monsters as looks; `look_of_scene()`
+  read them from an instance made and freed, and now from the scene's
+  SceneState (inherited scenes walked by `get_base_scene_state()`; paths
+  are "./name"), with `look_from_instance()` kept as the fallback. The same
+  answer for every monster scene (zz/mgbench/lookcheck: 51, no difference).
+- **A WAVE IN PARTS** (`src/systems/spawnbudget.gd`): every place a
+  minigame brings a wave asks `may_bring()` before each monster and says
+  what it took (`spent()`); the first of a frame always comes, the rest
+  while `BUDGET_USEC` (2 ms) lasts, one budget for every minigame. The
+  Descent's due marks wait on the floor (`_step_waves()`), the Endless's
+  elites wait in `_elite_queue` (counted against the room for more,
+  cleared with `_free_extras()`), the Forge's group in `_spawns_owed`
+  (`_step_spawns_owed()`; the island wiped, none owed). **The suite runs
+  with `unlimited` on** (testrunner_base `_play_in_a_world_of_its_own()`):
+  it steps minigames by hand, many frames in one; `_test_a_wave_in_parts()`
+  switches it off to hold it.
+- **THE SLICES SORTED AHEAD** (forgerun.gd `_begin_scan()`, `_step_scan()`):
+  the island's 15,000 floor and lava cells are gone through once,
+  `SCAN_A_FRAME` (1,500) a frame from the start, into each slice's floor
+  (furthest first) and lava (a cell in every slice it touches);
+  `_flood_next()` takes its slice's lists, passing over cells already gone,
+  where it went through the whole island in one frame (17 ms). One change
+  in what it does: a tank's walkway laid OUTSIDE the island in the slice
+  that starts to flood stays until it melts; the full scan erased it at
+  the flood's start.
+- **Measured** (container, process phase, a minigame's own worst frame):
+  the Descent's wave of five 25-28 -> 2.3 ms; the Healer's Run's first
+  wave 62 -> 2.4 ms; the Stand's first group 99 -> 1.1 ms (its screen 2.3);
+  the Forge's flood 17 -> 3.0 ms. The Cloth was already light (0.5 ms a
+  frame; its spikes were the bench's bot). Maps' floors were measured too
+  (the Endless's 17 ms of a 70 ms load frame, the Forge's 25) and left
+  whole: endless.tscn is built by buildendless.gd and the Forge's floor is
+  edited in play.
+
+`_test_the_minigames_name_their_time()`, `_test_ready_before_they_come()`,
+`_test_a_wave_in_parts()`, `_test_the_forge_sorts_its_slices_ahead()`
+(testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

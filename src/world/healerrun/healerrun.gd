@@ -824,6 +824,8 @@ static var _looks: Dictionary = {}
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
 	# Moved every frame from _process: nothing to blend between physics ticks.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_rng.seed = seed_value if seed_value != 0 else int(Time.get_ticks_usec())
@@ -835,6 +837,11 @@ func _ready() -> void:
 		var swap: Variant = lands[i]
 		lands[i] = lands[j]
 		lands[j] = swap
+	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): each tier's monsters,
+	# loaded while she waits at the start and between tiers.
+	var warmer: Node = (load("res://src/systems/scenewarmer.gd") as GDScript).call("add_to", self)
+	warmer.set("calm", func() -> bool: return state == State.READY or state == State.GOAL)
+	warmer.call("warm", scenes_to_warm())
 	var dark := ColorRect.new()
 	dark.color = Color(0.02, 0.02, 0.03)
 	dark.position = -HALF - Vector2(40, 40)
@@ -1363,6 +1370,23 @@ static func shot_offsets(count: int) -> Array:
 	return out
 
 
+func scenes_to_warm() -> Array:
+	"""Every monster scene the run's tiers bring, the first tier's first."""
+	var out: Array = []
+	for t in mini(TIERS, lands.size()):
+		var element: int = int(lands[t])
+		# As the foes are chosen (_foe()), each land's own or the
+		# stand-in it falls back to.
+		var sprite: String = str(SPRITES.get(element, "windsprite"))
+		var slime: String = str(SLIMES.get(element, ""))
+		for scene_id in [sprite, slime if slime != "" else sprite, str(MAGES.get(element, "bushmage")),
+				str(SNIPERS.get(element, "bushsniper")), str(BOSSES.get(element, "bossenemy"))]:
+			var path: String = "res://scene/enemy/%s.tscn" % str(scene_id)
+			if not out.has(path):
+				out.append(path)
+	return out
+
+
 func land() -> int:
 	if _forced_land >= 0:
 		return _forced_land
@@ -1383,7 +1407,15 @@ func land_name(element: int) -> String:
 # EACH FRAME
 # =============================================================================
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"healer run", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	step(minf(delta, 0.05))
 
 
@@ -2646,8 +2678,14 @@ func follow_line(heard: Array) -> void:
 	its keeper's fall when ours still stands."""
 	if heard.size() < 13:
 		return
+	var lands_were: Array = lands.slice(0, 3)
 	for i in 3:
 		lands[i] = int(heard[9 + i])
+	if lands.slice(0, 3) != lands_were:
+		# The leader's lands: theirs are the monsters to have ready.
+		var warmer: Node = get_node_or_null(^"scenewarmer")
+		if warmer != null:
+			warmer.call("warm", scenes_to_warm())
 	players = clampi(int(heard[7]), 1, 8)
 	if heard.size() >= 15 and int(heard[14]) == 1 and begun:
 		# THE LEADER'S RUN IS TUNED: so is this one, and it pays nothing.
@@ -3138,9 +3176,10 @@ func obstacle_count() -> int:
 
 static func look_of_scene(path: String, instance: bool = true) -> Dictionary:
 	"""{frames, material, modulate, offset, scale, walk} of the first
-	AnimatedSprite2D in the scene at `path`, read from an instance that is never
-	added (its scripts' _ready never run), its element's recolour as the world
-	draws it (BaseEnemy.element_material). {} when there is none."""
+	AnimatedSprite2D in the scene at `path`, read from the scene's record
+	(look_from_state(); an instance never added when the record cannot say),
+	its element's recolour as the world draws it (BaseEnemy.element_material).
+	{} when there is none."""
 	if _looks.has(path):
 		return _looks[path]
 	var out: Dictionary = {}
@@ -3164,6 +3203,76 @@ static func look_of_scene(path: String, instance: bool = true) -> Dictionary:
 			break
 		_looks[path] = out
 		return out
+	if packed != null:
+		out = look_from_state(packed)
+		if out.is_empty():
+			out = look_from_instance(packed)
+	_looks[path] = out
+	return out
+
+
+# THE LOOK WITHOUT THE MONSTER (0.152.0). The owner: "lets work on chunking
+# the mini games and measuring everything in those". Measured in the
+# container (zz/mgbench): the first wave of a land was the worst frame of the
+# Healer's Run (62 ms) and the Mage's Stand (99 ms) - every new monster's look
+# was read from an instance of its whole scene. Now it is read from the
+# scene's own record (SceneState, through every scene it inherits), which
+# makes nothing: the same frames, offset, scale, walk, tint and element
+# recolour, which the suite holds for every monster scene against the
+# instance (look_from_instance(), kept for anything the record cannot say).
+static func look_from_state(packed: PackedScene) -> Dictionary:
+	"""A monster scene's look from its record, or {} when it has no sprite
+	there."""
+	var chain: Array = []
+	var record: SceneState = packed.get_state()
+	while record != null:
+		chain.push_front(record)
+		record = record.get_base_scene_state()
+	var root_props: Dictionary = {}
+	var sprite_props: Dictionary = {}
+	var sprite_path: NodePath = NodePath("")
+	for each in chain:
+		var st: SceneState = each
+		for n in st.get_node_count():
+			var at: NodePath = st.get_node_path(n)
+			var node_props: Dictionary = {}
+			for p in st.get_node_property_count(n):
+				node_props[st.get_node_property_name(n, p)] = st.get_node_property_value(n, p)
+			if at == NodePath("."):
+				root_props.merge(node_props, true)
+			elif sprite_path.is_empty() and st.get_node_type(n) == &"AnimatedSprite2D" \
+					and str(at).trim_prefix("./").find("/") == -1:
+				sprite_path = at
+				sprite_props.merge(node_props, true)
+			elif not sprite_path.is_empty() and at == sprite_path:
+				sprite_props.merge(node_props, true)
+	var frames: SpriteFrames = sprite_props.get("sprite_frames") as SpriteFrames
+	if frames == null:
+		return {}
+	var root_scale: Vector2 = root_props.get("scale", Vector2.ONE)
+	var out: Dictionary = {"frames": frames, "offset": sprite_props.get("offset", Vector2.ZERO),
+		"scale": (sprite_props.get("scale", Vector2.ONE) as Vector2) * root_scale, "walk": _walk_of(frames),
+		"modulate": Color.WHITE, "material": null}
+	var data: Variant = root_props.get("enemy_data")
+	if data is EnemyData:
+		var element: int = int((data as EnemyData).element)
+		if (data as EnemyData).recolour_to_element and element != Element.Type.NONE:
+			out["material"] = BaseEnemy.element_material(data, element)
+		out["modulate"] = (data as EnemyData).body_tint
+	return out
+
+
+static func _walk_of(frames: SpriteFrames) -> String:
+	for wanted in ["walkdown", "idledown", "walkup"]:
+		if frames.has_animation(wanted) and frames.get_frame_count(wanted) > 0:
+			return wanted
+	return ""
+
+
+static func look_from_instance(packed: PackedScene) -> Dictionary:
+	"""A monster scene's look read from an instance that is never added (its
+	scripts' _ready never run)."""
+	var out: Dictionary = {}
 	if packed != null:
 		var node: Node = packed.instantiate()
 		var sprite: AnimatedSprite2D = null
@@ -3191,5 +3300,9 @@ static func look_of_scene(path: String, instance: bool = true) -> Dictionary:
 					out["material"] = BaseEnemy.element_material(data, element)
 				out["modulate"] = (data as EnemyData).body_tint
 		node.free()
-	_looks[path] = out
 	return out
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "The Healer's Run - tier %d, %d waves done" % [tier, waves_done]

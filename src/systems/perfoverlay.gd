@@ -24,6 +24,7 @@
 extends CanvasLayer
 
 const PerfPanel := preload("res://src/systems/perfpanel.gd")
+const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
 const StressCrowdScript := preload("res://src/world/stresscrowd.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 
@@ -272,6 +273,8 @@ var _last_parts: Dictionary = {}
 # THE PANEL (0.136.0, perfpanel.gd): the frames for its graph, oldest
 # overwritten, and the frames' parts added up since its last look.
 var _panel: Control = null
+# MEASURE HERE (0.152.0, placemeasure.gd): the panel's Measure button.
+var place_measure: Node = null
 var _graph := PackedFloat32Array()
 var _graph_at: int = 0
 var _graph_count: int = 0
@@ -304,6 +307,12 @@ func _ready() -> void:
 	_panel.name = "panel"
 	_panel.text_source = readout
 	add_child(_panel)
+	place_measure = PlaceMeasure.new()
+	place_measure.name = "placemeasure"
+	place_measure.set("overlay", self)
+	add_child(place_measure)
+	_panel.set("measure_start", Callable(place_measure, "start"))
+	_panel.set("measure_word", Callable(place_measure, "word"))
 
 	visible = false
 	RenderingServer.frame_pre_draw.connect(_on_pre_draw)
@@ -439,6 +448,9 @@ func set_shown(on: bool) -> void:
 	# NEVER LEFT UNCAPPED once the readout is gone (Settings.set_uncapped()).
 	if not on:
 		Settings.set_uncapped(false)
+		# A measure counts only while the readout is up (placemeasure.gd).
+		if place_measure != null:
+			place_measure.call("cancel")
 
 
 func _measure_render_time(on: bool) -> void:
@@ -616,17 +628,22 @@ func mark(kind: StringName, count: int = 1) -> void:
 # THE GAME'S OWN WORK, FRAME BY FRAME (0.151.1, the Testing Ground): physics,
 # scripts and drawing - not the frame, which V-Sync and a browser hold to the
 # screen's refresh, so it hides a cost until a frame misses a refresh. The
-# newest WORK_KEPT frames, for work_stats().
+# newest WORK_KEPT frames, for work_stats(). Each frame's three parts too
+# (0.152.0: physics, scripts, drawing - limitsweep.gd says where a monster's
+# cost goes).
 const WORK_KEPT := 240
 var _work := PackedFloat32Array()
+var _work_parts := PackedVector3Array()
 var _work_at: int = 0
 var _work_n: int = 0
 
 
-func _keep_work(ms: float) -> void:
+func _keep_work(ms: float, parts: Vector3 = Vector3.ZERO) -> void:
 	if _work.size() != WORK_KEPT:
 		_work.resize(WORK_KEPT)
+		_work_parts.resize(WORK_KEPT)
 	_work[_work_at] = ms
+	_work_parts[_work_at] = parts
 	_work_at = (_work_at + 1) % WORK_KEPT
 	_work_n = mini(_work_n + 1, WORK_KEPT)
 
@@ -637,21 +654,42 @@ func forget_work() -> void:
 	_work_at = 0
 
 
+func work_frames() -> int:
+	"""How many frames work_stats() has to go on (at most WORK_KEPT)."""
+	return _work_n
+
+
 func work_stats(frames: int = 120) -> Dictionary:
 	"""The game's own work over the newest `frames` (at most WORK_KEPT) the
-	readout has seen: {"median", "p95", "last", "frames"} in ms; frames 0
-	when it has seen none (it counts only while it is up)."""
+	readout has seen: {"median", "p95", "last", "frames"} in ms, and
+	"physics", "scripts", "drawing" - each part's own median; frames 0 when
+	it has seen none (it counts only while it is up)."""
 	var n: int = mini(frames, _work_n)
 	if n <= 0:
-		return {"median": 0.0, "p95": 0.0, "last": 0.0, "frames": 0}
+		return {"median": 0.0, "p95": 0.0, "last": 0.0, "frames": 0,
+			"physics": 0.0, "scripts": 0.0, "drawing": 0.0}
 	var picked := PackedFloat32Array()
+	var physics := PackedFloat32Array()
+	var scripts := PackedFloat32Array()
+	var drawing := PackedFloat32Array()
 	picked.resize(n)
+	physics.resize(n)
+	scripts.resize(n)
+	drawing.resize(n)
 	for k in n:
-		picked[k] = _work[(_work_at - 1 - k + WORK_KEPT) % WORK_KEPT]
+		var at: int = (_work_at - 1 - k + WORK_KEPT) % WORK_KEPT
+		picked[k] = _work[at]
+		physics[k] = _work_parts[at].x
+		scripts[k] = _work_parts[at].y
+		drawing[k] = _work_parts[at].z
 	var last: float = picked[0]
 	picked.sort()
-	return {"median": picked[int(n / 2.0)], "p95": picked[mini(n - 1, int(floor(float(n) * 0.95)))],
-		"last": last, "frames": n}
+	physics.sort()
+	scripts.sort()
+	drawing.sort()
+	var mid: int = int(n / 2.0)
+	return {"median": picked[mid], "p95": picked[mini(n - 1, int(floor(float(n) * 0.95)))],
+		"last": last, "frames": n, "physics": physics[mid], "scripts": scripts[mid], "drawing": drawing[mid]}
 
 
 func spend(part: StringName, usec: int) -> void:
@@ -776,7 +814,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
 	var scripts: float = float(sample.get("scripts", _process_ms()))
 	var drawing: float = float(sample.get("drawing", 0.0))
-	_keep_work(physics + scripts + drawing)
+	_keep_work(physics + scripts + drawing, Vector3(physics, scripts, drawing))
 	var budget: float = budget_ms()
 	var hitched: bool = ms > budget * HITCH_TIMES
 	if ms <= budget * 1.05:

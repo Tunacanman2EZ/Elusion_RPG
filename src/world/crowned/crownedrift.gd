@@ -153,7 +153,15 @@ func _outside(rng: RandomNumberGenerator) -> Vector2:
 	return room.position - Vector2(200, 200)
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"the rift", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	clock += delta
 	flood_shown = move_toward(flood_shown, clampf(flood, 0.0, 1.0), delta / FLOOD_EASE)
 	for k in glimpses.size():

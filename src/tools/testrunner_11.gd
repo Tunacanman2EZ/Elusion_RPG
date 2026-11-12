@@ -3492,3 +3492,747 @@ func _test_the_testing_ground() -> void:
 	card.queue_free()
 	await get_tree().process_frame
 	print("  (the Testing Ground: done)")
+
+
+func _feed_work(frames: int, ms: float) -> void:
+	PerfOverlay.forget_work()
+	for k in frames:
+		PerfOverlay.call("_keep_work", ms, Vector3(ms * 0.5, ms * 0.4, ms * 0.1))
+
+
+func _test_find_the_limit() -> void:
+	section("FIND THE LIMIT (0.152.0): the Testing Ground's sweep - more and more of one monster until the work reaches 80% of the budget; what one costs and how many fit, copied for a spreadsheet")
+	const Run := preload("res://src/world/endless/endlessrun.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	# ---- the sums ----------------------------------------------------------------------
+	var straight: Array = [[0, 2.0, 3.0, 60, 1.0, 0.8, 0.2], [10, 3.0, 4.0, 60, 1.5, 1.2, 0.3],
+		[20, 4.0, 5.0, 60, 2.0, 1.6, 0.4]]
+	var summed: Dictionary = Sweep.summarise(straight, "Wind archer", "limit", 16.0, Sweep.CHECKS)
+	check("the sums: the field empty is the base, ms each the straight line through every row (and each part's), how many fit to 80% of the budget, each at 10 and none at 100",
+		is_equal_approx(float(summed["base"]), 2.0) and is_equal_approx(float(summed["each"]), 0.1)
+		and int(summed["fits"]) == 108 and is_equal_approx(float(summed["at"][0]), 0.1) and float(summed["at"][2]) < 0.0
+		and is_equal_approx(float(summed["physics"]), 0.05) and is_equal_approx(float(summed["scripts"]), 0.04)
+		and is_equal_approx(float(summed["drawing"]), 0.01) and int(summed["stopped"]) == 20, summed)
+	var bent: Array = [[0, 2.0, 2.5], [10, 3.0, 3.5], [100, 30.0, 32.0]]
+	check("  a cost that grows with the crowd shows: each at the last row over 1.5 times each at the first clear of the noise",
+		Sweep.grows_with(bent, 2.0) and not Sweep.grows_with(straight, 2.0) and not bool(summed["grows"]))
+	var over: Dictionary = Sweep.summarise([[0, 14.0, 15.0]], "Fire boss", "base", 16.0, Sweep.CHECKS)
+	check("  it stops at 80% of the budget, at slow frames past it, at its most; the empty field only when it is past the limit itself, and says so",
+		Sweep.judge([10, 13.5, 14.0], 16.67, 10, 600) == "limit" and Sweep.judge([10, 9.0, 17.0], 16.67, 10, 600) == "slow"
+		and Sweep.judge([600, 9.0, 10.0], 16.67, 600, 600) == "most" and Sweep.judge([0, 9.0, 20.0], 16.67, 0, 600) == ""
+		and Sweep.judge([0, 14.0, 20.0], 16.67, 0, 600) == "base" and Sweep.judge([10, 9.0, 10.0], 16.67, 10, 600) == ""
+		and Sweep.summary_line(over) == "Fire boss: not measured - with nothing out the work is already 14.0 ms, past the 12.8 ms limit",
+		Sweep.summary_line(over))
+	var line: String = Sweep.summary_line(summed)
+	check("  said in a line: ms each, about how many fit, where and why it stopped",
+		line == "Wind archer: 0.10 ms each - about 108 fit (stopped at 20: work at 80%)", line)
+	var lines: PackedStringArray = Sweep.copy_text({"Wind archer": summed}, ["Wind archer"]).split("\n")
+	check("  Copy: a line a monster under a header, then every sweep's own rows, tab-separated for a spreadsheet",
+		lines.size() == 8 and lines[2].begins_with("Wind archer\t") and lines[2].split("\t").size() == lines[1].split("\t").size()
+		and lines[5].split("\t").size() == lines[4].split("\t").size() and lines[5].begins_with("Wind archer\t0\t2.00\t3.00\t60"),
+		lines)
+	var kinds: Array = Sweep.targets_for(Sweep.EVERY_KIND, 10)
+	var every: Array = Sweep.targets_for(Sweep.EVERY_MONSTER, 10)
+	var boss_step: int = 0
+	var other_step: int = 0
+	for swept in kinds:
+		if Sweep.is_boss(swept):
+			boss_step = int(swept["step"])
+		elif not bool(swept.get("horde", false)):
+			other_step = int(swept["step"])
+	var one: Array = Sweep.targets_for("res://scene/enemy/windbushsniper.tscn", 7)
+	check("  Every kind sweeps one of each kind and Every monster all of them, the horde last; a list's bosses +1 at a time, the horde +250; one monster at the step asked",
+		every.size() == Spawner.catalogue().size() + 1 and kinds.size() < every.size() and kinds.size() >= 10
+		and bool(kinds.back()["horde"]) and int(kinds.back()["step"]) == 250 and boss_step == 1 and other_step == 10
+		and one.size() == 1 and int(one[0]["step"]) == 7, [kinds.size(), every.size(), boss_step, other_step])
+	# ---- on the Testing Ground -----------------------------------------------------------
+	var was_shown: bool = PerfOverlay.is_shown()
+	var was_god: bool = GameState.god_mode
+	GameState.god_mode = false
+	GameState.testing_ground = true
+	var run: Node = Run.new()
+	add_child(run)
+	await get_tree().process_frame
+	var ground: Node = run.get_node_or_null("testingground")
+	var sweep: Node = ground.get("sweep") if ground != null else null
+	var kept_at: String = "user://test_limitsweep.json"
+	sweep.set("save_path", kept_at)
+	sweep.set("places_path", "user://test_limitplaces_none.json")
+	sweep.set("results", {})
+	sweep.set("order", [])
+	var copied: Array = []
+	sweep.set("copy_to", func(text: String) -> void: copied.append(text))
+	var player := Node2D.new()
+	add_child(player)
+	player.global_position = Vector2(100, 100)
+	run.set("player_override", player)
+	var pick: OptionButton = ground.find_child("sweeppick", true, false) as OptionButton
+	var step_box: SpinBox = ground.find_child("sweepstep", true, false) as SpinBox
+	var boss_at: int = -1
+	for i in pick.item_count:
+		if str(pick.get_item_metadata(i)).ends_with("boss.tscn"):
+			boss_at = i
+			break
+	sweep.call("_on_picked", boss_at)
+	var boss_box: int = int(step_box.value)
+	sweep.call("_on_picked", 2)
+	var horde_box: int = int(step_box.value)
+	sweep.call("_on_picked", 0)
+	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
+		pick.item_count == Spawner.catalogue().size() + 3 and str(pick.get_item_metadata(2)) == Sweep.HORDE
+		and ground.find_child("sweepgo", true, false) is Button and ground.find_child("sweepcopy", true, false) is Button
+		and boss_box == 1 and horde_box == 250 and int(step_box.value) == 10, [pick.item_count, boss_box, horde_box])
+	var budget: float = PerfOverlay.budget_ms()
+	sweep.call("begin", Sweep.HORDE, 250)
+	var middle: Vector2 = (run.get("arena_rect") as Rect2).get_center()
+	var placed: bool = player.global_position == middle
+	var god_on: bool = GameState.god_mode
+	var held: bool = (ground.find_child("horde0", true, false) as Button).disabled
+	var said: String = (ground.find_child("sweepgo", true, false) as Button).text
+	sweep.call("_process", Sweep.CLEAR_SECONDS + 0.1)
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, 2.0)
+	sweep.call("_process", 0.016)
+	var filling: bool = int(sweep.get("phase")) == Sweep.Phase.FILLING and int(ground.get("horde")) == 250
+	ground.call("_process", 0.016)
+	sweep.call("_process", 0.016)
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, budget * 0.6)
+	sweep.call("_process", 0.016)
+	ground.call("_process", 0.016)
+	ground.call("_process", 0.016)
+	sweep.call("_process", 0.016)
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, budget)
+	sweep.call("_process", 0.016)
+	var results: Dictionary = sweep.get("results")
+	var horde_said: Dictionary = results.get(Sweep.HORDE, {})
+	check("a sweep: you in the middle in God mode, the horde and Clear all held, Stop to stop; the field empty, then +250 at a time, each measured once it has settled",
+		placed and god_on and held and said == "Stop" and filling, [player.global_position, middle, god_on, held, said])
+	check("  it stops at 80% of the budget and keeps what it found: three rows, stopped at 500, ms each, about how many fit",
+		str(horde_said.get("why", "")) == "limit" and (horde_said.get("rows", []) as Array).size() == 3
+		and int(horde_said.get("stopped", 0)) == 500 and float(horde_said.get("each", 0.0)) > 0.0
+		and int(horde_said.get("fits", 0)) > 250 and int(horde_said.get("fits", 0)) < 500, horde_said)
+	check("  and after: God mode as it was, the field cleared, the controls the ground's again, the line on the panel",
+		not GameState.god_mode and not bool(sweep.call("running")) and int(run.get("swarm").get("alive")) == 0
+		and int(ground.get("horde")) == 0 and not (ground.find_child("horde0", true, false) as Button).disabled
+		and (ground.find_child("sweepresults", true, false) as Label).text.begins_with("Horde slimes: "),
+		(ground.find_child("sweepresults", true, false) as Label).text)
+	sweep.call("copy_results")
+	var again: Node = Sweep.new()
+	again.set("save_path", kept_at)
+	add_child(again)
+	check("  kept between visits, and Copy puts every result on the clipboard",
+		(again.get("results") as Dictionary).has(Sweep.HORDE) and again.get("order") == [Sweep.HORDE]
+		and copied.size() == 1 and str(copied[0]).contains("\nHorde slimes\t"), again.get("order"))
+	again.queue_free()
+	# A monster: brought round the middle, Stop keeps what it has.
+	sweep.call("begin", "res://scene/enemy/lightslime.tscn", 10)
+	sweep.call("_process", Sweep.CLEAR_SECONDS + 0.1)
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, 2.0)
+	sweep.call("_process", 0.016)
+	var brought: int = int(sweep.call("count_now"))
+	var near: bool = true
+	for monster in get_tree().get_nodes_in_group(Spawner.GROUP):
+		if (monster as Node2D).global_position.distance_to(middle) > Spawner.FAR + 1.0:
+			near = false
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, 3.0)
+	sweep.call("_process", 0.016)
+	var twenty: int = int(sweep.call("count_now"))
+	sweep.call("stop")
+	var slime_said: Dictionary = (sweep.get("results") as Dictionary).get("Light slime", {})
+	check("  a monster comes +10 round the middle; Stop keeps what it has (two rows) and clears the field",
+		brought == 10 and twenty == 20 and near and str(slime_said.get("why", "")) == "stopped"
+		and (slime_said.get("rows", []) as Array).size() == 2 and is_equal_approx(float(slime_said.get("each", 0.0)), 0.1)
+		and _all_leaving(Spawner.GROUP), [brought, twenty, slime_said.get("why", "")])
+	for left in [run.get("swarm"), run.get("chest")]:
+		if left != null and is_instance_valid(left):
+			(left as Node).queue_free()
+	run.queue_free()
+	player.queue_free()
+	await get_tree().process_frame
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kept_at))
+	GameState.god_mode = was_god
+	PerfOverlay.forget_work()
+	PerfOverlay.set_shown(was_shown)
+	print("  (find the limit: done)")
+
+
+func _test_measure_here() -> void:
+	section("MEASURE HERE (0.152.0): the readout's Measure keeps a place's own work under a label that says where, and Copy results carries it")
+	const Measure := preload("res://src/systems/placemeasure.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	var kept_at: String = "user://test_limitplaces.json"
+	var measure: Node = Measure.new()
+	measure.set("save_path", kept_at)
+	measure.set("overlay", PerfOverlay)
+	measure.set("label_now", func() -> String: return "Big Field - 12 other monsters")
+	add_child(measure)
+	measure.set("places", {})
+	measure.set("order", [])
+	measure.call("start")
+	var waiting: String = str(measure.call("word"))
+	measure.call("_process", Measure.SETTLE_SECONDS + 0.1)
+	var measuring: String = str(measure.call("word"))
+	for k in Measure.FRAMES:
+		PerfOverlay.call("_keep_work", 4.0, Vector3(2.0, 1.5, 0.5))
+	measure.call("_process", 0.016)
+	var saved: String = str(measure.call("word"))
+	var kept: Dictionary = Measure.read_file(kept_at)
+	var entry: Dictionary = (kept["places"] as Dictionary).get("Big Field - 12 other monsters", {})
+	check("Measure: settles, measures 120 frames, keeps the work (median, slow, each part) under where it is, and says so",
+		waiting == "Wait 3" and measuring == "Measuring" and saved == "Saved"
+		and is_equal_approx(float(entry.get("median", 0.0)), 4.0) and is_equal_approx(float(entry.get("physics", 0.0)), 2.0)
+		and is_equal_approx(float(entry.get("drawing", 0.0)), 0.5) and kept["order"] == ["Big Field - 12 other monsters"],
+		[waiting, measuring, saved, entry])
+	measure.call("start")
+	measure.call("_process", Measure.SETTLE_SECONDS + 0.1)
+	for k in Measure.FRAMES:
+		PerfOverlay.call("_keep_work", 6.0, Vector3(3.0, 2.0, 1.0))
+	measure.call("_process", 0.016)
+	kept = Measure.read_file(kept_at)
+	check("  measured again in the same place, it replaces the old one",
+		(kept["order"] as Array).size() == 1
+		and is_equal_approx(float((kept["places"] as Dictionary)["Big Field - 12 other monsters"]["median"]), 6.0))
+	measure.call("start")
+	measure.call("cancel")
+	check("  closing the readout stops a measure", str(measure.call("word")) == "Measure")
+	var said: String = Measure.place_label(get_tree())
+	check("  where it is, in words: the area and what is out", said.contains("other monsters"), said)
+	var lines: PackedStringArray = Sweep.copy_text({}, [], kept["places"], kept["order"]).split("\n")
+	var head_at: int = -1
+	for i in lines.size():
+		if lines[i].begins_with("Place\tDevice"):
+			head_at = i
+	check("  Copy results carries every place: a header, then a line each, tab-separated",
+		head_at > 0 and head_at + 2 == lines.size() and lines[head_at + 1].begins_with("Big Field - 12 other monsters\t")
+		and lines[head_at + 1].split("\t").size() == lines[head_at].split("\t").size(), lines)
+	var panel: Node = PerfOverlay.get_node_or_null("panel")
+	var pressed: Array = []
+	var was_start: Callable = panel.get("measure_start")
+	panel.set("measure_start", func() -> void: pressed.append(true))
+	panel.call("press_measure")
+	panel.set("measure_start", was_start)
+	check("  the readout has the Measure button, and it starts the readout's own measure",
+		panel.find_child("measure", false, false) != null and pressed.size() == 1
+		and PerfOverlay.get("place_measure") != null and was_start.is_valid())
+	measure.queue_free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kept_at))
+	PerfOverlay.forget_work()
+	await get_tree().process_frame
+	print("  (measure here: done)")
+
+
+func _all_leaving(group: StringName) -> bool:
+	for node in get_tree().get_nodes_in_group(group):
+		if not node.is_queued_for_deletion():
+			return false
+	return true
+
+
+# =============================================================================
+# THE MINIGAMES MEASURED AND CHUNKED (0.152.0)
+# =============================================================================
+# The owner: "further improve my project lets work on chunking the mini games
+# and measuring everything in those". Every minigame now names its own frame
+# on the readout and its place on Measure; its monsters are loaded before
+# they come (scenewarmer.gd); a wave comes a few a frame (spawnbudget.gd);
+# the Forge sorts its island's slices ahead of the floods.
+
+const MINIGAME_TIMERS := [
+	["res://src/world/healerrun/healerrun.gd", "func _process(", "healer run"],
+	["res://src/world/healerrun/healerrunscreen.gd", "func _process(", "healer run screen"],
+	["res://src/world/healerrun/healerparty.gd", "func _process(", "healer party"],
+	["res://src/world/magestand/magestand.gd", "func _process(", "mage's stand"],
+	["res://src/world/magestand/magestandscreen.gd", "func _process(", "stand screen"],
+	["res://src/world/descent/descentrun.gd", "func _process(", "descent"],
+	["res://src/world/descent/descenthud.gd", "func _process(", "descent screen"],
+	["res://src/world/descent/descentparty.gd", "func _process(", "descent party"],
+	["res://src/world/forge/forgerun.gd", "func _process(", "forge"],
+	["res://src/world/forge/forgehud.gd", "func _process(", "forge screen"],
+	["res://src/world/cloth/clothrun.gd", "func _physics_process(", "cut the cloth"],
+	["res://src/world/cloth/clothscreen.gd", "func _process(", "cloth screen"],
+	["res://src/world/crowned/crownedfight.gd", "func _process(", "the Crowned"],
+	["res://src/world/crowned/crownedrift.gd", "func _process(", "the rift"],
+]
+
+const MINIGAME_LABELS := [
+	["res://src/world/healerrun/healerrun.gd", "The Healer's Run - tier 0, 0 waves done"],
+	["res://src/world/magestand/magestand.gd", "The Mage's Stand - wave "],
+	["res://src/world/descent/descentrun.gd", "The Descent - floor 1, room 0 ("],
+	["res://src/world/forge/forgerun.gd", "The Forge - 0:00 in"],
+	["res://src/world/cloth/clothrun.gd", "Cut the Cloth - round 1, light"],
+	["res://src/world/crowned/crownedfight.gd", "The Crowned - "],
+]
+
+
+func _test_the_minigames_name_their_time() -> void:
+	section("THE MINIGAMES MEASURED (0.152.0): each times its own frame, and Measure says where in it you stand")
+	var untimed: Array = []
+	var names: Array = []
+	for each in MINIGAME_TIMERS:
+		# Anchored to the line's start: an inner class may have its own.
+		var body: String = _func_body(_code_src(str(each[0])), "\n" + str(each[1]))
+		var inner: String = "_timed_physics_process(" if str(each[1]).contains("physics") else "_timed_process("
+		if not (body.contains(inner) and body.contains("PerfOverlay.spend(&\"%s\"" % each[2])):
+			untimed.append("%s (%s)" % [str(each[0]).get_file(), each[2]])
+		if not names.has(each[2]):
+			names.append(each[2])
+	check("all %d of the minigames' frames time themselves - each run, its screen and its party - under names of their own"
+		% MINIGAME_TIMERS.size(), untimed.is_empty() and names.size() == MINIGAME_TIMERS.size(), untimed)
+	var unlisted: Array = []
+	var wrong: Array = []
+	for pair in MINIGAME_LABELS:
+		if not _func_body(_code_src(str(pair[0])), "func _ready(").contains("add_to_group(&\"minigame_run\")"):
+			unlisted.append(str(pair[0]).get_file())
+		var bare: Node = (load(str(pair[0])) as GDScript).new()
+		var said: String = str(bare.call("measure_label"))
+		bare.free()
+		if not said.begins_with(str(pair[1])):
+			wrong.append(said)
+	check("  the six runs are in \"minigame_run\" and each says where it stands (\"The Descent - floor 1, room 0 (...)\")",
+		unlisted.is_empty() and wrong.is_empty(), [unlisted, wrong])
+	const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
+	var stand_in_script := GDScript.new()
+	stand_in_script.source_code = "extends Node\nfunc measure_label() -> String:\n\treturn \"A Test Run - wave 3\"\n"
+	stand_in_script.reload()
+	var stand_in := Node.new()
+	stand_in.set_script(stand_in_script)
+	stand_in.add_to_group(&"minigame_run")
+	add_child(stand_in)
+	var with_it: String = PlaceMeasure.place_label(get_tree())
+	stand_in.queue_free()
+	var leaving: String = PlaceMeasure.place_label(get_tree())
+	check("  and Measure's label carries it while it is there (\"%s\"), not once it is going" % with_it,
+		with_it.contains(" - A Test Run - wave 3 - ") and not leaving.contains("A Test Run"), [with_it, leaving])
+	await get_tree().process_frame
+	print("  (the minigames measured: done)")
+
+
+func _test_ready_before_they_come() -> void:
+	section("READY BEFORE THEY COME (0.152.0): a minigame's monsters loaded before it brings them")
+	const Warmer := preload("res://src/systems/scenewarmer.gd")
+	var paths: Array = []
+	for n in 3:
+		var path: String = "user://_suite_warm_%d.tscn" % n
+		var made := Node2D.new()
+		made.name = "warm%d" % n
+		var packed := PackedScene.new()
+		packed.pack(made)
+		made.free()
+		ResourceSaver.save(packed, path)
+		packed = null
+		paths.append(path)
+	var cold_first: bool = paths.all(func(p: String) -> bool: return not ResourceLoader.has_cached(p))
+	# ---- where a load holds the frame (the browser) ----
+	var calm_now: Array = [false]
+	var browser: Node = Warmer.new()
+	browser.set("threads", func() -> bool: return false)
+	browser.set("calm", func() -> bool: return bool(calm_now[0]))
+	browser.call("warm", [paths[0], paths[1], paths[0], "", "user://_suite_warm_none.tscn"])
+	var listed: int = int(browser.call("cold"))
+	browser.call("_step")
+	var waited: bool = int(browser.call("cold")) == 2 and not bool(browser.call("is_warm", paths[0]))
+	calm_now[0] = true
+	browser.call("_step")
+	var one: bool = bool(browser.call("is_warm", paths[0])) and int(browser.call("cold")) == 1 \
+		and ResourceLoader.has_cached(paths[0])
+	browser.call("_step")
+	var both: bool = bool(browser.call("is_warm", paths[1])) and int(browser.call("cold")) == 0
+	check("where a load holds the frame (the browser): two to warm (a repeat, an empty path and a missing scene left out), none in a fight, one a frame when calm, held so they stay loaded",
+		cold_first and listed == 2 and waited and one and both, [cold_first, listed, waited, one, both])
+	browser.free()
+	# ---- one already loaded ----
+	var kept: Resource = load(str(paths[2]))
+	var cached: Node = Warmer.new()
+	cached.set("threads", func() -> bool: return false)
+	cached.set("calm", func() -> bool: return false)
+	cached.call("warm", [paths[2]])
+	cached.call("_step")
+	check("  one already loaded is taken from the cache, in a fight too",
+		bool(cached.call("is_warm", paths[2])) and (cached.get("held") as Dictionary).get(paths[2]) == kept)
+	cached.free()
+	kept = null
+	# ---- where loads run on a worker (the desktop builds) ----
+	var worker: Node = Warmer.new()
+	worker.set("threads", func() -> bool: return true)
+	worker.set("calm", func() -> bool: return false)
+	worker.call("warm", [paths[0], paths[1]])
+	worker.call("_step")
+	var asked: String = str(worker.get("_loading"))
+	var frames: int = 0
+	while int(worker.call("cold")) > 0 and frames < 300:
+		await get_tree().process_frame
+		worker.call("_step")
+		frames += 1
+	check("where loads run on a worker (the desktop builds): one asked at a time, in a fight too, both held (%d frames)" % frames,
+		asked == paths[0] and bool(worker.call("is_warm", paths[0])) and bool(worker.call("is_warm", paths[1])),
+		[asked, frames])
+	worker.free()
+	var refused: Node = Warmer.new()
+	refused.set("threads", func() -> bool: return true)
+	refused.set("_refused", true)
+	calm_now[0] = false
+	refused.set("calm", func() -> bool: return bool(calm_now[0]))
+	refused.call("warm", [paths[1]])
+	refused.call("_step")
+	var held_back: bool = int(refused.call("cold")) == 1
+	calm_now[0] = true
+	refused.call("_step")
+	check("  and once a worker refuses one, the rest wait for calm as the browser's do",
+		held_back and bool(refused.call("is_warm", paths[1])))
+	refused.free()
+	var holder := Node.new()
+	add_child(holder)
+	var first: Node = Warmer.add_to(holder)
+	check("  a minigame has one warmer (add_to() twice is the same one)",
+		first == Warmer.add_to(holder) and holder.get_child_count() == 1 and str(first.name) == Warmer.NODE_NAME)
+	holder.free()
+	for path in paths:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(str(path)))
+	# ---- what each minigame warms ----
+	const EndlessRun := preload("res://src/world/endless/endlessrun.gd")
+	const DescentRun := preload("res://src/world/descent/descentrun.gd")
+	const HealerRun := preload("res://src/world/healerrun/healerrun.gd")
+	const MageStand := preload("res://src/world/magestand/magestand.gd")
+	const ClothRun := preload("res://src/world/cloth/clothrun.gd")
+	var endless: Node = EndlessRun.new()
+	var endless_list: Array = endless.call("scenes_to_warm")
+	var endless_missed: Array = []
+	for stage_number in range(1, 61):
+		var wanted: Array = []
+		for nth in 12:
+			wanted.append(str(endless.call("_elite_scene", stage_number, nth)))
+		if stage_number % EndlessRun.BOSS_EVERY == 0:
+			wanted.append(str(endless.call("_boss_scene", stage_number)))
+		for path in wanted:
+			if not endless_list.has(path) and not endless_missed.has(path):
+				endless_missed.append(path)
+	endless.free()
+	var descent_list: Array = DescentRun.scenes_to_warm()
+	var descent_missed: Array = []
+	for info in DescentRun.FLOORS:
+		for enemy_id in (info["monsters"] as Array) + (info["elites"] as Array) + [info["keeper"]]:
+			if not descent_list.has("res://scene/enemy/%s.tscn" % str(enemy_id)):
+				descent_missed.append(enemy_id)
+	var healer: Node = HealerRun.new()
+	healer.set("lands", HealerRun.LANDS.duplicate())
+	var healer_list: Array = healer.call("scenes_to_warm")
+	var healer_missed: Array = []
+	for t in HealerRun.TIERS:
+		healer.set("tier", t)
+		for kind in ["sprite", "slime", "mage", "sniper", "boss", "treasure"]:
+			var element: int = int(HealerRun.LANDS[t])
+			var scene_id: String = ""
+			match kind:
+				"sprite":
+					scene_id = str(HealerRun.SPRITES.get(element, "windsprite"))
+				"slime", "treasure":
+					scene_id = str(HealerRun.SLIMES.get(element, ""))
+					if scene_id == "":
+						scene_id = str(HealerRun.SPRITES.get(element, "windsprite"))
+				"mage":
+					scene_id = str(HealerRun.MAGES.get(element, "bushmage"))
+				"sniper":
+					scene_id = str(HealerRun.SNIPERS.get(element, "bushsniper"))
+				"boss":
+					scene_id = str(HealerRun.BOSSES.get(element, "bossenemy"))
+			if not healer_list.has("res://scene/enemy/%s.tscn" % scene_id):
+				healer_missed.append(scene_id)
+	healer.free()
+	var stand_list: Array = MageStand.scenes_to_warm()
+	var cloth_list: Array = ClothRun.scenes_to_warm()
+	var cloth_missed: Array = []
+	for which in range(1, ClothRun.MOVES.size() + 1):
+		var path: String = "res://scene/enemy/%s.tscn" % str(ClothRun.SLIME_SCENES.get(ClothRun.land_of(which), "waterslime"))
+		if not cloth_list.has(path):
+			cloth_missed.append(path)
+	var absent: Array = []
+	for list in [endless_list, descent_list, healer_list, stand_list, cloth_list]:
+		for path in list:
+			if not ResourceLoader.exists(str(path)) and not absent.has(path):
+				absent.append(path)
+	check("each minigame warms what it brings: the Endless's elites and bosses round every land (%d), the Descent's floors (%d), the Healer's Run's tiers (%d), the Stand's lands (%d), the Cloth's rounds and its shot (%d) - every one a scene that is there"
+		% [endless_list.size(), descent_list.size(), healer_list.size(), stand_list.size(), cloth_list.size()],
+		endless_missed.is_empty() and descent_missed.is_empty() and healer_missed.is_empty() and cloth_missed.is_empty()
+		and absent.is_empty() and stand_list.size() >= 2 and cloth_list.has("res://scene/projectiles/turretprojectile.tscn"),
+		[endless_missed, descent_missed, healer_missed, cloth_missed, absent])
+	var no_warmer: Array = []
+	for path in ["res://src/world/endless/endlessrun.gd", "res://src/world/descent/descentrun.gd",
+			"res://src/world/healerrun/healerrun.gd", "res://src/world/magestand/magestand.gd",
+			"res://src/world/cloth/clothrun.gd", "res://src/world/forge/forgerun.gd"]:
+		var ready_body: String = _func_body(_code_src(path), "func _ready(")
+		if not (ready_body.contains("add_to\"") or ready_body.contains("add_to(self)")) or not ready_body.contains("\"warm\""):
+			no_warmer.append(path.get_file())
+	var follow: String = _func_body(_code_src("res://src/world/healerrun/healerrun.gd"), "func follow_line(")
+	check("  each makes its warmer when it starts, and a Healer's Run follower warms the leader's lands",
+		no_warmer.is_empty() and follow.contains("scenes_to_warm()"), no_warmer)
+	# ---- a look read from the scene's record ----
+	var looks: Array = []
+	for element in HealerRun.LANDS:
+		for table in [HealerRun.SPRITES, HealerRun.SLIMES, HealerRun.MAGES, HealerRun.SNIPERS, HealerRun.BOSSES]:
+			var path: String = "res://scene/enemy/%s.tscn" % str((table as Dictionary).get(element, ""))
+			if (table as Dictionary).has(element) and not looks.has(path) and ResourceLoader.exists(path):
+				looks.append(path)
+	var unlike: Array = []
+	for path in looks:
+		var packed: PackedScene = load(str(path)) as PackedScene
+		var read: Dictionary = HealerRun.look_from_state(packed)
+		var made: Dictionary = HealerRun.look_from_instance(packed)
+		var same: bool = read.size() == made.size() and not read.is_empty()
+		for key in made:
+			var a: Variant = read.get(key)
+			var b: Variant = made[key]
+			if b is Vector2:
+				same = same and a is Vector2 and (a as Vector2).is_equal_approx(b)
+			elif b is Color:
+				same = same and a is Color and (a as Color).is_equal_approx(b)
+			else:
+				same = same and a == b
+		if not same:
+			unlike.append(str(path).get_file())
+	check("a monster's look is read from its scene's record, never an instance made and freed: the same frames, offset, scale, walk, tint and recolour for all %d the runs draw"
+		% looks.size(), looks.size() >= 15 and unlike.is_empty(), unlike)
+	print("  (ready before they come: done)")
+
+
+func _test_a_wave_in_parts() -> void:
+	section("A WAVE IN PARTS (0.152.0): a minigame's wave comes a few a frame, never all in one")
+	const Budget := preload("res://src/systems/spawnbudget.gd")
+	const DescentRun := preload("res://src/world/descent/descentrun.gd")
+	const EndlessRun := preload("res://src/world/endless/endlessrun.gd")
+	const ForgeRun := preload("res://src/world/forge/forgerun.gd")
+	Budget.unlimited = false
+	await get_tree().process_frame
+	var first: bool = Budget.may_bring()
+	Budget.spent(Budget.BUDGET_USEC)
+	var spent_out: bool = not Budget.may_bring()
+	await get_tree().process_frame
+	var new_frame: bool = Budget.may_bring()
+	@warning_ignore("integer_division")
+	Budget.spent(Budget.BUDGET_USEC / 2)
+	var half: bool = Budget.may_bring()
+	Budget.spent(-99999)
+	Budget.spent(Budget.BUDGET_USEC / 2 + 1)
+	var no_credit: bool = not Budget.may_bring()
+	Budget.unlimited = true
+	var switched_off: bool = Budget.may_bring()
+	Budget.unlimited = false
+	check("the first of a frame always comes; the rest while %d us of bringing lasts, every minigame on the one budget; nothing spent backwards; switched off, all"
+		% Budget.BUDGET_USEC, first and spent_out and new_frame and half and no_credit and switched_off,
+		[first, spent_out, new_frame, half, no_credit, switched_off])
+	# ---- the Descent: a wave of five due at once ----
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar hp: int = 400\nvar max_hp: int = 400\n"
+	body_script.reload()
+	var made: Array = _descent_room_for_test(body_script)
+	var room: Node2D = made[0]
+	var run: Node = made[1]
+	await get_tree().process_frame
+	run.set_process(false)
+	var kind: String = str((DescentRun.FLOORS[0]["monsters"] as Array)[0])
+	load("res://scene/enemy/%s.tscn" % kind)
+	var coming: Array = []
+	for i in 5:
+		coming.append([kind, Vector2(260 + 24 * i, 220), 1.0, i == 4, 0.0])
+	run.set("_coming", coming)
+	var before: int = (run.get("monsters") as Array).size()
+	await get_tree().process_frame
+	Budget.may_bring()
+	Budget.spent(Budget.BUDGET_USEC)
+	run.call("_step_waves", 0.016)
+	var waiting: int = (run.get("_coming") as Array).size()
+	var none_yet: bool = (run.get("monsters") as Array).size() == before
+	var per_frame: Array = []
+	for f in 12:
+		if (run.get("_coming") as Array).is_empty():
+			break
+		await get_tree().process_frame
+		var had: int = (run.get("_coming") as Array).size()
+		run.call("_step_waves", 0.016)
+		per_frame.append(had - (run.get("_coming") as Array).size())
+	var descent_in: bool = (run.get("_coming") as Array).is_empty() and (run.get("monsters") as Array).size() - before == 5
+	check("the Descent: its frame's budget spent, the five due wait on their marks; then at least one a frame until all five are in (%s)" % [per_frame],
+		waiting == 5 and none_yet and descent_in and per_frame.all(func(n: int) -> bool: return n >= 1),
+		[waiting, none_yet, per_frame])
+	run.call("_clear_monsters")
+	room.queue_free()
+	# ---- the Endless: an elite wave ----
+	var holder := Node2D.new()
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	holder.add_child(world)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	add_child(holder)
+	var endless: Node = EndlessRun.new()
+	endless.set("arena_rect", Rect2(9, 34, 1518, 1344))
+	endless.set("corridor_rect", Rect2(694, 1030, 148, 376))
+	holder.add_child(endless)
+	endless.set_process(false)
+	await get_tree().process_frame
+	endless.set("state", 1)
+	endless.set("stage", 10)
+	endless.set("elapsed", EndlessRun.STAGE_SECONDS * 9.0 + 1.0)
+	endless.set("busy", true)
+	endless.set("_elite_left", 0.0)
+	await get_tree().process_frame
+	Budget.may_bring()
+	Budget.spent(Budget.BUDGET_USEC)
+	endless.call("_process", 0.05)
+	var queued: int = (endless.get("_elite_queue") as Array).size()
+	var none_brought: bool = (endless.get("_extras") as Array).is_empty()
+	var endless_frames: int = 0
+	while not (endless.get("_elite_queue") as Array).is_empty() and endless_frames < 30:
+		await get_tree().process_frame
+		endless.call("_process", 0.05)
+		endless_frames += 1
+	var endless_in: int = (endless.get("_extras") as Array).size()
+	check("the Endless: a stage 10 wave of %d elites queued, none in the frame that is spent; all in, a few a frame (%d frames), and the queue counts against the room for more"
+		% [EndlessRun.elites_at(10), endless_frames],
+		queued == EndlessRun.elites_at(10) and none_brought and endless_in == queued and endless_frames >= 1
+		and _func_body(_code_src("res://src/world/endless/endlessrun.gd"), "func _free_extras(").contains("_elite_queue.clear()"),
+		[queued, none_brought, endless_in, endless_frames])
+	endless.call("_free_extras")
+	if is_instance_valid(endless.get("swarm")):
+		(endless.get("swarm") as Node).queue_free()
+	holder.queue_free()
+	# ---- the Forge: a group of fire sprites ----
+	var island := Node2D.new()
+	add_child(island)
+	var forge_world := Node2D.new()
+	forge_world.name = "ysortworld"
+	island.add_child(forge_world)
+	for holder_name in ["props", "enemies", "interactables"]:
+		var n := Node2D.new()
+		n.name = holder_name
+		forge_world.add_child(n)
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	island.add_child(body)
+	body.global_position = Vector2(-90000, -90000)
+	var forge: Node = ForgeRun.new()
+	forge.name = "forgerun"
+	forge.set("player_override", body)
+	forge.set("class_override", "tank")
+	island.add_child(forge)
+	forge.set_process(false)
+	await get_tree().process_frame
+	forge.set("state", ForgeRun.State.RUNNING)
+	forge.set("_spawns_owed", 4)
+	var living_before: int = int(forge.call("living"))
+	await get_tree().process_frame
+	Budget.may_bring()
+	Budget.spent(Budget.BUDGET_USEC)
+	forge.call("_step_spawns_owed")
+	var owed_held: int = int(forge.get("_spawns_owed"))
+	var forge_frames: int = 0
+	while int(forge.get("_spawns_owed")) > 0 and forge_frames < 20:
+		await get_tree().process_frame
+		forge.call("_step_spawns_owed")
+		forge_frames += 1
+	var forge_in: int = int(forge.call("living")) - living_before
+	forge.set("finale", "falling")
+	forge.set("_spawns_owed", 3)
+	forge.call("_step_spawns", 0.016)
+	var finale_none: bool = int(forge.get("_spawns_owed")) == 0
+	forge.set("finale", "")
+	check("the Forge: a group of four owed, none in the spent frame, all four in a few a frame (%d frames); the island wiped, none still owed"
+		% forge_frames, owed_held == 4 and forge_in == 4 and finale_none, [owed_held, forge_in, finale_none])
+	island.queue_free()
+	Budget.unlimited = true
+	await get_tree().process_frame
+	print("  (a wave in parts: done)")
+
+
+func _test_the_forge_sorts_its_slices_ahead() -> void:
+	section("THE SLICES SORTED AHEAD (0.152.0): the Forge's flood takes its slice's lists, not a scan of the island")
+	const ForgeRun := preload("res://src/world/forge/forgerun.gd")
+	var packed: PackedScene = load(str(AreaRegistry.AREAS.get("forge", ""))) as PackedScene
+	var area: Node = packed.instantiate() if packed != null else null
+	var ground: TileMapLayer = area.get_node_or_null("ground") as TileMapLayer if area != null else null
+	var lava: TileMapLayer = area.get_node_or_null("lava") as TileMapLayer if area != null else null
+	check("the Forge's island and its lava are there to sort", ground != null and lava != null)
+	if ground == null or lava == null:
+		if area != null:
+			area.free()
+		return
+	var island := Node2D.new()
+	area.remove_child(ground)
+	area.remove_child(lava)
+	island.add_child(ground)
+	island.add_child(lava)
+	area.free()
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	island.add_child(body)
+	body.global_position = Vector2(-90000, -90000)
+	add_child(island)
+	var run: Node = ForgeRun.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", "tank")
+	island.add_child(run)
+	run.set_process(false)
+	var total: int = ground.get_used_cells().size() + lava.get_used_cells().size()
+	var frames_wanted: int = ceili(float(total) / float(ForgeRun.SCAN_A_FRAME))
+	run.call("_step_scan")
+	var not_after_one: bool = not bool(run.get("scanned"))
+	var steps: int = 1
+	while not bool(run.get("scanned")) and steps < 1000:
+		run.call("_step_scan")
+		steps += 1
+	check("the island (%d cells) is sorted into its slices %d a frame, from the start: %d frames"
+		% [total, ForgeRun.SCAN_A_FRAME, steps], not_after_one and steps == frames_wanted and total > ForgeRun.SCAN_A_FRAME,
+		[steps, frames_wanted])
+	# Some of a slice already gone (a flood before, a tank's walkway melted).
+	var gone_from: int = int(ForgeRun.ORDER[1])
+	var erased: int = 0
+	for entry in (run.get("_slice_floor") as Array)[gone_from]:
+		if erased >= 40:
+			break
+		ground.erase_cell(entry[1])
+		erased += 1
+	var unlike: Array = []
+	var unsorted: Array = []
+	for k in ForgeRun.SLICES:
+		run.set("floods", k)
+		run.set("scanned", true)
+		run.call("_flood_next")
+		var quick_floor: Array = (run.get("_flood_floor") as Array).duplicate()
+		var quick_lava: Array = (run.get("_flood_lava") as Array).duplicate()
+		run.set("scanned", false)
+		run.call("_flood_next")
+		var scan_floor: Array = run.get("_flood_floor")
+		var scan_lava: Array = run.get("_flood_lava")
+		if not (_same_cells(quick_floor, scan_floor) and _same_cells(quick_lava, scan_lava)) or quick_floor.is_empty():
+			unlike.append([k, quick_floor.size(), scan_floor.size(), quick_lava.size(), scan_lava.size()])
+		for i in quick_floor.size() - 1:
+			if float(quick_floor[i][0]) < float(quick_floor[i + 1][0]):
+				unsorted.append(k)
+				break
+	run.set("scanned", true)
+	check("  every slice's flood takes the same floor and lava from its lists as a scan of the island finds, furthest first (%d of one slice gone first, passed over)" % erased,
+		unlike.is_empty() and unsorted.is_empty() and erased == 40, [unlike, unsorted])
+	island.queue_free()
+	await get_tree().process_frame
+	print("  (the slices sorted ahead: done)")
+
+
+func _same_cells(a: Array, b: Array) -> bool:
+	"""Whether two lists of [distance, cell] hold the same cells, each once."""
+	if a.size() != b.size():
+		return false
+	var seen: Dictionary = {}
+	for entry in a:
+		seen[entry[1]] = true
+	if seen.size() != a.size():
+		return false
+	for entry in b:
+		if not seen.has(entry[1]):
+			return false
+	return true

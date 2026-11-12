@@ -116,6 +116,11 @@
 extends Node
 
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
+const SceneWarmer := preload("res://src/systems/scenewarmer.gd")
+const SpawnBudget := preload("res://src/systems/spawnbudget.gd")
+# THE SLICES SORTED AHEAD (0.152.0): cells a frame while the floor is
+# sorted into its slices (_step_scan()).
+const SCAN_A_FRAME := 1500
 
 enum State { WAITING, COUNTDOWN, RUNNING }
 
@@ -317,6 +322,21 @@ var _lava: TileMapLayer = null
 var _ground_saved: Dictionary = {}
 var _flood_floor: Array = []
 var _flood_lava: Array = []
+# THE SLICES SORTED AHEAD (0.152.0). A slice's flood began by going through
+# every floor and lava cell of the island (15,000) and sorting its own - in
+# one frame, 17 ms in the container (zz/mgbench). Now the island is gone
+# through once, SCAN_A_FRAME cells a frame from the start, into each slice's
+# floor ([distance, cell], furthest first) and lava; a flood takes its
+# slice's lists, as they stand (a cell already gone is passed over). Before
+# that is done a flood goes through the island itself, as it always did.
+var _scan_cells: Array = []
+var _scan_lava: Array = []
+var _scan_at: int = 0
+var _slice_floor: Array = []
+var _slice_lava: Array = []
+var scanned: bool = false
+# Fire sprites still to come from this group, a few a frame (spawnbudget.gd).
+var _spawns_owed: int = 0
 var _front_clock: float = 0.0
 var _marks: Node2D = null
 var _reddened: CanvasItem = null
@@ -350,6 +370,8 @@ var _sky: Node2D = null
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
 	add_to_group(&"forge_run")
 	_rng.randomize()
 	var area: Node = get_parent()
@@ -359,6 +381,12 @@ func _ready() -> void:
 	if _ground != null:
 		for cell in _ground.get_used_cells():
 			_ground_saved[cell] = [_ground.get_cell_source_id(cell), _ground.get_cell_atlas_coords(cell)]
+	_begin_scan()
+	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): the fire sprite,
+	# loaded before the forge is lit.
+	var warmer: Node = SceneWarmer.add_to(self)
+	warmer.set("calm", func() -> bool: return state != State.RUNNING)
+	warmer.call("warm", ["res://scene/enemy/%s.tscn" % SPRITE])
 	_marks = Marks.new()
 	_marks.run = self
 	_sparks = Sparks.new()
@@ -592,7 +620,16 @@ static func schedule() -> Dictionary:
 # THE RUN
 # =============================================================================
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"forge", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
+	_step_scan()
 	match state:
 		State.WAITING:
 			var player: Node2D = _player()
@@ -615,6 +652,7 @@ func _process(delta: float) -> void:
 			_step_wading(delta)
 			_step_fire(delta)
 			_step_spawns(delta)
+			_step_spawns_owed()
 			_step_essence(delta)
 			_step_eruption(delta)
 			_step_rumble(delta)
@@ -647,6 +685,7 @@ func start_run() -> void:
 	essences = 0
 	_burn_clock = BURN_TICK
 	_spawn_clock = 1.0
+	_spawns_owed = 0
 	_essence_clock = ESSENCE_FIRST
 	pieces = 0
 	forging = 0.0
@@ -674,10 +713,63 @@ func _step_heat(delta: float) -> void:
 		_flood_next()
 
 
+func _begin_scan() -> void:
+	_scan_cells = _ground.get_used_cells() if _ground != null else []
+	_scan_lava = _lava.get_used_cells() if _lava != null else []
+	_scan_at = 0
+	_slice_floor = []
+	_slice_lava = []
+	for i in SLICES:
+		_slice_floor.append([])
+		_slice_lava.append([])
+	scanned = false
+
+
+func _step_scan() -> void:
+	"""SCAN_A_FRAME more of the island into its slices (THE SLICES SORTED
+	AHEAD)."""
+	if scanned:
+		return
+	var total: int = _scan_cells.size() + _scan_lava.size()
+	var stop: int = mini(total, _scan_at + SCAN_A_FRAME)
+	var h: float = LAVA_TILE / 2.0
+	while _scan_at < stop:
+		if _scan_at < _scan_cells.size():
+			var cell: Vector2i = _scan_cells[_scan_at]
+			var mid: Vector2 = floor_cell_mid(cell)
+			(_slice_floor[slice_of(mid)] as Array).append([mid.distance_to(CENTRE), cell])
+		else:
+			var lava_cell: Vector2i = _scan_lava[_scan_at - _scan_cells.size()]
+			var lava_mid: Vector2 = lava_cell_mid(lava_cell)
+			var touched: Array = [slice_of(lava_mid)]
+			for corner in [Vector2(-h, -h), Vector2(h, -h), Vector2(-h, h), Vector2(h, h)]:
+				var other: int = slice_of(lava_mid + corner)
+				if not touched.has(other):
+					touched.append(other)
+			for slice in touched:
+				(_slice_lava[slice] as Array).append([lava_mid.distance_to(CENTRE), lava_cell])
+		_scan_at += 1
+	if _scan_at >= total:
+		for each in _slice_floor:
+			(each as Array).sort_custom(func(a, b): return float(a[0]) > float(b[0]))
+		_scan_cells = []
+		_scan_lava = []
+		scanned = true
+
+
 func _flood_next() -> void:
 	flooding = next_slice()
 	front = RADIUS
 	_front_clock = 0.0
+	if scanned:
+		_flood_floor = []
+		for entry in _slice_floor[flooding]:
+			if float(entry[0]) > safe and _ground != null and _ground.get_cell_source_id(entry[1]) != -1:
+				_flood_floor.append(entry)
+		_flood_lava = (_slice_lava[flooding] as Array).duplicate()
+		if hud != null:
+			hud.call("announce", "The lava rises", "from the %s" % str(SLICE_NAMES[flooding]))
+		return
 	# The slice's floor, furthest first, taken as the front passes it.
 	_flood_floor = []
 	if _ground != null:
@@ -1183,15 +1275,26 @@ func _clear_rocks() -> void:
 
 func _step_spawns(delta: float) -> void:
 	if finale != "":
+		_spawns_owed = 0
 		return
 	_spawn_clock -= delta
 	if _spawn_clock > 0.0:
 		return
 	_spawn_clock = spawn_gap()
-	for i in spawn_count():
+	_spawns_owed = spawn_count()
+
+
+func _step_spawns_owed() -> void:
+	"""A WAVE IN PARTS (0.152.0, spawnbudget.gd): the group a few a frame;
+	at the cap alive, the rest of it never comes, as before."""
+	while _spawns_owed > 0 and SpawnBudget.may_bring():
 		if living() >= alive_cap():
+			_spawns_owed = 0
 			return
+		var from: int = Time.get_ticks_usec()
 		_bring(SPRITE, edge_spot(), health_scale())
+		SpawnBudget.spent(Time.get_ticks_usec() - from)
+		_spawns_owed -= 1
 
 
 func edges() -> Array:
@@ -1668,3 +1771,8 @@ class Flames extends Node2D:
 				Vector2(x + sway, base_y - lift)]), Color(1.0, 0.45, 0.1, 0.85))
 			draw_colored_polygon(PackedVector2Array([Vector2(x - 1.8, base_y), Vector2(x + 1.8, base_y),
 				Vector2(x + sway * 0.6, base_y - lift * 0.6)]), Color(1.0, 0.9, 0.35, 0.9))
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "The Forge - %d:%02d in" % [floori(elapsed / 60.0), floori(fmod(elapsed, 60.0))]

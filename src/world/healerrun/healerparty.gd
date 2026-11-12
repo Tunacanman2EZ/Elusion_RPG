@@ -348,7 +348,15 @@ func tell_hit(batch: int, slot: int, damage: float) -> void:
 		_hits[id] = int(_hits.get(id, 0)) + whole
 
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"healer party", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	if run == null or link == null:
 		return
 	if not active():

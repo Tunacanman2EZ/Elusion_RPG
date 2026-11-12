@@ -508,6 +508,8 @@ var _star_rock: Sprite2D = null
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
 	if seed_value != 0:
 		_rng.seed = seed_value
 		# The star rolls on its own, so the waves come as they did before it.
@@ -518,6 +520,11 @@ func _ready() -> void:
 	_fx_rng.randomize()
 	_build()
 	next_x = _group_x()
+	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): every land's sprite
+	# and slime, in the order the waves bring them, loaded between waves.
+	var warmer: Node = (load("res://src/systems/scenewarmer.gd") as GDScript).call("add_to", self)
+	warmer.set("calm", func() -> bool: return state != State.WAVE)
+	warmer.call("warm", scenes_to_warm())
 
 
 func _build() -> void:
@@ -722,7 +729,15 @@ func _play(animation: String) -> void:
 # THE RUN, A FRAME AT A TIME
 # =============================================================================
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"mage's stand", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	step(delta)
 
 
@@ -1152,6 +1167,20 @@ static func bomber_chance(n: int) -> float:
 
 static func wave_hit(n: int) -> float:
 	return 1.0 + 0.1 * (maxi(1, n) - 1)
+
+
+static func scenes_to_warm() -> Array:
+	"""Each land's sprite and slime, in the order the waves come to them."""
+	var out: Array = []
+	for element in RunScript.LANDS:
+		# As spawn() chooses them, the stand-in where a land has none.
+		var sprite: String = str(RunScript.SPRITES.get(element, "windsprite"))
+		var slime: String = str(RunScript.SLIMES.get(element, ""))
+		for scene_id in [sprite, slime if slime != "" else sprite]:
+			var path: String = "res://scene/enemy/%s.tscn" % str(scene_id)
+			if not out.has(path):
+				out.append(path)
+	return out
 
 
 func land() -> int:
@@ -1697,3 +1726,8 @@ func result_text() -> String:
 
 static func waves_words(count: int) -> String:
 	return "1 wave" if count == 1 else "%d waves" % count
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "The Mage's Stand - wave %d" % wave

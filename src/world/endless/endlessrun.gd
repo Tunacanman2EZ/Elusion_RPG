@@ -66,6 +66,8 @@ const PartyScript := preload("res://src/world/endless/endlessparty.gd")
 const SpikePath := preload("res://src/world/endless/spikepath.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const Targets := preload("res://src/shared/targets.gd")
+const SceneWarmer := preload("res://src/systems/scenewarmer.gd")
+const SpawnBudget := preload("res://src/systems/spawnbudget.gd")
 
 const STAGE_SECONDS := 60.0
 # The lands in order, then round again: the bands' own order.
@@ -189,6 +191,8 @@ var floor_wash: ColorRect = null
 var chest: Node2D = null
 var floor_goal: Color = Color(0, 0, 0, 0)
 var _extras: Array = []
+# An elite wave still to come, a few a frame (A WAVE IN PARTS).
+var _elite_queue: Array = []
 var _hud: Node = null
 var _clear_left: float = -1.0
 var _last_result: String = ""
@@ -261,6 +265,32 @@ func _ready() -> void:
 		ground_tools.name = "testingground"
 		ground_tools.set("run", self)
 		add_child(ground_tools)
+	else:
+		# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): every elite and
+		# boss the run may bring, loaded in the corridor and the countdown.
+		var warmer: Node = SceneWarmer.add_to(self)
+		warmer.set("calm", _calm_for_loading)
+		warmer.call("warm", scenes_to_warm())
+
+
+func scenes_to_warm() -> Array:
+	"""Every scene the run may bring, in the order it will want them: each
+	stage's elites, and its boss every BOSS_EVERY stages, round every land."""
+	var out: Array = []
+	for stage_number in range(1, STAGE_LANDS.size() * BOSS_EVERY + 1):
+		for nth in (ELITES.get(land_of(stage_number), []) as Array).size():
+			var path: String = _elite_scene(stage_number, nth)
+			if not out.has(path):
+				out.append(path)
+		if stage_number % BOSS_EVERY == 0 and not out.has(_boss_scene(stage_number)):
+			out.append(_boss_scene(stage_number))
+	return out
+
+
+func _calm_for_loading() -> bool:
+	"""In the corridor or the countdown: a load that holds a frame (the
+	browser's) stalls nobody's fight."""
+	return state == State.WAITING or state == State.COUNTDOWN
 
 
 func _one_way_door() -> void:
@@ -592,14 +622,20 @@ func _timed_process(delta: float) -> void:
 	_elite_left -= delta
 	if _elite_left <= 0.0:
 		var wave: int = elites_at(stage) + (party_elites(players) if stage >= 2 else 0)
-		var room: int = elites_alive_cap(players) - elites_alive()
+		var room: int = elites_alive_cap(players) - elites_alive() - _elite_queue.size()
 		if wave > 0 and room <= 0:
 			# THE ARENA IS FULL: the wave waits for room, and comes with it.
 			_elite_left = 0.0
 		else:
 			_elite_left = elite_gap(stage)
 			for i in mini(wave, room):
-				_bring(_elite_scene(stage, i))
+				_elite_queue.append(_elite_scene(stage, i))
+	# A WAVE IN PARTS (0.152.0, spawnbudget.gd): a few a frame, not all of it
+	# in one.
+	while not _elite_queue.is_empty() and SpawnBudget.may_bring():
+		var from: int = Time.get_ticks_usec()
+		_bring(str(_elite_queue.pop_front()))
+		SpawnBudget.spent(Time.get_ticks_usec() - from)
 
 
 func elites_alive() -> int:
@@ -924,6 +960,7 @@ func _free_extras() -> void:
 		if is_instance_valid(monster):
 			(monster as Node).queue_free()
 	_extras.clear()
+	_elite_queue.clear()
 
 
 func _clear_arena() -> void:

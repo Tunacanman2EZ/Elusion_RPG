@@ -209,6 +209,8 @@ var edge := PackedByteArray()
 var rock := PackedByteArray()
 var wet := PackedByteArray()
 var state: int = State.PLAYING
+# Whether a round has begun (the warmer loads freely before).
+var begun: bool = false
 var round_now: int = 1
 var land: String = "light"
 var lives: int = LIVES
@@ -336,6 +338,13 @@ static func gold_for_round(which: int, table: Dictionary = {}) -> int:
 
 
 func _ready() -> void:
+	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
+	add_to_group(&"minigame_run")
+	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): each land's slime and
+	# the turret's shot, loaded before the first cut and between rounds.
+	var warmer: Node = (load("res://src/systems/scenewarmer.gd") as GDScript).call("add_to", self)
+	warmer.set("calm", func() -> bool: return not begun or state != State.PLAYING)
+	warmer.call("warm", scenes_to_warm())
 	_rng.seed = seed_value if seed_value != 0 else randi()
 	_astar = AStarGrid2D.new()
 	_astar.region = Rect2i(0, 0, COLS, ROWS)
@@ -411,6 +420,7 @@ func begin(which: int) -> void:
 	round_now = which
 	land = land_of(which)
 	state = State.PLAYING
+	begun = true
 	grid.resize(COLS * ROWS)
 	edge.resize(COLS * ROWS)
 	rock.resize(COLS * ROWS)
@@ -666,7 +676,15 @@ func _piece_share(from: Vector2) -> float:
 # EACH FRAME
 # =============================================================================
 
+# WHO SPENT IT (0.152.0): this minigame's own frame, timed, so a slow
+# frame on the readout names it (PerfOverlay.spend()).
 func _physics_process(delta: float) -> void:
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_physics_process(delta)
+	PerfOverlay.spend(&"cut the cloth", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_physics_process(delta: float) -> void:
 	_t += delta
 	hit_left = maxf(0.0, hit_left - delta)
 	grace_left = maxf(0.0, grace_left - delta)
@@ -1863,3 +1881,19 @@ func _draw_gust() -> void:
 		var length: float = rng.randf_range(14.0, 30.0)
 		var a: float = (0.45 if strong else 0.18) * (0.6 + 0.4 * rng.randf())
 		_fx.draw_line(at, at + gust_dir * length, Color(0.95, 0.98, 1.0, a), 1.0)
+
+
+func measure_label() -> String:
+	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
+	return "Cut the Cloth - round %d, %s" % [round_now, land]
+
+
+static func scenes_to_warm() -> Array:
+	"""Each round's slime, in the order the rounds come, and the turret's shot."""
+	var out: Array = []
+	for which in range(1, MOVES.size() + 1):
+		var path: String = "res://scene/enemy/%s.tscn" % str(SLIME_SCENES.get(land_of(which), "waterslime"))
+		if not out.has(path):
+			out.append(path)
+	out.append("res://scene/projectiles/turretprojectile.tscn")
+	return out
