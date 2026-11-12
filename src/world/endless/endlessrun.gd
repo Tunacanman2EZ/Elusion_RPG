@@ -206,6 +206,8 @@ var party_in: int = 0
 var _grace_left: float = 0.0
 # Whether this game ran the run last frame (take_over()).
 var _led: bool = true
+# The Testing Ground (GameState.testing_ground at _ready()): no run here.
+var testing: bool = false
 
 
 func _ready() -> void:
@@ -250,6 +252,15 @@ func _ready() -> void:
 	# The way out is the Minigames card's Leave (minigamescard.gd), or the
 	# corridor's ladder for anybody who never went through.
 	_one_way_door.call_deferred()
+	# THE TESTING GROUND (0.151.1): no run - testingground.gd brings what is
+	# asked for, and nothing else comes.
+	testing = bool(GameState.testing_ground)
+	if testing:
+		_hud.visible = false
+		var ground_tools: Node = (load("res://src/world/endless/testingground.gd") as GDScript).new()
+		ground_tools.name = "testingground"
+		ground_tools.set("run", self)
+		add_child(ground_tools)
 
 
 func _one_way_door() -> void:
@@ -506,6 +517,13 @@ func on_floor(at: Vector2) -> bool:
 
 
 func _process(delta: float) -> void:
+	# WHO SPENT IT (perfoverlay.gd, 0.151.1): timed for the readout.
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"the run", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	var player: Node2D = _player()
 	my_in = (state == State.RUNNING or state == State.COUNTDOWN) and player != null \
 		and player.get("is_dying") != true and on_floor(player.global_position)
@@ -640,6 +658,9 @@ func raise_spikes(near: Node2D) -> Node2D:
 
 
 func _exit_tree() -> void:
+	# Leaving the Testing Ground: the next visit to this map is a run again.
+	if testing:
+		GameState.testing_ground = false
 	# The wash is the area's child, not the run's: it goes with the run.
 	if floor_wash != null and is_instance_valid(floor_wash):
 		floor_wash.queue_free()
@@ -679,7 +700,7 @@ func _avoid_points() -> PackedVector2Array:
 func begin_countdown() -> void:
 	"""(A party's leader.) Somebody stepped through the door: the run starts in
 	COUNTDOWN_SECONDS, and the door is held open until then."""
-	if state != State.WAITING:
+	if state != State.WAITING or testing:
 		return
 	_clear_arena()
 	state = State.COUNTDOWN
@@ -711,7 +732,7 @@ func _set_door(open: bool) -> void:
 func start() -> void:
 	"""The player has stepped through the door (alone), or the party's
 	countdown is over: the clock starts and the door shuts behind them."""
-	if state == State.RUNNING:
+	if state == State.RUNNING or testing:
 		return
 	var counted: bool = state == State.COUNTDOWN
 	if not counted:

@@ -230,6 +230,13 @@ const WATCH_RATE := 0.05
 const WATCH_TIMES := 2.0
 var _marks_now: Dictionary = {}
 var _marks_ended: Dictionary = {}
+# WHO SPENT IT (0.151.1). The owner's browser: scripts hitches of 22-27 ms
+# that no mark named, and the sandbox, a faster machine, could not make them.
+# The game's biggest script users time themselves (spend()) - the crowd, the
+# run, the party, the shared monsters, the network, the sleeper - and each
+# hitch keeps what each spent in its frame; its row names the biggest.
+var _spent_now: Dictionary = {}
+var _spent_ended: Dictionary = {}
 # kind -> [frames, hitched, {part: hitches}]; the same for nothing marked.
 var _lag: Dictionary = {}
 var _lag_base: Array = [0, 0, {}]
@@ -326,6 +333,8 @@ func _physics_process(_delta: float) -> void:
 		# The frame that just ended has its marks; this one starts afresh.
 		_marks_ended = _marks_now
 		_marks_now = {}
+		_spent_ended = _spent_now
+		_spent_now = {}
 
 
 func clocked_frame(now_usec: int) -> Dictionary:
@@ -338,6 +347,8 @@ func clocked_frame(now_usec: int) -> Dictionary:
 		# No tick to set the ended frame's marks aside: they end here.
 		_marks_ended = _marks_now
 		_marks_now = {}
+		_spent_ended = _spent_now
+		_spent_now = {}
 	var parts: Dictionary = {}
 	if _frame_start_usec > 0 and _idle_usec > 0:
 		var drew: bool = _pre_draw_usec >= _idle_usec and _post_draw_usec >= _pre_draw_usec
@@ -350,8 +361,10 @@ func clocked_frame(now_usec: int) -> Dictionary:
 			"scripts": float(maxi(0, scripts_end - _idle_usec)) / 1000.0,
 			"drawing": float(_post_draw_usec - _pre_draw_usec) / 1000.0 if drew else 0.0,
 			"marks": _marks_ended,
+			"spent": _spent_ended,
 		}
 	_marks_ended = {}
+	_spent_ended = {}
 	# This frame: its ticks ran before this call; the last one ends now.
 	if _tick_usec > 0 and _ticks_now > 0:
 		_tick_worst_usec = maxi(_tick_worst_usec, now_usec - _tick_usec)
@@ -600,6 +613,66 @@ func mark(kind: StringName, count: int = 1) -> void:
 	_marks_now[kind] = int(_marks_now.get(kind, 0)) + count
 
 
+# THE GAME'S OWN WORK, FRAME BY FRAME (0.151.1, the Testing Ground): physics,
+# scripts and drawing - not the frame, which V-Sync and a browser hold to the
+# screen's refresh, so it hides a cost until a frame misses a refresh. The
+# newest WORK_KEPT frames, for work_stats().
+const WORK_KEPT := 240
+var _work := PackedFloat32Array()
+var _work_at: int = 0
+var _work_n: int = 0
+
+
+func _keep_work(ms: float) -> void:
+	if _work.size() != WORK_KEPT:
+		_work.resize(WORK_KEPT)
+	_work[_work_at] = ms
+	_work_at = (_work_at + 1) % WORK_KEPT
+	_work_n = mini(_work_n + 1, WORK_KEPT)
+
+
+func forget_work() -> void:
+	"""Start the frames counted by work_stats() afresh."""
+	_work_n = 0
+	_work_at = 0
+
+
+func work_stats(frames: int = 120) -> Dictionary:
+	"""The game's own work over the newest `frames` (at most WORK_KEPT) the
+	readout has seen: {"median", "p95", "last", "frames"} in ms; frames 0
+	when it has seen none (it counts only while it is up)."""
+	var n: int = mini(frames, _work_n)
+	if n <= 0:
+		return {"median": 0.0, "p95": 0.0, "last": 0.0, "frames": 0}
+	var picked := PackedFloat32Array()
+	picked.resize(n)
+	for k in n:
+		picked[k] = _work[(_work_at - 1 - k + WORK_KEPT) % WORK_KEPT]
+	var last: float = picked[0]
+	picked.sort()
+	return {"median": picked[int(n / 2.0)], "p95": picked[mini(n - 1, int(floor(float(n) * 0.95)))],
+		"last": last, "frames": n}
+
+
+func spend(part: StringName, usec: int) -> void:
+	"""`part` of the game took `usec` of this frame (WHO SPENT IT). Nothing
+	while the readout is off."""
+	if not visible:
+		return
+	_spent_now[part] = int(_spent_now.get(part, 0)) + usec
+
+
+static func spent_text(spent: Dictionary, most: int = 2) -> String:
+	"""The biggest of a frame's spenders, at 1 ms or more: "crowd 14.2 ms"."""
+	var parts: Array = spent.keys()
+	parts.sort_custom(func(a, b): return int(spent[a]) > int(spent[b]))
+	var bits: PackedStringArray = []
+	for part in parts.slice(0, most):
+		if int(spent[part]) >= 1000:
+			bits.append("%s %.1f ms" % [part, float(spent[part]) / 1000.0])
+	return " · ".join(bits)
+
+
 func _note_drawn(parts: Dictionary) -> void:
 	"""What the ended frame changed in what is drawn: draw calls, triangles,
 	graphics memory (new buffers and textures). The renderer's numbers now
@@ -703,6 +776,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 	var worst_tick: float = float(sample.get("worst_tick", _physics_ms()))
 	var scripts: float = float(sample.get("scripts", _process_ms()))
 	var drawing: float = float(sample.get("drawing", 0.0))
+	_keep_work(physics + scripts + drawing)
 	var budget: float = budget_ms()
 	var hitched: bool = ms > budget * HITCH_TIMES
 	if ms <= budget * 1.05:
@@ -725,6 +799,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 			"area": str(sample.get("area", AreaRegistry.current_area_id())),
 			"at": int(sample.get("at", Time.get_ticks_msec())),
 			"marks": marks.duplicate(),
+			"spent": (sample.get("spent", {}) as Dictionary).duplicate(),
 			"draws": int(sample.get("draws", 0)), "prims": int(sample.get("prims", 0)),
 			"vram": int(sample.get("vram", 0)),
 		})
@@ -981,6 +1056,10 @@ func marks_text(spike: Dictionary, most: int = 3) -> String:
 	"""What happened in a hitch's frame, in a few words: its marks, the
 	commonest first, then what it changed in what is drawn."""
 	var bits: PackedStringArray = []
+	# Who spent it, first (WHO SPENT IT).
+	var spenders: String = spent_text(spike.get("spent", {}))
+	if spenders != "":
+		bits.append(spenders)
 	var marks: Dictionary = spike.get("marks", {})
 	var kinds: Array = marks.keys()
 	kinds.sort_custom(func(a, b): return int(marks[a]) > int(marks[b]))

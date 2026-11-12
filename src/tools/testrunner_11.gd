@@ -3363,3 +3363,132 @@ func _test_the_gm_spawner() -> void:
 	Api.is_owner = was_owner
 	await get_tree().process_frame
 	print("  (spawn: done)")
+
+
+# =============================================================================
+# WHO SPENT IT (0.151.1)
+# =============================================================================
+# The owner's browser: scripts hitches of 22-27 ms that no mark named.
+
+func _test_who_spent_it() -> void:
+	section("WHO SPENT IT (0.151.1): the game's biggest script users time themselves, and a hitch names the biggest")
+	check("a hitch's row names its biggest spenders, 1 ms and up, biggest first",
+		PerfOverlay.spent_text({&"crowd": 14200, &"network": 500, &"the run": 3100}) == "crowd 14.2 ms · the run 3.1 ms"
+		and PerfOverlay.call("marks_text", {"spent": {&"crowd": 14200}, "marks": {&"spikes go": 2}}).begins_with("crowd 14.2 ms · spikes go ×2"))
+	var was_shown: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set("_spent_now", {})
+	PerfOverlay.spend(&"crowd", 5000)
+	var off_kept: bool = (PerfOverlay.get("_spent_now") as Dictionary).has(&"crowd")
+	PerfOverlay.set_shown(true)
+	PerfOverlay.set("_spent_now", {})
+	PerfOverlay.spend(&"crowd", 5000)
+	PerfOverlay.spend(&"crowd", 2500)
+	var on_kept: int = int((PerfOverlay.get("_spent_now") as Dictionary).get(&"crowd", 0))
+	PerfOverlay.set_shown(was_shown)
+	check("  kept only while the readout is up, added up over the frame", not off_kept and on_kept == 7500, on_kept)
+	var timed: Array = []
+	for pair in [["res://src/world/endless/swarm.gd", "crowd"], ["res://src/world/endless/endlessrun.gd", "the run"],
+			["res://src/world/endless/endlessparty.gd", "party"], ["res://src/world/monstersync.gd", "shared monsters"],
+			["res://src/systems/presence.gd", "network"], ["res://src/world/enemysleeper.gd", "sleeper"]]:
+		var body: String = _func_body(_code_src(str(pair[0])), "func _process(")
+		if not (body.contains("_timed_process(") and body.contains("PerfOverlay.spend(&\"%s\"" % pair[1])):
+			timed.append(pair[0])
+	check("  the crowd, the run, the party, the shared monsters, the network and the sleeper each time their frame",
+		timed.is_empty(), timed)
+	print("  (who spent it: done)")
+
+
+# =============================================================================
+# THE TESTING GROUND (0.151.1)
+# =============================================================================
+# The owner: "maybe we should make a new minigame called testing ground", and
+# "i want monsters to be counted on the field".
+
+func _test_the_testing_ground() -> void:
+	section("THE TESTING GROUND (0.151.1): the Endless's map with no run, the horde on a button, everything counted, the work against the budget")
+	const Run := preload("res://src/world/endless/endlessrun.gd")
+	const Ground := preload("res://src/world/endless/testingground.gd")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	# ---- the readout's work, frame by frame ------------------------------------------
+	PerfOverlay.forget_work()
+	for ms in [5.0, 6.0, 7.0, 8.0, 30.0]:
+		PerfOverlay.call("_keep_work", ms)
+	var stats: Dictionary = PerfOverlay.work_stats(5)
+	check("the readout keeps the game's own work a frame: the median and the slow ones (95th percentile), the newest last",
+		is_equal_approx(float(stats["median"]), 7.0) and is_equal_approx(float(stats["p95"]), 30.0)
+		and is_equal_approx(float(stats["last"]), 30.0) and int(stats["frames"]) == 5, stats)
+	PerfOverlay.forget_work()
+	check("  green under 80% of the budget, amber to it, red past it - the slow ones count",
+		Ground.work_colour(10.0, 12.0, 16.67) == Ground.GREEN and Ground.work_colour(10.0, 14.0, 16.67) == Ground.AMBER
+		and Ground.work_colour(10.0, 17.0, 16.67) == Ground.RED)
+	check("  counted by name, most first, with the total",
+		Ground.counts_text({"Horde slimes": 1000, "Wind archer": 20}) == "Horde slimes 1,000  ·  Wind archer 20   ·   1,020 in all"
+		and Ground.counts_text({}).begins_with("Nothing here yet"))
+	# ---- the run, with no run ----------------------------------------------------------
+	var was_shown: bool = PerfOverlay.is_shown()
+	GameState.testing_ground = true
+	var run: Node = Run.new()
+	add_child(run)
+	await get_tree().process_frame
+	var ground: Node = run.get_node_or_null("testingground")
+	run.call("start")
+	run.call("begin_countdown")
+	check("the Testing Ground: the run's map with its tools, no run - stepping through starts nothing, the run's plate hidden",
+		bool(run.get("testing")) and ground != null and int(run.get("state")) == Run.State.WAITING
+		and not bool((run.get("_hud") as CanvasLayer).visible) and PerfOverlay.is_shown())
+	var player := Node2D.new()
+	add_child(player)
+	player.global_position = Vector2(768, 700)
+	run.set("player_override", player)
+	ground.call("set_horde", 30)
+	ground.call("_process", 0.016)
+	var filled: int = int(run.get("swarm").get("alive"))
+	ground.call("set_horde", 10)
+	ground.call("_process", 0.016)
+	var smaller: int = int(run.get("swarm").get("alive"))
+	check("  the horde fills to the size asked, and a smaller size clears and fills back to exactly that",
+		filled == 30 and smaller == 10 and int(ground.get("horde")) == 10, [filled, smaller])
+	var counted: Dictionary = ground.call("counts")
+	ground.call("clear_all")
+	check("  counted on the field - the horde by name - and Clear all takes it all away",
+		int(counted.get("Horde slimes", 0)) == 10 and int(run.get("swarm").get("alive")) == 0
+		and int(ground.get("horde")) == 0 and Spawner.alive(get_tree()) == 0, counted)
+	# The run puts its swarm (and its 256 stand-ins, in "enemies") and its
+	# chest beside itself, not in itself: they go too, or later sections
+	# count them.
+	for left in [run.get("swarm"), run.get("chest")]:
+		if left != null and is_instance_valid(left):
+			(left as Node).queue_free()
+	run.queue_free()
+	player.queue_free()
+	await get_tree().process_frame
+	check("  leaving the map, the next visit is a run again", not GameState.testing_ground)
+	PerfOverlay.set_shown(was_shown)
+	# ---- the Minigames card --------------------------------------------------------------
+	var card: Node = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).new()
+	add_child(card)
+	var went: Array = []
+	card.set("shows_testing", func() -> bool: return true)
+	card.set("in_party", func() -> bool: return false)
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("travel", func(area: String, spawn: String) -> void: went.append([area, spawn]))
+	card.call("paint")
+	var tile_shown: bool = (card.get("testing_box") as Control).visible
+	var go_on: bool = not (card.get("testing_go") as Button).disabled
+	card.call("_on_testing_go")
+	var flagged: bool = GameState.testing_ground
+	GameState.testing_ground = false
+	card.set("in_party", func() -> bool: return true)
+	card.call("paint")
+	var party_said: String = (card.get("testing_status") as Label).text
+	var party_off: bool = (card.get("testing_go") as Button).disabled
+	card.set("shows_testing", func() -> bool: return false)
+	card.call("paint")
+	check("Minigames: the owner's Testing Ground tile - Go sets the Testing Ground and goes to the Endless's corridor, no server asked; refused in a party; nobody else sees it",
+		tile_shown and go_on and flagged and went == [["endless", "endless_entrance"]]
+		and party_off and party_said.begins_with("Leave your party") and not (card.get("testing_box") as Control).visible,
+		[went, party_said])
+	card.queue_free()
+	await get_tree().process_frame
+	print("  (the Testing Ground: done)")

@@ -113,10 +113,14 @@ const PORTRAITS := {
 	"descent": ["res://scene/characters/warrior.tscn", Color(0.95, 0.4, 0.35)],
 	"forge": ["res://scene/characters/tank.tscn", Color(1.0, 0.6, 0.25)],
 	"cloth": ["res://scene/projectiles/turretprojectile.tscn", Color(0.86, 0.77, 0.61)],
+	"testingground": ["res://scene/enemy/skeletonelite.tscn", Color(0.8, 0.35, 0.3)],
 }
 const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
 const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
 const TAG_TESTING := ["TESTING", Color(0.55, 0.35, 0.1), "Yours only while it is built"]
+# THE TESTING GROUND (0.151.1, testingground.gd): the owner's alone.
+const TAG_OWNER := ["OWNER", Color(0.5, 0.15, 0.15), "Yours only - for measuring"]
+const TESTING_BLURB := "The Endless's arena with nothing in it - measure what each monster costs."
 const TAG_TEXT := Color(1.0, 0.95, 0.85)
 const TILE_BG := Color(0.09, 0.07, 0.05, 0.92)
 const PORTRAIT_SIZE := 48.0
@@ -171,6 +175,12 @@ var forge_go: Button = null
 var cloth_box: PanelContainer = null
 var cloth_status: Label = null
 var cloth_go: Button = null
+var testing_box: PanelContainer = null
+var testing_status: Label = null
+var testing_go: Button = null
+# Seams for the suite: the owner, and whether in a party.
+var shows_testing: Callable = func() -> bool: return bool(Api.is_owner)
+var in_party: Callable = func() -> bool: return Party.in_one()
 # Cut the Cloth's runs left today and the wait when none are, as the server
 # said and when.
 var cloth_left: int = 3
@@ -289,6 +299,11 @@ func _init() -> void:
 	cloth_status = cloth[3]
 	cloth_go = _go_button("clothgo", _on_cloth_go)
 	(cloth[4] as HBoxContainer).add_child(cloth_go)
+	var testing: Array = _tile(column, "testingground", "Testing Ground", TESTING_BLURB, [TAG_OWNER])
+	testing_box = testing[0]
+	testing_status = testing[3]
+	testing_go = _go_button("testinggo", _on_testing_go)
+	(testing[4] as HBoxContainer).add_child(testing_go)
 
 
 func _tile(column: Control, id: String, game_title: String, line: String, tags: Array) -> Array:
@@ -620,6 +635,7 @@ func paint() -> void:
 	_paint_descent()
 	_paint_forge()
 	_paint_cloth()
+	_paint_testing()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -708,6 +724,8 @@ func _on_go() -> void:
 	if res.get("ok", false):
 		forget_wait(GAME)
 		close()
+		# A run, not the Testing Ground.
+		GameState.testing_ground = false
 		travel.call(GAME, ENTRANCE)
 		return
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
@@ -985,6 +1003,33 @@ func _on_cloth_go() -> void:
 	else:
 		_cloth_said = UNREACHABLE
 	paint()
+
+
+func _paint_testing() -> void:
+	testing_box.visible = bool(shows_testing.call())
+	var can_go: bool = false
+	if inside_endless():
+		testing_status.text = "You are here - Leave is on the Endless above." if GameState.testing_ground \
+			else "Leave the Endless first."
+	elif bool(in_party.call()):
+		testing_status.text = "Leave your party first - a party shares its arena."
+	else:
+		testing_status.text = "Ready - no run, no timer, nothing counts"
+		can_go = true
+	testing_status.add_theme_color_override("font_color", COLOUR_READY if can_go else COLOUR_HINT)
+	testing_go.disabled = not can_go
+	testing_go.tooltip_text = "Down to the Endless's arena, empty - the GM panel's Spawn and the horde buttons fill it"
+
+
+func _on_testing_go() -> void:
+	"""Go: the Endless's map with no run (GameState.testing_ground). No day is
+	spent - the server is not asked."""
+	if not bool(shows_testing.call()) or inside_endless() or bool(in_party.call()):
+		paint()
+		return
+	GameState.testing_ground = true
+	travel.call(GAME, ENTRANCE)
+	close()
 
 
 func _shows_cloth() -> bool:

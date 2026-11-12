@@ -247,6 +247,13 @@ func _post_ticket(path: String, body: Dictionary) -> Dictionary:
 # =============================================================================
 
 func _process(delta: float) -> void:
+	# WHO SPENT IT (perfoverlay.gd, 0.151.1): timed for the readout.
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"network", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	var player: Node = _local_player()
 	if not enabled or player == null or not Api.is_logged_in():
 		if _phase != "off":

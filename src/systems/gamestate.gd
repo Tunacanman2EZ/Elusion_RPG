@@ -133,6 +133,13 @@ var god_mode: bool = false
 # god_mode is.
 var immune_effects: bool = false
 
+# THE TESTING GROUND (0.151.1) - the owner: "maybe we should make a new
+# minigame called testing ground since minigame is designed to spawn slimes
+# not test". The Minigames card's owner-only Go sets it and travels to the
+# Endless's map, which comes up with no run (endlessrun.gd `testing`,
+# testingground.gd); the map clears it as it goes. Transient, as god_mode is.
+var testing_ground: bool = false
+
 # THE RARE ROLL, EVERY TIME (0.18.1). The owner, of the mythics' 1% rolls -
 # the Meteorite's pull, the Double Axe's blood, Dynamite's five sticks -
 # after an evening of not seeing two of them: "yes that sounds amazing", to a

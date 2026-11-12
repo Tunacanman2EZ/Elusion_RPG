@@ -363,6 +363,13 @@ func _respawners(root: Node) -> Array:
 # =============================================================================
 
 func _process(delta: float) -> void:
+	# WHO SPENT IT (perfoverlay.gd, 0.151.1): timed for the readout.
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"shared monsters", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	match role:
 		Role.PENDING:
 			_pending_left -= delta

@@ -840,7 +840,7 @@ func _test_the_swarm_steps_the_same_for_less() -> void:
 	var makes := RegEx.new()
 	makes.compile("Packed[A-Za-z0-9]+Array\\(|\\{\\s*\\}|\\[\\s*\\]|\\bDictionary\\(|\\bArray\\(|\\.duplicate\\(|\\.slice\\(")
 	var making: Array = []
-	for header in ["func _process(", "func _step(", "func _make_room(", "func _write_buffer(", "func _sort_order(",
+	for header in ["func _process(", "func _timed_process(", "func _step(", "func _make_room(", "func _write_buffer(", "func _sort_order(",
 			"func _place_proxies(", "func _focus_find(", "func _gather_foci(", "func _near_focus(", "func _move_proxies("]:
 		var fn_body: String = _func_body(src, header)
 		if fn_body == "" or makes.search(fn_body) != null:

@@ -118,6 +118,13 @@ static func add_to(scene: Node) -> Node:
 
 
 func _process(delta: float) -> void:
+	# WHO SPENT IT (perfoverlay.gd, 0.151.1): timed for the readout.
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"sleeper", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	if player_jumped():
 		check_now()
 		return

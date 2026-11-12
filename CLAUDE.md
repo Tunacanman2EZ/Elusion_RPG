@@ -14117,6 +14117,65 @@ or elites and i can measure out better".
 - Skipping time (an Endless stage jump) is not built: his call, later.
 - `_test_the_gm_spawner()` (testrunner_11).
 
+### Who spent it: a hitch names the script that took it (0.151.1)
+
+The owner's browser kept showing scripts hitches of 22-27 ms, most on
+"monsters die" (9 of 91 elite deaths). The sandbox could not make them:
+zz/deathbench.gd timed an elite's death at 0.4-0.5 ms for the blow, the
+same with the chest's report or without it, and the frames after it no
+slower than frames with no death (the sandbox's own worst, 33 ms, is its
+clock). A browser runs the game's code slower, and the readout could only
+say "scripts". So the game's biggest script users time themselves:
+
+- **perfoverlay.gd WHO SPENT IT**: `spend(part, usec)` adds up a frame's
+  time per part while the readout is up (`_spent_now`, set aside at the
+  frame's end exactly as the marks are, `_spent_ended`); each hitch keeps
+  its frame's `spent`, and `marks_text()` puts the biggest first
+  (`spent_text()`, 1 ms and up, two at most): "crowd 14.2 ms · spikes go
+  ×2". The panel's rows and Copy both show it.
+- **Six scripts time their frame**: `_process()` is a wrapper that times
+  `_timed_process()` (the old body): swarm.gd "crowd", endlessrun.gd "the
+  run", endlessparty.gd "party", monstersync.gd "shared monsters",
+  presence.gd "network", enemysleeper.gd "sleeper". A new big per-frame
+  script does the same. testrunner_10's no-arrays-in-a-step check reads
+  `_timed_process(` too.
+- Not timed: the HUD (a test reads its `_process` order) and the monsters
+  (their brains are physics, which the readout already splits out).
+- `_test_who_spent_it()` (testrunner_11).
+
+### The Testing Ground: the Endless's map with no run, for measuring (0.151.1)
+
+The owner: "maybe we should make a new minigame called testing ground since
+minigame is designed to spawn slimes not test", "i want monsters to be
+counted on the field so if i spawn 10 at a time i know where the limit is",
+and "the goal is to make a spread sheet with all enemies then figure out the
+mathmatical solutions for my server to run perfect". Step 1 of three (the
+sweep, then the spreadsheet).
+
+- **Minigames > Testing Ground** (minigamescard.gd `_paint_testing()`,
+  `_on_testing_go()`): the owner's alone (`shows_testing`), refused in a
+  party (`in_party`, Party.in_one() - a party shares its arena); Go sets
+  `GameState.testing_ground` and travels to the Endless's corridor, the
+  server not asked (no day spent). The Endless's own Go clears the flag.
+- **The Endless's map, no run** (endlessrun.gd `testing`, read at
+  `_ready()`): `start()` and `begin_countdown()` do nothing, the run's
+  plate is hidden, and testingground.gd is made. `_exit_tree()` clears the
+  flag. A fall still wakes you by the chest (`knock_out()`). Alone, the
+  server already seats you in an arena of your own (`endless#u<id>`).
+- **testingground.gd**: the readout switched on (it counts the work); the
+  horde's slimes at stage 10's strength (`SLIME_STAGE`); a panel top right
+  (the readout is top left): TESTING GROUND, the work - median and slow
+  (95th percentile) of the last 60 frames against the budget, green under
+  80%, amber to it, red past it (`work_colour()`) - what is alive by name,
+  most first, with the total (`counts()`, the horde and gmspawner.gd's
+  group, named by `GmSpawner.label_of()`), **Slime horde** Off / 1,000 /
+  3,000 / 5,000 (`set_horde()`, topped up `FILL_A_FRAME` a frame; a smaller
+  size clears and refills) and **Clear all**. Spawn is the GM panel's.
+- **perfoverlay.gd keeps the work a frame** (`_keep_work()`, `WORK_KEPT`
+  240, `work_stats()`, `forget_work()`): physics + scripts + drawing, not
+  the frame, which V-Sync and a browser hold to the screen's refresh.
+- `_test_the_testing_ground()` (testrunner_11). zz/tgshot pictures it.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

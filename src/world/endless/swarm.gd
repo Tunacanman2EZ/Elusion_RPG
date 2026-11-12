@@ -756,6 +756,13 @@ func is_alive(i: int) -> bool:
 # =============================================================================
 
 func _process(delta: float) -> void:
+	# WHO SPENT IT (perfoverlay.gd, 0.151.1): timed for the readout.
+	var spent_from: int = Time.get_ticks_usec()
+	_timed_process(delta)
+	PerfOverlay.spend(&"crowd", Time.get_ticks_usec() - spent_from)
+
+
+func _timed_process(delta: float) -> void:
 	var player: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
 	var at: Vector2 = player.global_position if player != null else arena.get_center()
 	var chasing: bool = player != null and player.get("is_dying") != true and on_floor(at)
