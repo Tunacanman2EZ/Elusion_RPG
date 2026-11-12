@@ -56,6 +56,7 @@ const Targets := preload("res://src/shared/targets.gd")
 const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 # A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
 const HitFlash := preload("res://src/shared/hitflash.gd")
+const LagTests := preload("res://src/systems/lagtests.gd")
 
 
 # =============================================================================
@@ -2111,7 +2112,7 @@ func _paint_bar_shown() -> void:
 	var bar: CanvasItem = get_node_or_null("healthbar") as CanvasItem
 	if bar == null:
 		return
-	var shown: bool = hp < max_hp or engaged
+	var shown: bool = (hp < max_hp or engaged) and not LagTests.hide_health
 	if shown and not _readout_built:
 		_ask_for_readout()
 	if bar.visible != shown:

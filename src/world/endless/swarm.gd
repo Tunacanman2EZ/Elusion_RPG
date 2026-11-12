@@ -71,6 +71,7 @@ signal killed(at: Vector2)
 signal struck(slot: int, batch: int, damage: int, died: bool)
 
 const SwarmProxy := preload("res://src/world/endless/swarmproxy.gd")
+const LagTests := preload("res://src/systems/lagtests.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SHADER := preload("res://src/world/endless/swarm.gdshader")
 const SHEET := preload("res://art/enemy/slime.png")
@@ -395,6 +396,18 @@ func _ready() -> void:
 		add_child(proxy)
 		_proxies.append(proxy)
 	set_arena(arena)
+	# The GM panel's "Slimes" lag test (lagtests.gd, 0.150.0).
+	add_to_group(LagTests.GROUP)
+	show_tests()
+
+
+func show_tests() -> void:
+	"""Drawn or not as the GM panel's lag tests say: only drawing - the
+	slimes still move, bite and die."""
+	if _mesh != null:
+		_mesh.visible = not LagTests.hide_slimes
+	if _front != null:
+		_front.visible = not LagTests.hide_slimes
 
 
 func _build_mesh() -> void:
@@ -423,6 +436,7 @@ func _build_front() -> void:
 	_front = _make_mesh("drawnfront")
 	_front.position = Vector2(0.0, _front_y)
 	add_child(_front)
+	_front.visible = not LagTests.hide_slimes
 	set_arena(arena)
 
 

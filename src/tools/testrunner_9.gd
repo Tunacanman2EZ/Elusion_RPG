@@ -4187,6 +4187,11 @@ func _test_the_descent() -> void:
 	(doors[0] as Node).emit_signal("walked_in", doors[0])
 	for i in 3:
 		run.call("_process", RunScript.FADE_SECONDS)
+	# THE BOON PICKED ABOVE IS RANDOM (0.150.0): when it was Second Wind, the
+	# fall below rightly left the player standing, and this check failed now
+	# and then - "flaky" since 0.146.0. Its own floor's catch is spent here,
+	# so this is the fall without it (Second Wind has its own check).
+	Boons.wind_used = true
 	body.global_position = Vector2(5000, 5000)
 	var elsewhere: bool = not bool(run.call("knock_out", body))
 	body.global_position = Vector2(300, 200)
@@ -4196,7 +4201,7 @@ func _test_the_descent() -> void:
 		and int(run.get("state")) == RunScript.State.WAITING and str(run.get("last_result")).begins_with("You fell")
 		and (run.get("monsters") as Array).is_empty() and not Boons.active,
 		# WHICH PART, when it fails (0.146.0): it failed once in a whole run
-		# on a clean clone and passed the next, and alone it always passes.
+		# on a clean clone and passed the next - the random boon (0.150.0).
 		[elsewhere, caught, body.get("hp"), body.global_position, run.get("entry_spot"), run.get("state"),
 			run.get("last_result"), (run.get("monsters") as Array).size(), Boons.active])
 	room.queue_free()

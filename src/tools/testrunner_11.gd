@@ -3185,3 +3185,100 @@ func _test_see_through_spikes_and_a_busy_computer() -> void:
 	link.free()
 	await get_tree().process_frame
 	print("  (under budget, and still the horde: done)")
+
+
+# =============================================================================
+# THE ENDLESS'S LAG TESTS (0.150.0)
+# =============================================================================
+# The owner: "test and fix what you need to". His boss fight drew 13 ms a frame
+# and the browser cannot time the graphics card, so: hide one thing at a time
+# and see which takes the drawing with it.
+
+func _test_the_endless_lag_tests() -> void:
+	section("THE ENDLESS'S LAG TESTS (0.150.0): slimes, health bars, damage numbers and boss spikes, hidden one at a time")
+	const Lag := preload("res://src/systems/lagtests.gd")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	const SpikeFx := preload("res://src/projectiles/spikefx.gd")
+	# ---- the slimes ------------------------------------------------------------------
+	var swarm: Node2D = SwarmScript.new()
+	add_child(swarm)
+	swarm.call("draw_in_front_of", 28.0)
+	await get_tree().process_frame
+	var mesh: CanvasItem = swarm.get("_mesh") as CanvasItem
+	var front: CanvasItem = swarm.get("_front") as CanvasItem
+	var drawn_before: bool = mesh.visible and front.visible
+	Lag.set_test("slimes", true, get_tree())
+	var hidden: bool = not mesh.visible and not front.visible
+	Lag.set_test("slimes", false, get_tree())
+	check("Slimes hides both of the swarm's pictures and puts them back (the slimes still move and bite)",
+		drawn_before and hidden and mesh.visible and front.visible)
+	swarm.queue_free()
+	# ---- the health bars ---------------------------------------------------------------
+	var monster: Node2D = (load("res://scene/enemy/poisonslime.tscn") as PackedScene).instantiate() as Node2D
+	add_child(monster)
+	await get_tree().process_frame
+	monster.set("hp", float(monster.get("max_hp")) * 0.5)
+	monster.call("_paint_bar_shown")
+	var bar: CanvasItem = monster.get_node_or_null("healthbar") as CanvasItem
+	var bar_shown: bool = bar != null and bar.visible
+	Lag.set_test("health", true, get_tree())
+	var bar_hidden: bool = bar != null and not bar.visible
+	Lag.set_test("health", false, get_tree())
+	check("Health hides a wounded monster's bar (and its numbers with it) and shows it again",
+		bar_shown and bar_hidden and bar.visible, [bar_shown, bar_hidden])
+	monster.queue_free()
+	# ---- the damage numbers ------------------------------------------------------------
+	var holder := Node2D.new()
+	add_child(holder)
+	Lag.set_test("numbers", true, get_tree())
+	var number: Node = FloatingLabel.take(holder)
+	number.call("show_number", 42, 0)
+	var words: Node = FloatingLabel.take(holder)
+	words.call("show_text", "LEVEL UP!", 0)
+	Lag.set_test("numbers", false, get_tree())
+	var shown_after: Node = FloatingLabel.take(holder)
+	shown_after.call("show_number", 7, 0)
+	check("Numbers hides the damage numbers - not words such as a level-up - and they come back",
+		not (number as CanvasItem).visible and (words as CanvasItem).visible and (shown_after as CanvasItem).visible)
+	holder.queue_free()
+	# ---- the boss spikes ---------------------------------------------------------------
+	var container := Node2D.new()
+	add_child(container)
+	var fx: Node2D = SpikeFx.of(container)
+	var spike: Node2D = (load("res://scene/projectiles/icebossprojectile.tscn") as PackedScene).instantiate()
+	spike.set("telegraph_seconds", 5.0)
+	Lag.set_test("spikes", true, get_tree())
+	container.add_child(spike)
+	spike.global_position = Vector2(500, 500)
+	spike.call("telegraph_over")
+	var risen_unseen: bool = not (spike.get("anim") as CanvasItem).visible and bool(spike.get("_erupting"))
+	Lag.set_test("spikes", false, get_tree())
+	check("Spikes: a spike rises, and hits, unseen; off again, the one standing is seen",
+		risen_unseen and (spike.get("anim") as CanvasItem).visible and int(fx.call("standing_count")) == 1)
+	container.queue_free()
+	# ---- the panel ---------------------------------------------------------------------
+	var was_role: String = Api.role
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var row: Node = gm.find_child("laggridtwo", true, false)
+	var slimes_button: Button = gm.find_child("lagslimesbutton", true, false) as Button
+	if slimes_button != null:
+		slimes_button.button_pressed = true
+	var strip: Array = gm.call("active_now")
+	var on: bool = Lag.hide_slimes
+	if slimes_button != null:
+		slimes_button.button_pressed = false
+	check("the GM panel's LAG TESTS has a second row - Slimes, Health, Numbers, Spikes - each a toggle on the strip, and it still fits 370 (%d)"
+		% PanelWindow.content_minimum(gm).x,
+		row != null and row.find_children("lag*button", "Button", false, false).size() == 4
+		and on and strip.has("Slimes Off") and not Lag.hide_slimes and PanelWindow.content_minimum(gm).x <= 370.0, strip)
+	gm.queue_free()
+	Api.role = was_role
+	Lag.hide_slimes = false
+	Lag.hide_health = false
+	Lag.hide_numbers = false
+	Lag.hide_spikes = false
+	await get_tree().process_frame
+	print("  (the Endless's lag tests: done)")

@@ -14,6 +14,15 @@ extends RefCounted
 #   lights_off   every light in the area (Light2D.enabled; put back after)
 #   hide_arena   a boss's arena (0.139.0, lightarena.gd): its mirrors, flares
 #                and the dark (they still turn orbs and burn)
+# And the Endless's (0.150.0) - the owner, of a boss fight at 4,572 slimes,
+# drawing 13 ms a frame: "test and fix what you need to":
+#   hide_slimes   the swarm's slimes (swarm.gd's two MultiMeshes)
+#   hide_health   the monsters' health bars and their numbers
+#                 (BaseEnemy._paint_bar_shown())
+#   hide_numbers  the damage numbers (FloatingLabel.show_number(); words such
+#                 as a level-up still show)
+#   hide_spikes   the boss spikes themselves (bossprojectile.gd; their rings,
+#                 sparks and pools have tests of their own)
 #
 # TRANSIENT, as God mode is: nothing is saved, and a restart has them all off.
 # Hiding is only drawing - the spikes still warn, rise and hit, the pools
@@ -29,6 +38,10 @@ static var hide_sparks: bool = false
 static var hide_pools: bool = false
 static var lights_off: bool = false
 static var hide_arena: bool = false
+static var hide_slimes: bool = false
+static var hide_health: bool = false
+static var hide_numbers: bool = false
+static var hide_spikes: bool = false
 
 
 static func set_test(test: String, on: bool, tree: SceneTree) -> void:
@@ -45,11 +58,20 @@ static func set_test(test: String, on: bool, tree: SceneTree) -> void:
 			lights_off = on
 		"arena":
 			hide_arena = on
+		"slimes":
+			hide_slimes = on
+		"health":
+			hide_health = on
+		"numbers":
+			hide_numbers = on
+		"spikes":
+			hide_spikes = on
 	apply(tree)
 
 
 static func any_on() -> bool:
-	return hide_rings or hide_sparks or hide_pools or lights_off or hide_arena
+	return hide_rings or hide_sparks or hide_pools or lights_off or hide_arena \
+		or hide_slimes or hide_health or hide_numbers or hide_spikes
 
 
 static func names_on() -> PackedStringArray:
@@ -66,6 +88,14 @@ static func names_on() -> PackedStringArray:
 		out.append("lights off")
 	if hide_arena:
 		out.append("arena off")
+	if hide_slimes:
+		out.append("slimes off")
+	if hide_health:
+		out.append("health off")
+	if hide_numbers:
+		out.append("numbers off")
+	if hide_spikes:
+		out.append("spikes off")
 	return out
 
 
@@ -77,6 +107,10 @@ static func apply(tree: SceneTree) -> void:
 	for fx in tree.get_nodes_in_group(GROUP):
 		if fx.has_method(&"show_tests"):
 			fx.call(&"show_tests")
+	# The health bars: each monster's, as it would show them now.
+	for monster in tree.get_nodes_in_group(&"enemies"):
+		if monster.has_method(&"_paint_bar_shown"):
+			monster.call(&"_paint_bar_shown")
 	var scene: Node = tree.current_scene
 	if scene == null:
 		return

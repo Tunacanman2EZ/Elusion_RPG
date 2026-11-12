@@ -454,6 +454,12 @@ func show_tests() -> void:
 	for child in get_children():
 		if str(child.name).begins_with("puddles_"):
 			(child as CanvasItem).visible = not LagTests.hide_pools
+	# The spikes standing now ("Spikes", 0.150.0); one rising later reads it.
+	for spike in _standing:
+		if is_instance_valid(spike):
+			var sprite: CanvasItem = (spike as Node).get(&"anim") as CanvasItem
+			if sprite != null:
+				sprite.visible = not LagTests.hide_spikes
 
 
 static func pool_holder(container: Node, element: int) -> Node:

@@ -627,6 +627,13 @@ const LAG_TESTS := [
 	["lights", "Lights", "Puts out every light in the area."],
 	["arena", "Arena", "Hides a boss arena's mirrors, flares and dark."],
 ]
+# The Endless's (0.150.0), on a second row under the first.
+const LAG_TESTS_TWO := [
+	["slimes", "Slimes", "Hides the Endless's slimes."],
+	["health", "Health", "Hides monsters' health bars and their numbers."],
+	["numbers", "Numbers", "Hides the damage numbers."],
+	["spikes", "Spikes", "Hides boss spikes (their rings, sparks and pools are the row above)."],
+]
 const HINT_COLOUR := Color(0.6, 0.56, 0.48)
 const SECTION_COLOUR := Color(0.82, 0.7, 0.45)
 const CHIP_FILL := Color(0.24, 0.17, 0.06, 0.95)
@@ -731,7 +738,24 @@ func _add_lag_tests(testing: Node, at: int) -> void:
 	on_look.set_corner_radius_all(3)
 	on_look.content_margin_left = 6.0
 	on_look.content_margin_right = 6.0
-	for test in LAG_TESTS:
+	_lag_buttons(row, LAG_TESTS, on_look)
+	# THE ENDLESS'S (0.150.0): a second row, under the first, lined up with
+	# its buttons (a spacer the head's width).
+	var row_two := HBoxContainer.new()
+	row_two.name = "laggridtwo"
+	row_two.add_theme_constant_override("separation", LAG_GAP)
+	testing.add_child(row_two)
+	testing.move_child(row_two, row.get_index() + 1)
+	var spacer := Control.new()
+	spacer.name = "lagspacer"
+	spacer.custom_minimum_size = Vector2(head.get_combined_minimum_size().x, 0.0)
+	row_two.add_child(spacer)
+	_lag_buttons(row_two, LAG_TESTS_TWO, on_look)
+	_sync_lag_tests()
+
+
+func _lag_buttons(row: HBoxContainer, tests: Array, on_look: StyleBoxFlat) -> void:
+	for test in tests:
 		var button := Button.new()
 		button.name = "lag%sbutton" % test[0]
 		button.text = str(test[1])
@@ -745,19 +769,21 @@ func _add_lag_tests(testing: Node, at: int) -> void:
 		button.add_theme_color_override("font_hover_pressed_color", CHIP_EDGE)
 		button.toggled.connect(_on_lag_test_toggled.bind(str(test[0])))
 		row.add_child(button)
-	_sync_lag_tests()
 
 
 func _sync_lag_tests() -> void:
-	var grid: Node = find_child("laggrid", true, false)
-	if grid == null:
-		return
 	var on: Dictionary = {"rings": LagTests.hide_rings, "sparks": LagTests.hide_sparks,
-		"pools": LagTests.hide_pools, "lights": LagTests.lights_off, "arena": LagTests.hide_arena}
-	for test in LAG_TESTS:
-		var button: Button = grid.find_child("lag%sbutton" % test[0], true, false) as Button
-		if button != null:
-			button.set_pressed_no_signal(bool(on[test[0]]))
+		"pools": LagTests.hide_pools, "lights": LagTests.lights_off, "arena": LagTests.hide_arena,
+		"slimes": LagTests.hide_slimes, "health": LagTests.hide_health,
+		"numbers": LagTests.hide_numbers, "spikes": LagTests.hide_spikes}
+	for grid_name in ["laggrid", "laggridtwo"]:
+		var grid: Node = find_child(grid_name, true, false)
+		if grid == null:
+			continue
+		for test in LAG_TESTS + LAG_TESTS_TWO:
+			var button: Button = grid.find_child("lag%sbutton" % test[0], true, false) as Button
+			if button != null:
+				button.set_pressed_no_signal(bool(on[test[0]]))
 
 
 func _on_lag_test_toggled(pressed: bool, test: String) -> void:

@@ -28,6 +28,7 @@ const HitSource := preload("res://src/shared/hitsource.gd")
 # The rings, the sparks and the pools of every spike in the container, drawn
 # together (0.137.5) - see spikefx.gd.
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
+const LagTests := preload("res://src/systems/lagtests.gd")
 
 
 # =============================================================================
@@ -451,7 +452,9 @@ func _exit_tree() -> void:
 func _erupt() -> void:
 	_erupting = true
 	PerfOverlay.mark(&"spikes rise")
-	anim.visible = true
+	# The GM panel's "Spikes" lag test (lagtests.gd, 0.150.0): risen, hitting,
+	# unseen.
+	anim.visible = not LagTests.hide_spikes
 	anim.play(RISE_ANIM)
 	# Clears the ring in the same frame the spike appears - and stands it,
 	# so it fades while it covers the player (spikefx.gd SEE-THROUGH, 0.149.0).

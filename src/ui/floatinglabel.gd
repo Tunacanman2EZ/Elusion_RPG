@@ -160,6 +160,7 @@ var _active_lifetime: float = 1.0
 # newest is still the last child, as a new one was. Spares are kept up to
 # SPARE_MAX; past that a number goes as it always did.
 const SPARE_MAX := 256
+const LagTests := preload("res://src/systems/lagtests.gd")
 const SCENE_PATH := "res://scene/ui/floatinglabel.tscn"
 static var _spare: Array = []
 static var _scene: PackedScene = null
@@ -259,6 +260,10 @@ func _retire() -> void:
 func show_number(amount: int, type: Type, scale_factor: float = 1.0) -> void:
 	scale = Vector2(scale_factor, scale_factor)
 	_begin(str(amount), type, lifetime)
+	# The GM panel's "Numbers" lag test (lagtests.gd, 0.150.0): it still
+	# lives its life, unseen.
+	if LagTests.hide_numbers:
+		visible = false
 
 
 # =============================================================================

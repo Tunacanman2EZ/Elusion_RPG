@@ -14032,6 +14032,35 @@ held 86-100 fps on his PC.
   ~100 Hz - Options > V-Sync > Adaptive is the test, his to run.
 - `_test_see_through_spikes_and_a_busy_computer()` (testrunner_11).
 
+### The Endless's lag tests: slimes, health, numbers, spikes (0.150.0)
+
+The owner, after 0.149.0: "test and fix what you need to". His boss fight
+drew 13 ms a frame, and the readout cannot time the graphics card (the
+Compatibility renderer), so the next fix is chosen by his PC, not guessed.
+Four more of the GM panel's lag tests (lagtests.gd), on a second row under
+the first (`laggridtwo`, a spacer the head's width, `LAG_TESTS_TWO`; the
+panel is 366 of its 370):
+
+- **Slimes** (`hide_slimes`): swarm.gd joins `LagTests.GROUP` and
+  `show_tests()` hides `_mesh` and `_front`.
+- **Health** (`hide_health`): `BaseEnemy._paint_bar_shown()` shows no bar
+  (its numbers are on it); `apply()` repaints every monster in "enemies".
+- **Numbers** (`hide_numbers`): `FloatingLabel.show_number()` hides the
+  number it starts; `show_text()` (a level-up) is unchanged.
+- **Spikes** (`hide_spikes`): bossprojectile.gd `_erupt()` leaves the
+  sprite hidden; spikefx.gd `show_tests()` sets the standing ones.
+
+Drawing only, as the others: everything still moves, hits and dies. The
+strip and the readout's title name them ("slimes off"). How to use it: a
+boss fight in the Endless with the readout up, one at a time, and watch
+"drawing" and the hitches. `_test_the_endless_lag_tests()` (testrunner_11).
+
+**And the Descent's "flaky" fall check, found** (testrunner_9,
+`_test_the_descent()`): it picks the first boon offered, which is random,
+and when that was Second Wind the fall rightly left the player standing
+(`knock_out()`), so the check failed now and then since 0.146.0. It spends
+Second Wind first (`Boons.wind_used`); Second Wind has its own check.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:
