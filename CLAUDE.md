@@ -14061,6 +14061,29 @@ and when that was Second Wind the fall rightly left the player standing
 (`knock_out()`), so the check failed now and then since 0.146.0. It spends
 Second Wind first (`Boons.wind_used`); Second Wind has its own check.
 
+### The crowd's room, in parts too (0.150.1)
+
+The owner's lag tests (0.150.0) settled the drawing: health bars and damage
+numbers about 1 ms together, the spikes and the 5,000 slimes almost nothing
+(drawing 4.1-4.7 ms whichever was hidden). What was left was scripts: hitches
+of 18-24 ms, several in a row at stage 15-16 with the crowd pressed round
+him. zz/packbench.gd found it - swarm.gd `_make_room()`, the step's opening
+pass, done in one frame whatever the parts: 3,263 of 3,672 slimes within
+`ROOM_REACH` of a still player (two-thirds the size since 0.148.0, so more
+fit), 11.5 ms a step and 19 at worst in the container.
+
+- **ROOM IN PARTS TOO** (swarm.gd): `_begin_step()` keeps where each near one
+  stands (`_snap_x`, `_snap_y`), and `_move_some()` calls `_make_room(to)`,
+  which works out the room of the near ones below slot `to` not yet done
+  (`_room_done`, down `_near`, which is in slot order) - from the kept
+  places, so the numbers are the same as all at once (the suite's
+  same-to-the-bit checks hold it). The opening frame: 11.5 -> 1.6 ms; the
+  work is the same, spread over the parts.
+- **`CHUNKS_MOST` is 5** (was 3): at 100 a second a step is five parts, at
+  60 three, at 30 one - as many as fit in one STEP, never slower.
+- `_test_five_thousand_smaller_slimes()`: the room is worked out a part at a
+  time (84 of 261 after the first of three).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

@@ -93,7 +93,9 @@ const STEP := 1.0 / STEPS_PER_SECOND
 # and the walk between steps is drawn from that write (_since_write), so it
 # looks as before, a frame or two later. A frame that falls behind finishes
 # the step at once.
-const CHUNKS_MOST := 3
+# Five since 0.150.0: a computer drawing 100 a second moves a fifth a frame
+# (60 a second is still three, 30 one).
+const CHUNKS_MOST := 5
 # The grid the crowd is counted on, in px.
 # TWO-THIRDS THE SIZE SINCE 0.148.0 (DRAW_SCALE): the owner, "it would be
 # more realistic if we made the slimes a bit smaller", and of two-thirds, "it
@@ -298,6 +300,22 @@ var _ry := PackedFloat32Array()
 var _near := PackedInt32Array()
 var _room_head := PackedInt32Array()
 var _room_next := PackedInt32Array()
+# ROOM IN PARTS TOO (0.150.0). The owner's readout at stage 15: scripts 18.7
+# ms on a few frames, and every lag test left them. _make_room() was the
+# step's opening pass: with the crowd pressed round a still player 3,263 of
+# 3,672 slimes are near (two-thirds the size since 0.148.0, so more of them
+# fit in ROOM_REACH), and in the container it was 11.5 ms a step, 19 at worst
+# - in one frame, whatever the parts. Now each near slime's room is worked
+# out just before its own move (_move_some() calls _make_room(to)), from
+# where the near ones stood when the step began (_snap_x, _snap_y): the same
+# numbers as all at once, spread over the step's parts.
+var _snap_x := PackedFloat32Array()
+var _snap_y := PackedFloat32Array()
+var _room_hx: float = 0.0
+var _room_hy: float = 0.0
+var _room_side: int = 1
+# How far down the near list (_near, in slot order) the room is worked out.
+var _room_done: int = 0
 var _gw: int = 1
 var _gh: int = 1
 # The free slimes by CELL square, for the stand-ins round attacks
@@ -361,6 +379,8 @@ func _init() -> void:
 	_rx.resize(MOST)
 	_ry.resize(MOST)
 	_room_next.resize(MOST)
+	_snap_x.resize(MOST)
+	_snap_y.resize(MOST)
 	hp.resize(MOST)
 	timer.resize(MOST)
 	flash.resize(MOST)
@@ -877,9 +897,15 @@ func _begin_step(target: Vector2, chasing: bool) -> void:
 				_room_next[i] = _room_head[room_at]
 				_room_head[room_at] = i
 				_near[near_n] = i
+				_snap_x[i] = x
+				_snap_y[i] = y
 				near_n += 1
 	_near_n = near_n
-	_make_room(hx, hy, side)
+	# Worked out a part at a time, as each one moves (ROOM IN PARTS TOO).
+	_room_hx = hx
+	_room_hy = hy
+	_room_side = side
+	_room_done = 0
 	# The corridor's rects, grown by HELD_OUT_SIDES once a step and not once a
 	# slime, and a box round them all a pixel wider (has_point() rounds the
 	# point to 32 bits): one outside the box is in none of them.
@@ -908,6 +934,7 @@ func _move_some(count: int) -> void:
 	var from: int = _chunk_at
 	var to: int = mini(_chunk_end, from + maxi(count, 0))
 	_chunk_at = to
+	_make_room(to)
 	var gw: int = _gw
 	var gh1: int = _gh - 1
 	var gw1: int = gw - 1
@@ -1079,17 +1106,23 @@ func _end_step() -> void:
 	_chunk_at = -1
 
 
-func _make_room(hx: float, hy: float, side: int) -> void:
-	"""For each near slime, the way out of the others within ROOM of it,
-	each weighed by how far inside ROOM it is (0 at the edge, 1 on the same
-	spot) - two on one spot part along their own phases, the same way each
-	step, so nothing shakes."""
+func _make_room(upto: int) -> void:
+	"""For each near slime below slot `upto` not yet done, the way out of the
+	others within ROOM of it, each weighed by how far inside ROOM it is (0 at
+	the edge, 1 on the same spot) - two on one spot part along their own
+	phases, the same way each step, so nothing shakes. Read from where they
+	stood when the step began (ROOM IN PARTS TOO), so it is the same whichever
+	part it is worked out in."""
 	var room2: float = ROOM * ROOM
+	var hx: float = _room_hx
+	var hy: float = _room_hy
+	var side: int = _room_side
 	var side1: int = side - 1
-	for k in _near_n:
-		var i: int = _near[k]
-		var x: float = px[i]
-		var y: float = py[i]
+	while _room_done < _near_n and _near[_room_done] < upto:
+		var i: int = _near[_room_done]
+		_room_done += 1
+		var x: float = _snap_x[i]
+		var y: float = _snap_y[i]
 		var cx: int = clampi(int((x - hx) / ROOM), 0, side1)
 		var cy: int = clampi(int((y - hy) / ROOM), 0, side1)
 		var sx: float = 0.0
@@ -1102,8 +1135,8 @@ func _make_room(hx: float, hy: float, side: int) -> void:
 				var j: int = _room_head[row_at + col]
 				while j >= 0:
 					if j != i:
-						var dx: float = x - px[j]
-						var dy: float = y - py[j]
+						var dx: float = x - _snap_x[j]
+						var dy: float = y - _snap_y[j]
 						var d2: float = dx * dx + dy * dy
 						if d2 < room2:
 							var d: float = sqrt(d2)

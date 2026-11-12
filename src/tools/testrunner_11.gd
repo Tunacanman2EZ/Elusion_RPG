@@ -3053,6 +3053,21 @@ func _test_five_thousand_smaller_slimes() -> void:
 	parts.call("_process", 1.0 / 60.0)
 	check("  a frame that falls behind finishes the step under way at once", int(parts.get("_chunk_at")) == -1
 		or int(parts.get("_chunk_at")) < int(parts.get("_chunk_end")))
+	# ROOM IN PARTS TOO (0.150.1): the near ones' room is worked out with
+	# their part, not all in the frame that starts the step.
+	var amid := Vector2(float(parts.get("px")[0]), float(parts.get("py")[0]))
+	parts.set("_chunk_at", -1)
+	parts.call("_begin_step", amid, true)
+	var near_n: int = int(parts.get("_near_n"))
+	var third: int = ceili(float(int(parts.get("_high"))) / 3.0)
+	parts.call("_move_some", third)
+	var room_first: int = int(parts.get("_room_done"))
+	parts.call("_move_some", third)
+	parts.call("_move_some", third)
+	parts.call("_end_step")
+	check("  the near ones' room is worked out a part at a time (%d of %d after the first frame), all of it by the last"
+		% [room_first, near_n], near_n > 100 and room_first > 0 and room_first < near_n
+		and int(parts.get("_room_done")) == near_n, [room_first, near_n, int(parts.get("_room_done"))])
 	for swarm in pair:
 		swarm.queue_free()
 	me.queue_free()
