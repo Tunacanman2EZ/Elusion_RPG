@@ -349,12 +349,51 @@ func _enemy_in_reach() -> Node2D:
 	# enemy, not just the latched one, so a weaving orb still connects with a slime
 	# that drifts into its path. distance is measured to the enemy's real hurtbox
 	# centre and compared against that hurtbox's radius plus hit_pad.
-	for node in get_tree().get_nodes_in_group("enemies"):
+	#
+	# ONE LIST A TICK FOR EVERY ORB (0.153.0, targets_now()). Each orb went
+	# through every monster in the area on every tick - ten orbs a second, 35
+	# in the air, and in the Endless 256 swarm stand-ins in "enemies" - for 4.4
+	# ms of physics a frame with nothing to hit (the container; 0.6 with the
+	# healer not shooting). Now the first orb of a tick lists what can be hit,
+	# with each one's hurtbox centre and radius, and the rest read the list.
+	var list: Array = targets_now(get_tree(), owner_group)
+	for i in range(0, list.size(), 3):
+		var enemy: Node2D = list[i]
+		var reach: float = float(list[i + 2]) + hit_pad
+		if global_position.distance_squared_to(list[i + 1]) <= reach * reach:
+			# Still there and still aimable: an orb earlier this tick may
+			# have finished it.
+			if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
+				continue
+			if enemy.has_method("can_be_aimed_at") and not enemy.call("can_be_aimed_at"):
+				continue
+			return enemy
+	return null
+
+
+static var _targets_tick: int = -1
+static var _targets_for: String = ""
+static var _targets: Array = []
+
+
+static func targets_now(tree: SceneTree, not_in: String) -> Array:
+	"""What an orb fired by `not_in` can hit this physics tick: a flat list,
+	three entries a target - the node, its hurtbox centre, its hurtbox radius -
+	made once a tick and shared by every orb."""
+	var tick: int = Engine.get_physics_frames()
+	if tick == _targets_tick and not_in == _targets_for:
+		return _targets
+	_targets_tick = tick
+	_targets_for = not_in
+	_targets = []
+	if tree == null:
+		return _targets
+	for node in tree.get_nodes_in_group("enemies"):
 		if not (node is Node2D) or not is_instance_valid(node):
 			continue
 		var enemy: Node2D = node as Node2D
 		# never damage our own team (defensive — enemies aren't in "player").
-		if enemy.is_in_group(owner_group):
+		if enemy.is_in_group(not_in):
 			continue
 		if not enemy.has_method("take_damage"):
 			continue
@@ -362,13 +401,13 @@ func _enemy_in_reach() -> Node2D:
 		# refuses, and the orb was spent on it.
 		if enemy.has_method("can_be_aimed_at") and not enemy.call("can_be_aimed_at"):
 			continue
-		var reach: float = _enemy_radius(enemy) + hit_pad
-		if global_position.distance_squared_to(_enemy_hit_point(enemy)) <= reach * reach:
-			return enemy
-	return null
+		_targets.append(enemy)
+		_targets.append(_enemy_hit_point(enemy))
+		_targets.append(_enemy_radius(enemy))
+	return _targets
 
 
-func _enemy_hit_point(enemy: Node2D) -> Vector2:
+static func _enemy_hit_point(enemy: Node2D) -> Vector2:
 	# the enemy's hurtbox centre in world space. read live so it's right for a
 	# moving, offset, or rescaled enemy. falls back to the root origin only if the
 	# enemy has no hurtbox shape node at the conventional path.
@@ -378,7 +417,7 @@ func _enemy_hit_point(enemy: Node2D) -> Vector2:
 	return enemy.global_position
 
 
-func _enemy_radius(enemy: Node2D) -> float:
+static func _enemy_radius(enemy: Node2D) -> float:
 	# the enemy's hurtbox radius in world pixels, read live from its shape and
 	# scaled by the node's global scale. Circle and Capsule shapes both expose a
 	# `radius`. anything without one falls back to DEFAULT_ENEMY_RADIUS.

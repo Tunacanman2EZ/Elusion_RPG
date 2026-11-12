@@ -14320,6 +14320,49 @@ whole wave in one frame, and the Forge's flood scanning its island.
 `_test_a_wave_in_parts()`, `_test_the_forge_sorts_its_slices_ahead()`
 (testrunner_11).
 
+### Out of the way, what a sweep leaves, and the healer's orbs (0.153.0)
+
+The owner, on 0.152.0, with a readout of about a hundred bosses in the
+Testing Ground: "the testing ground menues are blocking my viewpoint", and
+"lets improve the way anything functions if needed".
+
+- **Less, on the readout** (perfpanel.gd `SMALL_RECT`, `toggle_small()`,
+  `static var small`): the title, the big numbers, the graph and the
+  hitches; More brings WHERE THE FRAME GOES, THE WORLD, the lag points and
+  the spikes back. Kept while the game runs, not saved. Copy still copies
+  everything.
+- **Less, on the Testing Ground's panel** (testingground.gd
+  `toggle_folded()`, `static var folded`): folded to its title line - the
+  name, the work and More - as narrow as that, held to the right edge.
+- **A spawned large slime's twin and splits are test copies too**
+  (poisonslime.gd `_spawn_slime()`: in `gm_spawned`, with its parent's
+  notice and leash). A large slime makes a twin the first time anybody comes
+  near, so Find the limit counted half the large slimes out, and Clear all
+  left the rest: 272 after a 300-slime sweep, 7 ms a frame under the next
+  sweep's empty field. Found by sweeping every monster with each class.
+- **Clear all takes what they left** (`BulletZone.clear_enemy_shots()`):
+  shots in the air and pools on the floor (115 pools outlived that sweep).
+- **The healer's orbs share one list a tick** (turretprojectile.gd
+  `targets_now()`): each orb went through every monster in the area every
+  physics tick - and in the Endless the 256 swarm stand-ins are in
+  "enemies" - 4.4 ms of physics a frame with nothing to hit (container;
+  0.6 not shooting). The first orb of a tick lists what can be hit with its
+  hurtbox centre and radius; an orb asks again (valid, aimable) only of one
+  in reach. 4.4 -> 1.0 ms, damage unchanged. The trail's particles were
+  measured and are not the cost.
+- **His hundred bosses** (browser, PC): 34 fps, drawing 18.9 of 27.7 ms,
+  "spikes rise" in 168 of 187 slow frames, 410 spikes gone in one frame. A
+  boss's spikes are its cost - about 0.2 ms of drawing a boss on his PC -
+  and a real fight has one to four; not changed (the spikes were batched in
+  0.137.5).
+- **The class sweeps** (zz/classsweep.gd, the container): Find the limit's
+  rules with a class holding attack in god mode, the monsters at a million
+  health so the crowd holds, headless (physics + scripts; the headless
+  "drawing" is the frame cap's wait). Results go to the limits sheet.
+
+`_test_less_in_the_way()`, `_test_what_a_sweep_leaves()`,
+`_test_the_orbs_share_a_list()` (testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

@@ -54,6 +54,14 @@ var _horde_buttons: Array = []
 var _clear_button: Button = null
 var _repaint_left: float = 0.0
 var sweep: Node = null
+# OUT OF THE WAY (0.153.0): the owner, "the testing ground menues are
+# blocking my viewpoint". Less folds the panel to its title line - the name,
+# the work and More - until More; kept while the game runs (static), so a
+# second visit opens it as it was.
+static var folded: bool = false
+var _panel: PanelContainer = null
+var _top: HBoxContainer = null
+var _fold_button: Button = null
 # A spawned monster's name a person reads, by its scene (label_of() once each).
 var _label_by_path: Dictionary = {}
 
@@ -103,6 +111,7 @@ func _build() -> void:
 	look.set_content_margin_all(8.0)
 	panel.add_theme_stylebox_override("panel", look)
 	_layer.add_child(panel)
+	_panel = panel
 	var rows := VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 4)
 	panel.add_child(rows)
@@ -122,6 +131,14 @@ func _build() -> void:
 		% [COUNT_FRAMES, roundi(AMBER_AT * 100.0)]
 	_work_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	top.add_child(_work_label)
+	_top = top
+	_fold_button = Button.new()
+	_fold_button.name = "fold"
+	_fold_button.focus_mode = Control.FOCUS_NONE
+	_fold_button.add_theme_font_size_override("font_size", 12)
+	_fold_button.tooltip_text = "Fold the panel to this line, so more of the arena shows; More opens it again."
+	_fold_button.pressed.connect(toggle_folded)
+	top.add_child(_fold_button)
 	_count_label = Label.new()
 	_count_label.name = "counts"
 	_count_label.add_theme_color_override("font_color", COLOUR_TEXT)
@@ -163,6 +180,27 @@ func _build() -> void:
 	controls.add_child(clear)
 	_clear_button = clear
 	sweep.call("build", rows, WIDTH)
+	_show_folded()
+
+
+func toggle_folded() -> void:
+	folded = not folded
+	_show_folded()
+
+
+func _show_folded() -> void:
+	"""Folded: the title line alone, as narrow as it is; open: everything."""
+	if _panel == null or _top == null:
+		return
+	for child in _top.get_parent().get_children():
+		if child != _top:
+			(child as CanvasItem).visible = not folded
+	_fold_button.text = "More" if folded else "Less"
+	_panel.custom_minimum_size = Vector2(0.0 if folded else WIDTH, 0.0)
+	# Shrunk from the left, held to the right edge.
+	_panel.offset_right = -8.0
+	_panel.offset_left = -8.0 - _panel.get_combined_minimum_size().x
+	_panel.reset_size()
 
 
 func hold_controls(held: bool) -> void:
@@ -189,6 +227,10 @@ func set_horde(size: int) -> void:
 func clear_all() -> void:
 	set_horde(0)
 	GmSpawner.clear(get_tree())
+	# AND WHAT THEY LEFT (0.153.0): their shots in the air and their pools on
+	# the floor - 115 slime pools outlived a 300-slime sweep, 0.8 ms a frame
+	# under the next one's empty field.
+	BulletZone.clear_enemy_shots(self)
 	paint()
 
 

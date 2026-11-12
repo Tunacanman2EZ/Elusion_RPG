@@ -4236,3 +4236,170 @@ func _same_cells(a: Array, b: Array) -> bool:
 		if not seen.has(entry[1]):
 			return false
 	return true
+
+
+# =============================================================================
+# OUT OF THE WAY, AND WHAT A SWEEP LEAVES (0.153.0)
+# =============================================================================
+# The owner: "the testing ground menues are blocking my viewpoint", and "lets
+# improve the way anything functions if needed". Less on the readout and on
+# the Testing Ground's panel; a spawned large slime's twin and splits are test
+# copies too, and Clear all takes the monsters' shots and pools; the healer's
+# orbs share one list of what they can hit a tick.
+
+func _test_less_in_the_way() -> void:
+	section("OUT OF THE WAY (0.153.0): Less on the readout and on the Testing Ground's panel")
+	const Panel := preload("res://src/systems/perfpanel.gd")
+	const Ground := preload("res://src/world/endless/testingground.gd")
+	var was_small: bool = Panel.small
+	var was_folded: bool = Ground.folded
+	# The Testing Ground switches the readout on: put back after.
+	var readout_was: bool = PerfOverlay.is_shown()
+	Panel.small = false
+	Ground.folded = false
+	var panel: Control = Panel.new()
+	add_child(panel)
+	var data: Dictionary = PerfOverlay.panel_data(Time.get_ticks_msec())
+	panel.call("show_data", data)
+	var tall: float = panel.size.y
+	panel.call("toggle_small")
+	var short: float = panel.size.y
+	var small_button: Control = panel.get_node_or_null("small")
+	var clear_of_title: bool = small_button != null and small_button.position.x > 100.0 \
+		and small_button.position.x + small_button.size.x <= float(Panel.MEASURE_RECT.position.x)
+	panel.call("toggle_small")
+	check("the readout's Less keeps the title, the numbers, the graph and the hitches (%.0f px of %.0f), More brings the rest; its button clear of the title and of Measure"
+		% [short, tall], short < tall * 0.5 and short >= 150.0 and is_equal_approx(panel.size.y, tall)
+		and not Panel.small and clear_of_title, [short, tall, clear_of_title])
+	panel.free()
+	var ground: Node = Ground.new()
+	add_child(ground)
+	var shown_rows: Callable = func() -> int:
+		var top: Node = ground.get("_top")
+		var count: int = 0
+		for row in top.get_parent().get_children():
+			if (row as CanvasItem).visible:
+				count += 1
+		return count
+	var open_rows: int = int(shown_rows.call())
+	var box: PanelContainer = ground.get("_panel")
+	var open_width: float = box.get_combined_minimum_size().x
+	ground.call("toggle_folded")
+	var folded_rows: int = int(shown_rows.call())
+	var folded_width: float = box.get_combined_minimum_size().x
+	var to_the_right: bool = is_equal_approx(box.offset_right, -8.0) \
+		and is_equal_approx(box.offset_left, -8.0 - folded_width)
+	var word: String = str((ground.get("_fold_button") as Button).text)
+	ground.queue_free()
+	var again: Node = Ground.new()
+	add_child(again)
+	var stays: bool = int((again.get("_top") as Node).get_parent().get_children().filter(
+		func(row: Node) -> bool: return (row as CanvasItem).visible).size()) == 1
+	again.call("toggle_folded")
+	again.queue_free()
+	check("  the Testing Ground's Less folds it to its title line (%d rows to %d), narrower (%.0f px to %.0f) and still at the right edge; More on the button; still folded next visit"
+		% [open_rows, folded_rows, open_width, folded_width],
+		open_rows > 3 and folded_rows == 1 and folded_width < open_width and to_the_right and word == "More" and stays
+		and not Ground.folded, [open_rows, folded_rows, to_the_right, word, stays])
+	Panel.small = was_small
+	Ground.folded = was_folded
+	await get_tree().process_frame
+	PerfOverlay.set_shown(readout_was)
+	print("  (out of the way: done)")
+
+
+func _test_what_a_sweep_leaves() -> void:
+	section("WHAT A SWEEP LEAVES (0.153.0): a large slime's twin and splits are test copies; Clear all takes shots and pools")
+	const GmSpawner := preload("res://src/world/gmspawner.gd")
+	const Ground := preload("res://src/world/endless/testingground.gd")
+	const HitSource := preload("res://src/shared/hitsource.gd")
+	var readout_was: bool = PerfOverlay.is_shown()
+	var holder := Node2D.new()
+	add_child(holder)
+	var large: Node2D = (load("res://scene/enemy/earthslimelarge.tscn") as PackedScene).instantiate() as Node2D
+	large.add_to_group(GmSpawner.GROUP)
+	large.set("notice_range", GmSpawner.NOTICE)
+	large.set("leash_range", GmSpawner.NOTICE)
+	holder.add_child(large)
+	large.global_position = Vector2(300, 300)
+	large.call("_spawn_slime", false, Vector2(330, 300))
+	large.call("_spawn_slime", true, Vector2(300, 330))
+	var plain: Node2D = (load("res://scene/enemy/earthslimelarge.tscn") as PackedScene).instantiate() as Node2D
+	holder.add_child(plain)
+	plain.call("_spawn_slime", true, Vector2(360, 330))
+	for i in 4:
+		await get_tree().process_frame
+	var born: Array = holder.get_children().filter(func(n: Node) -> bool: return n != large and n != plain)
+	var copies: int = 0
+	for n in born:
+		if (n as Node).is_in_group(GmSpawner.GROUP) and is_equal_approx(float(n.get("notice_range")), GmSpawner.NOTICE):
+			copies += 1
+	check("a spawned large slime's twin and split come as test copies too (in %s, its reach), an ordinary one's do not (%d of %d born)"
+		% [GmSpawner.GROUP, copies, born.size()], born.size() == 3 and copies == 2, [born.size(), copies])
+	holder.queue_free()
+	# ---- Clear all takes what they left ----
+	var shots := Node2D.new()
+	shots.add_to_group(&"projectiles")
+	add_child(shots)
+	var pools := Node2D.new()
+	pools.add_to_group(&"groundeffects")
+	add_child(pools)
+	var arrow := Node2D.new()
+	arrow.set_meta(HitSource.HIT_META, "earthslimelarge:poisonprojectile")
+	shots.add_child(arrow)
+	var pool := Node2D.new()
+	pool.set_meta(HitSource.HIT_META, "earthslimelarge:pool")
+	pools.add_child(pool)
+	var mine := Node2D.new()
+	shots.add_child(mine)
+	var ground: Node = Ground.new()
+	add_child(ground)
+	ground.call("clear_all")
+	check("  the Testing Ground's Clear all takes the monsters' shots and pools too, and leaves a player's",
+		arrow.is_queued_for_deletion() and pool.is_queued_for_deletion() and not mine.is_queued_for_deletion())
+	ground.queue_free()
+	shots.queue_free()
+	pools.queue_free()
+	await get_tree().process_frame
+	PerfOverlay.set_shown(readout_was)
+	print("  (what a sweep leaves: done)")
+
+
+func _test_the_orbs_share_a_list() -> void:
+	section("THE ORBS SHARE A LIST (0.153.0): what the healer's orbs can hit, made once a tick")
+	const Orb := preload("res://src/projectiles/turretprojectile.gd")
+	var stand_in := GDScript.new()
+	stand_in.source_code = "extends Node2D\nvar aimable: bool = true\nfunc take_damage(_a: int, _e: int = 0) -> void:\n\tpass\nfunc can_be_aimed_at() -> bool:\n\treturn aimable\n"
+	stand_in.reload()
+	await get_tree().physics_frame
+	var made: Array = []
+	for i in 3:
+		var monster := Node2D.new()
+		monster.set_script(stand_in)
+		monster.add_to_group(&"enemies")
+		add_child(monster)
+		monster.global_position = Vector2(100 + 40 * i, 100)
+		made.append(monster)
+	(made[1] as Node).set("aimable", false)
+	(made[2] as Node).add_to_group(&"player")
+	Orb._targets_tick = -1
+	var first: Array = Orb.targets_now(get_tree(), "player")
+	var second: Array = Orb.targets_now(get_tree(), "player")
+	var listed: bool = first.size() == 3 and first[0] == made[0] and (first[1] as Vector2).is_equal_approx(Vector2(100, 100)) \
+		and is_equal_approx(float(first[2]), Orb.DEFAULT_ENEMY_RADIUS)
+	await get_tree().physics_frame
+	var next: Array = Orb.targets_now(get_tree(), "player")
+	check("one list a tick for every orb: what can be hit (not one that cannot be aimed at, not the shooter's side), its middle and radius; made again next tick",
+		listed and is_same(first, second) and not is_same(first, next),
+		[first.size(), is_same(first, second), is_same(first, next)])
+	var reach: String = _func_body(_code_src("res://src/projectiles/turretprojectile.gd"), "func _enemy_in_reach(")
+	# _func_body() runs to the next "func": the static list that follows is not this one's.
+	if reach.find("\nstatic ") != -1:
+		reach = reach.substr(0, reach.find("\nstatic "))
+	check("  each orb reads it, and asks again before it hits (an orb before it this tick may have finished it)",
+		reach.contains("targets_now(") and reach.contains("can_be_aimed_at") and reach.contains("is_instance_valid")
+		and not reach.contains("get_nodes_in_group"))
+	for monster in made:
+		(monster as Node).queue_free()
+	await get_tree().process_frame
+	print("  (the orbs share a list: done)")

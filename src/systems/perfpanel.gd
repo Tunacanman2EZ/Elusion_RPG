@@ -40,6 +40,11 @@ const UNCAP_RECT := Rect2(WIDTH - PAD - 56.0 - 6.0 - 66.0, 6.0, 66.0, 17.0)
 # MEASURE HERE (0.152.0, placemeasure.gd): left of Uncap, or in its place in a
 # browser, where Uncap is not offered.
 const MEASURE_RECT := Rect2(UNCAP_RECT.position.x - 6.0 - 70.0, 6.0, 70.0, 17.0)
+# LESS OF IT (0.153.0): the owner, in the Testing Ground, "the testing ground
+# menues are blocking my viewpoint". Less keeps the title, the big numbers,
+# the graph and the hitches - the rest folds away until More; kept while the
+# game runs (`small`, static), so a new area opens it as it was.
+const SMALL_RECT := Rect2(MEASURE_RECT.position.x - 6.0 - 50.0, 6.0, 50.0, 17.0)
 
 const BACK := Color(0.05, 0.045, 0.07, 0.86)
 const EDGE := Color(0.62, 0.50, 0.28)
@@ -75,7 +80,10 @@ var text_source: Callable = Callable()
 var measure_start: Callable = Callable()
 var measure_word: Callable = Callable()
 
+static var small: bool = false
+
 var _data: Dictionary = {}
+var _small: Control = null
 var _copy: Control = null
 var _uncap: Control = null
 var _measure: Control = null
@@ -134,7 +142,33 @@ func _ready() -> void:
 	_measure.mouse_entered.connect(queue_redraw)
 	_measure.mouse_exited.connect(queue_redraw)
 	add_child(_measure)
+	_small = Control.new()
+	_small.name = "small"
+	_small.mouse_filter = Control.MOUSE_FILTER_STOP
+	_small.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_small.tooltip_text = "Less of the readout - the numbers and the graph - so more of the game shows. More brings the rest back."
+	_small.position = SMALL_RECT.position
+	_small.size = SMALL_RECT.size
+	_small.gui_input.connect(_on_small_input)
+	_small.mouse_entered.connect(queue_redraw)
+	_small.mouse_exited.connect(queue_redraw)
+	add_child(_small)
 	set_process(false)
+
+
+func toggle_small() -> void:
+	"""Less of the readout, or all of it again."""
+	small = not small
+	if not _data.is_empty():
+		size = Vector2(WIDTH, _height_for(_data))
+	queue_redraw()
+
+
+func _on_small_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		toggle_small()
+		_small.accept_event()
 
 
 func copy_text() -> void:
@@ -230,6 +264,11 @@ func _draw() -> void:
 		draw_rect(UNCAP_RECT, WARN if on else EDGE, false, 1.0)
 		_text(font, UNCAP_RECT.position + Vector2(0, 13), "Uncapped" if on else "Uncap", 11, WARN if on else TEXT,
 			HORIZONTAL_ALIGNMENT_CENTER, UNCAP_RECT.size.x)
+	var small_lit: bool = _small != null and Rect2(Vector2.ZERO, SMALL_RECT.size).has_point(_small.get_local_mouse_position())
+	draw_rect(SMALL_RECT, Color(EDGE, 0.45 if small_lit else 0.22))
+	draw_rect(SMALL_RECT, EDGE, false, 1.0)
+	_text(font, SMALL_RECT.position + Vector2(0, 13), "More" if small else "Less", 11, TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, SMALL_RECT.size.x)
 	_text(font, Vector2(PAD, 32), str(d.get("title", "")), 10, Color(d.get("title_colour", SOFT)))
 	# Everything under the title's second line, TITLE_LINE lower.
 	draw_set_transform(Vector2(0, TITLE_LINE))
@@ -280,6 +319,8 @@ func _draw() -> void:
 	if not marks.is_empty():
 		_text(font, Vector2(PAD, y), "graph: the last %.0f s" % (float(GRAPH_FRAMES) / 60.0), 10, SOFT,
 			HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 2.0 * PAD)
+	if small:
+		return
 	for verdict in d.get("verdict", []):
 		y += 16.0
 		_verdict(font, y, str(verdict[0]), str(verdict[1]))
@@ -485,6 +526,9 @@ func _spike_row(font: Font, y: float, spike: Dictionary, budget: float, hitch: f
 
 
 func _height_for(d: Dictionary) -> float:
+	if small:
+		# The title, the numbers, the graph, the hitches and the loads.
+		return TITLE_LINE + 157.0 + (14.0 if not (d.get("graph_key", []) as Array).is_empty() else 0.0) + 8.0
 	var cells: int = (d.get("world", []) as Array).size()
 	var spikes: float = 0.0
 	for spike in d.get("spikes", []):

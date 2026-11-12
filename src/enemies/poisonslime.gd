@@ -833,6 +833,16 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# nothing to the server, as their parent was.
 	if has_meta(&"stress_copy"):
 		slime.set_meta(&"stress_copy", true)
+	# AND A TEST COPY'S ARE TEST COPIES (0.153.0, gmspawner.gd's GROUP): the
+	# Testing Ground counts them with their parent, and its Clear all takes
+	# them. Before, a spawned large slime's twin (it makes one the first time
+	# anybody comes near) and its splits were in no group: Find the limit
+	# counted half the large slimes out, and Clear all left the rest - 272 of
+	# them after a 300-slime sweep, at 7 ms a frame, under the next sweep.
+	if is_in_group(&"gm_spawned"):
+		slime.add_to_group(&"gm_spawned")
+		slime.set("notice_range", notice_range)
+		slime.set("leash_range", leash_range)
 
 	var parent: Node = get_parent()
 	if parent == null:
