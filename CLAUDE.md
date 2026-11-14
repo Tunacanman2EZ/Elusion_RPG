@@ -14417,6 +14417,101 @@ have not measured effects or projectile yet".
 
 `_test_every_shot_and_effect()` (testrunner_11).
 
+### Health bars drawn together, the orb in layers, a phone at 40 (0.155.0)
+
+The owner, of the limits sheet: "we need to optimize now", then "lets do
+it the phone also". Measured first (zz/drawparts.gd, xvfb and opengl3):
+20 archers round you were 214 draw calls a frame, 107 with none of them -
+a monster's bar and the number on it were 4.5 of its 5. The renderer draws
+in one go what lies next to each other on one texture and material; a bar
+is two textures (empty and full), its number a third (the font's), and
+each came between one monster's sprite and the next's.
+
+- **One sheet** (`src/shared/barsheet.gd`, preloaded, no class_name):
+  the four bar pictures (`SOURCES`: a monster's and a boss's, empty and
+  full) are copied at run time into one texture, `GAP` (1) transparent
+  pixel apart, and each bar wears `AtlasTexture` cuts of it (`wear()`,
+  `cut_of()`). The art files are untouched; the sheet is only in memory.
+  Where a picture cannot be read back a bar keeps its own.
+- **One layer**: a bar is at `BAR_Z` (20), not relative, and its number
+  one above (baseenemy.gd `_wire_health_readout()`): every bar, then every
+  number. So a bar shows over a wall or a monster standing in front, as a
+  name does in most games (the owner chose it). Damage numbers are still
+  above (the floatinglabels container, z 90); fog and sky layers over 20
+  still cover bars.
+- **Measured**: the layer alone saved 16 of the 107 (bars still alternated
+  empty, full, number); the sheet and the layer 46 - 214 -> 168. An
+  outlined number cannot be drawn with the letters (the outline is another
+  glyph texture); a shadow can (119, tried in drawparts.gd TRY=3 and
+  pictured, bars_compare.png). The numbers keep their outline - it was
+  made thick for reading.
+- **The healer orb in layers** (turretprojectile.gd `_dress()`): glow z
+  -1, core z 1, wisps z 2, so every orb's glows are drawn together, then
+  cores, then wisps - the order one orb drew them. A party healer's orb on
+  another screen 9.35 draw calls a second each -> 3.85 (zz/projsweep.gd).
+- **Lightest, 40 a second** (settings.gd `PHYSICS_RATES`,
+  `PHYSICS_TICKS`, `PHYSICS_CATCH_UP` 2; Options "Lightest (40/s)"): half
+  of Smooth's ticks, a third fewer than Light's. A phone takes it as a
+  fourth `PHONE_STEPS` step - a phone already on Light is moved on once,
+  a new one starts on it (`PHONE_DEFAULTS`), a laptop never. Physics
+  interpolation draws between ticks, so movement stays smooth; the fastest
+  shot (540 px/s) moves 13.5 px a tick, less than a hurtbox and a shot
+  together.
+- **Two editor warnings gone**: stresskinds.gd (0.154.0) preloaded
+  `RemoteAttacks` and `CastSparkle` under their own global class names.
+
+`_test_drawn_together()` (testrunner_11); testrunner_10's and
+testrunner_3's phone checks expect Lightest.
+
+### The bar along the bottom drawn once (the same 0.155.0)
+
+The owner, of the HUD's draw calls: "lets do this The HUD", then "yes
+upgrade and improve as needed". The HUD was 96 of an empty area's 107 draw
+calls every frame (hotbar 51, nav bar 33, health, mana and stamina 12),
+though most frames nothing on it changes.
+
+- **`src/ui/hudpicture.gd`** (preloaded, no class_name; the HUD's
+  `bar_picture`, made last in its `_ready()`): the nav bar and the hotbar
+  (`PARTS`) move into `barpicture`, a CanvasLayer of the HUD's own layer
+  number at the nav bar's old place, whose `custom_viewport` is a
+  SubViewport. Its Controls stay in the main window's tree, so clicks,
+  hovers, tooltips and drags to and from the bag reach them as before
+  (zz/hudprobe: a click and a drag each way; zz/hudshot clicks Menu through
+  the picture at 1 and 1.5 times). A Sprite2D (`barpictureshown`) puts the
+  picture on the screen where the nav bar was: the dropdowns and every
+  window are still over the bar. **Find the parts by `%navframe` and
+  `%hotbar`**: `get_node("hotbar")` from the HUD finds nothing now.
+- **Drawn only when asked** (`ask()`, UPDATE_ONCE, once a frame however many
+  ask): anything in the parts redrawing (a value, words, an icon, a hover,
+  a theme override), showing or hiding, moving or resizing, coming or
+  going, the window resizing - and every `SAFETY_SECONDS` (0.5) for what
+  changes without saying so. **A part that changes its look another way -
+  a modulate tween, a shader on TIME - is drawn at most twice a second
+  here**: mark it with `bar_picture.ask()` or keep it out of the bar.
+- **Pixel for pixel**: the SubViewport is the strip the parts cover
+  (`_fit()`), stretched as the window stretches the game
+  (`size_2d_override`, so letters are drawn at the screen's size;
+  `drawn_scale()` is the final transform's scale at Screen, 1 at Low) over
+  whole game units that are whole pixels (`whole_step()`: 2 at 1.5 times,
+  4 at 1.25); `shown` is a Sprite2D because a Control's place is rounded to
+  a whole unit, half a pixel off at 1.5. The picture is premultiplied, so
+  `shown` blends it so; it never interpolates. The same pixels as before at
+  1280 x 720 and at Low; at 1.5 times or 1366 wide an edge here and there
+  lands a pixel over.
+- **Health, mana and stamina stay drawn every frame** - in a fight they
+  change all the time, and a picture redrawn every frame costs more.
+- The HUD hidden hides the bar's layer too (a CanvasLayer inside another is
+  not hidden with it), so it takes no clicks. `HudPicture.enabled` false
+  keeps a new HUD's bar live; `detach()` puts the parts back.
+- **Measured** (zz/hudshot.gd, xvfb + opengl3): an empty Testing Ground 111
+  draw calls a frame -> 28; 20 archers fighting you 166 -> 83, the picture
+  drawn twice a second (the safety's); a phone's layout (five keys, Menu)
+  66 -> 32.
+
+`_test_the_bar_drawn_once()` (testrunner_11). touchpad.gd finds the parts
+by their unique names, by their plain names in a HUD put together without
+the scene.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

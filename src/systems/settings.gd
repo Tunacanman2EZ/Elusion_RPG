@@ -155,7 +155,8 @@ const DEFAULTS := {
 	# a quarter less physics work - and catches up at most LIGHT_CATCH_UP
 	# ticks after a slow frame instead of 8, so a slow phone's frame does not
 	# make the next one slower still. The owner's phone in the Endless: 20 ms
-	# a physics tick. Phones get "light" (PHONE_STEPS); anyone may choose.
+	# a physics tick. Phones got "light" (PHONE_STEPS); anyone may choose.
+	# "lightest" 40 (0.155.0) - half of Smooth - is a phone's now.
 	"physics_rate": "smooth",
 
 	# Drop to BACKGROUND_FPS while the game is not the focused window. On by
@@ -1018,8 +1019,16 @@ func note_window_place(screen: int, spot: Vector2i, windowed: bool) -> void:
 
 const RENDER_RESOLUTIONS := ["screen", "low"]
 const LIGHTING_MODES := ["full", "simple"]
-const PHYSICS_RATES := ["smooth", "light"]
-const PHYSICS_TICKS := {"smooth": 80, "light": 60}
+# LIGHTEST, 40 A SECOND, ON A PHONE (0.155.0). The owner, of the limits
+# sheet's phone column: "we need to optimize now" and "lets do it the phone
+# also". At 30 frames a second a phone on Light ran two ticks a frame; on
+# Lightest it runs one and a third, a third less physics, and physics
+# interpolation still draws every body smoothly between ticks. Nothing in
+# the game counts ticks as time (0.134.6's check). A shot moves twice as far
+# a tick as on Smooth - 10 px at 400 px a second - still under a player's
+# or a monster's width, so it still lands.
+const PHYSICS_RATES := ["smooth", "light", "lightest"]
+const PHYSICS_TICKS := {"smooth": 80, "light": 60, "lightest": 40}
 # How many physics ticks one frame may run to catch up after a slow one -
 # Godot's default 8 for smooth. At 4, a frame slower than 4 ticks lets the
 # game's clock slip a little instead of spending the next frame catching up.
@@ -1030,7 +1039,7 @@ const PHYSICS_TICKS := {"smooth": 80, "light": 60}
 # seconds. At 2 a frame that falls behind slips the game's clock a little
 # instead (at 30 a second a frame is 2 ticks, so a phone on time loses
 # nothing). "Darza can manage no overheating in mobile play".
-const PHYSICS_CATCH_UP := {"smooth": 8, "light": 2}
+const PHYSICS_CATCH_UP := {"smooth": 8, "light": 2, "lightest": 2}
 
 # While the window is in the background. Low enough to cost almost nothing,
 # high enough that nothing time-driven stutters when you look back.
@@ -1070,9 +1079,10 @@ const PHONE_STEPS := [
 	{"render_resolution": "low", "lighting": "simple"},
 	{"battery_saver": true},
 	{"physics_rate": "light"},
+	{"physics_rate": "lightest"},
 ]
 const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple", "battery_saver": true,
-	"physics_rate": "light"}
+	"physics_rate": "lightest"}
 const PHONE_TUNED_SECTION := "device"
 const PHONE_TUNED_KEY := "phone_tuned"
 

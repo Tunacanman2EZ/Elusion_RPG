@@ -83,7 +83,7 @@ const HELP := {
 	"vsyncmode": "Keeps the game in step with your screen, so the picture never tears (looks split across) when you move. Most players: On. Off is for testing; Adaptive and Fast are for a graphics card that ignores On.",
 	"framecap": "The most pictures a second the game will draw. With V-Sync On, leave it Unlimited - your screen already sets the pace. To keep a laptop cool, Battery saver is the easy way.",
 	"renderresolution": "Full draws writing and windows as sharp as your screen allows. 1280 x 720 draws them smaller and stretches them: softer, but less work for a slow computer. The world looks the same either way.",
-	"physicsrate": "How often the world moves: Smooth, 80 times a second; Light, 60 - a quarter less work for the processor, and a slow frame cannot make the next one slower. Phones start on Light. Most players: Smooth.",
+	"physicsrate": "How often the world moves: Smooth, 80 times a second; Light, 60 - a quarter less work for the processor, and a slow frame cannot make the next one slower; Lightest, 40 - half. Phones start on Lightest. Most players: Smooth.",
 	"lighting": "Full: candles, lanterns and the dark of the crypts. Simple: no lights and the dark lifted - the biggest saving on a slow computer. Most players: Full.",
 	# The three numbers are Settings' own, filled in by help_for().
 	"backgroundlimit": "While you are in another window, the game draws only %d pictures a second, so it does not slow your computer or drain its battery. Most players: On.",
@@ -291,7 +291,7 @@ static func text_size_label(index: int) -> String:
 
 const RESOLUTION_LABELS := {"screen": "Full (sharpest)", "low": "1280 x 720 (fastest)"}
 const LIGHTING_LABELS := {"full": "Full", "simple": "Simple (fastest)"}
-const PHYSICS_LABELS := {"smooth": "Smooth (80/s)", "light": "Light (60/s)"}
+const PHYSICS_LABELS := {"smooth": "Smooth (80/s)", "light": "Light (60/s)", "lightest": "Lightest (40/s)"}
 # forward_plus is never offered, but a project could be switched to it by
 # hand, and the note should still name what is running.
 const RENDERER_LABELS := {

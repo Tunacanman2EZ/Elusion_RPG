@@ -5963,10 +5963,11 @@ func _test_phones_move_the_world_lighter() -> void:
 		and SettingsScript.PHYSICS_TICKS["smooth"] == 80 and SettingsScript.PHYSICS_CATCH_UP["smooth"] == 8)
 	check("  Light is 60 a second, a quarter less physics, and catches up at most 2 ticks (0.147.0, was 4)",
 		SettingsScript.PHYSICS_TICKS["light"] == 60 and SettingsScript.PHYSICS_CATCH_UP["light"] == 2)
-	check("  a phone is put on Light once, as a step of its own, and its first launch has it",
-		SettingsScript.PHONE_STEPS.back() == {"physics_rate": "light"}
-		and SettingsScript.PHONE_DEFAULTS.get("physics_rate") == "light"
-		and SettingsScript.phone_changes(true, 0).get("physics_rate") == "light")
+	check("  a phone is put on Light once, as a step of its own - and since 0.155.0 on Lightest, a step after it, which its first launch has",
+		SettingsScript.PHONE_STEPS[2] == {"physics_rate": "light"}
+		and SettingsScript.PHONE_STEPS.back() == {"physics_rate": "lightest"}
+		and SettingsScript.PHONE_DEFAULTS.get("physics_rate") == "lightest"
+		and SettingsScript.phone_changes(true, 0).get("physics_rate") == "lightest")
 	check("  a value nobody knows is Smooth, any case is read",
 		Settings._normalise("physics_rate", "LIGHT") == "light" and Settings._normalise("physics_rate", "banana") == "smooth")
 	var was: String = str(Settings.get_value("physics_rate"))
@@ -5982,9 +5983,9 @@ func _test_phones_move_the_world_lighter() -> void:
 	add_child(options)
 	await get_tree().process_frame
 	var picker: OptionButton = options.get_node_or_null("%physicsrate") as OptionButton
-	check("Options has a Physics choice, Smooth and Light, showing the setting",
-		picker != null and picker.item_count == 2 and picker.get_item_text(0).begins_with("Smooth")
-		and picker.get_item_text(1).begins_with("Light")
+	check("Options has a Physics choice, Smooth, Light and (0.155.0) Lightest, showing the setting",
+		picker != null and picker.item_count == 3 and picker.get_item_text(0).begins_with("Smooth")
+		and picker.get_item_text(1).begins_with("Light") and picker.get_item_text(2).begins_with("Lightest")
 		and picker.selected == SettingsScript.PHYSICS_RATES.find(str(Settings.get_value("physics_rate"))),
 		[picker.item_count if picker != null else -1])
 	options.queue_free()
@@ -6012,7 +6013,7 @@ func _test_a_phone_on_its_side_fills_it() -> void:
 	# distance from the hotbar.
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	var holder: Control = hud.get_node("barcontainer") as Control
-	var hotbar: Control = hud.get_node("hotbar") as Control
+	var hotbar: Control = hud.get_node("%hotbar") as Control
 	var was := {"healthbar": Vector2(979, 611), "magicbar": Vector2(979, 644), "staminabar": Vector2(1099, 677)}
 	var pinned: bool = true
 	var unmoved: bool = true

@@ -438,8 +438,11 @@ static func art_pixel(side: float, art: int, screen_per_unit: float) -> float:
 
 func _what_lays_out() -> Array:
 	var hud: Node = get_parent()
-	var hotbar: Control = hud.get_node_or_null(^"hotbar") as Control if hud != null else null
-	var nav: Control = hud.get_node_or_null(^"navframe") as Control if hud != null else null
+	# By their unique names: since 0.155.0 they sit in the bar's picture
+	# layer (hudpicture.gd), not straight under the HUD. A HUD put together
+	# without the scene has them only by their own names.
+	var hotbar: Control = _bar_part(hud, ^"%hotbar", ^"hotbar")
+	var nav: Control = _bar_part(hud, ^"%navframe", ^"navframe")
 	var health: Control = hud.get_node_or_null(^"barcontainer/healthbar") as Control if hud != null else null
 	var mana: Control = hud.get_node_or_null(^"barcontainer/magicbar") as Control if hud != null else null
 	var bars := Rect2()
@@ -452,6 +455,13 @@ func _what_lays_out() -> Array:
 		hotbar.get_global_rect().position.y if hotbar != null and hotbar.visible else view.y - 163.0,
 		nav.get_global_rect().position.y if nav != null and nav.visible else view.y - 48.0,
 		bars]
+
+
+static func _bar_part(hud: Node, unique: NodePath, plain: NodePath) -> Control:
+	if hud == null:
+		return null
+	var part: Control = hud.get_node_or_null(unique) as Control
+	return part if part != null else hud.get_node_or_null(plain) as Control
 
 
 func lay_out() -> void:

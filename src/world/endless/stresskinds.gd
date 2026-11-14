@@ -21,9 +21,7 @@ extends Node
 # every one away.
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
-const RemoteAttacks := preload("res://src/characters/remoteattacks.gd")
 const StrikeFx := preload("res://src/shared/strikefx.gd")
-const CastSparkle := preload("res://src/characters/castsparkle.gd")
 const GROUP := &"stress_shot"
 const P := "res://scene/projectiles/"
 # The crowd a hit or a death is done to: the plain archer, a monster of the

@@ -4521,3 +4521,209 @@ func _spawn_body_of_gm() -> String:
 	var at: int = src.find("static func spawn(")
 	var end: int = src.find("\nstatic func ", at + 1)
 	return src.substr(at, end - at) if at != -1 and end != -1 else ""
+
+
+# HEALTH BARS DRAWN TOGETHER, THE ORB IN LAYERS, A PHONE AT 40 (0.155.0) -
+# the owner, of the limits sheet: "we need to optimize now", then "lets do
+# it the phone also". Measured (zz/drawparts.gd, xvfb + opengl3): 20 archers
+# round you 214 draw calls a frame -> 168; a party healer orb 9.35 draw calls
+# a second each -> 3.85. barsheet.gd's header has why.
+func _test_drawn_together() -> void:
+	section("Health bars drawn together, the orb in layers, a phone at 40 a second (0.155.0)")
+	const BarSheetScript := preload("res://src/shared/barsheet.gd")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	const Orb := preload("res://src/projectiles/turretprojectile.gd")
+	# ---- one sheet ----
+	var pictures: Array = []
+	for path in BarSheetScript.SOURCES:
+		pictures.append(load(str(path)) as Texture2D)
+	var cuts: Array = []
+	for picture in pictures:
+		cuts.append(BarSheetScript.cut_of(picture as Texture2D))
+	var sheet: Texture2D = BarSheetScript.sheet()
+	if sheet != null:
+		var on_sheet := true
+		var regions: Array = []
+		for k in cuts.size():
+			var cut := cuts[k] as AtlasTexture
+			if cut == null or cut.atlas != sheet or cut.get_size() != (pictures[k] as Texture2D).get_size():
+				on_sheet = false
+			else:
+				regions.append(cut.region)
+		var apart := true
+		for a in regions.size():
+			for b in range(a + 1, regions.size()):
+				if (regions[a] as Rect2).grow(0.5).intersects(regions[b] as Rect2):
+					apart = false
+		check("the four bar pictures (a monster's and a boss's, empty and full) are cuts of one sheet, each its own size, none touching another",
+			on_sheet and apart and regions.size() == 4, [cuts, regions])
+		var pixels_kept: bool = true
+		var sheet_image: Image = sheet.get_image()
+		for k in cuts.size():
+			var own: Image = (pictures[k] as Texture2D).get_image()
+			if own.is_compressed():
+				own.decompress()
+			own.convert(Image.FORMAT_RGBA8)
+			var cut_image: Image = sheet_image.get_region(Rect2i((cuts[k] as AtlasTexture).region))
+			if cut_image.get_data() != own.get_data():
+				pixels_kept = false
+		check("  a cut is the picture pixel for pixel (the art files are untouched; the sheet is in memory)", pixels_kept)
+	else:
+		check("where the pictures cannot be read back a bar keeps its own pictures",
+			cuts == pictures, [cuts])
+	check("  a cut of a cut is itself, nothing is nothing",
+		BarSheetScript.cut_of(cuts[0] as Texture2D) == cuts[0] and BarSheetScript.cut_of(null) == null, [cuts[0]])
+	# ---- one layer ----
+	var holder := Node2D.new()
+	add_child(holder)
+	var monster: Node = (load("res://scene/enemy/skeleton.tscn") as PackedScene).instantiate()
+	holder.add_child(monster)
+	await get_tree().process_frame
+	var bar := monster.get_node_or_null("healthbar") as TextureProgressBar
+	check("a monster's bar is on the bars' layer, above the world and every monster (z %d, not relative)" % BarSheetScript.BAR_Z,
+		bar != null and bar.z_index == BarSheetScript.BAR_Z and not bar.z_as_relative
+		and bar.texture_under == BarSheetScript.cut_of(pictures[0] as Texture2D)
+		and bar.texture_progress == BarSheetScript.cut_of(pictures[1] as Texture2D),
+		[bar.z_index if bar != null else -1, bar.texture_under if bar != null else null])
+	monster.call("_wire_health_readout", bar)
+	var number: Label = null
+	if bar != null:
+		for child in bar.get_children():
+			if child is Label:
+				number = child as Label
+	check("  and the number on it one above the bar, so every bar is drawn, then every number",
+		number != null and number.z_index == 1 and number.z_as_relative, [number])
+	holder.queue_free()
+	await get_tree().process_frame
+	# ---- the orb in layers ----
+	var orb: Node = Orb.new()
+	orb.call("_dress", null)
+	var glow := orb.get_node_or_null("glow") as CanvasItem
+	var core := orb.get_node_or_null("core") as CanvasItem
+	var trail := orb.get_node_or_null("trail") as CanvasItem
+	check("a healer orb's glow, core and wisps each on a layer of their own (-1, 1, 2), so every orb's glows are drawn together, then cores, then wisps - in the order one orb drew them",
+		glow != null and core != null and trail != null and glow.z_index == -1 and core.z_index == 1 and trail.z_index == 2
+		and glow.get_index() < core.get_index() and core.get_index() < trail.get_index(),
+		[glow, core, trail])
+	orb.free()
+	# ---- a phone at 40 ----
+	check("Lightest is 40 a second, catching up at most 2 ticks",
+		SettingsScript.PHYSICS_RATES.has("lightest") and SettingsScript.PHYSICS_TICKS["lightest"] == 40
+		and SettingsScript.PHYSICS_CATCH_UP["lightest"] == 2)
+	check("  a phone takes it as a fourth step - one already on Light is moved on once, a laptop never",
+		SettingsScript.PHONE_STEPS.size() == 4 and SettingsScript.phone_changes(true, 3) == {"physics_rate": "lightest"}
+		and SettingsScript.phone_changes(true, 4).is_empty() and SettingsScript.phone_changes(false, 0).is_empty()
+		and SettingsScript.PHONE_DEFAULTS.get("physics_rate") == "lightest")
+	var was: String = str(Settings.get_value("physics_rate"))
+	Settings.set_value("physics_rate", "lightest")
+	var ticks: int = Engine.physics_ticks_per_second
+	var catch_up: int = Engine.max_physics_steps_per_frame
+	Settings.set_value("physics_rate", was)
+	check("  choosing it changes the engine at once: 40 and 2", ticks == 40 and catch_up == 2, [ticks, catch_up])
+	print("  (drawn together: done)")
+
+
+# THE BAR DRAWN ONCE (0.155.0) - the owner: "lets do this The HUD" and "yes
+# upgrade and improve as needed". The nav bar and the hotbar draw into a
+# picture (hudpicture.gd) that is drawn again only when they change; the
+# HUD was 96 of an empty area's 107 draw calls every frame.
+func _test_the_bar_drawn_once() -> void:
+	section("The bar along the bottom drawn once, and again only when it changes (0.155.0)")
+	const Picture := preload("res://src/ui/hudpicture.gd")
+	var hud: CanvasLayer = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate() as CanvasLayer
+	add_child(hud)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var pic: Node = hud.get("bar_picture") as Node
+	if pic == null:
+		check("the HUD puts its bar in a picture", false)
+		hud.queue_free()
+		return
+	var layer: CanvasLayer = pic.get("layer") as CanvasLayer
+	var sub: SubViewport = pic.get("sub") as SubViewport
+	var shown: Sprite2D = pic.get("shown") as Sprite2D
+	var nav: Control = hud.get_node_or_null("%navframe") as Control
+	var hotbar: Control = hud.get_node_or_null("%hotbar") as Control
+	check("the HUD puts its nav bar and hotbar in a layer that draws into a picture, found by their names as before",
+		layer != null and sub != null and layer.custom_viewport == sub and nav != null and hotbar != null
+		and nav.get_parent() == layer and hotbar.get_parent() == layer
+		and hud.get_node_or_null("%minigamesbutton") != null and hud.get_node_or_null("%staffrow") != null,
+		[layer, sub, nav.get_parent() if nav != null else null])
+	var menus_after: bool = true
+	for menu_name in ["socialmenu", "statsmenu", "systemmenu"]:
+		var menu: Node = hud.get_node_or_null(menu_name)
+		menus_after = menus_after and menu != null and menu.get_index() > layer.get_index()
+	check("  on the HUD's own layer, where the nav bar was: the dropdowns and every window still over it, for the eye and the mouse",
+		layer.layer == hud.layer and shown != null and shown.get_parent() == hud
+		and shown.get_index() == layer.get_index() - 1 and menus_after,
+		[layer.layer, hud.layer, shown.get_index() if shown != null else -1, layer.get_index()])
+	check("  the picture is put on the screen pixel for pixel, blended as a picture drawn on clear is, never blended by the physics",
+		shown.texture == sub.get_texture() and not shown.centered
+		and (shown.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+		and shown.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
+		and sub.transparent_bg and sub.size_2d_override_stretch)
+	check("  as many pixels as the screen would draw: 1 unit of the game is 1 at Low, whole units at the window's scale",
+		Picture.whole_step(1.0) == 1 and Picture.whole_step(1.5) == 2 and Picture.whole_step(1.25) == 4
+		and Picture.whole_step(2.0) == 1 and Picture.whole_step(1.0671875) == 1)
+	# ---- drawn when it changes, and only then ----
+	await get_tree().process_frame
+	var still: int = int(pic.get("redraws"))
+	for i in 3:
+		await get_tree().process_frame
+	var quiet: bool = int(pic.get("redraws")) == still
+	var button: Button = hud.get_node("%minigamesbutton") as Button
+	var was_text: String = button.text
+	button.text = was_text + " x"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var after_text: int = int(pic.get("redraws"))
+	(hud.get_node("%staffrow") as Control).visible = not (hud.get_node("%staffrow") as Control).visible
+	await get_tree().process_frame
+	var after_show: int = int(pic.get("redraws"))
+	(hud.get_node("%staffrow") as Control).visible = not (hud.get_node("%staffrow") as Control).visible
+	var extra := Label.new()
+	extra.text = "new"
+	hotbar.add_child(extra)
+	await get_tree().process_frame
+	var after_add: int = int(pic.get("redraws"))
+	extra.queue_free()
+	button.text = was_text
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("nothing changing, no new picture; a button's words, a row shown or hidden, a new part each ask for one",
+		quiet and after_text > still and after_show > after_text and after_add > after_show,
+		[still, after_text, after_show, after_add, quiet])
+	var before_safety: int = int(pic.get("redraws"))
+	pic.call("_process", Picture.SAFETY_SECONDS + 0.01)
+	check("  and once every %.1f s anyway, for anything that changed without saying so" % Picture.SAFETY_SECONDS,
+		int(pic.get("redraws")) == before_safety + 1, [before_safety, pic.get("redraws")])
+	var asked_twice: int = int(pic.get("redraws"))
+	pic.call("ask")
+	pic.call("ask")
+	check("  however many ask in one frame, one picture", int(pic.get("redraws")) <= asked_twice + 1, pic.get("redraws"))
+	# ---- the parts still take the mouse ----
+	# (A headless run's window is 64 px across, so no click can be pushed at
+	# the bar here; zz/hudprobe and zz/hudshot click it in a real window.)
+	check("the parts are still the main window's, so its clicks, hovers, tooltips and drags reach them",
+		nav.get_viewport() == hud.get_viewport() and hotbar.get_viewport() == hud.get_viewport()
+		and nav.mouse_filter == Control.MOUSE_FILTER_IGNORE and (hud.get_node("%menubutton") as Control).mouse_filter == Control.MOUSE_FILTER_STOP)
+	# ---- hidden with the HUD ----
+	hud.visible = false
+	var hid: bool = not layer.visible
+	hud.visible = true
+	check("hiding the HUD hides the bar too, so it takes no clicks (a layer in a layer is not hidden with it)",
+		hid and layer.visible)
+	# ---- and back ----
+	var at_index: int = layer.get_index()
+	pic.call("detach")
+	await get_tree().process_frame
+	check("detach() puts the nav bar and hotbar back in the HUD where they were, drawn every frame",
+		nav.get_parent() == hud and hotbar.get_parent() == hud and nav.get_index() == at_index - 1
+		and hotbar.get_index() == at_index and hud.get_node_or_null("%hotbar") == hotbar
+		and not is_instance_valid(layer), [nav.get_index(), hotbar.get_index(), at_index])
+	check("  the touch layout finds them by their unique names (touchpad.gd)",
+		_code_src("res://src/ui/touchpad.gd").contains("_bar_part(hud, ^\"%hotbar\"")
+		and _code_src("res://src/ui/touchpad.gd").contains("_bar_part(hud, ^\"%navframe\""))
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  (the bar drawn once: done)")

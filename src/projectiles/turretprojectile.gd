@@ -511,6 +511,7 @@ func _dress(sprite: AnimatedSprite2D) -> void:
 		glow.modulate = Color(1, 1, 1, GLOW_ALPHA * (1.6 if doubled else 1.0))
 		glow.position = BALL
 		glow.material = _added()
+		glow.z_index = -1
 		add_child(glow)
 		move_child(glow, 0)
 		var core := Sprite2D.new()
@@ -520,8 +521,10 @@ func _dress(sprite: AnimatedSprite2D) -> void:
 		if doubled:
 			core.modulate = Color(1.0, 0.95, 0.75)
 		core.material = _added()
+		core.z_index = 1
 		add_child(core)
 	_trail = _make_trail()
+	_trail.z_index = 2
 	add_child(_trail)
 
 

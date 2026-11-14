@@ -20,6 +20,8 @@ const MinigamesCard := preload("res://src/ui/minigames/minigamescard.gd")
 const GuideScript := preload("res://src/ui/guide.gd")
 # "Bram wants to trade with you", with See offer and No thanks (0.93.0).
 const TradePrompt := preload("res://src/ui/trade/tradeprompt.gd")
+# The bar along the bottom drawn once, and again only when it changes (0.155.0).
+const HudPicture := preload("res://src/ui/hudpicture.gd")
 
 
 # =============================================================================
@@ -328,6 +330,9 @@ func _ready() -> void:
 	guide = GuideScript.new()
 	add_child(guide)
 	move_child(guide, 1)
+	# LAST, once the bar is built: the nav bar and the hotbar go into a
+	# picture drawn only when they change (hudpicture.gd).
+	bar_picture = HudPicture.attach(self)
 
 
 # The keys that play the game. project.godot puts WASD and the arrows in
@@ -1039,6 +1044,8 @@ var guide: Control = null
 var trade_prompt: Control = null
 # The Minigames button's card (minigamescard.gd, 0.93.3), made in _ready().
 var minigames_card: Control = null
+# The nav bar and hotbar as one picture (hudpicture.gd), or null.
+var bar_picture: Node = null
 
 
 func toggle_nav_menu(toggle_name: String) -> void:

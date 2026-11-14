@@ -52,6 +52,7 @@ class_name BaseEnemy
 
 # Who a monster may chase: you, and anybody sharing the area's monsters.
 const Targets := preload("res://src/shared/targets.gd")
+const BarSheet := preload("res://src/shared/barsheet.gd")
 # A Descent run's Execute (0.115.0): take_damage() asks it.
 const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 # A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
@@ -2072,6 +2073,9 @@ func _wire_healthbar() -> void:
 	if not has_node("healthbar"):
 		return
 	var bar: Range = $healthbar
+	# Every bar on one sheet and one layer, so a crowd's bars are drawn
+	# together (0.155.0, barsheet.gd).
+	BarSheet.wear(bar)
 	bar.min_value = 0
 	bar.max_value = max_hp
 	bar.step      = 1
@@ -2339,6 +2343,9 @@ func _wire_health_readout(bar: Range) -> void:
 		label.add_theme_color_override("font_color", HEALTH_READOUT_COLOUR)
 		label.add_theme_color_override("font_outline_color", HEALTH_READOUT_OUTLINE_COLOUR)
 		label.add_theme_font_override("font", _readout_font())
+		# One above the bars' layer, so every number is drawn after every bar
+		# and they go in one run (0.155.0, barsheet.gd).
+		label.z_index = 1
 		bar.add_child(label)
 
 	_layout_health_readout(bar, label)
