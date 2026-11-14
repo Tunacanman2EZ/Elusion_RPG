@@ -12112,9 +12112,10 @@ text sized for a phone are the next two.
   whichever finger, aimed where it touched (`world_point_at()`, the cursor's
   rule), and a tap quicker than a frame still lands once and aims there.
 - **The aim** (`aim_for()`, asked first by `aim_point()` while the pad is
-  on): a finger on the world; the Aura or Attack button dragged; the nearest
-  monster within AUTO_AIM_RANGE that can be hit (`BaseEnemy.can_be_aimed_at()`,
-  its "bodyshape"); else the facing. The aim ring shows it.
+  on): a finger on the world; the Aura or Attack button dragged; else the
+  facing. The aim ring shows it. (Until 0.155.1 the nearest monster within
+  AUTO_AIM_RANGE came before the facing; see "No auto-aim on a touch
+  screen".)
 - **Held, Attack keeps attacking** only where a second press is another of
   the same (`touch_attack_repeats()`: the warrior, but not with the Double
   Axe out; the mage), pressed again when the class is ready
@@ -13857,8 +13858,8 @@ floating only) and TouchControls aims there (`aim_attack_at()`,
 `attack_screen`, `attack_aimed`; in `aim_for()` after the Aura's drag, before
 the old drag rule); a press quicker than a frame aims there through
 `_world_aim_ticks` as a world tap does. Held, it keeps attacking toward the
-thumb. The auto-aim at the nearest is left for an Attack held with no point
-of its own. The Controls card: "Tap where to strike; hold to keep on".
+thumb. The auto-aim at the nearest was left for an Attack held with no point
+of its own - until 0.155.1, which took it out. The Controls card: "Tap where to strike; hold to keep on".
 `_test_attack_goes_where_the_thumb_is()` (testrunner_11).
 
 ### GitHub's run green again (0.145.2)
@@ -14500,6 +14501,18 @@ though most frames nothing on it changes.
   lands a pixel over.
 - **Health, mana and stamina stay drawn every frame** - in a fight they
   change all the time, and a picture redrawn every frame costs more.
+- **A drag icon goes on a layer of its own, over everything (0.155.1)**
+  (inventoryslot.gd `lift_above_everything()`, right after
+  `set_drag_preview()`; `DRAG_LAYER` 200, "dragicons" under the root).
+  Godot parents a drag preview under the control the drag began on, and
+  its z of 4096 orders it only within that CanvasLayer: a key's icon was
+  drawn inside the bar's picture, and any window's stayed under the
+  Testing Ground's panel (layer 5) and the readout (128). **And the
+  Testing Ground's panel steps aside while anything is dragged**
+  (testingground.gd `_notification()`, NOTIFICATION_DRAG_BEGIN / END):
+  the bag opens under it, so a drop there landed on the panel and went
+  nowhere. The owner, the first evening: "dragging item from hotbar to
+  inventory dousnt work because the item goes behind the panel".
 - The HUD hidden hides the bar's layer too (a CanvasLayer inside another is
   not hidden with it), so it takes no clicks. `HudPicture.enabled` false
   keeps a new HUD's bar live; `detach()` puts the parts back.
@@ -14511,6 +14524,56 @@ though most frames nothing on it changes.
 `_test_the_bar_drawn_once()` (testrunner_11). touchpad.gd finds the parts
 by their unique names, by their plain names in a HUD put together without
 the scene.
+
+### No auto-aim on a touch screen (0.155.1)
+
+The owner, of the aim ring's ball following the crowd: "get rid of that
+feature for mobile we fixed with new analog setup". With no thumb aiming,
+`TouchControls.aim_for()` aimed at the nearest monster within
+`AUTO_AIM_RANGE` (260); now it returns null and the attack goes the way the
+character faces, as a keyboard's does. A finger on the world, the Attack
+button dragged (its analog) or where an Attack thumb lands still aim.
+`aim_target()`, `nearest_monster()` and `target_point()` went with it, and
+testrunner_7's wall check on them. testrunner_3's
+`_test_a_touch_screen_plays_the_game()` holds it: a monster close by is not
+aimed at.
+
+### Lighter on a phone: the crowd's steps, the readout as a picture (0.155.1)
+
+The owner's phone, 1,000 horde slimes round him in the Testing Ground: 30
+fps, busy 31.2 ms of each 33.3 (physics 6.6 ms a tick at 40, scripts and
+drawing 22.4), the crowd 7.1 ms of a frame, 284 draw calls. "lets
+improve", then of the plan: "sounds good".
+
+- **A phone's crowd steps 10 times a second** (swarm.gd
+  `PHONE_STEPS_PER_SECOND`, `step_seconds`, set by endlessrun.gd's
+  `_ready()` when `on_phone()`; a computer keeps 20). Every per-step number
+  is scaled by `step_seconds`, and the turn (`STEER`) is kept a second
+  (`_st_steer` = 1 - (1 - STEER) ^ (step_seconds / STEP)); the walk between
+  steps is still drawn every frame (`blend`). A computer's arithmetic is
+  unchanged to the bit. Measured (zz/hordebench.gd, headless, 1,000): the
+  crowd 3.3 -> 2.0 ms a frame at 30 fps.
+- **The readout and the Testing Ground's panel are pictures**
+  (hudpicture.gd `picture_parts()`, which `attach()` now calls for the
+  HUD's bar too): the readout's panel was about 210 draw calls every frame
+  (text, boxes and the graph in turn) though it changes five times a
+  second - most of the phone's 284. Measured (xvfb + opengl3, 1,000
+  slimes): 267 draw calls with the readout up -> 27, the panel's 29 -> 1.
+  **Reach the readout's panel by `PerfOverlay._panel`**: it sits in the
+  picture's layer ("readoutpanel") now, not at "panel".
+- **Not a layer's own custom_viewport.** Setting `custom_viewport` on a
+  CanvasLayer already in the tree makes Godot print "Attempt to disconnect
+  a nonexistent connection ... child_order_changed" when it leaves (it
+  joins its parent's signal to the viewport it entered with and leaves it
+  from the one it draws in) - why the parts move into a new layer given
+  its viewport before it enters.
+- **The swarm's stand-ins are not monsters** (perfoverlay.gd `STAND_IN`,
+  set in swarmproxy.gd `_init()`): the Endless keeps 256, always in
+  "enemies", and the readout counted them - "monsters 277 here" with 21
+  out. Measure's label (placemeasure.gd) already left them out.
+
+`_test_lighter_on_a_phone()` (testrunner_11), and a check in
+`_test_the_testing_ground()`.
 
 ## Deleting your own account (0.90.0)
 
@@ -14845,8 +14908,8 @@ attacks ask the same question.
   too), the stalagmite, the meteor and its crater, the tank's ring, dynamite
   (landing, blast and chain), the healer's orb (a ray along each step; it
   homes only on what it can see), its aura (dropped and ticking), pets
-  (nearest visible target; their shots stop at walls) and the touch screen's
-  auto-aim. A spell, throw or aura aimed past a wall lands this side of it.
+  (nearest visible target; their shots stop at walls) and, until 0.155.1,
+  the touch screen's auto-aim. A spell, throw or aura aimed past a wall lands this side of it.
   The meteor's pull does not ask: it hurts nothing, and a monster behind a
   wall slides along it as it would walking.
 - **Small solid props count.** A pot, crate or pillar between you and a

@@ -3771,39 +3771,20 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	check("  a mage presses again only with the mana for it: a refused press is still a frame it does not walk",
 		_func_body(_code_src("res://src/characters/mage.gd"), "func touch_attack_ready(").contains("mana >= spell_mana_cost"))
 
-	# ---- the aim: a finger on the world, a drag, the nearest monster, the facing
+	# ---- the aim: a finger on the world, a drag, the facing (no auto-aim, 0.155.1)
 	warrior.set("last_direction", Vector2.RIGHT)
-	TouchControls._aim_frame = -1
 	var faced: Vector2 = warrior.aim_point()
-	check("on a touch screen with no monster near, an attack aims the way the character faces, as a keyboard's",
+	check("on a touch screen with no thumb aiming, an attack aims the way the character faces, as a keyboard's",
 		TouchControls.aim_for(warrior) == null
 		and faced.is_equal_approx(warrior.global_position + Vector2.RIGHT * PlayerScript.KEYBOARD_AIM_REACH), faced)
 	var near := Node2D.new()
 	near.add_to_group("enemies")
 	arena.add_child(near)
 	near.global_position = warrior.global_position + Vector2(0, 120)
-	var far := Node2D.new()
-	far.add_to_group("enemies")
-	arena.add_child(far)
-	far.global_position = warrior.global_position + Vector2(TouchScript.AUTO_AIM_RANGE + 40.0, 0)
-	var corpse_script := GDScript.new()
-	corpse_script.source_code = "extends Node2D\nfunc can_be_aimed_at() -> bool:\n\treturn false\n"
-	corpse_script.reload()
-	var corpse: Node2D = corpse_script.new()
-	corpse.add_to_group("enemies")
-	arena.add_child(corpse)
-	corpse.global_position = warrior.global_position + Vector2(-30, 0)
-	near.remove_from_group("enemies")
-	TouchControls._aim_frame = -1
-	var only_far: Variant = TouchControls.aim_for(warrior)
-	near.add_to_group("enemies")
-	check("  a monster further off than AUTO_AIM_RANGE is not aimed at: the facing, still", only_far == null, only_far)
-	TouchControls._aim_frame = -1
-	check("  a monster in reach and it aims at that one - the nearest that can still be hit, not a corpse closer by",
-		warrior.aim_point().is_equal_approx(near.global_position), warrior.aim_point())
-	check("  a monster's body, not its origin: its \"bodyshape\", where it has one",
-		_func_body(_code_src("res://src/systems/touchcontrols.gd"), "static func target_point(").contains("bodyshape"))
-	check("  and a monster dying, or behind a boss gate, is never picked (BaseEnemy.can_be_aimed_at())",
+	check("  a monster close by is not aimed at - no auto-aim since 0.155.1 (the owner: \"get rid of that feature for mobile we fixed with new analog setup\")",
+		TouchControls.aim_for(warrior) == null and warrior.aim_point().is_equal_approx(faced)
+		and not _code_src("res://src/systems/touchcontrols.gd").contains("func nearest_monster("), warrior.aim_point())
+	check("  and a monster dying, or behind a boss gate, is never picked by what still aims for you (BaseEnemy.can_be_aimed_at())",
 		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func can_be_aimed_at(").contains("not _dying")
 		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func can_be_aimed_at(").contains("not gated"))
 	TouchControls.press_attack()
@@ -3814,7 +3795,7 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	TouchControls.release_attack()
 	check("  Attack dragged aims the way it is dragged - up, past the monster below - all the way at DRAG_REACH",
 		dragged.is_equal_approx(warrior.global_position + Vector2.UP * TouchScript.DRAG_REACH), dragged)
-	check("  and a thumb that hardly moved has not dragged: the monster still", barely.is_equal_approx(near.global_position), barely)
+	check("  and a thumb that hardly moved has not dragged: the facing still", barely.is_equal_approx(faced), barely)
 	var on_world := InputEventScreenTouch.new()
 	on_world.pressed = true
 	on_world.index = 2
@@ -3829,12 +3810,11 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	var still_there: Vector2 = warrior.aim_point()
 	TouchControls._physics_process(0.0)
 	TouchControls._physics_process(0.0)
-	TouchControls._aim_frame = -1
 	var after: Vector2 = warrior.aim_point()
 	check("a finger on the world - on no button or window - is an attack, aimed where it touched, as a click is",
 		world_attacks and finger_aim.is_equal_approx(as_world), [world_attacks, finger_aim, as_world])
-	check("  lifted quicker than a frame, it still aims there for the frame its press lands on; after, the monster again",
-		still_there.is_equal_approx(as_world) and after.is_equal_approx(near.global_position), [still_there, after])
+	check("  lifted quicker than a frame, it still aims there for the frame its press lands on; after, the facing again",
+		still_there.is_equal_approx(as_world) and after.is_equal_approx(faced), [still_there, after])
 	var quick := InputEventScreenTouch.new()
 	quick.pressed = true
 	quick.index = 4

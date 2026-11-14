@@ -25,6 +25,7 @@ extends CanvasLayer
 
 const PerfPanel := preload("res://src/systems/perfpanel.gd")
 const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
+const LayerPicture := preload("res://src/ui/hudpicture.gd")
 const StressCrowdScript := preload("res://src/world/stresscrowd.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 
@@ -273,6 +274,8 @@ var _last_parts: Dictionary = {}
 # THE PANEL (0.136.0, perfpanel.gd): the frames for its graph, oldest
 # overwritten, and the frames' parts added up since its last look.
 var _panel: Control = null
+# The panel as one picture (hudpicture.gd), or null.
+var _picture: Node = null
 # MEASURE HERE (0.152.0, placemeasure.gd): the panel's Measure button.
 var place_measure: Node = null
 var _graph := PackedFloat32Array()
@@ -317,6 +320,13 @@ func _ready() -> void:
 	visible = false
 	RenderingServer.frame_pre_draw.connect(_on_pre_draw)
 	RenderingServer.frame_post_draw.connect(_on_post_draw)
+	# DRAWN AS ONE PICTURE (0.155.1, hudpicture.gd picture_parts()): the
+	# panel is drawn by about 210 calls - text, boxes and the graph in turn -
+	# every frame, though it changes five times a second. On the owner's
+	# phone they were most of the 284 draw calls it reported: the readout was
+	# weighing itself. Now it is drawn when it changes, and shown by one. The
+	# panel moves into the picture's layer: reach it by _panel, not "panel".
+	_picture = LayerPicture.picture_parts(self, [_panel], "readoutpicture", "readoutpanel")
 
 
 func _on_pre_draw() -> void:
@@ -1273,12 +1283,23 @@ func _process_ms() -> float:
 	return Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 
 
+# THE SWARM'S STAND-INS ARE NOT MONSTERS (0.155.1). The Endless keeps 256
+# of them (swarmproxy.gd: PROXIES and FOCUS_PROXIES, hurtboxes moved onto
+# slimes), always in "enemies", so the readout said "monsters 277 here" of
+# the owner's phone with 21 out - and a test of the horde read as hundreds of
+# monsters too. Left out of every count; the slimes are the horde's own.
+const STAND_IN := &"swarm_stand_in"
+
+
 func monster_counts() -> Vector2i:
-	"""(in the area, asleep) - every node in the "enemies" group, and those the
-	enemy sleeper has put to sleep (it marks them with the "asleep" meta)."""
+	"""(in the area, asleep) - every node in the "enemies" group but the
+	swarm's stand-ins, and those the enemy sleeper has put to sleep (it marks
+	them with the "asleep" meta)."""
 	var here: int = 0
 	var asleep: int = 0
 	for node in get_tree().get_nodes_in_group("enemies"):
+		if node.has_meta(STAND_IN):
+			continue
 		here += 1
 		if node.has_meta(&"asleep"):
 			asleep += 1
@@ -1330,7 +1351,7 @@ func _count_some(delta: float) -> void:
 	var upto: int = mini(_count_at + share, _count_round.size())
 	for i in range(_count_at, upto):
 		var node: Variant = _count_round[i]
-		if not is_instance_valid(node) or not (node as Node).is_inside_tree():
+		if not is_instance_valid(node) or not (node as Node).is_inside_tree() or (node as Node).has_meta(STAND_IN):
 			continue
 		_count_part[0] += 1
 		if (node as Node).has_meta(&"asleep"):

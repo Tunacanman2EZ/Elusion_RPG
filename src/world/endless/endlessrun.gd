@@ -230,6 +230,9 @@ func _ready() -> void:
 	get_parent().add_child.call_deferred(floor_wash)
 	swarm = SwarmScript.new()
 	swarm.set("arena", arena_rect)
+	# HALF THE STEPS ON A PHONE (0.155.1, swarm.gd PHONE_STEPS_PER_SECOND).
+	if on_phone():
+		swarm.set("step_seconds", 1.0 / SwarmScript.PHONE_STEPS_PER_SECOND)
 	(swarm.get("keep_out") as Array).append(corridor_rect)
 	# Drawn in front of the back wall they stand before (0.96.0, swarm.gd
 	# PICTURE_TOP): its foot is BACK_WALL_GAP over the floor's top.

@@ -29,8 +29,11 @@
 #      as a click does, and is an attack;
 #   2. the Aura button dragged, the way it is dragged, and as far;
 #   3. the Attack button dragged, the way it is dragged;
-#   4. otherwise the nearest monster within AUTO_AIM_RANGE;
-#   5. otherwise nothing here, and the player aims where it faces.
+#   4. otherwise nothing here, and the player aims where it faces.
+# NO AUTO-AIM (0.155.1). Step 4 was the nearest monster within reach, and the
+# aim ring's ball followed the crowd. The owner: "get rid of that feature for
+# mobile we fixed with new analog setup" - the Attack button dragged, or where
+# a thumb lands, says where.
 #
 # HELD, THE ATTACK BUTTON KEEPS ATTACKING where a class means the same thing by
 # a second press (touch_attack_repeats(): the warrior's swing, the mage's
@@ -41,10 +44,6 @@
 # who fires for as long as attack is down, streams.
 extends Node
 
-# Whether a wall stands between this and what it would hit (0.69.1,
-# src/shared/targets.gd).
-const Targets := preload("res://src/shared/targets.gd")
-
 signal changed(on: bool)
 # A THUMB ON THE GAME (0.56.0): the pad or the world - the player going back to
 # playing. See played_now().
@@ -54,8 +53,6 @@ signal played()
 # and a preload each way is a cycle for the compiler.
 const PAD_PATH := "res://src/ui/touchpad.gd"
 
-# How far from the character the auto-aim looks for a monster, in world pixels.
-const AUTO_AIM_RANGE := 260.0
 # A button dragged less than this share of its reach has not been dragged.
 const DRAG_DEAD := 0.25
 # The Attack button dragged all the way aims this far ahead (a spell, a stick of
@@ -117,10 +114,6 @@ var _stick_was_held: bool = false
 # The actions this has pressed, so it lets go of exactly those.
 var _pressed: Dictionary = {}
 
-# aim_for() is asked several times a frame (the ring, the attack): the monster
-# search is made once a frame.
-var _aim_frame: int = -1
-var _aim_target: Node2D = null
 
 
 func _ready() -> void:
@@ -634,9 +627,6 @@ func aim_for(body: Node2D) -> Variant:
 		return body.call("world_point_at", attack_screen)
 	if attack_held and attack_drag.length() >= DRAG_DEAD:
 		return body.global_position + attack_drag.normalized() * drag_reach(attack_drag.length())
-	var target: Node2D = aim_target(body)
-	if target != null:
-		return target_point(target)
 	return null
 
 
@@ -655,42 +645,3 @@ func skill_point(body: Node2D, drag: Vector2) -> Vector2:
 	return body.global_position + drag.normalized() * lerpf(SKILL_NEAREST, reach, share)
 
 
-func aim_target(body: Node2D) -> Node2D:
-	var frame: int = Engine.get_physics_frames()
-	if frame != _aim_frame or not is_instance_valid(_aim_target):
-		_aim_frame = frame
-		_aim_target = nearest_monster(body.get_tree(), body.global_position, AUTO_AIM_RANGE, body)
-	return _aim_target if is_instance_valid(_aim_target) else null
-
-
-static func nearest_monster(tree: SceneTree, from: Vector2, reach: float, looker: Node2D = null) -> Node2D:
-	"""The closest monster within `reach` that can still be hit, or null.
-	Given the `looker`, not one behind a wall from its body (0.69.1): the
-	attack would only be stopped by it (Targets)."""
-	if tree == null:
-		return null
-	var best: Node2D = null
-	var best_d: float = reach * reach
-	for node in tree.get_nodes_in_group(&"enemies"):
-		var monster := node as Node2D
-		if monster == null or not is_instance_valid(monster) or not monster.is_visible_in_tree():
-			continue
-		if monster.has_method("can_be_aimed_at") and not monster.call("can_be_aimed_at"):
-			continue
-		var d: float = from.distance_squared_to(target_point(monster))
-		if d > best_d:
-			continue
-		# Asked only of one nearer than the best so far, so a crowd costs a
-		# few rays, not one each.
-		if looker != null and not Targets.can_reach(looker, Targets.body_point(looker), monster):
-			continue
-		best_d = d
-		best = monster
-	return best
-
-
-static func target_point(monster: Node2D) -> Vector2:
-	"""Where a monster's BODY is - its "bodyshape" - rather than its origin,
-	which sits somewhere else in every scene (targets.gd, body_point())."""
-	var shape: Node2D = monster.get_node_or_null(^"bodyshape") as Node2D
-	return shape.global_position if shape != null else monster.global_position

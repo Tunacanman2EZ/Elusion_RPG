@@ -270,7 +270,7 @@ func _test_the_readout_panel() -> void:
 	var shown_before: bool = PerfOverlay.is_shown()
 	PerfOverlay.set_shown(false)
 	PerfOverlay.set_shown(true)
-	var panel: Control = PerfOverlay.get_node_or_null("panel")
+	var panel: Control = PerfOverlay.get("_panel")
 	check("switched on, the panel is drawn and the old text is kept but not shown",
 		panel != null and panel.is_visible_in_tree() and not PerfOverlay._label.visible)
 	var now: int = Time.get_ticks_msec()
@@ -361,7 +361,7 @@ func _test_the_readout_uncaps() -> void:
 	var shown_before: bool = PerfOverlay.is_shown()
 	PerfOverlay.set_shown(false)
 	PerfOverlay.set_shown(true)
-	var panel: Control = PerfOverlay.get_node("panel")
+	var panel: Control = PerfOverlay.get("_panel")
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
@@ -2857,13 +2857,9 @@ func _test_attack_goes_where_the_thumb_is() -> void:
 	TouchControls._physics_process(0.0)
 	TouchControls._physics_process(0.0)
 	TouchControls._physics_process(0.0)
-	TouchControls._aim_frame = -1
-	# Not "null": in the whole suite an earlier section's monster may still be
-	# near, and the nearest is aimed at then - which is right.
 	var lifted_aim: Variant = TouchControls.aim_for(body)
-	check("  lifted, it aims nowhere of its own - not where the thumb was",
-		not bool(TouchControls.attack_aimed)
-		and not (lifted_aim is Vector2 and (lifted_aim as Vector2).is_equal_approx(Vector2(740, 400) * 2.0)), lifted_aim)
+	check("  lifted, it aims nowhere of its own - not where the thumb was, and not at a monster (no auto-aim, 0.155.1)",
+		not bool(TouchControls.attack_aimed) and lifted_aim == null, lifted_aim)
 	var pad: Control = PadScript.new()
 	check("the pad's Attack is wired to it", pad.attack.touched_at.is_connected(TouchControls.aim_attack_at))
 	pad.free()
@@ -3441,6 +3437,17 @@ func _test_the_testing_ground() -> void:
 	add_child(player)
 	player.global_position = Vector2(768, 700)
 	run.set("player_override", player)
+	var tg_panel: Control = ground.get("_panel") as Control
+	var shown_before: bool = tg_panel != null and tg_panel.visible
+	ground.notification(Node.NOTIFICATION_DRAG_BEGIN)
+	var stepped_aside: bool = tg_panel != null and not tg_panel.visible
+	ground.notification(Node.NOTIFICATION_DRAG_END)
+	check("the panel steps out of the way while an item is dragged, and comes back after (0.155.1: it covers the bag)",
+		shown_before and stepped_aside and tg_panel.visible, [shown_before, stepped_aside])
+	var tg_picture: Node = ground.get("_picture") as Node
+	check("  and it draws into a picture, as the readout does (0.155.1)",
+		tg_picture != null and tg_panel.get_parent() == tg_picture.get("layer")
+		and (tg_picture.get("layer") as CanvasLayer).custom_viewport == tg_picture.get("sub"), tg_picture)
 	ground.call("set_horde", 30)
 	ground.call("_process", 0.016)
 	var filled: int = int(run.get("swarm").get("alive"))
@@ -3710,7 +3717,7 @@ func _test_measure_here() -> void:
 	check("  Copy results carries every place: a header, then a line each, tab-separated",
 		head_at > 0 and head_at + 2 == lines.size() and lines[head_at + 1].begins_with("Big Field - 12 other monsters\t")
 		and lines[head_at + 1].split("\t").size() == lines[head_at].split("\t").size(), lines)
-	var panel: Node = PerfOverlay.get_node_or_null("panel")
+	var panel: Node = PerfOverlay.get("_panel")
 	var pressed: Array = []
 	var was_start: Callable = panel.get("measure_start")
 	panel.set("measure_start", func() -> void: pressed.append(true))
@@ -4707,6 +4714,24 @@ func _test_the_bar_drawn_once() -> void:
 	check("the parts are still the main window's, so its clicks, hovers, tooltips and drags reach them",
 		nav.get_viewport() == hud.get_viewport() and hotbar.get_viewport() == hud.get_viewport()
 		and nav.mouse_filter == Control.MOUSE_FILTER_IGNORE and (hud.get_node("%menubutton") as Control).mouse_filter == Control.MOUSE_FILTER_STOP)
+	# ---- a drag icon over everything (0.155.1) ----
+	var icon := Control.new()
+	icon.top_level = true
+	icon.z_as_relative = false
+	icon.z_index = 4096
+	hotbar.add_child(icon)
+	var drawn_in_picture: bool = icon.get_canvas_layer_node() == layer
+	InventorySlot.lift_above_everything(icon)
+	var top: CanvasLayer = icon.get_canvas_layer_node()
+	check("a drag icon is lifted onto a layer of its own over everything - out of the bar's picture, over the Testing Ground's panel and the readout (0.155.1; the owner: \"the item goes behind the panel\")",
+		drawn_in_picture and top != null and top.get_parent() == get_tree().root and top.layer == InventorySlot.DRAG_LAYER
+		and InventorySlot.DRAG_LAYER > 128 and top.custom_viewport == null and icon.z_index == 4096,
+		[drawn_in_picture, top, top.layer if top != null else -1])
+	icon.queue_free()
+	var drag_body: String = _func_body(_code_src("res://src/ui/inventory/inventoryslot.gd"), "func _get_drag_data(")
+	check("  every slot's drag lifts its icon right after set_drag_preview()",
+		drag_body.find("lift_above_everything(preview)") > drag_body.find("set_drag_preview(preview)")
+		and drag_body.find("set_drag_preview(preview)") != -1)
 	# ---- hidden with the HUD ----
 	hud.visible = false
 	var hid: bool = not layer.visible
@@ -4727,3 +4752,82 @@ func _test_the_bar_drawn_once() -> void:
 	hud.queue_free()
 	await get_tree().process_frame
 	print("  (the bar drawn once: done)")
+
+
+# LIGHTER ON A PHONE (0.155.1) - the owner's phone, 1,000 slimes round him in
+# the Testing Ground: busy 31 ms of a 33 ms frame, the crowd 7.1 of it, and
+# the readout weighing itself (about 210 of its 284 draw calls). "lets
+# improve", then of the plan: "sounds good".
+func _test_lighter_on_a_phone() -> void:
+	section("A phone's crowd steps 10 times a second, the readout is a picture, the stand-ins are not monsters (0.155.1)")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	const ProxyScript := preload("res://src/world/endless/swarmproxy.gd")
+	var probe: Node2D = SwarmScript.new()
+	var pc_step: float = float(probe.get("step_seconds"))
+	probe.free()
+	check("a computer's crowd steps 20 times a second, a phone's PHONE_STEPS_PER_SECOND (10)",
+		is_equal_approx(pc_step, 1.0 / 20.0) and SwarmScript.PHONE_STEPS_PER_SECOND == 10.0, pc_step)
+	var made: String = _func_body(_code_src("res://src/world/endless/endlessrun.gd"), "func _ready(")
+	check("  the run sets it on a phone as it makes the crowd (on_phone(), pretend_phone in the suite)",
+		made.find("if on_phone():") != -1 and made.find("PHONE_STEPS_PER_SECOND") > made.find("if on_phone():")
+		and made.find("PHONE_STEPS_PER_SECOND") > made.find("swarm = SwarmScript.new()"))
+	# The same walk in a second, half the steps: a lone slime from rest.
+	var world := Node2D.new()
+	add_child(world)
+	var walked: Array = []
+	var turned: Array = []
+	for rate in [20.0, 10.0]:
+		var swarm: Node2D = SwarmScript.new()
+		swarm.set("arena", Rect2(0, 0, 3000, 1400))
+		swarm.set("step_seconds", 1.0 / rate)
+		world.add_child(swarm)
+		swarm.set_process(false)
+		swarm.set_physics_process(false)
+		swarm.call("spawn", 1, Vector2(-9999, -9999))
+		var px: PackedFloat32Array = swarm.get("px")
+		var py: PackedFloat32Array = swarm.get("py")
+		var vx: PackedFloat32Array = swarm.get("vx")
+		var vy: PackedFloat32Array = swarm.get("vy")
+		px[0] = 600.0
+		py[0] = 700.0
+		vx[0] = 0.0
+		vy[0] = 0.0
+		swarm.set("px", px)
+		swarm.set("py", py)
+		swarm.set("vx", vx)
+		swarm.set("vy", vy)
+		swarm.set("speed", 100.0)
+		for k in int(rate):
+			swarm.call("_step", Vector2(2400.0, 700.0), true)
+		walked.append(float((swarm.get("px") as PackedFloat32Array)[0]) - 600.0)
+		turned.append(float(swarm.get("_st_steer")))
+		swarm.queue_free()
+	world.queue_free()
+	check("  in a second a slime walks about as far either way, and turns as fast (STEER kept a second)",
+		walked[1] > 0.0 and absf(float(walked[1]) - float(walked[0])) <= 0.15 * float(walked[0])
+		and is_equal_approx(float(turned[0]), SwarmScript.STEER)
+		and is_equal_approx(float(turned[1]), 1.0 - pow(1.0 - SwarmScript.STEER, 2.0)), [walked, turned])
+	# ---- the readout as a picture ----
+	var picture: Node = PerfOverlay.get("_picture") as Node
+	var panel: Control = PerfOverlay.get("_panel") as Control
+	var layer: CanvasLayer = picture.get("layer") as CanvasLayer if picture != null else null
+	check("the readout's panel draws into a picture (hudpicture.gd picture_parts()), on the readout's own layer",
+		picture != null and layer != null and panel.get_parent() == layer and layer.custom_viewport == picture.get("sub")
+		and layer.layer == PerfOverlay.layer, [picture, layer])
+	var was_shown: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	var hid: bool = not layer.visible
+	PerfOverlay.set_shown(true)
+	check("  hidden with the readout, shown with it", hid and layer.visible)
+	PerfOverlay.set_shown(was_shown)
+	# ---- the stand-ins ----
+	var counted: Vector2i = PerfOverlay.monster_counts()
+	var stand_in: Node2D = ProxyScript.new()
+	add_child(stand_in)
+	var with_one: Vector2i = PerfOverlay.monster_counts()
+	var marked: bool = stand_in.has_meta(PerfOverlay.STAND_IN)
+	stand_in.queue_free()
+	await get_tree().process_frame
+	check("the swarm's stand-ins are not counted as monsters (256 of them stood in the Endless's count)",
+		marked and with_one == counted, [counted, with_one])
+	print("  (lighter on a phone: done)")

@@ -196,16 +196,7 @@ func _test_attacks_stop_at_walls() -> void:
 	meteor.queue_free()
 	crater.queue_free()
 
-	# ---- auto-aim on a touch screen: the nearest monster it can see -------------
-	# The nearer one, past the wall: placed to be passed over.
-	var _aim_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 200.0, base.y - 6.0))
-	var aim_here: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 200.0, base.y + 60.0))
-	var looker: Node2D = _hero_against(arena, "mage", base.y + 1.0, thin_x + 200.0)
-	const Touch := preload("res://src/systems/touchcontrols.gd")
-	var aimed_at: Node2D = Touch.nearest_monster(get_tree(), looker.global_position, 260.0, looker)
-	check("touch auto-aim takes the nearest monster it can see, not one nearer behind a wall",
-		aimed_at == aim_here, aimed_at)
-	looker.queue_free()
+	# (Touch auto-aim, and its wall check, went in 0.155.1: no auto-aim.)
 	mage.queue_free()
 
 	# ---- the tank: the ring and the dynamite ------------------------------------
@@ -399,7 +390,6 @@ func _test_attacks_stop_at_walls() -> void:
 		"res://src/projectiles/petfireprojectile.gd": [["func _physics_process(", "clear_between("]],
 		"res://src/projectiles/petelectricprojectile.gd": [["func _physics_process(", "clear_between("]],
 		"res://src/pets/pet.gd": [["func _find_nearest_enemy(", "sees("]],
-		"res://src/systems/touchcontrols.gd": [["func nearest_monster(", "can_reach("]],
 	}
 	var deaf: Array = []
 	for path in asks:

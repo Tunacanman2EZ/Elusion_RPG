@@ -451,6 +451,36 @@ func make_drag_preview(texture: Texture2D, tint: Color = Color.WHITE) -> Control
 	return root
 
 
+# The layer a drag icon is lifted onto: over the HUD (1), the Testing Ground's
+# panel (5) and the performance readout (128).
+const DRAG_LAYER := 200
+const DRAG_LAYER_NAME := "dragicons"
+
+
+static func lift_above_everything(preview: Control) -> void:
+	"""OVER EVERYTHING ON SCREEN (0.155.1). set_drag_preview() puts the preview
+	under the control the drag began on, and its z of 4096 only orders it
+	within that control's CanvasLayer. A hotbar key's landed in the hotbar,
+	which since 0.155.0 draws into the bar's picture (hudpicture.gd): the icon
+	was drawn inside the picture, cut off at the bar's edge. And a window's
+	icon stayed under every layer above the HUD - the Testing Ground's panel
+	(5) covers the bag. The owner: "dragging item from hotbar to inventory
+	dousnt work because the item goes behind the panel". So it goes on a
+	layer of its own, DRAG_LAYER, made once under the root; Godot still moves
+	it with the pointer and frees it when the drag ends."""
+	if preview == null or not preview.is_inside_tree():
+		return
+	var root: Window = preview.get_tree().root
+	var top: CanvasLayer = root.get_node_or_null(NodePath(DRAG_LAYER_NAME)) as CanvasLayer
+	if top == null:
+		top = CanvasLayer.new()
+		top.name = DRAG_LAYER_NAME
+		top.layer = DRAG_LAYER
+		root.add_child(top)
+	if preview.get_parent() != top:
+		preview.reparent(top, false)
+
+
 func _get_drag_data(_at_position: Vector2) -> Variant:
 	if is_empty():
 		return null
@@ -471,7 +501,9 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 
 	_hide_tooltip()
 
-	set_drag_preview(make_drag_preview(icon_rect.texture, icon_rect.modulate))
+	var preview: Control = make_drag_preview(icon_rect.texture, icon_rect.modulate)
+	set_drag_preview(preview)
+	lift_above_everything(preview)
 
 	return {
 		"stack":       stack.duplicate_stack(),

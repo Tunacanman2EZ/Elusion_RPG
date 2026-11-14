@@ -76,18 +76,30 @@ static func attach(on: CanvasLayer) -> Node:
 			parts.append(part)
 	if parts.is_empty():
 		return null
+	return picture_parts(on, parts, "hudpicture", LAYER_NAME)
+
+
+static func picture_parts(on: CanvasLayer, parts: Array, node_name: String, layer_name: String) -> Node:
+	"""ANY LAYER'S PARTS AS ONE PICTURE (0.155.1): the HUD's bar (attach()),
+	the readout's panel (perfoverlay.gd) and the Testing Ground's
+	(testingground.gd) - each drawn by many calls, changing a few times a
+	second at most. `parts` are children of `on`; they move into a layer
+	named `layer_name` at the first one's place. Null where nothing can be."""
+	if on == null or not on.is_inside_tree() or not enabled or parts.is_empty():
+		return null
+	for part in parts:
+		if not (part is Control) or (part as Node).get_parent() != on:
+			return null
 	var picture: Node = (load("res://src/ui/hudpicture.gd") as GDScript).new()
-	picture.name = "hudpicture"
+	picture.name = node_name
 	on.add_child(picture)
-	picture.call("_build", on, parts)
+	picture.call("_build", on, parts, layer_name)
 	return picture
 
 
-func _build(on: CanvasLayer, parts: Array) -> void:
-	hud = on
-	var place: int = (parts[0] as Node).get_index()
+func _make_sub(view_name: String) -> void:
 	sub = SubViewport.new()
-	sub.name = "barpictureview"
+	sub.name = view_name
 	sub.transparent_bg = true
 	sub.disable_3d = true
 	sub.gui_disable_input = true
@@ -101,8 +113,37 @@ func _build(on: CanvasLayer, parts: Array) -> void:
 	sub.use_hdr_2d = root.use_hdr_2d
 	sub.msaa_2d = root.msaa_2d
 	add_child(sub)
+
+
+func _make_shown() -> Sprite2D:
+	# A Sprite2D, not a TextureRect: a Control's place is rounded to a whole
+	# unit of the game, which at a scale of 1.5 is half a screen pixel off.
+	var picture := Sprite2D.new()
+	picture.name = SHOWN_NAME
+	picture.centered = false
+	# Placed, never moved by the physics: not blended from where it was.
+	picture.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	picture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var blend := CanvasItemMaterial.new()
+	blend.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	picture.material = blend
+	picture.texture = sub.get_texture()
+	return picture
+
+
+func _listen() -> void:
+	hud.visibility_changed.connect(_on_hud_shown)
+	hud.get_viewport().size_changed.connect(ask)
+	get_tree().node_added.connect(_on_node_added)
+	get_tree().node_removed.connect(_on_node_removed)
+
+
+func _build(on: CanvasLayer, parts: Array, layer_name: String) -> void:
+	hud = on
+	var place: int = (parts[0] as Node).get_index()
+	_make_sub(layer_name + "view")
 	layer = CanvasLayer.new()
-	layer.name = LAYER_NAME
+	layer.name = layer_name
 	layer.layer = hud.layer
 	layer.custom_viewport = sub
 	layer.visible = hud.visible
@@ -110,26 +151,13 @@ func _build(on: CanvasLayer, parts: Array) -> void:
 	hud.move_child(layer, place)
 	for part in parts:
 		(part as Node).reparent(layer, false)
-	# A Sprite2D, not a TextureRect: a Control's place is rounded to a whole
-	# unit of the game, which at a scale of 1.5 is half a screen pixel off.
-	shown = Sprite2D.new()
-	shown.name = SHOWN_NAME
-	shown.centered = false
-	# Placed, never moved by the physics: not blended from where it was.
-	shown.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	shown.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var blend := CanvasItemMaterial.new()
-	blend.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
-	shown.material = blend
-	shown.texture = sub.get_texture()
+	shown = _make_shown()
+	shown.name = layer_name + "shown"
 	hud.add_child(shown)
 	hud.move_child(shown, layer.get_index())
 	for item in [layer] + layer.find_children("*", "", true, false):
 		_wire(item as Node)
-	hud.visibility_changed.connect(_on_hud_shown)
-	root.size_changed.connect(ask)
-	get_tree().node_added.connect(_on_node_added)
-	get_tree().node_removed.connect(_on_node_removed)
+	_listen()
 	ask()
 
 
@@ -144,22 +172,26 @@ func detach() -> void:
 		(part as Node).reparent(hud, false)
 		hud.move_child(part, place)
 		place += 1
-	if get_tree().node_added.is_connected(_on_node_added):
-		get_tree().node_added.disconnect(_on_node_added)
-	if get_tree().node_removed.is_connected(_on_node_removed):
-		get_tree().node_removed.disconnect(_on_node_removed)
+	_stop_listening()
 	for item in parts:
 		for each in [item] + (item as Node).find_children("*", "", true, false):
 			_unwire(each as Node)
-	if hud.get_viewport().size_changed.is_connected(ask):
-		hud.get_viewport().size_changed.disconnect(ask)
-	if hud.visibility_changed.is_connected(_on_hud_shown):
-		hud.visibility_changed.disconnect(_on_hud_shown)
 	shown.queue_free()
 	layer.queue_free()
 	queue_free()
 	shown = null
 	layer = null
+
+
+func _stop_listening() -> void:
+	if get_tree().node_added.is_connected(_on_node_added):
+		get_tree().node_added.disconnect(_on_node_added)
+	if get_tree().node_removed.is_connected(_on_node_removed):
+		get_tree().node_removed.disconnect(_on_node_removed)
+	if hud.get_viewport().size_changed.is_connected(ask):
+		hud.get_viewport().size_changed.disconnect(ask)
+	if hud.visibility_changed.is_connected(_on_hud_shown):
+		hud.visibility_changed.disconnect(_on_hud_shown)
 
 
 func bar_parts() -> Array:
@@ -181,7 +213,7 @@ func ask() -> void:
 
 
 func _process(delta: float) -> void:
-	if layer == null or not layer.visible:
+	if layer == null or not layer.visible or not hud.visible:
 		return
 	_safety += delta
 	if _safety >= SAFETY_SECONDS:

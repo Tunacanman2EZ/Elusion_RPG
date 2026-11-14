@@ -29,6 +29,7 @@ extends Node
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const LimitSweep := preload("res://src/world/endless/limitsweep.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
+const LayerPicture := preload("res://src/ui/hudpicture.gd")
 const HORDES := [0, 1000, 3000, 5000]
 # Slimes made a frame while the horde fills (the swarm's own fill is a rate).
 const FILL_A_FRAME := 250
@@ -61,6 +62,10 @@ var sweep: Node = null
 # second visit opens it as it was.
 static var folded: bool = false
 var _panel: PanelContainer = null
+# The panel as one picture (hudpicture.gd), or null.
+var _picture: Node = null
+# Hidden by a drag (_notification()), shown again when it ends.
+var _hidden_for_drag: bool = false
 var _top: HBoxContainer = null
 var _fold_button: Button = null
 # A spawned monster's name a person reads, by its scene (label_of() once each).
@@ -182,6 +187,10 @@ func _build() -> void:
 	_clear_button = clear
 	sweep.call("build", rows, WIDTH)
 	_show_folded()
+	# DRAWN AS ONE PICTURE (0.155.1, hudpicture.gd picture_parts()), as the
+	# readout is: about 30 draw calls a frame for a panel that changes a few
+	# times a second.
+	_picture = LayerPicture.picture_parts(_layer, [_panel], "testingpicture", "testingpanellayer")
 
 
 func toggle_folded() -> void:
@@ -223,6 +232,22 @@ func set_horde(size: int) -> void:
 		(button as Button).set_pressed_no_signal(str((button as Button).name) == "horde%d" % horde)
 	PerfOverlay.forget_work()
 	paint()
+
+
+func _notification(what: int) -> void:
+	# OUT OF THE WAY OF A DRAG (0.155.1). The panel is on its own layer (5),
+	# over the HUD's windows, and the bag opens under it: an item dragged to
+	# the bag was dropped on the panel and went nowhere. The owner: "dragging
+	# item from hotbar to inventory dousnt work because the item goes behind
+	# the panel". Godot tells every node when a drag begins and ends.
+	if what == NOTIFICATION_DRAG_BEGIN:
+		if _panel != null and _panel.visible:
+			_panel.visible = false
+			_hidden_for_drag = true
+	elif what == NOTIFICATION_DRAG_END:
+		if _hidden_for_drag and _panel != null:
+			_panel.visible = true
+		_hidden_for_drag = false
 
 
 func clear_all() -> void:

@@ -35,6 +35,9 @@ var _box: Area2D = null
 func _init() -> void:
 	add_to_group(&"enemies")
 	set_meta(STRESS_MARK, true)
+	# Not a monster of its own: the readout leaves it out of its counts
+	# (perfoverlay.gd STAND_IN, 0.155.1).
+	set_meta(&"swarm_stand_in", true)
 	_box = Area2D.new()
 	_box.name = "hurtbox"
 	_box.collision_layer = HURT_LAYER

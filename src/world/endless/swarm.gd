@@ -82,6 +82,16 @@ const SHEET := preload("res://art/enemy/slime.png")
 const MOST := 5000
 const STEPS_PER_SECOND := 20.0
 const STEP := 1.0 / STEPS_PER_SECOND
+# HALF AS MANY ON A PHONE (0.155.1). The owner's phone, 1,000 slimes round
+# him: the crowd 7.1 ms of a 33 ms frame. endlessrun.gd sets step_seconds to
+# this on a phone (on_phone()): the step's work halves, and the walk between
+# steps is still drawn every frame (blend), so they move as smoothly - only
+# turning toward you a tenth of a second at a time, not a twentieth. Every
+# per-step number is scaled by step_seconds, and STEER is the same turn a
+# second (_st_steer). A computer keeps STEPS_PER_SECOND.
+const PHONE_STEPS_PER_SECOND := 10.0
+# The step's length in seconds: STEP, or a phone's.
+var step_seconds: float = STEP
 # THE STEP IN PARTS (0.148.0). At 5,000, with four players spread over the
 # arena so that nearly every slime is near one, a step - the whole crowd's
 # move - was 21 ms in one frame in the container (zz/party4bench.gd), the
@@ -274,6 +284,9 @@ var _st_chasing: bool = false
 var _st_in_turns: bool = false
 var _st_sway: float = 0.0
 var _st_touching: int = 0
+# STEER for this step's length: the same share of a turn a second, however
+# long the step (1 - (1 - STEER) ^ (step_seconds / STEP)).
+var _st_steer: float = STEER
 var _kx0: float = INF
 var _kx1: float = -INF
 var _ky0: float = INF
@@ -781,22 +794,22 @@ func _timed_process(delta: float) -> void:
 			_end_step()
 			wrote = true
 	if _chunk_at < 0 and _step_left <= 0.0:
-		_step_left += STEP
+		_step_left += step_seconds
 		_begin_step(target, chasing)
 		# Rounded down: the parts must all fit in one STEP, or the crowd slows.
-		var parts: int = clampi(floori(STEP / maxf(delta, 0.001) + 0.01), 1, CHUNKS_MOST)
+		var parts: int = clampi(floori(step_seconds / maxf(delta, 0.001) + 0.01), 1, CHUNKS_MOST)
 		_chunk_size = ceili(float(_chunk_end) / float(parts))
 		_move_some(_chunk_size)
 		if _chunk_at >= _chunk_end:
 			_end_step()
 			wrote = true
-	if _step_left < -STEP:
+	if _step_left < -step_seconds:
 		_step_left = 0.0
 	if wrote:
 		_write_buffer()
 		_place_proxies()
 		_since_write = 0.0
-	_material.set_shader_parameter("blend", clampf(_since_write / STEP, 0.0, 1.0))
+	_material.set_shader_parameter("blend", clampf(_since_write / step_seconds, 0.0, 1.0))
 	# THE TOUCH, counted at each step and dealt on its own clock.
 	_touch_left -= delta
 	_effect_left = maxf(0.0, _effect_left - delta)
@@ -856,6 +869,7 @@ func _begin_step(target: Vector2, chasing: bool) -> void:
 	"""A step's start: the grid and the near ones counted, once, for every
 	part of the move that follows (_move_some())."""
 	_step_n += 1
+	_st_steer = 1.0 - pow(1.0 - STEER, step_seconds / STEP)
 	_st_in_turns = is_inside_tree() and get_viewport().get_camera_2d() != null
 	_st_target = target
 	_st_chasing = chasing
@@ -957,9 +971,11 @@ func _move_some(count: int) -> void:
 	var right: float = arena.end.x - SIDE_EDGE
 	var top: float = arena.position.y + EDGE
 	var bottom: float = arena.end.y - EDGE
-	var stride: float = speed * STEP
-	var push: float = PUSH * STEP
-	var spread: float = SPREAD * STEP
+	var step: float = step_seconds
+	var stride: float = speed * step
+	var push: float = PUSH * step
+	var spread: float = SPREAD * step
+	var turn: float = _st_steer
 	var touching: int = _st_touching
 	var others_now: PackedVector2Array = _others_now
 	var n_others: int = others_now.size()
@@ -971,9 +987,9 @@ func _move_some(count: int) -> void:
 			continue
 		var glow: float = flash[i]
 		if glow > 0.0:
-			flash[i] = maxf(0.0, glow - STEP)
+			flash[i] = maxf(0.0, glow - step)
 		if s == 2:
-			timer[i] += STEP
+			timer[i] += step
 			bx[i] = px[i]
 			by[i] = py[i]
 			if timer[i] >= DYING_SECONDS:
@@ -1058,12 +1074,12 @@ func _move_some(count: int) -> void:
 			mx += ax / apart * spread * others_in
 			my += ay / apart * spread * others_in
 		# Its own room, if it is near (_make_room()).
-		mx += _rx[i] * ROOM_PUSH * STEP
-		my += _ry[i] * ROOM_PUSH * STEP
+		mx += _rx[i] * ROOM_PUSH * step
+		my += _ry[i] * ROOM_PUSH * step
 		# Carried from the last step, never a full turn at once - but at the
 		# player it stops: carried on at a late stage's stride (up to 8.75 px a
 		# step, endlessrun.gd stage_speed()) it slid through them and back.
-		var steer: float = 1.0 if against else STEER
+		var steer: float = 1.0 if against else turn
 		mx = lerpf(vx[i], mx, steer)
 		my = lerpf(vy[i], my, steer)
 		vx[i] = mx
@@ -1514,7 +1530,7 @@ func _move_proxies() -> void:
 	"""Each stand-in onto its swarmling, where it is drawn this frame; the
 	rest out of the way. The walk is drawn from the last write (THE STEP IN
 	PARTS), and the stand-ins go where it is drawn."""
-	var blend: float = clampf(_since_write / STEP, 0.0, 1.0)
+	var blend: float = clampf(_since_write / step_seconds, 0.0, 1.0)
 	for p in _proxies.size():
 		var proxy: Node2D = _proxies[p]
 		var i: int = _held[p] if p < _held.size() else -1
