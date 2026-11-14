@@ -28,6 +28,7 @@ const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
 const LayerPicture := preload("res://src/ui/hudpicture.gd")
 const StressCrowdScript := preload("res://src/world/stresscrowd.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
+const ShaderWarm := preload("res://src/systems/shaderwarm.gd")
 
 
 # How often the readout refreshes, in seconds.
@@ -204,6 +205,7 @@ const MARK_LETTERS := {
 	&"loot bags": "B",
 	&"key or click": "K",
 	&"shaders warm": "H",
+	&"first draws": "!",
 	# A boss's arena (0.139.0, lightarena.gd).
 	&"flares flash": "F",
 	&"mirrors break": "X",
@@ -232,6 +234,17 @@ const WATCH_RATE := 0.05
 const WATCH_TIMES := 2.0
 var _marks_now: Dictionary = {}
 var _marks_ended: Dictionary = {}
+# FIRST DRAWS (0.156.0). The graphics card builds a program the first time a
+# look is drawn (shaderwarm.gd), and on a phone's browser that is a frame of
+# "waiting" the game's clocks cannot see. Every look the game knows is drawn
+# once as the first area arrives; anything drawn while the readout is up in a
+# look that was not (ShaderWarm.look_key()) marks "first draws", once a look a
+# session, in the frame it is first drawn - so a freeze with one in it is that,
+# and a freeze without one is not. Each new node is looked at as the frame is
+# handed to the renderer (_on_pre_draw()), when its material is set.
+var _new_items: Array = []
+var _seen_looks: Dictionary = {}
+var _known_materials: Dictionary = {}
 # WHO SPENT IT (0.151.1). The owner's browser: scripts hitches of 22-27 ms
 # that no mark named, and the sandbox, a faster machine, could not make them.
 # The game's biggest script users time themselves (spend()) - the crowd, the
@@ -250,6 +263,16 @@ var _graph_marks: Array = []
 var _last_draws: int = -1
 var _last_prims: int = -1
 var _last_vram: int = -1
+# THE SCREEN'S DRAWS, NOT THE PICTURES' (0.156.0). Since 0.155.0 the bar,
+# the readout and the Testing Ground panel are drawn once into pictures and
+# drawn again only when they change - and the renderer's total counts that
+# redraw in the frame it happens: about 210 calls when the readout changes,
+# five times a second. So the owner's "draws 209" and a spike's "draws +243"
+# were mostly the readout redrawing itself (in the container, with the
+# pictures left out, a boss's risen spike costs 0.2-0.4 draws: they are drawn
+# together already). `draws` is now the screen's own (screen_draws()), and a
+# frame that redrew a picture says so apart (`pictures`).
+var _last_pictures: int = 0
 var _unheld_msec: int = -100000
 var _worst_frame_ms: float = 0.0
 var _spikes: Array[Dictionary] = []
@@ -331,7 +354,40 @@ func _ready() -> void:
 
 func _on_pre_draw() -> void:
 	if visible:
+		if not _new_items.is_empty():
+			_look_at_new_items()
 		_pre_draw_usec = Time.get_ticks_usec()
+
+
+func _on_node_added(node: Node) -> void:
+	if node is CanvasItem:
+		_new_items.append(node)
+
+
+func _look_at_new_items() -> void:
+	"""Marks "first draws" for each look not drawn before this session."""
+	var fresh: int = 0
+	for each in _new_items:
+		if not is_instance_valid(each):
+			continue
+		var item: CanvasItem = each as CanvasItem
+		var material: Material = item.material
+		if material == null and not item.use_parent_material:
+			continue
+		# One look a material, mostly: a cast's sixty spikes share one.
+		var known_id: int = material.get_instance_id() * 4 + int(ShaderWarm.mode_of(item)) if material != null else 0
+		if known_id != 0 and _known_materials.has(known_id):
+			continue
+		if known_id != 0:
+			_known_materials[known_id] = true
+		var key: int = ShaderWarm.look_key(item)
+		if ShaderWarm.warmed.has(key) or _seen_looks.has(key):
+			continue
+		_seen_looks[key] = true
+		fresh += 1
+	_new_items.clear()
+	if fresh > 0:
+		mark(&"first draws", fresh)
 
 
 func _on_post_draw() -> void:
@@ -455,12 +511,24 @@ func set_shown(on: bool) -> void:
 		_last_vram = -1
 	visible = on
 	_measure_render_time(on)
+	_watch_new_items(on)
 	# NEVER LEFT UNCAPPED once the readout is gone (Settings.set_uncapped()).
 	if not on:
 		Settings.set_uncapped(false)
 		# A measure counts only while the readout is up (placemeasure.gd).
 		if place_measure != null:
 			place_measure.call("cancel")
+
+
+func _watch_new_items(on: bool) -> void:
+	if not is_inside_tree():
+		return
+	var tree: SceneTree = get_tree()
+	if on and not tree.node_added.is_connected(_on_node_added):
+		tree.node_added.connect(_on_node_added)
+	elif not on and tree.node_added.is_connected(_on_node_added):
+		tree.node_added.disconnect(_on_node_added)
+		_new_items.clear()
 
 
 func _measure_render_time(on: bool) -> void:
@@ -584,8 +652,7 @@ func _process(delta: float) -> void:
 		# elemental scenes size their shape resource instead of scaling a node.
 		_row("pairs", _thousands(
 			int(Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)))),
-		_row("draws", _thousands(
-			int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))),
+		_row("draws", draws_text()),
 		_row("memory", memory_text()),
 		# THE ONLY ROW HERE THAT IS NOT ABOUT THIS MACHINE. Every other number
 		# answers "is this smooth for me"; this one answers "what does one of
@@ -725,15 +792,35 @@ func _note_drawn(parts: Dictionary) -> void:
 	"""What the ended frame changed in what is drawn: draw calls, triangles,
 	graphics memory (new buffers and textures). The renderer's numbers now
 	are the last drawn frame's - the one ending."""
-	var draws: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	var draws: int = screen_draws()
 	var prims: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
 	var vram: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED)
+	_last_pictures = maxi(0, RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME) - draws)
 	parts["draws"] = draws - _last_draws if _last_draws >= 0 else 0
+	parts["pictures"] = _last_pictures
 	parts["prims"] = prims - _last_prims if _last_prims >= 0 else 0
 	parts["vram"] = vram - _last_vram if _last_vram >= 0 else 0
 	_last_draws = draws
 	_last_prims = prims
 	_last_vram = vram
+
+
+func screen_draws() -> int:
+	"""The last frame's draw calls on the screen - the world and every layer
+	over it, each picture drawn as one - without the pictures' own redraws
+	(THE SCREEN'S DRAWS, NOT THE PICTURES')."""
+	if not is_inside_tree():
+		return 0
+	return RenderingServer.viewport_get_render_info(get_tree().root.get_viewport_rid(),
+		RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+
+
+func draws_text() -> String:
+	"""The draws row: the screen's, and the pictures redrawn in that frame."""
+	var text: String = _thousands(screen_draws())
+	if _last_pictures > 0:
+		text += "  (+%s redrawing a picture)" % _thousands(_last_pictures)
+	return text
 
 
 static func is_press(event: InputEvent) -> bool:
@@ -849,7 +936,7 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 			"marks": marks.duplicate(),
 			"spent": (sample.get("spent", {}) as Dictionary).duplicate(),
 			"draws": int(sample.get("draws", 0)), "prims": int(sample.get("prims", 0)),
-			"vram": int(sample.get("vram", 0)),
+			"vram": int(sample.get("vram", 0)), "pictures": int(sample.get("pictures", 0)),
 		})
 		if _worst_spike.is_empty() or ms > float(_worst_spike["ms"]):
 			_worst_spike = _spikes[0]
@@ -1116,6 +1203,9 @@ func marks_text(spike: Dictionary, most: int = 3) -> String:
 	var draws: int = int(spike.get("draws", 0))
 	if absi(draws) >= 3:
 		bits.append("draws %s%d" % ["+" if draws > 0 else "", draws])
+	var pictures: int = int(spike.get("pictures", 0))
+	if pictures >= 3:
+		bits.append("a picture redrawn (%d draws)" % pictures)
 	var prims: int = int(spike.get("prims", 0))
 	if absi(prims) >= 1000:
 		bits.append("%s%.1fk triangles" % ["+" if prims > 0 else "-", absf(prims) / 1000.0])
@@ -1196,7 +1286,7 @@ func panel_data(now_msec: int) -> Dictionary:
 			["nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))],
 			["bodies", _thousands(int(Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)))],
 			["pairs", _thousands(int(Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)))],
-			["draws", _thousands(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))],
+			["draws", draws_text()],
 			["memory", ("%.0f MB" % game_mb) if game_mb > 0.0 else "-"],
 			["graphics", ("%.0f MB" % video_mb) if video_mb > 0.0 else "-"],
 			["net", "%.2f req/s" % Api.requests_per_second()],

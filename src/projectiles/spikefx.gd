@@ -13,8 +13,8 @@ extends Node2D
 # the world's y-sort between them. A phone's browser pays for every draw.
 #
 # One of these in each effects container ("groundeffects"), made with the area
-# by AreaRegistry (add_to(), which warms the shaders once a session - warm())
-# or by the first spike that needs one (of()):
+# by AreaRegistry (add_to(); shaderwarm.gd warms the shaders) or by the first
+# spike that needs one (of()):
 #   - THE RINGS: one MultiMesh, an instance a spike while it warns. The shader
 #     (spikerings.gdshader) grows the fill from the instance's start and
 #     length, so nothing is written while the spikes warn, only when a warning
@@ -69,14 +69,10 @@ const ROOM := 64
 const RING_STRIDE := 16
 # A burst has no colour of its own: transform and custom data.
 const SPARK_STRIDE := 12
-# Too faint to see, but drawn (an alpha of 0 is not drawn at all).
-const WARM_ALPHA := 0.02
-const WARM_FRAMES := 3
-
-# Once a session: the shaders a spike fight uses are compiled when first
-# drawn, and the first cast of a session paid for them (106 and 176 ms frames
-# with the driver's cache empty).
-static var _warmed: bool = false
+# THE SHADERS ARE WARMED BY shaderwarm.gd (0.156.0): every look the game
+# draws, as the first area of a session arrives. This drew its own - a pool,
+# a tinted spike, a ring and a burst - since 0.137.5 (the first cast of a
+# session was 106 and 176 ms frames with the driver's cache empty).
 
 # This container's clock: the spikes' warnings and the sparks' flights are
 # timed on it, by the frame's delta as each spike used to time its own.
@@ -136,16 +132,13 @@ var see_for: Node2D = null
 
 static func add_to(scene: Node) -> Node2D:
 	"""The area's: in its effects container (ysortworld/groundeffects), made
-	if there is none, and the shaders warmed if this session has not yet."""
+	if there is none."""
 	if scene == null:
 		return null
 	var container: Node = scene.get_node_or_null(^"ysortworld/groundeffects")
 	if container == null:
 		return null
-	var fx: Node2D = of(container)
-	if fx != null and not _warmed:
-		fx.call_deferred(&"warm")
-	return fx
+	return of(container)
 
 
 static func of(container: Node) -> Node2D:
@@ -585,71 +578,3 @@ func _flush() -> void:
 			multi.instance_count = room
 		multi.buffer = _spark_buf
 		multi.visible_instance_count = _spark_end.size()
-
-
-# =============================================================================
-# WARMING THE SHADERS
-# =============================================================================
-
-func warm() -> void:
-	"""Draws, once a session and too faint to see, everything a spike fight
-	draws with a shader of its own - a ring, a burst, a tinted spike and each
-	element's pool - so the first cast is not the frame that compiles them."""
-	if _warmed or not is_inside_tree():
-		return
-	_warmed = true
-	PerfOverlay.mark(&"shaders warm")
-	# The sprites in a layer of their own, under everything and in the corner,
-	# so they are drawn whatever the camera is doing (a sprite off screen is
-	# not drawn at all); the MultiMeshes are never culled.
-	var layer := CanvasLayer.new()
-	layer.name = "warming"
-	layer.layer = -100
-	add_child(layer)
-	var held := Node2D.new()
-	held.modulate.a = WARM_ALPHA
-	held.position = Vector2(16.0, 16.0)
-	layer.add_child(held)
-	var shaders: Dictionary = {}
-	for element in ELEMENTS:
-		var scene: PackedScene = Puddles.scene_for(element)
-		if scene == null:
-			continue
-		var pool: Node = scene.instantiate()
-		var sprite: AnimatedSprite2D = pool.get_node_or_null(^"animatedsprite2d") as AnimatedSprite2D
-		if sprite != null and sprite.material is ShaderMaterial and sprite.sprite_frames != null \
-				and sprite.sprite_frames.has_animation(&"puddle"):
-			var shader: Shader = (sprite.material as ShaderMaterial).shader
-			if shader != null and not shaders.has(shader):
-				shaders[shader] = true
-				var copy := Sprite2D.new()
-				copy.texture = sprite.sprite_frames.get_frame_texture(&"puddle", 0)
-				copy.material = sprite.material
-				held.add_child(copy)
-		pool.free()
-	var spike_mat := ShaderMaterial.new()
-	spike_mat.shader = load("res://src/shared/hearth_warm.gdshader") as Shader
-	var spike := Sprite2D.new()
-	spike.texture = load("res://art/enemy/boss.png") as Texture2D
-	spike.region_enabled = true
-	spike.region_rect = Rect2(64, 192, 64, 64)
-	spike.material = spike_mat
-	held.add_child(spike)
-	# A ring and a burst of the MultiMeshes' own, as faint, where nobody looks.
-	var ghost := Node2D.new()
-	add_ring(ghost, 1.0, 20.0, Color(1.0, 1.0, 1.0, WARM_ALPHA))
-	_unplaced.erase(ghost)
-	_place(int(_slot_of[ghost.get_instance_id()]), Transform2D.IDENTITY)
-	# Loaded, not preloaded: the spike's script preloads this one.
-	var sparks: Dictionary = (load("res://src/projectiles/bossprojectile.gd") as Script) \
-		.get_script_constant_map().get("ELEMENT_SPARKS", {})
-	_sparks.self_modulate.a = WARM_ALPHA
-	if sparks.has(Element.Type.FIRE):
-		burst(global_position, Element.Type.FIRE, Vector2(10.0, 3.0), sparks[Element.Type.FIRE])
-	_flush()
-	for frame in WARM_FRAMES:
-		await get_tree().process_frame
-	remove_ring(ghost)
-	ghost.free()
-	_sparks.self_modulate.a = 1.0
-	layer.queue_free()

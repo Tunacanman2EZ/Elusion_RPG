@@ -711,20 +711,6 @@ func _test_spikes_drawn_together() -> void:
 		int(fx.call("bursts_alive")) == 0 and sparks.multimesh.visible_instance_count == 0 and not fx.is_processing(),
 		[fx.call("bursts_alive"), fx.is_processing()])
 
-	# ---- warming the shaders --------------------------------------------------
-	var was_warmed: bool = Fx._warmed
-	Fx._warmed = false
-	fx.call("warm")
-	var layer: Node = fx.get_node_or_null(^"warming")
-	var drawn: int = layer.get_child(0).get_child_count() if layer != null and layer.get_child_count() > 0 else 0
-	check("warming draws a pool, a tinted spike, a ring and a burst, faint, in a layer of their own",
-		layer is CanvasLayer and drawn >= 2 and int(fx.call("warning_count")) == 1 and int(fx.call("bursts_alive")) == 1
-		and Fx._warmed, [layer, drawn])
-	for k in Fx.WARM_FRAMES + 2:
-		await get_tree().process_frame
-	check("  for a few frames, then it is gone",
-		fx.get_node_or_null(^"warming") == null and int(fx.call("warning_count")) == 0 and sparks.self_modulate.a == 1.0)
-	Fx._warmed = was_warmed
 	check("  AreaRegistry gives every area its own as the area arrives",
 		_func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(").contains("SpikeFx.add_to(scene)"))
 	world.queue_free()
@@ -820,12 +806,13 @@ func _test_the_lag_points() -> void:
 		["res://src/enemies/baseenemy.gd", "func _ready(", "monsters appear"],
 		["res://src/enemies/baseenemy.gd", "func _die(", "monsters die"],
 		["res://src/world/lootbag.gd", "func _ready(", "loot bags"],
-		["res://src/projectiles/spikefx.gd", "func warm(", "shaders warm"],
+		["res://src/systems/shaderwarm.gd", "func _draw_ghosts(", "shaders warm"],
+		["res://src/systems/perfoverlay.gd", "func _look_at_new_items(", "first draws"],
 		["res://src/systems/perfoverlay.gd", "func _input(", "key or click"],
 	]
 	var unmarked: Array = []
 	for place in marked:
-		if not _func_body(_code_src(place[0]), place[1]).contains("mark(&\"%s\")" % place[2]):
+		if not _func_body(_code_src(place[0]), place[1]).contains("mark(&\"%s\"" % place[2]):
 			unmarked.append(place[2])
 		if not PerfOverlay.MARK_LETTERS.has(StringName(place[2])):
 			unmarked.append(place[2] + " (no letter)")

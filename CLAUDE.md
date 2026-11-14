@@ -3224,7 +3224,7 @@ browser cannot time the graphics card.
   (`_cast_stalagmites_from_cast()`), `boss volleys` (`fire_volley()`),
   `spikes appear` / `rise` / `go` (bossprojectile.gd), `pools land`
   (acidpuddle.gd), `monsters appear` / `die` (BaseEnemy `_ready()`,
-  `_die()`), `loot bags` (lootbag.gd), `shaders warm` (spikefx.gd),
+  `_die()`), `loot bags` (lootbag.gd), `shaders warm` (shaderwarm.gd since 0.156.0; spikefx.gd before),
   `key or click` (the overlay's `_input`). `MARK_LETTERS` gives each a
   letter. Nothing while the readout is off. **A mark belongs to the frame it
   was made in**: the frame starts at its first physics tick, and the marks
@@ -8799,10 +8799,9 @@ phases, the readout's clock): hiding the rift took the room's 532 draws to
 - **The worst spike keeps a row** on the readout (perfoverlay.gd THE WORST
   STAYS): his 6,080 ms had scrolled off the five newest.
 - `_test_the_rift_draws_once()` and the readout test (testrunner_10).
-- **Not done yet: warming the fight's effects.** The 6 s frame is not
-  explained; on the sandbox's software renderer every frame of the fight is
-  slow, so a first draw cannot be told from the rest. The worst row will
-  say which part it was on his PC.
+- **Warming the fight's effects came in 0.156.0** (shaderwarm.gd, "Every
+  look drawn once" below): the 6 s frame was never explained, and the
+  readout now marks "first draws" so the next one can be.
 
 ### A part the server left out is kept (0.134.6)
 
@@ -14574,6 +14573,82 @@ improve", then of the plan: "sounds good".
 
 `_test_lighter_on_a_phone()` (testrunner_11), and a check in
 `_test_the_testing_ground()`.
+
+### Every look drawn once, the stand-ins lighter, the readout's draws honest (0.156.0)
+
+The owner's phone after 0.155.1, a boss fight with the horde in the
+Testing Ground: 30 fps, 11 hitches of 6,952 - one of 3,243 ms, "waiting"
+(the browser and the graphics card, not the game's code) with "spikes go
+x3" in it; physics 9.1 ms a tick at 40; "draws 209" and a spike line's
+"draws +243". Then: "WE NEED TO LOOK INTO EVERY CRACK SO IF WE CAN IMPROVE
+IT WE WILL", and yes to: warm the fight's effects, lighter fighting
+physics on a phone, the boss's spikes drawn together.
+
+- **Every look drawn once, out of sight** (`src/systems/shaderwarm.gd`,
+  from AreaRegistry `_on_scene_changed()` for the first area of a
+  session). A graphics card draws with a program built from the shader and
+  the way it is drawn - a sprite, a line, a shape, a crowd of copies (and
+  lit or not) - and Godot builds each the first time it is drawn; in a
+  phone's browser that can hold the screen. Measured with Mesa's capture
+  (`MESA_SHADER_CAPTURE_PATH`, zz/firstdraw2.gd: every program built put on
+  the fight's clock): 36 built before a fight and 4 to 7 in the middle of
+  every one - the hit flash at the first blow, the death crumble and a
+  CPUParticles2D's dust at the first death, a strike's sparks, the ice
+  arena's fog and snow and the light arena's dazzle and eclipse at their
+  phase. Now, two frames after the area arrives, every look in
+  `SHADER_FILES`, `SHADER_CODE` (shaders written in code - Godot builds
+  one program a code, so a copy warms them all) and `PLAIN_LOOKS`
+  (CanvasItemMaterial blend and light), and no material, is drawn each way
+  it is drawn (`Mode`) for `WARM_FRAMES` (3) frames - as the renderer's
+  own items (RenderingServer canvas items: nothing thinks, collides,
+  counts or plays), under everything (z CANVAS_ITEM_Z_MIN) and
+  `WARM_ALPHA` (0.02) faint, at the view's middle; with lighting "full"
+  again lit, by a light of its own (`GHOST_LIGHT`, a light layer nothing
+  else uses). 58 programs before a fight (91 lit), **none during it**, for
+  every class, every boss and lighting full. spikefx.gd's own warming
+  (0.137.5) went with it. **A new look goes in those lists**:
+  `_test_every_look_is_warmed()` fails on a .gdshader, a shader in code
+  (`.code = X` where a `Shader.new()` is) or a CanvasItemMaterial combo
+  left out (`NOT_WARMED` names the one drawn from the first frame).
+- **"first draws" on the readout** (perfoverlay.gd FIRST DRAWS, letter
+  `!`): while the readout is up, each node added is looked at as the frame
+  goes to the renderer (`_look_at_new_items()`, from `_on_pre_draw()`), and
+  a look that was not warmed (`ShaderWarm.look_key()`: its material's
+  shader code or blend and light, and its mode) marks the frame, once a
+  look a session. A freeze with one in it is a first draw; one without is
+  not. Only while the readout is up (`_watch_new_items()`).
+- **The stand-ins cost less a tick** (swarm.gd `_move_proxies()`, ONLY
+  WHAT CHANGED). Timed piece by piece (zz/fightbench.gd, headless, a
+  phone's 40 ticks): the empty arena 0.62 ms a tick, of it 0.3 the swarm
+  calling `stand_on()` by name on all 256 stand-ins every tick, the parked
+  ones too - not the calls but touching 256 nodes. Now the swarm notes each
+  one's slime (`_shown`) and leaves a parked one alone (0.62 -> 0.33 ms),
+  and one on the slime it stood on is only moved. **On a phone** it waits
+  until its slime is drawn `PHONE_STAND_SLACK` (3 px, under its 7 px
+  hurtbox) off (`stand_slack`, set by endlessrun.gd beside the steps), so a
+  crowd standing round the player is left still: the fight's tick 1.62 ->
+  about 1.45 ms here. A computer still follows to the pixel (the swarm's
+  twin test holds it to the bit). **The fighters were not the cost**: the
+  20 elites' brains were 0.25 ms of the 1.6 (switched off), the boss 0.1,
+  the horde's stand-ins 0.4, the empty arena 0.6 - so their thinking was
+  left as it is.
+- **The spikes were drawn together already.** Hiding the risen spikes for
+  two frames at a time and counting the world view's own draws
+  (zz/spikedraws.gd): 0.2 to 0.4 draws a spike, with or without the horde
+  and elites. Drawing them from bands of the floor (one draw a band) was
+  built, measured (0.29 a spike) and taken out again: it bought nothing and
+  put a spike's picture up to a band out of place.
+- **The 243 was the readout** (perfoverlay.gd THE SCREEN'S DRAWS, NOT THE
+  PICTURES'): the renderer's total counts a picture's redraw (0.155.0) in
+  the frame it happens - about 210 calls when the readout's text changes,
+  five times a second. `draws` is the screen's own now (`screen_draws()`,
+  the root view's canvas), both rows say it (`draws_text()`, "+N redrawing
+  a picture" beside it when one was), and a spike line says "a picture
+  redrawn (N draws)" apart from the screen's change.
+
+`_test_every_look_is_warmed()`, `_test_the_stand_ins_cost_less()` and
+`_test_the_readout_counts_the_screen()` (testrunner_12 - part 11 is at
+245 KB).
 
 ## Deleting your own account (0.90.0)
 

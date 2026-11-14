@@ -374,6 +374,17 @@ var _proxies: Array = []
 # The swarmlings the stand-ins stand on (_place_proxies()): the first PROXIES
 # the player's, the rest the attacks'.
 var _held := PackedInt32Array()
+# The swarmling each stand-in was last put on, -1 parked (_move_proxies()):
+# the swarm's own note, so a tick need not touch a parked stand-in. A blow
+# that kills its slime parks it (swarmproxy.gd take_damage()); the note is
+# put right on the next tick, and a stand-in is never put on a slime here
+# without asking it (its `slot`).
+var _shown := PackedInt32Array()
+# A stand-in on the slime it stood on is moved only when its slime is drawn
+# more than this far from it (px; 0 is every tick). PHONE_STAND_SLACK on a
+# phone (endlessrun.gd), so a crowd standing round the player is left still.
+var stand_slack: float = 0.0
+const PHONE_STAND_SLACK := 3.0
 var _rng := RandomNumberGenerator.new()
 # The party's other players this step, those on the arena's floor (`others`).
 var _others_now := PackedVector2Array()
@@ -428,6 +439,8 @@ func _ready() -> void:
 		proxy.set("swarm", self)
 		add_child(proxy)
 		_proxies.append(proxy)
+	_shown.resize(_proxies.size())
+	_shown.fill(-1)
 	set_arena(arena)
 	# The GM panel's "Slimes" lag test (lagtests.gd, 0.150.0).
 	add_to_group(LagTests.GROUP)
@@ -1529,19 +1542,41 @@ func _near_focus(i: int, foci_n: int) -> float:
 func _move_proxies() -> void:
 	"""Each stand-in onto its swarmling, where it is drawn this frame; the
 	rest out of the way. The walk is drawn from the last write (THE STEP IN
-	PARTS), and the stand-ins go where it is drawn."""
+	PARTS), and the stand-ins go where it is drawn.
+
+	ONLY WHAT CHANGED (0.156.0). Every tick called stand_on() on all 256
+	stand-ins by name, the parked ones too: 0.37 ms of a 0.6 ms tick in the
+	container with no slime in the arena (zz/fightbench.gd), about 2 ms of
+	the owner's phone's 9.1. A parked one is left alone, and one on the
+	slime it stood on last tick is only moved there; stand_on() is for a
+	change of slime. Which are parked is read from `_shown`, here, not from
+	the 256 nodes: touching each one was most of the cost."""
 	var blend: float = clampf(_since_write / step_seconds, 0.0, 1.0)
+	var held_n: int = _held.size()
+	var top: float = max_hp
+	var slack2: float = stand_slack * stand_slack
 	for p in _proxies.size():
-		var proxy: Node2D = _proxies[p]
-		var i: int = _held[p] if p < _held.size() else -1
+		var i: int = _held[p] if p < held_n else -1
 		if i >= 0 and state[i] == 1:
-			proxy.call("stand_on", i, Vector2(lerpf(bx[i], px[i], blend), lerpf(by[i], py[i], blend)))
-		else:
-			proxy.call("stand_on", -1, Vector2.ZERO)
+			var proxy: SwarmProxy = _proxies[p]
+			var at := Vector2(lerpf(bx[i], px[i], blend), lerpf(by[i], py[i], blend))
+			if _shown[p] == i and proxy.slot == i:
+				if slack2 <= 0.0 or proxy.global_position.distance_squared_to(at) > slack2:
+					proxy.global_position = at
+				proxy.hp = hp[i]
+				proxy.max_hp = top
+			else:
+				proxy.stand_on(i, at)
+			_shown[p] = i
+		elif _shown[p] != -1:
+			(_proxies[p] as SwarmProxy).stand_on(-1, Vector2.ZERO)
+			_shown[p] = -1
 
 
 func _park_proxies() -> void:
 	_held.resize(_proxies.size())
 	_held.fill(-1)
-	for proxy in _proxies:
-		(proxy as Node2D).call("stand_on", -1, Vector2.ZERO)
+	for p in _proxies.size():
+		if _shown[p] != -1:
+			(_proxies[p] as SwarmProxy).stand_on(-1, Vector2.ZERO)
+			_shown[p] = -1

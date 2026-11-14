@@ -118,6 +118,7 @@ const PropChunks := preload("res://src/world/propchunks.gd")
 const GroundChunks := preload("res://src/world/groundchunks.gd")
 const Waystones := preload("res://src/world/waystones.gd")
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
+const ShaderWarm := preload("res://src/systems/shaderwarm.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 
 
@@ -189,9 +190,13 @@ func _on_scene_changed() -> void:
 		hud.call(&"prepare_owner_panel")
 	if scene.get_node_or_null(Waystones.NODE_NAME) == null:
 		Waystones.add_to(scene)
-	# A boss's spikes draw their rings, sparks and pools together, and the
-	# first area of a session warms their shaders (0.137.5); see spikefx.gd.
+	# A boss's spikes draw their rings, sparks and pools together (0.137.5);
+	# see spikefx.gd.
 	SpikeFx.add_to(scene)
+	# And the first area of a session draws every look the game draws with,
+	# once and out of sight, so no fight builds one (0.156.0); see
+	# shaderwarm.gd.
+	ShaderWarm.add_to(scene)
 	# The GM panel's lag tests stay on through a change of area (0.138.0):
 	# the new area's lights out again; see lagtests.gd.
 	if LagTests.lights_off:
