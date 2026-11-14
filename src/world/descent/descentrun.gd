@@ -1,5 +1,5 @@
 # descentrun.gd - THE DESCENT (0.112.0, step 1 of the commit folder's
-# DESCENT_PLAN.txt; the owner's alone while it is built): a roguelike run
+# DESCENT_PLAN.txt; everyone's since 0.158.0): a roguelike run
 # down a crypt, room by room, played as your own warrior - THE WARRIOR'S
 # minigame, as the Healer's Run is the healer's and the Stand the mage's
 # (the card lets a warrior in, minigamescard.gd).

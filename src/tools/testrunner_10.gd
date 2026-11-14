@@ -2158,7 +2158,8 @@ func _test_the_login_and_minigames_look() -> void:
 	var pictured: bool = tiles.all(func(t: Control) -> bool:
 		var pics: Array = t.find_children("*", "TextureRect", true, false)
 		return t is PanelContainer and t.visible and pics.size() == 1 and (pics[0] as TextureRect).texture != null)
-	var tagged: bool = card.forge_box.find_children("tag", "Label", true, false).size() == 4 \
+	# Three since 0.158.0 (DAILY, ANY CLASS, TANK BEST): TESTING came off.
+	var tagged: bool = card.forge_box.find_children("tag", "Label", true, false).size() == 3 \
 		and card.endless_box.find_children("tag", "Label", true, false).size() == 1
 	check("the Minigames card is a tile a game - each its portrait from the game's own art and its tags - and %d px tall (it was 640)" % roundi(card.size.y),
 		pictured and tagged and card.size.y < 480.0 and card.forge_go.get_parent().get_parent() == card.forge_box)
@@ -4479,11 +4480,11 @@ func _test_cut_the_cloth() -> void:
 		and not card.visible
 	area[0] = "field"
 	card.call("paint")
-	check("the Minigames card has its tile (the owner's while it is built), the healer's shot its portrait: Go in town asks the server for a run of the day and opens it on that run; elsewhere \"%s\"; all six tiles %d px tall" % [card.cloth_status.text, roundi(tall)],
+	check("the Minigames card has its tile (everyone's since 0.158.0), the healer's shot its portrait: Go in town asks the server for a run of the day and opens it on that run; elsewhere \"%s\"; all six tiles %d px tall" % [card.cloth_status.text, roundi(tall)],
 		town_ready and went and card.cloth_go.disabled and card.cloth_status.text == "Play it from town." and tall < 560.0)
 	card.set("shows_cloth", func() -> bool: return false)
 	card.call("paint")
-	check("  and it is nobody else's yet", not card.cloth_box.visible)
+	check("  and hidden when its seam says no", not card.cloth_box.visible)
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  cut the cloth: done")

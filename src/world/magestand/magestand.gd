@@ -1,5 +1,5 @@
 # magestand.gd - THE MAGE'S STAND (0.107.0, step 2 of the commit folder's
-# MAGES_STAND_PLAN.txt; the owner's alone while it is built).
+# MAGES_STAND_PLAN.txt; everyone's since 0.158.0).
 #
 # The owner: "mage would use mythic weapon stand on a wall and protect the
 # portal from enemies going in", "we can use the door as the gate enemies

@@ -14674,6 +14674,30 @@ backup", "Held to a walk"). What the game says:
   (savehistory.tscn), not "comes back as a second copy".
 `_test_a_days_minigame_gold_and_a_rollback_held_back()` (testrunner_12).
 
+### Every minigame open, and where the teleport pads land (0.158.0)
+
+The owner, of the site calling four of the minigames "coming soon": "they
+are not coming soon they are already out" - and, told they still showed to
+him alone, chose to open them for everyone.
+
+- **All six on everybody's card** (minigamescard.gd): `_shows_mage_stand()`,
+  `_shows_descent()`, `_shows_forge()` and `_shows_cloth()` answer true, as
+  `_shows_healer_run()` has since 0.99.0 - the seams stay, so the suite can
+  still hide a tile. No tile wears TESTING; `TAG_TESTING` is kept for the
+  next game built, whose `shows_*` is the owner's while it is. Nothing on the
+  server changed: the minigames routes never asked for the owner (the Forge
+  once a day and Cut the Cloth three times, as before, under the day's gold
+  allowance); the Stand and the Descent ask the server nothing. The
+  Testing Ground stays the owner's.
+- **Where each area's teleport pads land** (exportgamedata.gd
+  `_collect_arrivals()`): every area in gamedata.json carries `"arrivals"`,
+  the authored spot of each teleporter.gd's `destinationpoint`, so the
+  server's walk check lets a step onto one through (the town's pad was 90 of
+  115 jumps in `killwatch.py --moves`). **Move a pad, or add one: re-export
+  and copy gamedata.json to the API.**
+`_test_every_minigame_is_open()` (testrunner_12; sabotage-caught: the Forge
+the owner's again).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

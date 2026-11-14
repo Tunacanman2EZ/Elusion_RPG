@@ -404,5 +404,58 @@ func _test_a_days_minigame_gold_and_a_rollback_held_back() -> void:
 	var window: String = FileAccess.get_file_as_string("res://scene/ui/owner/savehistory.tscn")
 	check("  the window's own words no longer say a restore makes a second copy",
 		window.contains("is not put back twice") and not window.contains("second copy"))
+	# WHERE A PAD LANDS (exportgamedata.gd, "arrivals"): presence.py lets a
+	# step land there free when it holds moves to a walk.
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var areas: Dictionary = (data as Dictionary).get("areas", {}) if data is Dictionary else {}
+	var with_pads: Array = []
+	for area_id in areas.keys():
+		var scene_text: String = FileAccess.get_file_as_string(str((areas[area_id] as Dictionary).get("scene", "")))
+		if scene_text.contains("res://src/world/teleporter.gd"):
+			with_pads.append(area_id)
+	var all_written: bool = not with_pads.is_empty()
+	for area_id in with_pads:
+		var arrivals: Array = (areas[area_id] as Dictionary).get("arrivals", [])
+		all_written = all_written and not arrivals.is_empty()
+	check("gamedata.json writes where each area's teleport pads land, for the server's walk check (%s)" % ", ".join(
+		PackedStringArray(with_pads)), all_written and with_pads.has("elusion"), with_pads)
 	print("  the Leave's words, the chest's notice and the Save history's line, as the server answers")
 
+
+
+# ALL SIX OPEN (0.158.0). The owner, of the site calling four of the games
+# "coming soon": "they are not coming soon they are already out" - and chose
+# to open them for everyone. A player's card (not the owner's) shows every
+# game, no tile says TESTING, and the Testing Ground stays the owner's.
+func _test_every_minigame_is_open() -> void:
+	section("ALL SIX OPEN (0.158.0): every minigame on a player's card, none marked TESTING")
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = false
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("class_now", func() -> String: return "warrior")
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": false})
+	card.call("open")
+	await get_tree().process_frame
+	var tiles: Dictionary = {
+		"the Endless": card.endless_box, "the Healer's Run": card.healer_box,
+		"the Mage's Stand": card.stand_box, "the Descent": card.descent_box,
+		"the Forge": card.forge_box, "Cut the Cloth": card.cloth_box,
+	}
+	var hidden: Array = []
+	for game in tiles:
+		if not (tiles[game] as Control).visible:
+			hidden.append(game)
+	check("a player's Minigames card shows all six games (%d of 6)" % (6 - hidden.size()), hidden.is_empty(), hidden)
+	var marked: Array = []
+	for tag in card.find_children("tag", "Label", true, false):
+		if (tag as Label).text == "TESTING":
+			marked.append(tag.get_parent().get_parent().get_parent().get_parent().name)
+	check("  and no tile says TESTING", marked.is_empty(), marked)
+	check("  the Testing Ground stays the owner's", not card.testing_box.visible)
+	Api.is_owner = was_owner
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  all six open: done")

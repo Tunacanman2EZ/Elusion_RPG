@@ -31,19 +31,19 @@
 # many runs are left today, or when the next one is.
 #
 # THE MAGE'S STAND (0.107.0, magestand.gd) is the third, the owner's alone
-# while it is built (`shows_mage_stand`): Go, in town, opens it - it pays
-# nothing, so nothing is asked of the server.
+# while it was built, everyone's since 0.158.0 (`shows_mage_stand`): Go, in
+# town, opens it - it pays nothing, so nothing is asked of the server.
 #
 # THE DESCENT (0.112.0, descentrun.gd) is the fourth, the owner's alone while
-# it is built (`shows_descent`): THE WARRIOR'S (the owner: "this will be the
+# it was built, everyone's since 0.158.0 (`shows_descent`): THE WARRIOR'S (the owner: "this will be the
 # warriors decent", as the Healer's Run is the healer's and the Stand the
 # mage's), a roguelike run down a crypt as your own warrior. Go, playing a
 # warrior (`class_now`), travels there (its own area, as the Endless is) and
 # asks the server nothing - step 1 pays nothing; inside it, the row's button
 # is Leave, to town.
 #
-# THE FORGE (forgerun.gd) is the fifth, the owner's alone while it is built
-# (`shows_forge`): THE TANK'S WORLD - an island in a lake of lava that floods
+# THE FORGE (forgerun.gd) is the fifth, the owner's alone while it was built,
+# everyone's since 0.158.0 (`shows_forge`): THE TANK'S WORLD - an island in a lake of lava that floods
 # slice by slice - but open to every class (the owner: "open to any class but
 # the tank benefits the most"). Go asks the server first since 0.120.0 -
 # once a day, as the Endless, and the status says your best time - then
@@ -51,7 +51,7 @@
 # is Leave, to town, asked twice while the chest holds loot.
 #
 # CUT THE CLOTH (0.130.0, clothrun.gd) is the sixth, the owner's alone while
-# it is built (`shows_cloth`): the old map's slime plague cut away piece by
+# it was built, everyone's since 0.158.0 (`shows_cloth`): the old map's slime plague cut away piece by
 # piece, played over the screen from town like the Stand. Since 0.131.0 three
 # runs a day, as the Healer's Run: Go asks the server (POST /api/minigames/enter, game
 # "cloth") and opens the run with its id and what it pays; the listing says
@@ -61,6 +61,12 @@
 # room per party (`healer_party`), Go opens the run's start panel without
 # asking (`open_lobby`): the run of the day is asked for when everyone is
 # ready and the count starts, so leaving while somebody is away costs nothing.
+#
+# ALL SIX OPEN (0.158.0). The owner, of the site calling four of them
+# "coming soon": "they are not coming soon they are already out" - and
+# chose to open them for everyone. Each `shows_*` is true, as the Healer's
+# Run's has been since 0.99.0 (the seams stay, for the suite), and no tile
+# carries TESTING. TAG_TESTING is kept for the next game built.
 #
 # A TILE A GAME (0.119.1). The owner, of the card grown to five games: "need
 # image 1 upgraded", and of the mock-up, "looks great". Each game is a tile
@@ -117,6 +123,8 @@ const PORTRAITS := {
 }
 const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
 const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
+# Not on any tile since 0.158.0 (every game is open); the next game built
+# wears it while its `shows_*` is the owner's.
 const TAG_TESTING := ["TESTING", Color(0.55, 0.35, 0.1), "Yours only while it is built"]
 # THE TESTING GROUND (0.151.1, testingground.gd): the owner's alone.
 const TAG_OWNER := ["OWNER", Color(0.5, 0.15, 0.15), "Yours only - for measuring"]
@@ -275,26 +283,26 @@ func _init() -> void:
 	healer_go = _go_button("healergo", _on_healer_go)
 	(healer[4] as HBoxContainer).add_child(healer_go)
 	var stand: Array = _tile(column, "magestand", "The Mage's Stand", STAND_BLURB,
-		[TAG_TESTING, ["MAGE", Color(0.2, 0.3, 0.55), "The mage's"]])
+		[["MAGE", Color(0.2, 0.3, 0.55), "The mage's"]])
 	stand_box = stand[0]
 	stand_status = stand[3]
 	stand_go = _go_button("standgo", _on_stand_go)
 	(stand[4] as HBoxContainer).add_child(stand_go)
 	var descent: Array = _tile(column, "descent", "The Descent", DESCENT_BLURB,
-		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go - each with its own upgrades"]])
+		[["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go - each with its own upgrades"]])
 	descent_box = descent[0]
 	descent_status = descent[3]
 	descent_go = _go_button("descentgo", _on_descent_go)
 	(descent[4] as HBoxContainer).add_child(descent_go)
 	var forge: Array = _tile(column, "forge", "The Forge", FORGE_BLURB,
-		[TAG_DAILY, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
+		[TAG_DAILY, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
 		["TANK BEST", Color(0.55, 0.3, 0.12), "The tank's world - he lasts longest"]])
 	forge_box = forge[0]
 	forge_status = forge[3]
 	forge_go = _go_button("forgego", _on_forge_go)
 	(forge[4] as HBoxContainer).add_child(forge_go)
 	var cloth: Array = _tile(column, "cloth", "Cut the Cloth", CLOTH_BLURB,
-		[TAG_THREE, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
+		[TAG_THREE, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
 	cloth_box = cloth[0]
 	cloth_status = cloth[3]
 	cloth_go = _go_button("clothgo", _on_cloth_go)
@@ -850,7 +858,7 @@ func _on_descent_go() -> void:
 
 
 func _shows_descent() -> bool:
-	return bool(Api.is_owner)
+	return true
 
 
 # THE FORGE'S DAY (0.120.0). The owner: "Rewards + daily wait". Go asks the
@@ -940,11 +948,11 @@ func _on_forge_go() -> void:
 
 
 func _shows_forge() -> bool:
-	return bool(Api.is_owner)
+	return true
 
 
 func _shows_mage_stand() -> bool:
-	return bool(Api.is_owner)
+	return true
 
 
 func _paint_cloth() -> void:
@@ -1033,7 +1041,7 @@ func _on_testing_go() -> void:
 
 
 func _shows_cloth() -> bool:
-	return bool(Api.is_owner)
+	return true
 
 
 func _open_cloth(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:

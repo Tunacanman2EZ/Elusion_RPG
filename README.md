@@ -306,11 +306,11 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and thirty-six endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands, world events, land insights, player stats and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and sixty-nine endpoints, counting each path and method once — accounts and sessions (Google sign-in too), character saves, the shared bank, combat kills, loot, the vendor, the smith, fishing, cooking and the larder, item use, reviving, player trading, parties and party voice, guilds, chat, friends, the minigames, the kingdom ledger, the stirring lands, world events, land insights, player stats, the server's health and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and thirty-one of the hundred and thirty-six require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and fifty-eight of the hundred and sixty-nine require a bearer token, and fifty-two of those are staff tools behind a rank. The eleven that do not are `register`, `login`, `status`, the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it) and the six steps of signing in with Google (its page, `start`, `poll`, `finish`, `claim` and `register`), and that is the whole public surface. `routes.lock` pins the table — every path, method, login and rank — and `test_routes.py` fails when the server and the lock disagree.
 
-The backend has sixty test suites, run together with one command:
+The backend has seventy-six test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -319,74 +319,90 @@ cd <your-path>\game\api
 
 ```
 test_api.py            527 checks    the endpoint surface, moderation, presence
-test_economy.py        403 checks    the gold ledger and the supply invariant, and selling to the shop
-test_security.py       299 checks    the audit's findings, held closed
-test_loot.py           259 checks    every finished item is actually obtainable
-test_equipment.py      224 checks    the equipment system, client and server
-test_gearbonus.py      173 checks    what gear adds, counted by the server
+test_packages.py       460 checks    the feature packages run on a bare Flask app, without app.py, two apps each their own
+test_economy.py        454 checks    the gold ledger and the supply invariant, and selling to the shop
+test_presence.py       382 checks    players seeing each other, whose game runs each area's monsters, every attack and lever, party voice's calls; a step held to a walk
+test_security.py       301 checks    the audit's findings, held closed
+test_security_doc.py   262 checks    SECURITY.md is checked, not trusted
+test_loot.py           261 checks    every finished item is actually obtainable
+test_equipment.py      225 checks    the equipment system, client and server
+test_refusals.py       181 checks    401, 403, and the 404 that is really a 403
+test_gearbonus.py      174 checks    what gear adds, counted by the server
 test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
 test_moderation.py     156 checks    the moderation record, a log that opens on moderation, the powers in words
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
+test_rollback.py       136 checks    the save history: snapshots, the owner's rollback, giving a player an item; nothing given away comes back twice
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_security_doc.py   184 checks    SECURITY.md is checked, not trusted
-test_refusals.py       157 checks    401, 403, and the 404 that is really a 403
-test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
-test_presence.py       150 checks    players seeing each other, whose game runs each area's monsters, every attack and lever, party voice's calls
-test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
+test_combatbook.py     131 checks    the server's books on every monster: every hit, spawn and death judged
 test_pacing.py         114 checks    the pace of the game: what the server pays, the store charges and the shop pays back
+test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
+test_minigames.py      103 checks    the minigames: each one's wait and pay, and one day's gold for all of them
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
-test_combatbook.py     106 checks    the server's books on every monster: every hit, spawn and death judged
-test_friends.py         76 checks    asking, answering and ending a friendship
-test_parties.py         50 checks    parties: asked, joined, led, left, and their own chat room
-test_voice.py           46 checks    party voice's relay (only a party's, only through it), and reporting a player
-test_chardelete.py      72 checks    deleting a character, and only the character
-test_chat.py            67 checks    world chat, end to end, one line as typed
-test_world.py           67 checks    the stirring lands: one land at a time, picked and paid by the server, the owner's switches
-test_stats.py           36 checks    the owner's player stats: each layer of the first feature package on its own, read only, names nobody
-test_packages.py        26 checks    the feature packages run on a bare Flask app, without app.py, two apps each their own
-test_routes.py           5 checks    the route table pinned: every path, endpoint, login and rank as routes.lock has it
-test_insights.py        32 checks    the land insights: each layer, the world's pick passing over new players, the next stir and why
+test_deploy.py         100 checks    what the first live deploy found: .env read first, one-file backups
+test_world.py           87 checks    the stirring lands: one land at a time, picked and paid by the server, the owner's switches
+test_chardelete.py      80 checks    deleting a character, and only the character
 test_events.py          80 checks    world events: each layer of the events/ package, what a kill is paid, the guardrails, the dry run, the event report
+test_friends.py         76 checks    asking, answering and ending a friendship
+test_larder.py          76 checks    the larder: drops beside the bag, meals, their buffs, bait
+test_googlesignin.py    73 checks    signing in with Google
+test_schema.py          72 checks    the database's shape, and who makes each part of it
+test_economyrules.py    70 checks    the economy's numbers, set on the server without a new version
+test_chat.py            67 checks    world chat, end to end, one line as typed
+test_smith.py           63 checks    the smith: tempering gear, and the Royal Certification
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
-test_deploy.py          61 checks    what the first live deploy found: .env read first, one-file backups
+test_serverhealth.py    61 checks    the server's health, on the GM panel
 test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
 test_bagmoves.py        59 checks    the bag and the bank are the server's: moves, the bin, piles
 test_broadcast.py       59 checks    the server's voice, end to end
+test_canary.py          58 checks    the gold canary, on a timer
+test_parties.py         58 checks    parties: asked, joined, led, left, and their own chat room
 test_gathering.py       57 checks    fishing and cooking authority, and a save that cannot undo a cook
 test_coowner.py         56 checks    the co-owner's gate: named by the server, let in by the owner's switch; a player's level
+test_accountdelete.py   55 checks    deleting your own account, and keeping it deleted after a restore
+test_teleport.py        55 checks    moving players and landing them spread out
+test_accounts.py        54 checks    signing in: one game per account, locks, no mail
 test_recovery.py        54 checks    account recovery, adversarially
 test_maintenance.py     53 checks    the owner's kill switch
-test_accounts.py        50 checks    signing in: one game per account, locks, no mail
-test_tokens.py          47 checks    a login bound to its copy of the game, theft ends it all, short staff logins, the password again
 test_settings.py        49 checks    the options screen's rules
-test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
+test_tokens.py          47 checks    a login bound to its copy of the game, theft ends it all, short staff logins, the password again
+test_killwatch.py       46 checks    the kill-fraud watch fires when it must
+test_voice.py           46 checks    party voice's relay (only a party's, only through it), and reporting a player
+test_gifts.py           42 checks    the gifts ledger: every gift and what it was worth, the report, the past read back
+test_clientbuild.py     41 checks    the client build gate, and the way back in by hand
 test_tradegates.py      41 checks    the owner's trade switch, and fresh mythic and Perfect finds held 48 hours
-test_gifts.py           40 checks    the gifts ledger: every gift and what it was worth, the report, the past read back
 test_killrecord.py      40 checks    every paid kill counted per character and monster
-test_clientbuild.py     38 checks    the client build gate, and the way back in by hand
 test_guildlife.py       37 checks    what members are playing, what happened
+test_receipts.py        37 checks    kill receipts: a kill paid only against the server's own count
+test_stats.py           36 checks    the owner's player stats: each layer of the first feature package on its own, read only, names nobody
 test_healing.py         34 checks    the heal clamp stays quiet for honest play
 test_revocation.py      34 checks    what it costs to change your mind
-test_killwatch.py       31 checks    the kill-fraud watch fires when it must
-test_rewards.py         30 checks    better loot carries more; legendary is rare
+test_insights.py        32 checks    the land insights: each layer, the world's pick passing over new players, the next stir and why
+test_rewards.py         32 checks    better loot carries more; legendary is rare
+test_goldflow.py        31 checks    where gold comes from and where it goes, by source
+test_patronage.py       29 checks    gold given to the crown for a title on the kingdom board
+test_dbkeep.py          27 checks    a worker's database connection kept, handed on only clean
 test_namecolour.py      27 checks    the colour a player chose, on every name
 test_playing.py         25 checks    which character an account is playing
+test_poll_parts.py      24 checks    the broadcast poll gives up a part, never the answer
 test_concurrency.py     23 checks    requests sent together cannot both spend the same thing
+test_clienterrors.py    22 checks    what broke in the players' games, reported and read
 test_equipmove.py       22 checks    equipping moves the item, never copies it
 test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
+test_isolation.py       12 checks    every suite runs on a throwaway database, checked
 test_skill_train.py     10 checks    skills train only as fast as time allows
+test_routes.py           8 checks    the route table pinned: every path, endpoint, login and rank as routes.lock has it
 					─────
-					5,464 checks, 0 failures
+					7,247 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The sixty-first, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The seventy-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,496 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 177 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **7,001 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 273 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `4385 passed, 0 failed, 30 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-nine are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `6904 passed, 0 failed, 58 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifty-seven are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 
@@ -394,7 +410,7 @@ Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 3,055 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 5,778 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/`, `assets/` and `audio/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
@@ -415,15 +431,15 @@ Without the service running, the login screen will tell you it can't reach the s
 
 `art/pack/` is a private submodule. It holds item, weapon, armour and icon art purchased from [Clockwork Raven Studios](https://www.clockworkravenstudios.com/) under a licence that permits using it in this game and **not** redistributing it. Publishing this repository with those files in it would be redistribution, so they are not here.
 
-What that means if you clone: 148 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
+What that means if you clone: 229 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
-The test suite understands the difference. The twenty-nine checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+The test suite understands the difference. The fifty-seven checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
 This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 
 ## Status
 
-The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, every other player in your area drawn live, and since 0.7.0 the same monsters for everyone in an area, with a loot bag each. Those monsters are run by one player's game, not by the server - but since 0.10.0 the server watches every fight and keeps its own count. Moving combat onto the server is happening in steps, and the API repo's `E3_SCOPE.md` says why it is the one that matters and where each step stands.
+The game is complete and playable start to finish, online: accounts, chat, friends, guilds, parties with voice, trading, six minigames, every other player in your area drawn live, and since 0.7.0 the same monsters for everyone in an area, with a loot bag each. Those monsters are moved by one player's game, not by the server - but the server keeps its own count of every fight, owns every monster's health and death (since 0.87.0), and pays a kill only against that count (since 0.57.0, switched on 25 October 2026). Moving the rest of combat onto the server is happening in steps, and the API repo's `E3_SCOPE.md` says why it is the one that matters and where each step stands.
 
 Authority has moved off the client. The server rolls every loot drop with entropy the client never sees, owns level and XP and the stat maxima they imply, holds loot bags as rows the game renders a copy of — taking an item out of one is a request, not an announcement — and now reconciles the backpack against what it actually granted, so a modified client's fabricated items are trimmed to nothing.
 
@@ -431,7 +447,7 @@ Gold is double-entry on top of that. Every coin that enters or leaves the world 
 
 Item use is server-authoritative too now — the server checks the level and skill requirement against the character it owns and destroys the item itself, so the gates stopped being advisory the day trading made them matter. So is reviving: the server refuses anyone who is not dead by its own reckoning, takes the cost in lusions itself, and restores the resources from the class curve, which is what puts a price back on dying.
 
-One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`: the kill *event* is still asserted rather than verified — the server now watches the fight and writes down every kill its own count does not back up, but it still pays on the game's word. Skills used to be the second: three of the six had no server-side grant, and `/api/skill/train` closed it by having the client report raw activity and the server clamp it, rather than waiting for an event that does not exist. Health was the third, and is closed the way the backpack was — measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored. That clamp is also what caught E-16, which is the best argument I have for building controls you hope never fire.
+One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`, and it is narrower than it was: a kill is paid only when the server's own count of the fight backs it, but a game alone in an area still runs its monsters, so a modified one can invent a fight its character could really have fought — at no more than an honest player's best pace. The server running the monsters is what closes it. Skills used to be the second: three of the six had no server-side grant, and `/api/skill/train` closed it by having the client report raw activity and the server clamp it, rather than waiting for an event that does not exist. Health was the third, and is closed the way the backpack was — measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored. That clamp is also what caught E-16, which is the best argument I have for building controls you hope never fire. Where a player stands was the game's word too; since 0.157.0, what everyone else sees of a step is held to what that character could really walk.
 
 `devlog.md` records the architecture decisions and the reasoning behind them, including the ones that turned out to be wrong.
 

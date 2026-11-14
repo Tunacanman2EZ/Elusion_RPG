@@ -5,7 +5,7 @@
 # and the portal's bars, the slain - a start panel, and at the end what you
 # did with Again and Leave.
 #
-# Opened from the Minigames card, in town, for the owner while it is built
+# Opened from the Minigames card, in town, for everyone since 0.158.0
 # (minigamescard.gd shows_mage_stand). It pays nothing: no request is made.
 # The character stays where it was, still, as the Healer's Run holds it.
 #

@@ -1,6 +1,7 @@
 {
 	"areas": {
 		"bigfield": {
+			"arrivals": [],
 			"respawn_jitter": 6.0,
 			"respawn_seconds": 30.0,
 			"scene": "res://scene/bigfield.tscn",
@@ -4296,6 +4297,7 @@
 			]
 		},
 		"boss": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 120.0,
 			"scene": "res://scene/boss.tscn",
@@ -4311,6 +4313,7 @@
 			]
 		},
 		"bossarena": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 120.0,
 			"scene": "res://scene/bossarena.tscn",
@@ -4366,30 +4369,40 @@
 			]
 		},
 		"descent": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/descent.tscn",
 			"spawns": []
 		},
 		"easteregg": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/easteregg.tscn",
 			"spawns": []
 		},
 		"elusion": {
+			"arrivals": [
+				[
+					483.0,
+					922.0
+				]
+			],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/elusion.tscn",
 			"spawns": []
 		},
 		"endless": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/endless.tscn",
 			"spawns": []
 		},
 		"field": {
+			"arrivals": [],
 			"respawn_jitter": 6.0,
 			"respawn_seconds": 30.0,
 			"scene": "res://scene/field.tscn",
@@ -4613,6 +4626,7 @@
 			]
 		},
 		"forge": {
+			"arrivals": [],
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/forge.tscn",

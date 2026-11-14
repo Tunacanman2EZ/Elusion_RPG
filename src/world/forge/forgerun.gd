@@ -1,4 +1,4 @@
-# forgerun.gd - THE FORGE (step 1; the owner's alone while it is built): the
+# forgerun.gd - THE FORGE (step 1; everyone's since 0.158.0): the
 # tank's minigame, as the Healer's Run is the healer's, the Stand the mage's
 # and the Descent the warrior's - but open to every class, the tank getting
 # the most from it. A volcano; the lava always wins; the score is how long.

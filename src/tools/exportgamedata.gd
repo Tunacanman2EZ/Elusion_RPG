@@ -1818,6 +1818,11 @@ func _split_yield(scene_path: String) -> int:
 
 const AREA_REGISTRY := "res://src/systems/arearegistry.gd"
 const RESPAWNER_SCRIPT := "res://src/world/enemyrespawner.gd"
+# A pad that moves the player to another spot in the SAME area (teleporter.gd,
+# its child "destinationpoint"). Where it lands is written as the area's
+# "arrivals" (0.157.0): presence.py's HELD TO A WALK lets a step land there
+# free, since a pad is a jump an honest game makes.
+const TELEPORTER_SCRIPT := "res://src/world/teleporter.gd"
 const ENEMY_SCENES := "res://scene/enemy/"
 
 
@@ -1903,6 +1908,9 @@ func _export_areas() -> Dictionary:
 		var respawn: Dictionary = {}
 		_collect_spawns(root, root, spawns, respawn)
 		spawns.sort_custom(func(a, b): return String(a["o"]) < String(b["o"]))
+		var arrivals: Array = []
+		_collect_arrivals(root, root, arrivals)
+		arrivals.sort()
 		out[area_id] = {
 			"scene": String(area_map[area_id]),
 			# No respawner: nothing that dies there comes back while the area
@@ -1910,9 +1918,21 @@ func _export_areas() -> Dictionary:
 			"respawn_seconds": float(respawn.get("seconds", 0.0)),
 			"respawn_jitter": float(respawn.get("jitter", 0.0)),
 			"spawns": spawns,
+			# Where an in-area teleport pad puts the player (0.157.0).
+			"arrivals": arrivals,
 		}
 		root.free()
 	return out
+
+
+func _collect_arrivals(root: Node, node: Node, arrivals: Array) -> void:
+	for child in node.get_children():
+		var script: Script = child.get_script() as Script
+		if script != null and script.resource_path == TELEPORTER_SCRIPT and child.has_node("destinationpoint"):
+			var at: Vector2 = _authored_position(root, child.get_node("destinationpoint"))
+			arrivals.append([snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
+		if not child.scene_file_path.begins_with(ENEMY_SCENES):
+			_collect_arrivals(root, child, arrivals)
 
 
 func _collect_spawns(root: Node, node: Node, spawns: Array, respawn: Dictionary) -> void:

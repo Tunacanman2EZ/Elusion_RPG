@@ -3602,7 +3602,7 @@ func _test_the_mages_stand() -> void:
 	await get_tree().process_frame
 	check("  Leave asks twice while it is on, once before; the portal fallen says so, and Again starts afresh",
 		asked_once and told and again_fresh and not is_instance_valid(screen))
-	# THE CARD: the owner's alone while it is built.
+	# THE CARD: hidden when its seam says no (everyone's since 0.158.0).
 	var card_hud := Control.new()
 	add_child(card_hud)
 	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
@@ -4212,7 +4212,8 @@ func _test_the_descent() -> void:
 			run.get("last_result"), (run.get("monsters") as Array).size(), Boons.active])
 	room.queue_free()
 	await get_tree().process_frame
-	# THE CARD: the owner's alone; Go travels there; inside, Leave.
+	# THE CARD: hidden when its seam says no (everyone's since 0.158.0); Go
+	# travels there; inside, Leave.
 	var card_hud := Control.new()
 	add_child(card_hud)
 	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
