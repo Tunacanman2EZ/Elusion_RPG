@@ -14363,6 +14363,60 @@ Testing Ground: "the testing ground menues are blocking my viewpoint", and
 `_test_less_in_the_way()`, `_test_what_a_sweep_leaves()`,
 `_test_the_orbs_share_a_list()` (testrunner_11).
 
+### Every shot, every effect, and a spawner that keeps its scenes (0.154.0)
+
+The owner: "now that we have the spreadsheet it is time to do the math and
+figure out exactly how many enemies i can have for phone and pc but we also
+have not measured effects or projectile yet".
+
+- **Every shot and Every effect in Find the limit**
+  (`src/world/endless/stresskinds.gd`, preloaded, no class_name;
+  limitsweep.gd `EVERY_SHOT`, `EVERY_EFFECT`): the same sweep over what is
+  not a monster. A shot (`shots()`, 8: the archer's arrow, an element's
+  arrow, both slime shots, both sprite orbs, the bullet field's orb and big
+  orb) is held in the air round you - slow (`HELD_SPEED`), made to last
+  (`HELD_LIFE`), flying away from you so none lands - `SHOT_STEP` (100)
+  more a step, orbs `ORB_STEP` (500), checks at 100, 500, 1,000 and 2,000.
+  An effect (`effects()`, 11: the seven party attacks as your screen draws
+  another player's, a blow's sparks, a cast sparkle, a hit with its number,
+  a death and a new monster) is fired `RATE_STEP` (10) more a second; a hit
+  or a death is done to `CROWD` (40) archers already after you, a new one
+  made `MADE_AWAY` from the crowd. A result says what it counted (`per`:
+  out, in the air, a second) in its line and in a Counted column at the end
+  of Copy results. Clear all takes every shot the sweep made
+  (`StressKinds.clear()`, group `stress_shot`).
+- **The Testing Ground's spawner holds its scenes** (gmspawner.gd
+  `scene_for()`, `_held`): a monster made from a scene does not hold the
+  scene, so with nothing else holding it Godot's cache let it go and the
+  next `load()` read it from disk again - 3.8 ms for an archer in the
+  container, on every spawn, 4.5 of a spawn's 5 ms; 0.8 ms now. A
+  minigame's warmer (scenewarmer.gd) and the respawner already held theirs.
+- **What the sandbox measured** (zz/projsweep.gd, zz/fxsweep.gd,
+  zz/drawsweep.gd; the container - headless for physics and scripts, xvfb
+  and opengl3 for what is drawn; the limits sheet's Shots and effects and
+  Budget tabs):
+  - a monster's shot in the air 0.004 ms, arrow, orb or ball alike; a bullet
+    field orb 0.0008; making a shot 0.04 ms, a sprite's orb 0.43;
+  - another player's attack on your screen, for each one a second: wave
+    0.025 ms, axe 0.018, spike 0.064, meteor 0.12, dynamite 0.058, healer
+    orb 0.068, heal 0.090 - a healer shooting ten a second is about 0.7 ms
+    on every other screen in the party;
+  - a hit with its number 0.003 ms for each one a second (0.0004 with
+    numbers off), a blow's sparks 0.006, a cast sparkle 0.009;
+  - a death and the monster made in its place 0.03 to 0.12 ms of the frame
+    for each one a second, a boss's 0.4;
+  - what is drawn (xvfb, opengl3): an area as it plays is 110 to 180 draw
+    calls (the Testing Ground's panel and readout about 300 more); a
+    monster 5 to 12 (a large slime 10 to 12); a shot in the air or an orb
+    next to none, they are drawn together; another player's attacks, for
+    each one a second: wave 3.5, axe 10, spike 18, meteor 28, dynamite 12,
+    healer orb 9 - a healer's ten orbs a second are about 90 draw calls on
+    every other screen. The container cannot time drawing (no graphics
+    card): the Budget tab's cost a draw call is an estimate until the
+    owner's PC and phone runs.
+
+`_test_every_shot_and_effect()` (testrunner_11).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

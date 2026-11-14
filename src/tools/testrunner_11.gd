@@ -3579,8 +3579,8 @@ func _test_find_the_limit() -> void:
 	sweep.call("_on_picked", 2)
 	var horde_box: int = int(step_box.value)
 	sweep.call("_on_picked", 0)
-	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
-		pick.item_count == Spawner.catalogue().size() + 3 and str(pick.get_item_metadata(2)) == Sweep.HORDE
+	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde, every shot, every effect and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
+		pick.item_count == Spawner.catalogue().size() + 5 and str(pick.get_item_metadata(2)) == Sweep.HORDE
 		and ground.find_child("sweepgo", true, false) is Button and ground.find_child("sweepcopy", true, false) is Button
 		and boss_box == 1 and horde_box == 250 and int(step_box.value) == 10, [pick.item_count, boss_box, horde_box])
 	var budget: float = PerfOverlay.budget_ms()
@@ -4403,3 +4403,121 @@ func _test_the_orbs_share_a_list() -> void:
 		(monster as Node).queue_free()
 	await get_tree().process_frame
 	print("  (the orbs share a list: done)")
+
+
+func _test_every_shot_and_effect() -> void:
+	section("EVERY SHOT AND EVERY EFFECT (0.154.0): Find the limit sweeps shots in the air and effects a second")
+	const Stress := preload("res://src/world/endless/stresskinds.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Ground := preload("res://src/world/endless/testingground.gd")
+	const Remote := preload("res://src/characters/remoteattacks.gd")
+	var shots: Array = Stress.shots()
+	var effects: Array = Stress.effects()
+	var loads: bool = true
+	for s in shots:
+		if s.has("shot") and not (load(str(s["shot"])) is PackedScene):
+			loads = false
+	var pictures: bool = true
+	for e in effects:
+		var what: String = str(e["rate"])
+		if not what in ["sparks", "cast", "hit", "death"] and not what in Remote.KINDS:
+			pictures = false
+	check("every shot's scene loads and every party attack is one the game draws (%d shots, %d effects)"
+		% [shots.size(), effects.size()], shots.size() == 8 and effects.size() == 11 and loads and pictures)
+	check("  Every shot and Every effect are the sweep's lists, each with its own step and most",
+		Sweep.targets_for(Sweep.EVERY_SHOT, 10).size() == shots.size()
+			and Sweep.targets_for(Sweep.EVERY_EFFECT, 10).size() == effects.size()
+			and Sweep.most_for(shots[0]) == Stress.SHOT_MOST and Sweep.most_for(effects[0]) == Stress.RATE_MOST
+			and Sweep.most_for({"path": "x", "kind": 0}) == Sweep.MOST)
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	var held: PackedScene = Spawner.scene_for("res://scene/enemy/bushsniper.tscn")
+	check("  the Testing Ground's spawner holds each monster's scene, so making one never reads it from disk again",
+		held != null and Spawner.scene_for("res://scene/enemy/bushsniper.tscn") == held
+			and Spawner._held.has("res://scene/enemy/bushsniper.tscn")
+			and _spawn_body_of_gm().contains("= scene_for(path)"))
+	check("  a result says what it counted: monsters out, shots in the air, effects a second",
+		Sweep.counted_as({"path": "x"}) == "out" and Sweep.counted_as(shots[0]) == "in the air"
+			and Sweep.counted_as(effects[0]) == "a second")
+	# ---- a shot is held in the air, flying away ----
+	var holder := Node2D.new()
+	holder.add_to_group(&"projectiles")
+	add_child(holder)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var around := Vector2(4000, 4000)
+	var made: int = Stress.make_shots(get_tree(), shots[0], 6, around, rng)
+	var away: bool = true
+	for shot in holder.get_children():
+		var v: Vector2 = shot.get("velocity")
+		if v.length() > Stress.HELD_SPEED + 0.01 or v.dot((shot as Node2D).global_position - around) <= 0.0 \
+				or (shot as Node2D).global_position.distance_to(around) < Stress.NEAR:
+			away = false
+	check("  a shot is made round you, slow and flying away from you (%d made)" % made,
+		made == 6 and holder.get_child_count() == 6 and away and Stress.count_shots(get_tree(), shots[0]) == 6)
+	var stray := Node2D.new()
+	stray.add_to_group(Stress.GROUP)
+	add_child(stray)
+	var ground: Node = Ground.new()
+	add_child(ground)
+	ground.call("clear_all")
+	var all_gone: bool = stray.is_queued_for_deletion()
+	for shot in holder.get_children():
+		all_gone = all_gone and shot.is_queued_for_deletion()
+	check("  the Testing Ground's Clear all takes every shot the sweep made", all_gone)
+	ground.queue_free()
+	await get_tree().process_frame
+	# ---- an effect, a second ----
+	var me := Node2D.new()
+	add_child(me)
+	me.global_position = around
+	var stress: Node = Stress.new()
+	add_child(stress)
+	stress.call("begin", {"label": "Effect: blow sparks", "rate": "sparks"}, me)
+	stress.call("set_rate", 120.0)
+	for i in 30:
+		await get_tree().physics_frame
+	var sparks: int = 0
+	for n in holder.get_children():
+		if n.get_node_or_null(^"flash") != null:
+			sparks += 1
+	stress.call("end")
+	check("  an effect is fired at its rate (%d sparks in 30 ticks at 120 a second)" % sparks,
+		sparks >= 30 and sparks <= 60 and float(stress.get("rate")) == 0.0)
+	# ---- what a result says ----
+	var line: String = Sweep.summary_line({"label": "Effect: blow sparks", "per": "a second", "each": 0.02,
+		"fits": 450, "stopped": 480, "why": "limit"})
+	var shot_line: String = Sweep.summary_line({"label": "Shot: bullet orb", "per": "in the air", "each": 0.0008,
+		"fits": 9000, "stopped": 9500, "why": "limit"})
+	var copied: String = Sweep.copy_text({"Effect: blow sparks": {"per": "a second", "rows": []}}, ["Effect: blow sparks"])
+	check("  the line and the copy say what was counted",
+		line.contains("ms each a second") and line.contains("450 a second fit")
+			and shot_line.contains("ms each in the air") and copied.contains("\tCounted")
+			and copied.split("\n")[2].ends_with("\ta second"), [line, shot_line])
+	# ---- the picker ----
+	var box := VBoxContainer.new()
+	add_child(box)
+	var sweep: Node = Sweep.new()
+	sweep.set("save_path", "")
+	add_child(sweep)
+	sweep.call("build", box, 460.0)
+	var picker: OptionButton = box.find_child("sweeppick", true, false) as OptionButton
+	var names: Array = []
+	for k in picker.item_count:
+		names.append(picker.get_item_text(k))
+	check("  Find the limit's picker offers Every shot and Every effect",
+		names.has("Every shot (8)") and names.has("Every effect (11)"), names.slice(0, 6))
+	sweep.queue_free()
+	box.queue_free()
+	stress.queue_free()
+	me.queue_free()
+	holder.queue_free()
+	await get_tree().process_frame
+	print("  (every shot and every effect: done)")
+
+
+
+func _spawn_body_of_gm() -> String:
+	var src: String = FileAccess.get_file_as_string("res://src/world/gmspawner.gd")
+	var at: int = src.find("static func spawn(")
+	var end: int = src.find("\nstatic func ", at + 1)
+	return src.substr(at, end - at) if at != -1 and end != -1 else ""

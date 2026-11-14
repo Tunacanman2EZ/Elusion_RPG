@@ -19,6 +19,7 @@ const FOLDER := "res://scene/enemy/"
 const GROUP := &"gm_spawned"
 # At most this many a press.
 const MOST := 200
+static var _held: Dictionary = {}
 # Where round the owner, in px: not on top of them, on their screen.
 const NEAR := 120.0
 const FAR := 320.0
@@ -80,7 +81,7 @@ static func spawn(tree: SceneTree, path: String, count: int, around: Vector2) ->
 	area's floor, each a test copy; how many came."""
 	if tree == null or tree.current_scene == null:
 		return 0
-	var packed: PackedScene = load(path) as PackedScene
+	var packed: PackedScene = scene_for(path)
 	if packed == null:
 		return 0
 	var scene: Node = tree.current_scene
@@ -116,6 +117,21 @@ static func spawn(tree: SceneTree, path: String, count: int, around: Vector2) ->
 			monster.set("spawn_position", spot)
 		made += 1
 	return made
+
+
+static func scene_for(path: String) -> PackedScene:
+	"""The monster's scene, loaded once and held (0.154.0). A monster made from
+	a scene does not keep the scene: with nothing else holding it Godot's
+	cache lets it go, and the next load() read it from disk again - 3.8 ms
+	for an archer in the container, measured, every time one was made (Every
+	effect's deaths made one a frame). A minigame's warmer holds its own; the
+	Testing Ground's are held here for the session."""
+	var packed: PackedScene = _held.get(path) as PackedScene
+	if packed == null:
+		packed = load(path) as PackedScene
+		if packed != null:
+			_held[path] = packed
+	return packed
 
 
 static func _spot(around: Vector2, map: RID, on_map: bool, run: Node) -> Variant:

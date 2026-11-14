@@ -32,12 +32,19 @@ extends Node
 # on you stay on: they are part of a fight's cost.
 # Measured alone: what a party adds (the others' pictures, their attacks, the
 # server) is the next step's.
+# EVERY SHOT AND EVERY EFFECT (0.154.0): the same sweep over what is not a
+# monster - more shots in the air, or more of an effect a second - from
+# stresskinds.gd, which says how each is made. A result says what it counted
+# ("per": out, in the air, a second).
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
+const StressKinds := preload("res://src/world/endless/stresskinds.gd")
 const HORDE := "Horde slimes"
 const EVERY_KIND := "every kind"
 const EVERY_MONSTER := "every monster"
+const EVERY_SHOT := "every shot"
+const EVERY_EFFECT := "every effect"
 const STEP := 10
 const BOSS_STEP := 1
 const HORDE_STEP := 250
@@ -52,6 +59,7 @@ const MEASURE_FRAMES := 120
 const LIMIT_AT := 0.8
 const CHECKS := [10, 50, 100, 200]
 const HORDE_CHECKS := [250, 1000, 2500, 5000]
+const SHOT_CHECKS := [100, 500, 1000, 2000]
 # A cost that grows with the crowd: each at the last row this many times each
 # at the first row that stands NOISE_MS clear of the base.
 const GROWS_AT := 1.5
@@ -87,6 +95,8 @@ var _step_box: SpinBox = null
 var _go: Button = null
 var _status_label: Label = null
 var _results_label: Label = null
+var _stress: Node = null
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
@@ -108,6 +118,14 @@ static func horde_target() -> Dictionary:
 	return {"label": HORDE, "path": "", "kind": -1, "horde": true}
 
 
+static func counted_as(swept: Dictionary) -> String:
+	"""What a sweep's count is: monsters "out", shots "in the air", an effect
+	"a second"."""
+	if StressKinds.is_rate(swept):
+		return "a second"
+	return "in the air" if StressKinds.is_shot(swept) else "out"
+
+
 static func is_boss(swept: Dictionary) -> bool:
 	return int(swept.get("kind", 0)) == GmSpawner.KINDS.size() - 1
 
@@ -121,6 +139,8 @@ static func step_for(swept: Dictionary, chosen: int) -> int:
 
 
 static func most_for(swept: Dictionary) -> int:
+	if swept.has("most"):
+		return int(swept["most"])
 	if bool(swept.get("horde", false)):
 		return HORDE_MOST
 	return BOSS_MOST if is_boss(swept) else MOST
@@ -128,8 +148,13 @@ static func most_for(swept: Dictionary) -> int:
 
 static func targets_for(choice: String, chosen: int) -> Array:
 	"""What `choice` (the picker's: EVERY_KIND, EVERY_MONSTER, HORDE or a
-	monster's scene) sweeps, in order, each with its "step"."""
+	monster's scene) sweeps, in order, each with its "step". Every shot and
+	Every effect carry their own steps."""
 	var out: Array = []
+	if choice == EVERY_SHOT:
+		return StressKinds.shots()
+	if choice == EVERY_EFFECT:
+		return StressKinds.effects()
 	if choice == EVERY_KIND or choice == EVERY_MONSTER:
 		var kinds_seen: Dictionary = {}
 		for entry in GmSpawner.catalogue():
@@ -182,6 +207,8 @@ func stop() -> void:
 
 func _end(said: String) -> void:
 	phase = Phase.IDLE
+	if _stress != null:
+		_stress.call("end")
 	target = {}
 	rows = []
 	GameState.god_mode = _was_god
@@ -203,6 +230,15 @@ func _next() -> void:
 	if ground != null:
 		ground.call("clear_all")
 	_place_player()
+	if _stress != null:
+		_stress.call("end")
+	if StressKinds.is_rate(target):
+		if _stress == null:
+			_stress = StressKinds.new()
+			_stress.name = "stress"
+			add_child(_stress)
+		var run: Node = _run()
+		_stress.call("begin", target, run.call("_player") if run != null and run.has_method("_player") else null)
 	phase = Phase.CLEARING
 	_left = CLEAR_SECONDS
 	_say("clearing the field")
@@ -254,6 +290,23 @@ func _measured(stats: Dictionary) -> void:
 func _more() -> void:
 	var most: int = most_for(target)
 	var more: int = mini(int(target.get("step", STEP)), most - _wanted)
+	if StressKinds.is_rate(target):
+		_wanted += more
+		if _stress != null:
+			_stress.call("set_rate", float(_wanted))
+		_settle()
+		return
+	if StressKinds.is_shot(target):
+		var me: Node2D = _run().call("_player") as Node2D if _run() != null and _run().has_method("_player") else null
+		var made_shots: int = StressKinds.make_shots(get_tree(), target, more,
+			me.global_position if me != null else centre(), _rng)
+		if made_shots <= 0:
+			_keep(summarise(rows, str(target["label"]), "no room", PerfOverlay.budget_ms(), _checks()))
+			_next()
+			return
+		_wanted += made_shots
+		_settle()
+		return
 	if bool(target.get("horde", false)):
 		_wanted += more
 		if ground != null:
@@ -287,11 +340,18 @@ static func judge(row: Array, budget: float, wanted: int, most: int) -> String:
 
 
 func _checks() -> Array:
+	if StressKinds.is_shot(target):
+		return SHOT_CHECKS
 	return HORDE_CHECKS if bool(target.get("horde", false)) else CHECKS
 
 
 func count_now() -> int:
-	"""How many of what is being swept are on the field."""
+	"""How many of what is being swept are on the field (an effect: how many
+	a second)."""
+	if StressKinds.is_rate(target):
+		return _wanted
+	if StressKinds.is_shot(target):
+		return StressKinds.count_shots(get_tree(), target)
 	if bool(target.get("horde", false)):
 		var swarm: Node = _run().get("swarm") if _run() != null else null
 		return int(swarm.get("alive")) if swarm != null else 0
@@ -421,11 +481,13 @@ static func summary_line(summary: Dictionary) -> String:
 	if str(summary.get("why", "")) == "base":
 		return "%s: not measured - with nothing out the work is already %.1f ms, past the %.1f ms limit" % [label,
 			float(summary.get("base", 0.0)), float(summary.get("budget", 0.0)) * LIMIT_AT]
+	var per: String = str(summary.get("per", "out"))
+	var unit: String = " a second" if per == "a second" else ""
 	if int(summary.get("fits", -1)) < 0:
-		return "%s: no cost seen up to %s (%s)" % [label, GameConstants.commas(stopped), why]
-	var line: String = "%s: %s ms each - about %s fit (stopped at %s: %s)" % [label,
-		ms_text(float(summary.get("each", 0.0))), GameConstants.commas(int(summary["fits"])),
-		GameConstants.commas(stopped), why]
+		return "%s: no cost seen up to %s%s (%s)" % [label, GameConstants.commas(stopped), unit, why]
+	var line: String = "%s: %s ms each%s - about %s%s fit (stopped at %s: %s)" % [label,
+		ms_text(float(summary.get("each", 0.0))), " " + per if per != "out" else "",
+		GameConstants.commas(int(summary["fits"])), unit, GameConstants.commas(stopped), why]
 	if bool(summary.get("grows", false)):
 		line += " - costs more each as the crowd grows"
 	return line
@@ -447,8 +509,8 @@ static func copy_text(kept: Dictionary, in_order: Array, places: Dictionary = {}
 	var lines: PackedStringArray = ["Elusion limit sweep - one player - tab-separated"]
 	lines.append("\t".join(PackedStringArray(["Monster", "Device", "Version", "Budget ms", "Base ms",
 		"ms each", "Physics ms each", "Scripts ms each", "Drawing ms each", "Fits at 80%", "Stopped at",
-		"Why", "Each at 10 (horde 250)", "Each at 50 (horde 1000)", "Each at 100 (horde 2500)",
-		"Each at 200 (horde 5000)", "Grows with the crowd", "When"])))
+		"Why", "Each at 10 (horde 250, shots 100)", "Each at 50 (horde 1000, shots 500)",
+		"Each at 100 (horde 2500, shots 1000)", "Each at 200 (horde 5000, shots 2000)", "Grows with the crowd", "When", "Counted"])))
 	for label in in_order:
 		if not kept.has(label):
 			continue
@@ -464,6 +526,7 @@ static func copy_text(kept: Dictionary, in_order: Array, places: Dictionary = {}
 			cells.append("%.4f" % value if value >= 0.0 else "")
 		cells.append("yes" if bool(s.get("grows", false)) else "no")
 		cells.append(str(s.get("when", "")))
+		cells.append(str(s.get("per", "out")))
 		lines.append("\t".join(cells))
 	lines.append("")
 	lines.append("\t".join(PackedStringArray(["Monster", "Count", "Work median ms", "Slow (95th) ms", "fps",
@@ -496,6 +559,8 @@ static func copy_text(kept: Dictionary, in_order: Array, places: Dictionary = {}
 
 func _keep(summary: Dictionary) -> void:
 	var label: String = str(summary["label"])
+	if not summary.has("per"):
+		summary["per"] = counted_as(target)
 	results[label] = summary
 	order.erase(label)
 	order.append(label)
@@ -548,7 +613,7 @@ func build(into: VBoxContainer, width: float) -> void:
 	head.add_theme_color_override("font_color", COLOUR)
 	head.add_theme_font_size_override("font_size", 12)
 	head.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too." \
+	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too.\nEvery shot and Every effect do the same with shots in the air and effects a second." \
 		% roundi(LIMIT_AT * 100.0)
 	into.add_child(head)
 	var row := HBoxContainer.new()
@@ -567,6 +632,8 @@ func build(into: VBoxContainer, width: float) -> void:
 	_add_pick("Every kind (%d)" % (kinds.size() + 1), EVERY_KIND)
 	_add_pick("Every monster (%d)" % (listed.size() + 1), EVERY_MONSTER)
 	_add_pick(HORDE, HORDE)
+	_add_pick("Every shot (%d)" % StressKinds.shots().size(), EVERY_SHOT)
+	_add_pick("Every effect (%d)" % StressKinds.effects().size(), EVERY_EFFECT)
 	for entry in listed:
 		_add_pick(str(entry["label"]), str(entry["path"]))
 	_picker.item_selected.connect(_on_picked)
@@ -646,8 +713,8 @@ func _on_go() -> void:
 
 func _say(doing: String) -> void:
 	var where: String = " (%d of %d)" % [queue_size - queue.size(), queue_size] if queue_size > 1 else ""
-	var said: String = "%s%s: %s out - %s" % [str(target.get("label", "")), where,
-		GameConstants.commas(count_now()), doing]
+	var said: String = "%s%s: %s %s - %s" % [str(target.get("label", "")), where,
+		GameConstants.commas(count_now()), counted_as(target), doing]
 	if not rows.is_empty():
 		var last: Array = rows.back()
 		said += "  ·  at %s: work %.1f · slow %.1f ms" % [GameConstants.commas(int(last[0])),

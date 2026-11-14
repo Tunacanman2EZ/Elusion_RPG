@@ -28,6 +28,7 @@ extends Node
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const LimitSweep := preload("res://src/world/endless/limitsweep.gd")
+const StressKinds := preload("res://src/world/endless/stresskinds.gd")
 const HORDES := [0, 1000, 3000, 5000]
 # Slimes made a frame while the horde fills (the swarm's own fill is a rate).
 const FILL_A_FRAME := 250
@@ -231,6 +232,8 @@ func clear_all() -> void:
 	# the floor - 115 slime pools outlived a 300-slime sweep, 0.8 ms a frame
 	# under the next one's empty field.
 	BulletZone.clear_enemy_shots(self)
+	# And Find the limit's own shots (0.154.0, stresskinds.gd).
+	StressKinds.clear(get_tree())
 	paint()
 
 
