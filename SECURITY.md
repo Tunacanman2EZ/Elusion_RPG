@@ -125,11 +125,45 @@ one changes nobody's health, bag or gold.
 
 **The monsters you share an area with are run by one player's game** (0.7.0),
 the area's leader, and every other game draws them from what it says. A
-modified leader can move, heal or kill those monsters on everyone's screen. It
-cannot reach anyone's health, bag, gold or kills: each game builds every attack
-from its own copy of the monster and caps the few numbers the leader sends, and
-the server keeps its own count of every fight (0.10.0). The server's page has
-the detail under *Honest limits*.
+modified leader can move them and choose when they attack, on everyone's
+screen. It cannot heal or kill one past the hits that landed: the server keeps
+its own count of every monster's health (0.10.0), every game draws that count
+rather than the leader's (0.87.0), and a kill is paid only against it. Nor can
+it reach anyone's health, bag, gold or kills: each game builds every attack
+from its own copy of the monster and caps the few numbers the leader sends.
+The server's page has the detail under *Honest limits*.
+
+**You see only the players near you, and a party's run only its party**
+(0.89.0, 0.93.3). The presence server sends each game the players within a
+screen and a margin of it (a party's members wherever they are), and seats a
+party's Endless, Healer's Run or Descent in a room of its own that the game
+never names, so nobody can walk into somebody else's run.
+
+**A minigame is run by your game; what it pays is the server's** (0.93.3 and
+on). The Endless's slimes, the Forge's floods and the Cut the Cloth's rounds
+happen on your machine, so a modified game can claim a run went better than
+it did. The server holds every claim to the day (one Go, or three runs), to
+what the run's own schedule could have sent since the Go, and to what the
+time since it allows, and pays an elite's loot into your own chest only. The
+server's page has the numbers under *Honest limits*.
+
+**The testing tools give nothing.** The Testing Ground, the GM panel's Spawn
+and its stress tests make copies that are this game's alone: they report no
+kill, are never shared and are never counted, so a patched build that opens
+them earns exactly what it would standing still. God mode, below, is the same
+rule.
+
+**Signing in with Google happens in your web browser, not in the game**
+(0.101.0). The game asks the server for a code, opens the server's own page,
+and asks every two seconds whether the code is done; Google's token goes from
+that page to the server, which checks it itself. Only the copy of the game
+that asked for the code can collect it, once, for ten minutes, and the page
+and the game show the same short check code.
+
+**The build number the game sends is a version, not a password.** Every
+request says which build sent it (`X-Elusion-Build`), so the server can tell
+an old game to update. A modified game can claim any build; the server treats
+the number as a protocol check and nothing more.
 
 **Most of what looks like a client-side vulnerability is a server question.** "I
 can edit my save", "I can spawn items", "I can claim a kill" — all true, all

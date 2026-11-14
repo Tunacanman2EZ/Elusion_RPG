@@ -4451,6 +4451,10 @@ func _test_every_shot_and_effect() -> void:
 	var stray := Node2D.new()
 	stray.add_to_group(Stress.GROUP)
 	add_child(stray)
+	# The Testing Ground shows the readout as it arrives; put it back after,
+	# or every later section runs with it up - the readout counts in rounds
+	# then, and a screen with it up never rests (both failed later on).
+	var readout_was: bool = PerfOverlay.is_shown()
 	var ground: Node = Ground.new()
 	add_child(ground)
 	ground.call("clear_all")
@@ -4459,6 +4463,7 @@ func _test_every_shot_and_effect() -> void:
 		all_gone = all_gone and shot.is_queued_for_deletion()
 	check("  the Testing Ground's Clear all takes every shot the sweep made", all_gone)
 	ground.queue_free()
+	PerfOverlay.set_shown(readout_was)
 	await get_tree().process_frame
 	# ---- an effect, a second ----
 	var me := Node2D.new()
