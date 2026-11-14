@@ -144,8 +144,11 @@ on). The Endless's slimes, the Forge's floods and the Cut the Cloth's rounds
 happen on your machine, so a modified game can claim a run went better than
 it did. The server holds every claim to the day (one Go, or three runs), to
 what the run's own schedule could have sent since the Go, and to what the
-time since it allows, and pays an elite's loot into your own chest only. The
-server's page has the numbers under *Honest limits*.
+time since it allows, and pays an elite's loot into your own chest only.
+Since 0.157.0 all of it is held to one allowance of gold an account a day,
+every run and every chest's coins together; the game shows what the server
+paid and what it held back, never its own count. The server's page has the
+numbers under *Honest limits*.
 
 **The testing tools give nothing.** The Testing Ground, the GM panel's Spawn
 and its stress tests make copies that are this game's alone: they report no

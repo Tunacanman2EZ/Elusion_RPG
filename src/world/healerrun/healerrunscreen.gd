@@ -163,6 +163,10 @@ var enter_request: Callable = Callable(Api, "post")
 var slot_now: Callable = Callable(self, "_slot")
 var _paid: bool = false
 var _busy: bool = false
+# What the server paid at Leave and held back (0.157.0, A DAY'S MINIGAME GOLD:
+# one allowance an account a day across every minigame); -1 before it says.
+var _gold_paid: int = -1
+var _held_back: int = 0
 var god_switch: CheckButton = null
 # The suite's door: may this player see the god mode switch.
 var may_be_god: Callable = Callable(self, "_may_be_god")
@@ -1015,9 +1019,25 @@ func leave() -> void:
 	if not await _pay():
 		return
 	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
-	if hud != null and is_instance_valid(hud) and hud.has_method("_push_message") and gold > 0:
-		hud.call("_push_message", "The Healer's Run: %d gold, into your purse." % gold, COLOUR, 0, true)
+	if _gold_paid >= 0:
+		gold = _gold_paid
+	var said: String = paid_line("The Healer's Run", gold, _held_back)
+	if hud != null and is_instance_valid(hud) and hud.has_method("_push_message") and said != "":
+		hud.call("_push_message", said, COLOUR, 0, true)
 	close()
+
+
+static func paid_line(game_name: String, paid: int, held: int) -> String:
+	"""A Leave in words: the gold into the purse and, past the day's
+	allowance, what the server held back. "" for nothing either way."""
+	if held > 0 and paid > 0:
+		return "%s: %s gold into your purse - %s held back, today's minigame gold is full." % [
+			game_name, thousands(paid), thousands(held)]
+	if held > 0:
+		return "%s: today's minigame gold is full - %s held back." % [game_name, thousands(held)]
+	if paid > 0:
+		return "%s: %s gold, into your purse." % [game_name, thousands(paid)]
+	return ""
 
 
 func again() -> void:
@@ -1080,6 +1100,9 @@ func _pay() -> bool:
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
 	if res.get("ok", false) or int(res.get("status", 0)) == 409:
 		_paid = true
+		if res.get("ok", false) and data.has("gold"):
+			_gold_paid = int(data["gold"])
+			_held_back = int(data.get("held_back", 0))
 		var status: Dictionary = data.get("status", {}) if data.get("status") is Dictionary else {}
 		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
 			_held.call("set_gold", int(status["gold"]))

@@ -139,4 +139,4 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
 theme_override_font_sizes/font_size = 10
 autowrap_mode = 3
-text = "Restoring puts back their level, gold, gear, pet, bag and skills, and signs them out so their game reloads it. The bank and lusions are the account's and do not change. An item they have traded away since comes back as a second copy."
+text = "Restoring puts back their level, gold, gear, pet, bag and skills, and signs them out so their game reloads it. The bank and lusions are the account's and do not change. An item that went to the bank, another character or another player since stays there and is not put back twice."

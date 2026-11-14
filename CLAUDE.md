@@ -14650,6 +14650,30 @@ physics on a phone, the boss's spikes drawn together.
 `_test_the_readout_counts_the_screen()` (testrunner_12 - part 11 is at
 245 KB).
 
+### Security fixes: a day's minigame gold, a rollback that holds back (0.157.0)
+
+The owner, 14 Nov: "lets fix issues in security", all four on the plan. Most
+of it is the server's (the API's CLAUDE.md: "A day's minigame gold", "Save
+history ... No second copies", "Deleting your own account ... A restored
+backup", "Held to a walk"). What the game says:
+
+- **The Leave line is the server's gold** (healerrunscreen.gd `paid_line()`,
+  which Cut the Cloth's screen uses too): an account's minigames now pay one
+  allowance a day (100,000 unless the server is told otherwise), so a run
+  past it is paid what is left. `_pay()` keeps the answer's `gold` and
+  `held_back`, and the line says "1,000 gold into your purse - 750 held back,
+  today's minigame gold is full", or that the day is full, or the gold as
+  before. It used to say what the screen counted.
+- **The chest says once** (combat.gd `report_endless_kill()`,
+  `DAY_FULL_WORDS`, at most every `DAY_FULL_SAY_MSEC`): past the allowance a
+  chest kill rolls its gear and no coins.
+- **The Save history** (savehistory.gd `restored_line()`): a restore now puts
+  back nothing that went to the bank, another character or another player
+  since; the line names what was held back (the server's `held_back_words`),
+  or says an older snapshot could not tell. The window's own words say so
+  (savehistory.tscn), not "comes back as a second copy".
+`_test_a_days_minigame_gold_and_a_rollback_held_back()` (testrunner_12).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

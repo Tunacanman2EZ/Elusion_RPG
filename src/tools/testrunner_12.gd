@@ -1,6 +1,7 @@
 # testrunner_12.gd - part 12 of the suite (testrunner.gd says how it is
 # split; part 11 passed 245 KB): _test_every_look_is_warmed,
-# _test_the_stand_ins_cost_less, _test_the_readout_counts_the_screen.
+# _test_the_stand_ins_cost_less, _test_the_readout_counts_the_screen,
+# _test_a_days_minigame_gold_and_a_rollback_held_back.
 extends "res://src/tools/testrunner_11.gd"
 
 
@@ -293,3 +294,115 @@ func _test_the_readout_counts_the_screen() -> void:
 		PerfOverlay.marks_text({"marks": {&"boss casts": 1}, "draws": 4}) == "boss casts ×1 · draws +4")
 	check("  the screen's count is a number here too", PerfOverlay.screen_draws() >= 0)
 	print("  the readout's draws: the screen's own, %d now" % PerfOverlay.screen_draws())
+
+
+# =============================================================================
+# A DAY'S MINIGAME GOLD, AND A ROLLBACK THAT HOLDS BACK (0.157.0)
+# =============================================================================
+# The owner, 14 Nov: "lets fix issues in security". The server now pays an
+# account's minigames one allowance a day - every run's gold and every
+# chest's coins together - and says what it held back; and a rollback puts
+# back nothing that went to the bank, another character or another player
+# since. The game says both: the Leave line (healerrunscreen.gd paid_line(),
+# Cut the Cloth's too), the chest once in ten minutes (combat.gd
+# DAY_FULL_WORDS), and the Save history's line after a restore.
+
+func _test_a_days_minigame_gold_and_a_rollback_held_back() -> void:
+	section("A day's minigame gold, and a rollback that holds back what went elsewhere (0.157.0)")
+	const HealerScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
+	const ClothScreen := preload("res://src/world/cloth/clothscreen.gd")
+	const History := preload("res://src/ui/owner/savehistory.gd")
+	check("a Leave in words: the gold, and past the day's allowance what was held back; nothing either way, nothing said",
+		HealerScreen.paid_line("The Healer's Run", 1000, 0) == "The Healer's Run: 1,000 gold, into your purse."
+		and HealerScreen.paid_line("Cut the Cloth", 1000, 750)
+			== "Cut the Cloth: 1,000 gold into your purse - 750 held back, today's minigame gold is full."
+		and HealerScreen.paid_line("The Healer's Run", 0, 20000)
+			== "The Healer's Run: today's minigame gold is full - 20,000 held back."
+		and HealerScreen.paid_line("Cut the Cloth", 0, 0) == "")
+	var hud_script := GDScript.new()
+	hud_script.source_code = "extends Node\nvar said: Array = []\nfunc _push_message(text, _colour = null, _at = 0, _log = false) -> void:\n\tsaid.append(str(text))\n"
+	hud_script.reload()
+	var hud := Node.new()
+	hud.set_script(hud_script)
+	add_child(hud)
+	var healer = HealerScreen.open(get_tree(), 4, 91, {"most": 1000}, hud)
+	healer.finish_request = func(_path: String, _body: Dictionary, _wait: float) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"gold": 250, "held_back": 750, "status": {"gold": 1250}}}
+	await get_tree().process_frame
+	healer.run.waves_done = 25
+	healer.leave()
+	for i in 3:
+		await get_tree().process_frame
+	check("the Healer's Run's Leave says what the server paid, and what it held back - not what the screen counted",
+		(hud.get("said") as Array).has("The Healer's Run: 250 gold into your purse - 750 held back, today's minigame gold is full."),
+		hud.get("said"))
+	var cloth: CanvasLayer = ClothScreen.open(get_tree(), hud, 92, {"rounds": [10, 20]})
+	cloth.set("finish_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"gold": 0, "held_back": 10, "status": {"gold": 1250}}})
+	await get_tree().process_frame
+	cloth.call("begin")
+	(cloth.get("run") as Node2D).set("best", 1)
+	cloth.call("ask_to_leave")
+	cloth.call("ask_to_leave")
+	for i in 3:
+		await get_tree().process_frame
+	check("  and Cut the Cloth's the same way: the day full, its rounds' gold held back, said so",
+		(hud.get("said") as Array).has("Cut the Cloth: today's minigame gold is full - 10 held back."), hud.get("said"))
+
+	# THE CHEST: past the allowance it rolls gear and no coins, said once.
+	var noticer_script := GDScript.new()
+	noticer_script.source_code = "extends Node2D\nvar notices: Array = []\nfunc show_notice(text) -> void:\n\tnotices.append(str(text))\n"
+	noticer_script.reload()
+	var me := Node2D.new()
+	me.set_script(noticer_script)
+	me.add_to_group("player")
+	add_child(me)
+	var kept_post: Callable = Combat.kill_post
+	var kept_token: String = Api.token
+	var kept_known: bool = Api.reachability_known
+	var kept_online: bool = Api.server_online
+	var kept_said: int = int(Combat.get("_day_full_said_at"))
+	Api.token = "test-not-a-real-token"
+	Api.reachability_known = true
+	Api.server_online = true
+	Combat.set("_day_full_said_at", -Combat.DAY_FULL_SAY_MSEC)
+	Combat.kill_post = func(_path: String, _sent: Dictionary, _timeout: float) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"used": 1, "added": [{"item_id": "ironsword", "quantity": 1}],
+			"cut": [], "mythic": "", "pet_won": false, "held_back": 2000, "chest_id": "chest:endless:0"}}
+	await Combat.report_endless_kill("bushmage", me)
+	await Combat.report_endless_kill("bushmage", me)
+	check("a chest kill past the day's allowance says, once, that no more coins come today",
+		(me.get("notices") as Array).count(Combat.DAY_FULL_WORDS) == 1, me.get("notices"))
+	Combat.kill_post = func(_path: String, _sent: Dictionary, _timeout: float) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"used": 2, "added": [{"item_id": "goldcoin", "quantity": 2}],
+			"cut": [], "mythic": "", "pet_won": false, "held_back": 0, "chest_id": "chest:endless:0"}}
+	Combat.set("_day_full_said_at", -Combat.DAY_FULL_SAY_MSEC)
+	await Combat.report_endless_kill("bushmage", me)
+	check("  and a kill with nothing held back says nothing of it",
+		(me.get("notices") as Array).count(Combat.DAY_FULL_WORDS) == 1, me.get("notices"))
+	Combat.kill_post = kept_post
+	Api.token = kept_token
+	Api.reachability_known = kept_known
+	Api.server_online = kept_online
+	Combat.set("_day_full_said_at", kept_said)
+	me.queue_free()
+	hud.queue_free()
+
+	# THE ROLLBACK: the Save history says what was held back.
+	var answer := {"username": "dave", "character": "Warrior", "taken_at": 0, "was": {"level": 3, "gold": 5, "items": 2},
+		"now": {"level": 2, "gold": 9, "items": 4}, "sessions_ended": 1, "held_back_words": "2 x Iron Sword, Jade Helm",
+		"knew_where": true}
+	check("after a restore, the Save history names what went elsewhere and was not put back twice",
+		History.restored_line(answer, "boss").contains("Held back, gone elsewhere since: 2 x Iron Sword, Jade Helm."))
+	answer["held_back_words"] = ""
+	answer["knew_where"] = false
+	check("  and says when an older snapshot could not tell",
+		History.restored_line(answer, "boss").contains("An older snapshot: anything given away since may now be twice."))
+	answer.erase("knew_where")
+	check("  and a server from before says nothing of either",
+		not History.restored_line(answer, "boss").contains("Held back") and not History.restored_line(answer, "boss").contains("older snapshot"))
+	var window: String = FileAccess.get_file_as_string("res://scene/ui/owner/savehistory.tscn")
+	check("  the window's own words no longer say a restore makes a second copy",
+		window.contains("is not put back twice") and not window.contains("second copy"))
+	print("  the Leave's words, the chest's notice and the Save history's line, as the server answers")
+

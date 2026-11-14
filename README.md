@@ -62,10 +62,9 @@ The bar along the bottom holds the windows a player opens all the time; Friends,
 
 ## Who makes it
 
-Elusion is made by **Elusion Studios**, and there are two of us:
+Elusion is made by **Elusion Studios** — that's me, **Tunacan** (Robert A. Clear). I built Elusion solo up to launch, from zero coding experience, and I still develop it solo: the code, the design and the server. Where this README says "I", it means me.
 
-- **Tunacan** (Robert A. Clear), owner. I built Elusion solo up to launch, from zero coding experience: the code, the design and the server. Where this README says "I", it means me.
-- **[AllMind](https://allmind.dev/)** (Charles E. Clemmey Jr.), co-owner since 0.21.0. A self-taught coder, five years in, and a friend of more than ten years — we met in Mirage Realms and shared a guild. He gave Elusion its first push, some of the UI and the first inventory, and now we develop it together.
+Thanks to **[AllMind](https://allmind.dev/)** (Charles E. Clemmey Jr.), a friend of more than ten years — we met in Mirage Realms and shared a guild — who gave Elusion its first push.
 
 The artists, and everyone else whose work is in the game, are credited under [License](#license) and in the game's Credits.
 

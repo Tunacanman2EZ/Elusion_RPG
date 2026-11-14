@@ -235,6 +235,11 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 #
 # THE FORGE'S TOO (0.120.0): its fire sprites report here with `game` "forge"
 # (forgerun.gd), into the chest by the island's arrival.
+const DAY_FULL_WORDS := "Today's minigame gold is full - no more coins into your chest today."
+const DAY_FULL_SAY_MSEC := 10 * 60 * 1000
+var _day_full_said_at: int = -DAY_FULL_SAY_MSEC
+
+
 func report_endless_kill(enemy_id: String, killer: Node, game: String = "endless") -> void:
 	if enemy_id == "" or not Api.is_logged_in() or Api.is_known_offline():
 		return
@@ -255,6 +260,11 @@ func report_endless_kill(enemy_id: String, killer: Node, game: String = "endless
 		_notify(target, "A pet - it is in your chest.")
 	if not (data.get("cut", []) as Array).is_empty():
 		_notify(target, "Your chest is full - the least of it made room.")
+	# A DAY'S MINIGAME GOLD (0.157.0): past the account's allowance a chest
+	# rolls its gear and no coins. Said once in DAY_FULL_SAY_MSEC, not a kill.
+	if _int(data.get("held_back", 0)) > 0 and Time.get_ticks_msec() - _day_full_said_at >= DAY_FULL_SAY_MSEC:
+		_day_full_said_at = Time.get_ticks_msec()
+		_notify(target, DAY_FULL_WORDS)
 	if OS.is_debug_build():
 		print("[KILL] %s %s - %d item(s) into the chest, %d cells held" % [
 			game, enemy_id, _array(data.get("added", [])).size(), _int(data.get("used", 0))])

@@ -19,7 +19,9 @@
 #   read again, and its top line is the snapshot that undoes what just happened.
 # - WHAT A ROLLBACK DOES NOT DO is written at the bottom of the window, because
 #   it is the part that surprises: the bank and lusions are the account's and
-#   stay, and an item traded away since comes back as a second copy.
+#   stay. Since 0.157.0 an item that went to the bank, another character or
+#   another player since is held back rather than put back twice, and the
+#   line after a restore names what was (the server's `held_back_words`).
 #
 # OWNER ONLY, three times over, like the item catalogue: the HUD builds it only
 # for the owner, every request here asks Api.is_owner first, and the server is
@@ -333,6 +335,11 @@ static func restored_line(data: Dictionary, me: String) -> String:
 		line += " They were not signed in; they get it when they next sign in."
 	if bool(data.get("pet_cleared", false)):
 		line += " The pet it had out is held nowhere now, so none is out."
+	var held: String = str(data.get("held_back_words", ""))
+	if held != "":
+		line += " Held back, gone elsewhere since: %s." % held
+	elif data.has("knew_where") and not bool(data.get("knew_where", true)):
+		line += " An older snapshot: anything given away since may now be twice."
 	line += " The top line undoes this."
 	return line
 

@@ -44,6 +44,8 @@
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/cloth/clothrun.gd")
+# A Leave in words, the day's allowance with it - the Healer's Run's, one rule.
+const HealerScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const LAYER := 90
 const GAME := "cloth"
@@ -123,6 +125,10 @@ var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
 var _paid: bool = false
 var _busy: bool = false
+# What the server paid at Leave and held back (0.157.0, A DAY'S MINIGAME
+# GOLD); -1 before it says.
+var _gold_paid: int = -1
+var _held_back: int = 0
 
 
 static func open(tree: SceneTree, on_hud: Node = null, run_on_server: int = 0, what_it_pays: Dictionary = {}) -> CanvasLayer:
@@ -673,8 +679,11 @@ func leave() -> void:
 	if not await _pay():
 		return
 	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
-	if run_id != 0 and gold > 0 and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
-		hud.call("_push_message", "Cut the Cloth: %s gold, into your purse." % thousands(gold), GOLD, 0, true)
+	if _gold_paid >= 0:
+		gold = _gold_paid
+	var said: String = HealerScreen.paid_line("Cut the Cloth", gold, _held_back)
+	if run_id != 0 and said != "" and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
+		hud.call("_push_message", said, GOLD, 0, true)
 	close()
 
 
@@ -726,6 +735,9 @@ func _pay() -> bool:
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
 	if res.get("ok", false) or int(res.get("status", 0)) == 409:
 		_paid = true
+		if res.get("ok", false) and data.has("gold"):
+			_gold_paid = int(data["gold"])
+			_held_back = int(data.get("held_back", 0))
 		var status: Dictionary = data.get("status", {}) if data.get("status") is Dictionary else {}
 		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
 			_held.call("set_gold", int(status["gold"]))
