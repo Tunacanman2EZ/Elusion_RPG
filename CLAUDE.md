@@ -14695,6 +14695,15 @@ him alone, chose to open them for everyone.
   server's walk check lets a step onto one through (the town's pad was 90 of
   115 jumps in `killwatch.py --moves`). **Move a pad, or add one: re-export
   and copy gamedata.json to the API.**
+- **Where each lever stands** (exportgamedata.gd `_collect_levers()`): every
+  area in gamedata.json carries `"levers"`, the lever's path in its scene
+  (`Presence.lever_name()`, the name a pull goes by) to its spot, and
+  presence.py takes a pull only from a player within 160 px of that lever
+  (the API's CLAUDE.md, "Levers only from near"). Only the Field has levers
+  today. **Move, rename or add a lever: re-export and copy gamedata.json to
+  the API**, or every honest pull of it is refused -
+  `_test_levers_written_where_they_stand()` builds each area's scene and
+  holds the file to it.
 `_test_every_minigame_is_open()` (testrunner_12; sabotage-caught: the Forge
 the owner's again).
 

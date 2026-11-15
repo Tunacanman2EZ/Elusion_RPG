@@ -459,3 +459,64 @@ func _test_every_minigame_is_open() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  all six open: done")
+
+
+# LEVERS ONLY FROM NEAR (0.158.0). presence.py takes a pull only from a
+# player near that lever, by gamedata.json's "levers" - written by the
+# exporter, name (the path a pull goes by) -> spot. A lever renamed or moved
+# without a re-export would have every honest pull refused, so each area's
+# scene is built and its levers held to what the file says.
+func _test_levers_written_where_they_stand() -> void:
+	section("LEVERS ONLY FROM NEAR (0.158.0): gamedata.json says where every lever stands, by the name a pull goes by")
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var areas: Dictionary = (data as Dictionary).get("areas", {}) if data is Dictionary else {}
+	var wrong: Array = []
+	var seen: int = 0
+	for area_id in areas.keys():
+		var area: Dictionary = areas[area_id]
+		var packed: PackedScene = load(str(area.get("scene", ""))) as PackedScene
+		if packed == null:
+			continue
+		var root: Node = packed.instantiate()
+		var found: Dictionary = {}
+		_levers_in(root, root, found)
+		root.free()
+		seen += found.size()
+		var written: Dictionary = area.get("levers", {}) if area.get("levers") is Dictionary else {}
+		if not area.has("levers"):
+			wrong.append("%s has no \"levers\"" % area_id)
+			continue
+		for lever_name in found:
+			var spot: Array = written.get(lever_name, [])
+			var at: Vector2 = found[lever_name]
+			if spot.size() != 2 or absf(float(spot[0]) - at.x) > 0.5 or absf(float(spot[1]) - at.y) > 0.5:
+				wrong.append("%s: %s" % [area_id, lever_name])
+		for lever_name in written:
+			if not found.has(lever_name):
+				wrong.append("%s: %s is in the file and not the scene" % [area_id, lever_name])
+	check("every area's levers are written by name and spot (%d lever(s); re-export when one moves)" % seen,
+		wrong.is_empty() and seen > 0, wrong)
+	var presence_script: String = FileAccess.get_file_as_string("res://src/systems/presence.gd")
+	check("  by the name a pull goes by: the lever's path in its area's scene",
+		presence_script.contains("String(scene.get_path_to(lever))"))
+	print("  levers written where they stand: done")
+
+
+func _levers_in(root: Node, node: Node, found: Dictionary) -> void:
+	for child in node.get_children():
+		var script: Script = child.get_script() as Script
+		if script != null and script.resource_path == "res://src/world/lever.gd":
+			var xform := Transform2D.IDENTITY
+			var chain: Array = []
+			var at: Node = child
+			while at != null:
+				chain.push_front(at)
+				if at == root:
+					break
+				at = at.get_parent()
+			for piece in chain:
+				if piece is Node2D:
+					xform = xform * (piece as Node2D).transform
+			found[String(root.get_path_to(child))] = xform.origin
+		if not child.scene_file_path.begins_with("res://scene/enemy/"):
+			_levers_in(root, child, found)

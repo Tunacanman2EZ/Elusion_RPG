@@ -1823,6 +1823,11 @@ const RESPAWNER_SCRIPT := "res://src/world/enemyrespawner.gd"
 # "arrivals" (0.157.0): presence.py's HELD TO A WALK lets a step land there
 # free, since a pad is a jump an honest game makes.
 const TELEPORTER_SCRIPT := "res://src/world/teleporter.gd"
+# A lever (lever.gd) by its path in the area's scene - the name a pull goes
+# by on the wire (Presence.lever_name()) - and where it stands, written as the
+# area's "levers" (0.158.0): presence.py takes a pull only from a player who
+# stands near that lever.
+const LEVER_SCRIPT := "res://src/world/lever.gd"
 const ENEMY_SCENES := "res://scene/enemy/"
 
 
@@ -1910,6 +1915,8 @@ func _export_areas() -> Dictionary:
 		spawns.sort_custom(func(a, b): return String(a["o"]) < String(b["o"]))
 		var arrivals: Array = []
 		_collect_arrivals(root, root, arrivals)
+		var levers: Dictionary = {}
+		_collect_levers(root, root, levers)
 		arrivals.sort()
 		out[area_id] = {
 			"scene": String(area_map[area_id]),
@@ -1920,6 +1927,7 @@ func _export_areas() -> Dictionary:
 			"spawns": spawns,
 			# Where an in-area teleport pad puts the player (0.157.0).
 			"arrivals": arrivals,
+			"levers": levers,
 		}
 		root.free()
 	return out
@@ -1933,6 +1941,16 @@ func _collect_arrivals(root: Node, node: Node, arrivals: Array) -> void:
 			arrivals.append([snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
 		if not child.scene_file_path.begins_with(ENEMY_SCENES):
 			_collect_arrivals(root, child, arrivals)
+
+
+func _collect_levers(root: Node, node: Node, levers: Dictionary) -> void:
+	for child in node.get_children():
+		var script: Script = child.get_script() as Script
+		if script != null and script.resource_path == LEVER_SCRIPT:
+			var at: Vector2 = _authored_position(root, child)
+			levers[String(root.get_path_to(child))] = [snappedf(at.x, 0.1), snappedf(at.y, 0.1)]
+		if not child.scene_file_path.begins_with(ENEMY_SCENES):
+			_collect_levers(root, child, levers)
 
 
 func _collect_spawns(root: Node, node: Node, spawns: Array, respawn: Dictionary) -> void:

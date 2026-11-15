@@ -2,6 +2,7 @@
 	"areas": {
 		"bigfield": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 6.0,
 			"respawn_seconds": 30.0,
 			"scene": "res://scene/bigfield.tscn",
@@ -4298,6 +4299,7 @@
 		},
 		"boss": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 120.0,
 			"scene": "res://scene/boss.tscn",
@@ -4314,6 +4316,7 @@
 		},
 		"bossarena": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 120.0,
 			"scene": "res://scene/bossarena.tscn",
@@ -4370,6 +4373,7 @@
 		},
 		"descent": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/descent.tscn",
@@ -4377,6 +4381,7 @@
 		},
 		"easteregg": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/easteregg.tscn",
@@ -4389,6 +4394,7 @@
 					922.0
 				]
 			],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/elusion.tscn",
@@ -4396,6 +4402,7 @@
 		},
 		"endless": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/endless.tscn",
@@ -4403,6 +4410,16 @@
 		},
 		"field": {
 			"arrivals": [],
+			"levers": {
+				"ysortworld/interactables/levergatesin": [
+					2168.0,
+					1550.0
+				],
+				"ysortworld/interactables/levergatesout": [
+					1992.0,
+					1368.0
+				]
+			},
 			"respawn_jitter": 6.0,
 			"respawn_seconds": 30.0,
 			"scene": "res://scene/field.tscn",
@@ -4627,6 +4644,7 @@
 		},
 		"forge": {
 			"arrivals": [],
+			"levers": {},
 			"respawn_jitter": 0.0,
 			"respawn_seconds": 0.0,
 			"scene": "res://scene/forge.tscn",

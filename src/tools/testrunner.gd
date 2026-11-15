@@ -281,6 +281,7 @@ func _run_all() -> void:
 	await _test_the_readout_counts_the_screen()
 	await _test_a_days_minigame_gold_and_a_rollback_held_back()
 	await _test_every_minigame_is_open()
+	await _test_levers_written_where_they_stand()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
