@@ -2291,11 +2291,11 @@ func _test_the_forge_pays() -> void:
 		and int(exported.get("volcano_believed", -1)) == Run.VOLCANO_BELIEVED
 		and is_equal_approx(float(volcano.get("gap", -1)), float(made["volcano"]["gap"]))
 		and int(volcano.get("count", -1)) == int(made["volcano"]["count"]), [written.size(), exported.get("sprites")])
-	check("  at its fastest: the first flood 40 s at a sprite each 3 s, the last 19.13 s at three each 0.629 s, 50 alive",
+	check("  at its fastest, for a party of four (0.160.0): the first flood 40 s at three sprites each 3 s, the last 19.13 s at eight each 0.629 s, 125 alive",
 		is_equal_approx(float(phases[0]["seconds"]), 40.0) and is_equal_approx(float(phases[0]["gap"]), 3.0)
-		and int(phases[0]["count"]) == 1 and is_equal_approx(float(phases[7]["seconds"]), 19.13)
-		and is_equal_approx(float(phases[7]["gap"]), 0.629) and int(phases[7]["count"]) == 3
-		and int(made["alive_most"]) == 50, [phases[0], phases[7]])
+		and int(phases[0]["count"]) == 3 and is_equal_approx(float(phases[7]["seconds"]), 19.13)
+		and is_equal_approx(float(phases[7]["gap"]), 0.629) and int(phases[7]["count"]) == 8
+		and int(made["alive_most"]) == 125, [phases[0], phases[7]])
 
 	# ---- a fire sprite pays the chest ----
 	var island := Node2D.new()
@@ -2345,9 +2345,20 @@ func _test_the_forge_pays() -> void:
 			"cut": [], "mythic": "", "pet_won": false, "chest_id": "chest:forge:0"}}
 	var sprite: Node = run.call("_bring", Run.SPRITE, Run.CENTRE + Vector2(400, 0), 1.0)
 	await get_tree().process_frame
-	check("a fire sprite the Forge brings carries the chest's mark and the stress test's: no ordinary kill",
+	check("a fire sprite the Forge brings carries the chest's mark and the run's: no ordinary kill",
 		sprite != null and str(sprite.get_meta(Run.CHEST_META, "")) == "forge" and sprite.has_meta(Run.MARK)
 		and sprite.call("get_enemy_id") == "", sprite)
+	# BOOKED (0.160.0): the run's mark is the Endless's, not the stress test's,
+	# so the sprite is numbered and sent to the server's books like an Endless
+	# elite - which is what lets ELUSION_FORGE_RECEIPTS back its chest kill.
+	var sync: Node = (load("res://src/world/monstersync.gd") as GDScript).new()
+	check("  the run's mark is the Endless's, so the sprite is numbered and shared with the server's books",
+		Run.MARK == &"run_extra" and sprite != null and not sprite.has_meta(&"stress_copy")
+		and bool(sync.call("_shared", sprite)) and int((sprite.call("net_props") as Dictionary).get("rx", 0)) == 1,
+		[Run.MARK, sprite.call("net_props") if sprite != null else null])
+	sync.free()
+	check("  the game is build 9, the first whose Forge sprites the server books (Combat.FORGE_RECEIPT_BUILD)",
+		Api.BUILD >= 9 and Combat.FORGE_RECEIPT_BUILD == 9, [Api.BUILD, Combat.FORGE_RECEIPT_BUILD])
 	Api.reachability_known = true
 	Api.server_online = true
 	if sprite != null:
@@ -3775,7 +3786,7 @@ func _test_the_descent_together() -> void:
 	Boons.levels.erase("secondwind")
 	var downed: bool = bool(run_a.call("knock_out", body_a))
 	var down_not_out: bool = downed and Boons.out and bool(run_a.call("running")) and is_equal_approx(body_a.modulate.a, RunScript.OUT_ALPHA)
-	var nothing_lands: bool = _func_body(_code_src("res://src/characters/player.gd"), "func take_damage(").contains("if DescentBoons.out:")
+	var nothing_lands: bool = _func_body(_code_src("res://src/characters/player.gd"), "func take_damage(").contains("if DescentBoons.out or down_in_run:")
 	run_a.call("_process", 0.016)
 	var still_on: bool = bool(run_a.call("running"))
 	party_b.call("flush")

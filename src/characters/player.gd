@@ -370,6 +370,10 @@ var _regen_stamina_accumulator: float = 0.0
 # =============================================================================
 
 var is_dying: bool = false
+# DOWN IN A FORGE PARTY (0.160.0, forgerun.gd _go_down()): waiting by the
+# anvil while the party holds on - nothing lands, nothing trains, no attack,
+# and a kill your blows had a share in pays nothing (BaseEnemy._die()).
+var down_in_run: bool = false
 
 # This character's effects node (statuseffects.gd), made in _ready(). Null on
 # a body that never entered the tree; every effects_*() below answers "none"
@@ -1862,7 +1866,7 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 		return
 	# DOWN IN A DESCENT PARTY (0.126.0, descentboons.gd `out`): a fallen
 	# player watches until the room is clear - nothing lands, nothing trains.
-	if DescentBoons.out:
+	if DescentBoons.out or down_in_run:
 		return
 
 	_set_active()
@@ -1998,7 +2002,9 @@ func effects_let_sprint() -> bool:
 
 
 func effects_let_attack() -> bool:
-	"""Frozen, you cannot attack (0.93.3)."""
+	"""Frozen, you cannot attack (0.93.3) - nor down in a Forge party (0.160.0)."""
+	if down_in_run:
+		return false
 	return bool(status_effects.call(&"can_attack")) if status_effects != null else true
 
 

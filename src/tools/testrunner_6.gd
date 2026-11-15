@@ -3302,7 +3302,7 @@ func _test_presence_carries_the_monsters() -> void:
 		_code_src("res://src/systems/presence.gd").contains('"v": SHARED_VERSION, "xt": TICK_ATTACKS,')
 		and Presence.TICK_ATTACKS == 1)
 	check("  and that it draws the server's count of the monsters' health (0.87.0)",
-		_code_src("res://src/systems/presence.gd").contains('"sh": SERVER_HEALTH, "en": RUN_VERSION})')
+		_code_src("res://src/systems/presence.gd").contains('"sh": SERVER_HEALTH, "en": RUN_VERSION, "fp": FORGE_PARTY})')
 		and Presence.SERVER_HEALTH == 1)
 	Presence.handle_message({"t": "welcome", "id": 7})
 	check("a server from before shared monsters does not share them - every game fights its own",

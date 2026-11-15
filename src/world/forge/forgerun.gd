@@ -86,8 +86,9 @@
 # open slice, the light's rim of a flooded one, the sides where the two meet,
 # by length) - so each flood brings them closer to the anvil - more often and
 # more at once with every flood (spawn_gap(), alive_cap()). They carry the
-# stress test's mark: no kill report, never shared or numbered, never
-# respawned, pay nothing.
+# run's MARK (0.160.0): no ordinary kill, never respawned, numbered and
+# shared with the server's books, so each one's loot into a chest is backed
+# by the server's own count of the fight.
 #
 # THE TANK'S WALKWAYS (the owner: "what if the tanks aura can push back lava
 # only where he is standing to create safe walkways for the team"): while a
@@ -105,6 +106,21 @@
 # Player.take_damage() asks knock_out() first - you wake beside the anvil on
 # 1 health, every effect cleared, and the run is over: "The forge held 4:12".
 #
+# THE FORGE TOGETHER (0.160.0, forgeparty.gd, `party`): a party has an island
+# of its own, and one run on it. The game leading the room runs the heat, the
+# floods, the ice essence and the fire sprites (shared by monstersync.gd);
+# the others follow its line (follow_line()) - the same island sinking the
+# same way, the same essence, the same volcano clock - with their own fire,
+# wading, forging and rocks, aimed at their own player. Anybody lights the
+# forge ("go"). A fall in a party is DOWN, not over: you wait by the anvil,
+# see-through, nothing lands on you and your blows pay nothing
+# (Player.down_in_run), and the run goes on while anybody stands; the
+# leader ends it when everyone is down. The light round the anvil is a
+# tank's when the party has a tank (party_safe()), and every tank's aura
+# lays walkways on every screen. Scaled by how many started (PARTY_CROWD,
+# PARTY_HEALTH, the Endless's table); the server holds the kills to
+# schedule() at PARTY_MOST.
+#
 # THE SMITH'S STORY (0.123.0): the owner's, above, told in the game's story
 # screen (StoryScreen) the first time a character arrives on the island
 # (field.gd story_seen(), key STORY_KEY) - only in the real area, never on a
@@ -112,7 +128,7 @@
 #
 # WHAT IT PAYS: since 0.120.0, every fire sprite's loot into your chest (the
 # server's pets and mythics ten times rarer here since 0.121.0). The legacy
-# armour, a party of four and the high-score board are the next steps.
+# armour and the high-score board are the next steps.
 extends Node
 
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
@@ -168,7 +184,12 @@ const LAVA_BURN := 0.12
 const TANK_RED := Color(1.0, 0.5, 0.42)
 
 # ---- THE FIRE SPRITES ---------------------------------------------------------
-const MARK := &"stress_copy"
+# THE RUN'S MARK (0.160.0; it was the stress test's): numbered and shared
+# with the server's books like the Endless's elites (endlessrun.gd RUN_MARK) -
+# still no ordinary kill (BaseEnemy.get_enemy_id()), no respawn, no swell -
+# so the server counts every fight and can back a chest kill with it
+# (ELUSION_FORGE_RECEIPTS). The server seats the Forge a room per account.
+const MARK := &"run_extra"
 const SPRITE := "firesprite"
 const NOTICE := 2600.0
 const SPAWN_EVERY := 3.0
@@ -187,12 +208,24 @@ const EDGE_IN := 22.0
 # no XP - into this character's chest by the arrival (the Endless's chest,
 # endlesschest.gd, for CHEST_GAME): it carries CHEST_META, so BaseEnemy._die()
 # sends it to Combat.report_endless_kill() and POST /api/minigames/kill, and
-# the server holds the kills to schedule(). It still carries the stress test's
-# MARK: no ordinary kill, never shared or numbered. And each run's time goes
+# the server holds the kills to schedule(). It carries the run's MARK (0.160.0,
+# the stress test's until then): no ordinary kill, numbered for the server's
+# books, so a kill can be held to the books' own count. And each run's time goes
 # to POST /api/minigames/best (best_post), which keeps the best.
 const CHEST_GAME := "forge"
 const CHEST_META := &"chest_game"
 const ChestScript := preload("res://src/world/endless/endlesschest.gd")
+# ---- THE FORGE TOGETHER (0.160.0) ---------------------------------------------
+const PartyScript := preload("res://src/world/forge/forgeparty.gd")
+const PARTY_MOST := 4
+# By how many started the run, 0 to 4 (the Endless's party_crowd() and
+# party_health()): more sprites alive and at once, and each stronger.
+const PARTY_CROWD := [1.0, 1.0, 1.5, 2.0, 2.5]
+const PARTY_HEALTH := [1.0, 1.0, 1.2, 1.4, 1.6]
+# A player down in a party run: see-through, waiting by the anvil.
+const OUT_ALPHA := 0.4
+# The leader's line: fourteen whole numbers (line()).
+const LINE_LENGTH := 14
 # Beside the arrival, in the light.
 const CHEST_SPOT := CENTRE + Vector2(72, 124)
 # The volcano as the server believes it: this long, and everybody has fallen.
@@ -283,6 +316,8 @@ const ESSENCE_COOL := 0.3
 const ESSENCE_REACH := 26.0
 # Never nearer the anvil than this share of the radius.
 const ESSENCE_NEAR := 0.5
+# (Following, 0.160.0.) The leader's essence lies until its line says it is gone.
+const ESSENCE_FOLLOWED := 9999.0
 
 @export var entry_spot: Vector2 = CENTRE + Vector2(0, 110)
 
@@ -368,6 +403,22 @@ var finale_afterglow: float = 0.0
 var _wiped: bool = false
 var _sky: Node2D = null
 
+# ---- THE FORGE TOGETHER (0.160.0) ---------------------------------------------
+var party: Node = null
+# This run's key, the leader's: lines and "me"s from another run are passed over.
+var run_key: int = 0
+# How many the run is scaled for: fixed when it starts.
+var players: int = 1
+# This game's player is down in a party run.
+var down: bool = false
+# Essences this game's player has walked over this run (its "me").
+var took: int = 0
+# (Leader.) The others' essences counted so far: id -> took.
+var _took_seen: Dictionary = {}
+# (Following.) The leader's last line, and where the essence this game took lay.
+var _line: Array = []
+var _taken_spot: Vector2 = Vector2.INF
+
 
 func _ready() -> void:
 	# MEASURE HERE (0.152.0): the readout's Measure names this minigame.
@@ -410,6 +461,10 @@ func _ready() -> void:
 	var props: Node = area.get_node_or_null("ysortworld/interactables") if area != null else null
 	if props != null or area != null:
 		(props if props != null else area).add_child.call_deferred(chest)
+	party = PartyScript.new()
+	party.name = "forgeparty"
+	party.set("run", self)
+	add_child(party)
 	_tell_story.call_deferred()
 
 
@@ -431,6 +486,7 @@ func _tell_story() -> void:
 
 func _exit_tree() -> void:
 	_unredden()
+	_stand_up()
 
 
 func _player() -> Node2D:
@@ -458,7 +514,7 @@ func hold_share() -> float:
 
 
 func _size_light() -> void:
-	safe = SAFE_TANK if is_tank() else SAFE_OTHER
+	safe = party_safe()
 	var glow: PointLight2D = get_parent().get_node_or_null("forgeglow") as PointLight2D if get_parent() != null else null
 	if glow != null:
 		# The glow's texture is 256 px across: its reach is half that, scaled.
@@ -575,16 +631,20 @@ func spawn_gap() -> float:
 
 
 func alive_cap() -> int:
-	return ALIVE_FIRST + ALIVE_PER_FLOOD * floods
+	return roundi((ALIVE_FIRST + ALIVE_PER_FLOOD * floods) * party_scale(PARTY_CROWD, players))
 
 
 func spawn_count() -> int:
 	@warning_ignore("integer_division")
-	return 1 + floods / 3
+	return ceili((1 + floods / 3) * party_scale(PARTY_CROWD, players))
 
 
 func health_scale() -> float:
-	return 1.0 + HEALTH_PER_FLOOD * floods
+	return (1.0 + HEALTH_PER_FLOOD * floods) * party_scale(PARTY_HEALTH, players)
+
+
+static func party_scale(table: Array, count: int) -> float:
+	return float(table[clampi(count, 0, table.size() - 1)])
 
 
 # THE SCHEDULE THE SERVER HOLDS A KILL TO (0.120.0). The server cannot see a
@@ -596,23 +656,25 @@ func health_scale() -> float:
 # turned into its enemy id), so after changing the spawns, the heat or the cap
 # alive, re-export and copy the file to the API. _test_the_forge_pays()
 # fails when gamedata.json no longer says what this does.
+# AT A PARTY OF FOUR (0.160.0), as the Endless's is: the most a run sends.
 static func schedule() -> Dictionary:
+	var crowd: float = party_scale(PARTY_CROWD, PARTY_MOST)
 	var phases: Array = []
 	for k in SLICES:
 		@warning_ignore("integer_division")
 		phases.append({
 			"seconds": snappedf(maxf(HEAT_FASTEST, HEAT_SECONDS * pow(HEAT_QUICKER, k)), 0.01),
 			"gap": snappedf(maxf(SPAWN_FASTEST, SPAWN_EVERY * pow(SPAWN_QUICKER, k)), 0.001),
-			"count": 1 + k / 3,
+			"count": ceili((1 + k / 3) * crowd),
 		})
 	@warning_ignore("integer_division")
 	return {
 		"sprite_scenes": [SPRITE],
 		"phases": phases,
 		"volcano": {"gap": snappedf(maxf(SPAWN_FASTEST, SPAWN_EVERY * pow(SPAWN_QUICKER, SLICES)), 0.001),
-			"count": 1 + SLICES / 3},
+			"count": ceili((1 + SLICES / 3) * crowd)},
 		"volcano_believed": VOLCANO_BELIEVED,
-		"alive_most": ALIVE_FIRST + ALIVE_PER_FLOOD * SLICES,
+		"alive_most": roundi((ALIVE_FIRST + ALIVE_PER_FLOOD * SLICES) * crowd),
 	}
 
 
@@ -636,26 +698,40 @@ func _timed_process(delta: float) -> void:
 			if player != null and player.global_position.distance_to(CENTRE) <= START_REACH:
 				_hold += delta
 				if _hold >= START_HOLD:
-					begin_countdown()
+					# A follower's player lights it for the party: the leader
+					# starts the countdown, and its line brings it here.
+					if following():
+						_hold = 0.0
+						party.call("ask_go")
+					else:
+						begin_countdown()
 			else:
 				_hold = 0.0
 		State.COUNTDOWN:
 			_count -= delta
-			if _count <= 0.0:
+			if _count <= 0.0 and not following():
 				start_run()
 		State.RUNNING:
+			var leading: bool = not following()
 			elapsed += delta
-			_step_heat(delta)
+			if leading:
+				_step_heat(delta)
 			_step_flood(delta)
 			_step_walkways(delta)
 			_step_anvil(delta)
 			_step_wading(delta)
 			_step_fire(delta)
-			_step_spawns(delta)
-			_step_spawns_owed()
+			if leading:
+				_step_spawns(delta)
+				_step_spawns_owed()
 			_step_essence(delta)
 			_step_eruption(delta)
 			_step_rumble(delta)
+			# DOWN, NOT OUT (0.160.0): the leader ends a party's run when
+			# everybody is down - or, the party gone, when it is.
+			if state == State.RUNNING and leading and down \
+					and (not party_on() or bool(party.call("all_down", run_key))):
+				end_run()
 	_paint_falls()
 	_paint_tank()
 	_process_chest()
@@ -668,11 +744,21 @@ func begin_countdown() -> void:
 	state = State.COUNTDOWN
 	_count = COUNTDOWN_SECONDS
 	_hold = 0.0
+	run_key = randi_range(1, 1 << 30)
+	if party_on():
+		party.call("line_now")
 	if hud != null:
 		hud.call("announce", "The forge is lit", "The lava rises in %d..." % int(COUNTDOWN_SECONDS))
 
 
 func start_run() -> void:
+	players = int(party.call("members")) if party_on() else 1
+	if run_key == 0:
+		run_key = randi_range(1, 1 << 30)
+	_stand_up()
+	took = 0
+	_took_seen = {}
+	_taken_spot = Vector2.INF
 	_size_light()
 	state = State.RUNNING
 	elapsed = 0.0
@@ -896,6 +982,13 @@ func _step_walkways(delta: float) -> void:
 	var player: Node2D = _player()
 	if player != null and is_tank() and player.get("aura_active") == true:
 		_cool(aura_ellipse(player))
+	# EVERY TANK'S, ON EVERY SCREEN (0.160.0): a party's tank lit up lays the
+	# same walkway here, read off its picture (its class and its ring).
+	if party_on():
+		for other in party.call("others"):
+			if other is Node2D and str(other.get("class_id")) == TANK_CLASS \
+					and (other.get("effects") as Array).has("ring"):
+				_cool([(other as Node2D).global_position + AURA_OFFSET, AURA_HALF.x, AURA_HALF.y])
 	# Melt what the ring has left behind long enough.
 	var melted: Array = []
 	for cell in _cooled:
@@ -945,7 +1038,7 @@ func _step_fire(delta: float) -> void:
 		return
 	_burn_clock = BURN_TICK
 	var player: Node2D = _player()
-	if player == null or player.get("is_dying") == true:
+	if player == null or player.get("is_dying") == true or down:
 		return
 	var most: float = float(player.get("max_hp")) if player.get("max_hp") != null else 100.0
 	# Every class, once its wading time is spent (0.121.0); the volcano's end
@@ -1046,7 +1139,7 @@ func _step_anvil(delta: float) -> void:
 	var player: Node2D = _player()
 	var was: bool = _hammering
 	_hammering = false
-	if player == null or player.get("is_dying") == true or pieces >= PIECES.size():
+	if player == null or player.get("is_dying") == true or pieces >= PIECES.size() or down:
 		return
 	if player.global_position.distance_to(CENTRE) > FORGE_REACH or not _hand_on_the_hammer():
 		return
@@ -1421,11 +1514,25 @@ func _clear_monsters() -> void:
 # =============================================================================
 
 func _step_essence(delta: float) -> void:
+	# FOLLOWING (0.160.0): the leader's essence, where its line says; walked
+	# over here, it is said in this game's own line and the leader takes it.
+	if following():
+		var me: Node2D = _player()
+		if _essence != null and is_instance_valid(_essence) and me != null and not down \
+				and me.global_position.distance_to(_essence.global_position) <= ESSENCE_REACH:
+			_taken_spot = _essence.global_position
+			_drop_essence()
+			took += 1
+			party.call("me_now")
+			if hud != null:
+				hud.call("toast", "Ice essence - the forge cools")
+		return
 	if _essence != null and is_instance_valid(_essence):
 		var left: float = float(_essence.get("left")) - delta
 		_essence.set("left", left)
 		var player: Node2D = _player()
-		if player != null and player.global_position.distance_to(_essence.global_position) <= ESSENCE_REACH:
+		if player != null and not down and player.global_position.distance_to(_essence.global_position) <= ESSENCE_REACH:
+			took += 1
 			take_essence()
 		elif left <= 0.0:
 			_drop_essence()
@@ -1451,13 +1558,14 @@ func essence_spot() -> Vector2:
 		_rng.randf_range(RADIUS * ESSENCE_NEAR, RADIUS - 70.0))
 
 
-func _lay_essence() -> void:
-	var at: Vector2 = essence_spot()
+func _lay_essence(at: Vector2 = Vector2.INF, life: float = ESSENCE_LIFE) -> void:
+	if at == Vector2.INF:
+		at = essence_spot()
 	var props: Node = get_parent().get_node_or_null("ysortworld/props") if get_parent() != null else null
 	if at == Vector2.INF or props == null:
 		return
 	_essence = Essence.new()
-	_essence.set("left", ESSENCE_LIFE)
+	_essence.set("left", life)
 	_essence.position = at
 	props.add_child(_essence)
 	_essence.reset_physics_interpolation()
@@ -1480,6 +1588,207 @@ func _drop_essence() -> void:
 
 
 # =============================================================================
+# THE FORGE TOGETHER (0.160.0, forgeparty.gd)
+# =============================================================================
+
+func party_on() -> bool:
+	"""On an island with somebody else (forgeparty.gd active())."""
+	return party != null and is_instance_valid(party) and bool(party.call("active"))
+
+
+func following() -> bool:
+	"""This game follows the room's leader: no heat, floods, essence or fire
+	sprites of its own - the leader's, as its line says."""
+	return party_on() and not bool(party.call("leads"))
+
+
+func party_safe() -> float:
+	"""The light round the anvil: a tank's when this player or anybody else on
+	the island is one - and the leader's word, for a game following it."""
+	if following() and _line.size() >= LINE_LENGTH:
+		return float(_line[9])
+	if is_tank():
+		return SAFE_TANK
+	if party_on():
+		for other in party.call("others"):
+			if str(other.get("class_id")) == TANK_CLASS:
+				return SAFE_TANK
+	return SAFE_OTHER
+
+
+func line() -> Array:
+	"""(Leader.) The run as the party follows it: [key, state, the clock in
+	tenths, the heat in thousandths, floods, the slice flooding or -1, its
+	front, the countdown in tenths, players, the light, the volcano's clock in
+	tenths, the essence's x and y (-1 for none), the party's kills] - whole
+	numbers, LINE_LENGTH of them."""
+	var at: Vector2 = _essence.position if _essence != null and is_instance_valid(_essence) else Vector2(-1, -1)
+	return [run_key, state, roundi(elapsed * 10.0), roundi(heat * 1000.0), floods, flooding, roundi(front),
+		roundi(countdown_left() * 10.0), players, roundi(safe), roundi(volcano_seconds * 10.0),
+		roundi(at.x), roundi(at.y), slain]
+
+
+func my_line() -> Array:
+	"""This game's own: [key, down, essences walked over]."""
+	return [run_key, 1 if down else 0, took]
+
+
+func party_go() -> void:
+	"""(Leader.) Somebody else lit the forge before the run: the countdown."""
+	if state == State.WAITING:
+		begin_countdown()
+
+
+func party_me(from_id: int, me: Array) -> void:
+	"""(Leader.) Another player's line: an essence they walked over cools the
+	forge here, once."""
+	if me.size() < 3 or int(me[0]) != run_key or not running():
+		return
+	if int(me[2]) > int(_took_seen.get(from_id, 0)):
+		_took_seen[from_id] = int(me[2])
+		if _essence != null and is_instance_valid(_essence):
+			take_essence()
+
+
+func follow_line(wire: Array) -> void:
+	"""(Following.) The leader's line: the countdown, the run and its end,
+	and the island as it sinks."""
+	if wire.size() < LINE_LENGTH:
+		return
+	_line = wire.duplicate()
+	var key: int = int(wire[0])
+	var their_state: int = int(wire[1])
+	if their_state == State.WAITING:
+		if running():
+			end_run()
+		elif state == State.COUNTDOWN:
+			state = State.WAITING
+		run_key = 0
+		return
+	if their_state == State.COUNTDOWN:
+		if running():
+			end_run()
+		if state != State.COUNTDOWN:
+			state = State.COUNTDOWN
+			_hold = 0.0
+			_size_light()
+			if hud != null:
+				hud.call("announce", "The forge is lit", "The party holds it together")
+		run_key = key
+		_count = float(wire[7]) / 10.0
+		return
+	# A RUN ON: this game in it from now, standing - from its start, or
+	# walking in part-way, the island sunk as far as the leader's.
+	if key != run_key or not running():
+		if running():
+			end_run()
+		run_key = key
+		start_run()
+	players = int(wire[8])
+	var clock: float = float(wire[2]) / 10.0
+	if absf(elapsed - clock) > 0.5:
+		elapsed = clock
+	_catch_up_floods(int(wire[4]), int(wire[5]), float(wire[6]))
+	heat = float(wire[3]) / 1000.0
+	var volcano_clock: float = float(wire[10]) / 10.0
+	if absf(volcano_seconds - volcano_clock) > 0.5:
+		volcano_seconds = volcano_clock
+	_follow_essence(Vector2(float(wire[11]), float(wire[12])))
+	slain = int(wire[13])
+
+
+func _catch_up_floods(to_floods: int, to_flooding: int, to_front: float) -> void:
+	"""(Following.) Any flood this island has not had yet, all at once (a game
+	walking in part-way, a line lost), then the one under way, its front no
+	further out than the leader's. This island's own front moves on between
+	lines as the leader's does (_step_flood())."""
+	var guard: int = 0
+	while floods < to_floods and floods < SLICES and guard < SLICES:
+		guard += 1
+		if flooding < 0:
+			_flood_next()
+		front = safe
+		_step_flood(0.0)
+	if floods == to_floods and to_flooding >= 0 and flooding < 0 and next_slice() == to_flooding:
+		_flood_next()
+	if flooding >= 0 and flooding == to_flooding:
+		front = minf(front, maxf(safe, to_front))
+
+
+func _follow_essence(at: Vector2) -> void:
+	"""(Following.) The leader's essence where its line says - not again the
+	one taken here, before the leader has heard."""
+	if at.x < 0.0:
+		_taken_spot = Vector2.INF
+		_drop_essence()
+		return
+	if _taken_spot != Vector2.INF and at.distance_to(_taken_spot) < 1.0:
+		return
+	if _essence != null and is_instance_valid(_essence):
+		if _essence.position.distance_to(at) < 1.0:
+			return
+		_drop_essence()
+	_lay_essence(at, ESSENCE_FOLLOWED)
+
+
+func take_over() -> void:
+	"""(Now leading.) The old leader left: its fire sprites, mirrored here,
+	are this game's now (monstersync hands them over), and the run carries on
+	from this island as it stands."""
+	if not running():
+		return
+	var container: Node = get_parent().get_node_or_null("ysortworld/enemies") if get_parent() != null else null
+	if container != null:
+		for m in container.get_children():
+			if m is Node2D and m.has_meta(MARK) and not monsters.has(m):
+				if not m.has_meta(CHEST_META):
+					m.set_meta(CHEST_META, CHEST_GAME)
+				if not (m as Node).tree_exiting.is_connected(_on_monster_gone):
+					(m as Node).tree_exiting.connect(_on_monster_gone.bind(m))
+				monsters.append(m)
+	_spawn_clock = minf(_spawn_clock, 1.0)
+	if _essence != null and is_instance_valid(_essence):
+		_essence.set("left", ESSENCE_LIFE)
+	party.call("line_now")
+
+
+func _go_down(body: Node2D) -> void:
+	"""DOWN, NOT OUT: by the anvil, see-through; nothing lands on you and your
+	blows pay nothing (Player.down_in_run) while the party holds on."""
+	if down:
+		return
+	down = true
+	_hammering = false
+	body.modulate.a = OUT_ALPHA
+	body.set("down_in_run", true)
+	if hud != null:
+		hud.call("announce", "You are down", "Wait by the anvil while the party holds the forge")
+	party.call("me_now")
+
+
+func _stand_up() -> void:
+	"""Back on your feet: a run starting, one ending, leaving the island."""
+	if not down:
+		return
+	down = false
+	var player: Node2D = _player() if is_inside_tree() or player_override != null else null
+	if player != null:
+		player.modulate.a = 1.0
+		player.set("down_in_run", false)
+
+
+func party_text() -> String:
+	"""The party as the HUD says it, or "" alone."""
+	if not party_on():
+		return ""
+	var n: int = int(party.call("members"))
+	if not running():
+		return "%d of you on the island" % n
+	if down:
+		return "Down - waiting by the anvil while the party holds the forge"
+	return "%d of you hold the forge" % n
+
+# =============================================================================
 # THE END
 # =============================================================================
 
@@ -1500,6 +1809,10 @@ func knock_out(player: Node) -> bool:
 	body.reset_physics_interpolation()
 	if body.has_method("snap_camera"):
 		body.call("snap_camera")
+	# DOWN, NOT OUT (0.160.0): in a party the run goes on while anybody stands.
+	if running() and party_on():
+		_go_down(body)
+		return true
 	if state != State.WAITING:
 		end_run()
 	return true
@@ -1541,6 +1854,12 @@ func end_run() -> void:
 	_flood_lava = []
 	_reset_map()
 	_unredden()
+	_stand_up()
+	took = 0
+	_took_seen = {}
+	run_key = 0
+	if party != null and is_instance_valid(party) and party_on() and not following():
+		party.call("line_now")
 	if hud != null:
 		hud.call("show_result", words)
 

@@ -14729,7 +14729,66 @@ count of that fight.
   is told to update once the setting is on. The owner sets "Old versions
   must update" to 8 first (the API's DEPLOY.md, "The Endless's receipts").
 - `_test_the_chest_waits_for_its_receipt()` (testrunner_12; sabotage-caught:
-  the wait taken out). The Forge's fire sprites are not booked yet.
+  the wait taken out).
+
+### The Forge's sprites are booked too (0.160.0)
+
+The same for the Forge: its fire sprites carried the stress test's mark
+(`stress_copy`), which monstersync.gd never numbers, so no server ever saw
+one, and a Forge chest kill could only be the game's word.
+
+- **The run's mark** (forgerun.gd `MARK` is `&"run_extra"`, the Endless's
+  `RUN_MARK`): numbered and sent to the server's books, `"rx": 1` in
+  net_props(); still no ordinary kill (`get_enemy_id()` ""), no respawn, no
+  swell. Their raised health (HEALTH_PER_FLOOD, 2.2 times at the eighth
+  flood) goes in the spawn record, which the server takes up to three times.
+- **The Forge's chest first** (baseenemy.gd `_die()`): `chest_game` is asked
+  before `run_extra`, or a sprite would fill the Endless's chest.
+- **A party's Forge together** (next section): the server seats a party's
+  games that say "fp" in one room, and a game from before in a room of its
+  own.
+- **Build 9** (`Api.BUILD`, `Combat.FORGE_RECEIPT_BUILD`): the server's
+  `ELUSION_FORGE_RECEIPTS` waits on the minimum being 9 (the API's
+  DEPLOY.md, "The Forge's receipts").
+- `_test_the_forge_pays()` (testrunner_10; sabotage-caught: the old order in
+  `_die()` sent the sprite to the Endless).
+
+### The Forge together (0.160.0)
+
+The owner: "the forge should be 4 player mages stand also but the cloth 1
+player" - step 3 of FORGE_PLAN.txt, on the Descent's party code
+(`src/world/forge/forgeparty.gd`, made by the run's `_ready()`).
+
+- **Seated together**: the hello says `"fp": FORGE_PARTY` (presence.gd), the
+  server answers `"fr"` (`Presence.forge_rooms()`) and seats a party's Forge
+  as one room; a game from before (0.159.0) keeps a Forge of its own.
+- **The leader runs it** (the earliest in): the heat, the floods, the ice
+  essence and the fire sprites (shared by monstersync.gd, booked by the
+  server). Its line ("r", `forgerun.gd line()`, LINE_LENGTH 14 whole
+  numbers): key, state, clock, heat, floods, the slice flooding and its
+  front, countdown, players, the light, the volcano's clock, the essence's
+  spot, the party's kills. The others `follow_line()`: the same island
+  sinking the same way (`_catch_up_floods()` for a game walking in
+  part-way), the same essence, their own fire, wading, forging and rocks.
+- **Anybody lights it**: a follower's hold at the anvil sends "go".
+- **The essence**: walked over on a follower's island, its "me" ([key, down,
+  essences]) counts one and the leader takes it (`party_me()`), once.
+- **Down, not out**: a fall in a party is `_go_down()` - by the anvil,
+  `OUT_ALPHA`, `Player.down_in_run` (take_damage returns, no attack), and a
+  kill its blows had a share in pays nothing (baseenemy.gd `_die()`). The
+  leader ends the run when everyone is down (`all_down()`).
+- **The light is a tank's** when the party has one (`party_safe()`), and
+  every tank's lit ring lays walkways on every island (`_step_walkways()`,
+  read off its picture: `class_id`, `effects`).
+- **A copy pays the Forge**: net_props() carries `"cg"` (the chest), so a
+  follower's kill on a mirrored sprite fills the Forge's chest
+  (`CHEST_GAMES` bounds what a copy may name).
+- **Scaled** by how many started (`PARTY_CROWD`, `PARTY_HEALTH`, the
+  Endless's table); `schedule()` and gamedata.json's `"forge"` are for a
+  party of four (125 alive).
+- **The leader leaving**: the next one `take_over()`s its mirrored sprites.
+- Build 9. `_test_the_forge_together()` (testrunner_12; sabotage-caught:
+  the follower spawning, the fall ending the run).
 
 ## Deleting your own account (0.90.0)
 

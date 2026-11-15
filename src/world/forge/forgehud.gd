@@ -195,6 +195,16 @@ func _timed_process(delta: float) -> void:
 func detail_text() -> String:
 	if run == null:
 		return ""
+	return _with_party(_detail_alone())
+
+
+func _with_party(line: String) -> String:
+	"""THE FORGE TOGETHER (0.160.0): the party's own words after the line."""
+	var together: String = str(run.call("party_text")) if run.has_method("party_text") else ""
+	return line if together == "" else "%s  -  %s" % [line, together]
+
+
+func _detail_alone() -> String:
 	var clock: String = Run.clock_text(float(run.get("elapsed")))
 	if bool(run.call("running")):
 		return "%s  -  %d of %d slices flooded  -  %d slain" % [clock, int(run.get("floods")),
@@ -209,8 +219,9 @@ func detail_text() -> String:
 
 
 func gear_text() -> String:
-	"""The hammer, the armour and the wading time (0.121.0)."""
-	if run == null or not bool(run.call("running")):
+	"""The hammer, the armour and the wading time (0.121.0) - nothing while
+	down in a party (0.160.0)."""
+	if run == null or not bool(run.call("running")) or run.get("down") == true:
 		return ""
 	var pieces: int = int(run.get("pieces"))
 	var most: int = Run.PIECES.size()

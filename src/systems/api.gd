@@ -102,13 +102,19 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # receipt too (combat.gd report_endless_kill). A build-7 game fills its chest
 # as before while ELUSION_ENDLESS_RECEIPTS is off; the minimum goes to 8
 # before it goes on.
+# 9 (0.160.0): the Forge's fire sprites carry the run's mark, not the stress
+# test's, so they are numbered and the server's books count their fights. A
+# build-8 game's sprites are never booked; the minimum goes to 9 before
+# ELUSION_FORGE_RECEIPTS goes on. The same build plays a party's Forge as
+# one run (forgeparty.gd), seated together because it says "fp"; a game from
+# before has a Forge of its own.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 8
+const BUILD := 9
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.159.0"
+const DISPLAY_VERSION := "0.160.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,

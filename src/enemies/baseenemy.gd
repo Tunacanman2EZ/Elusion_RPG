@@ -57,6 +57,9 @@ const BarSheet := preload("res://src/shared/barsheet.gd")
 const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 # A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
 const HitFlash := preload("res://src/shared/hitflash.gd")
+# The minigames whose chest a mirrored monster may name (net_apply_props(),
+# 0.160.0): a copy's word goes no further than these.
+const CHEST_GAMES := ["forge"]
 const LagTests := preload("res://src/systems/lagtests.gd")
 
 
@@ -3520,16 +3523,19 @@ func _die() -> void:
 	# monster was chasing, which can be somebody else's picture now.
 	if _should_report_kill():
 		Combat.report_kill(get_enemy_id(), global_position, _local_player())
+		# A FORGE FIRE SPRITE (0.120.0, forgerun.gd's CHEST_META) pays its
+		# loot into the Forge's chest. Asked FIRST (0.160.0): it carries the
+		# run's mark too now, and that alone would send it to the Endless's.
+		# DOWN IN A FORGE PARTY (0.160.0): a fallen player's blows pay nothing.
+		var killer: Node = _local_player()
+		if has_meta(&"chest_game") and enemy_data != null and enemy_data.grants_rewards:
+			if killer == null or killer.get("down_in_run") != true:
+				Combat.report_endless_kill(enemy_data.enemy_id, killer, str(get_meta(&"chest_game")))
 		# AN ENDLESS RUN'S ELITE OR BOSS (0.93.4) reports no ordinary kill -
 		# get_enemy_id() is "" for it - and pays into the killer's chest in the
 		# corridor instead: its own loot, rolled by the server, no XP.
-		if has_meta(&"run_extra") and enemy_data != null and enemy_data.grants_rewards:
+		elif has_meta(&"run_extra") and enemy_data != null and enemy_data.grants_rewards:
 			Combat.report_endless_kill(enemy_data.enemy_id, _local_player())
-		# A FORGE FIRE SPRITE (0.120.0, forgerun.gd's CHEST_META): the stress
-		# test's mark keeps it off every ordinary road, and this pays its loot
-		# into the Forge's chest.
-		elif has_meta(&"chest_game") and enemy_data != null and enemy_data.grants_rewards:
-			Combat.report_endless_kill(enemy_data.enemy_id, _local_player(), str(get_meta(&"chest_game")))
 
 	# BEFORE queue_free(), and through the autoload rather than a player node
 	# on this enemy. audio.gd's header is about exactly this case: a player
@@ -3868,6 +3874,10 @@ func net_props() -> Dictionary:
 	if has_meta(&"run_extra"):
 		props["rx"] = 1
 		props["nr"] = notice_range
+	# A FORGE SPRITE (0.160.0): every copy pays into its game's chest - a
+	# party's follower fills the Forge's, not the Endless's.
+	if has_meta(&"chest_game"):
+		props["cg"] = str(get_meta(&"chest_game"))
 	# A DESCENT PARTY'S (0.126.0): every copy worth nothing (the stress mark:
 	# no kill report), shared, noticing the room; an elite drawn as one.
 	if has_meta(&"party_copy"):
@@ -3891,6 +3901,8 @@ func net_apply_props(props: Dictionary) -> void:
 	if int(props.get("rx", 0)) == 1:
 		set_meta(&"run_extra", true)
 		notice_range = float(props.get("nr", notice_range))
+	if str(props.get("cg", "")) in CHEST_GAMES:
+		set_meta(&"chest_game", str(props["cg"]))
 	if int(props.get("pc", 0)) == 1:
 		set_meta(&"party_copy", true)
 		set_meta(&"stress_copy", true)

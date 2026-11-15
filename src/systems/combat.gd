@@ -241,11 +241,16 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 # count of the fight - so a 202 here is "not yet", asked again exactly as an
 # ordinary kill's is (RECEIPT_WAIT_SECONDS). Given up on, it is said at most
 # once in CHEST_UNSEEN_SAY_MSEC: a run's elites fall by the dozen.
+#
+# AND THE FORGE'S (0.160.0): its sprites are numbered for the books now
+# (forgerun.gd MARK), and ELUSION_FORGE_RECEIPTS holds its chest the same way.
 const DAY_FULL_WORDS := "Today's minigame gold is full - no more coins into your chest today."
 const DAY_FULL_SAY_MSEC := 10 * 60 * 1000
 var _day_full_said_at: int = -DAY_FULL_SAY_MSEC
-# The first build whose chest kill waits for a receipt (Api.BUILD 8).
+# The first build whose chest kill waits for a receipt (Api.BUILD 8), and the
+# first whose Forge sprites the server books (Api.BUILD 9).
 const ENDLESS_RECEIPT_BUILD := 8
+const FORGE_RECEIPT_BUILD := 9
 const CHEST_UNSEEN_SAY_MSEC := 60 * 1000
 var _chest_unseen_said_at: int = -CHEST_UNSEEN_SAY_MSEC
 

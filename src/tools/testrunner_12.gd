@@ -594,3 +594,210 @@ func _test_the_chest_waits_for_its_receipt() -> void:
 	chest.queue_free()
 	await get_tree().process_frame
 	print("  the chest waits for its receipt: done")
+
+
+# THE FORGE TOGETHER (0.160.0, step 3 of FORGE_PLAN.txt). Two islands in one
+# tree, each on a stand-in link that passes "en" as the server does (JSON and
+# back): the leader runs the heat, the floods, the essence and the sprites,
+# the other follows its line; a fall is down, not out, until everybody is.
+# The server's half is the API's test_presence.py P-22 and test_combatbook
+# CB-17.
+func _forge_party_link_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = _party_link_script().source_code + "\nfunc forge_rooms() -> bool:\n\treturn open\n"
+	script.reload()
+	return script
+
+
+func _forge_island_for_test(body_script: GDScript, class_id: String) -> Array:
+	"""[island, run, body]: a stand-in island with the run and its player by
+	the anvil."""
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	var island := Node2D.new()
+	add_child(island)
+	var world := Node2D.new()
+	world.name = "ysortworld"
+	island.add_child(world)
+	for holder in ["props", "enemies", "interactables"]:
+		var n := Node2D.new()
+		n.name = holder
+		world.add_child(n)
+	var body := Node2D.new()
+	body.set_script(body_script)
+	island.add_child(body)
+	body.global_position = Run.CENTRE + Vector2(0, 150)
+	var run: Node = Run.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", class_id)
+	island.add_child(run)
+	return [island, run, body]
+
+
+func _test_the_forge_together() -> void:
+	section("THE FORGE TOGETHER (0.160.0): one run for the party - the leader's heat, floods, essence and sprites, a fall down until everybody is")
+	const Run := preload("res://src/world/forge/forgerun.gd")
+	var body_script := GDScript.new()
+	body_script.source_code = _forge_body_script().source_code + "var down_in_run: bool = false\n"
+	body_script.reload()
+	var picture_script := GDScript.new()
+	picture_script.source_code = "extends Node2D\nvar class_id: String = \"\"\nvar effects: Array = []\n"
+	picture_script.reload()
+	var made_a: Array = _forge_island_for_test(body_script, "mage")
+	var made_b: Array = _forge_island_for_test(body_script, "tank")
+	var run_a: Node = made_a[1]
+	var run_b: Node = made_b[1]
+	var body_a: Node2D = made_a[2]
+	var body_b: Node2D = made_b[2]
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var picture_a := Node2D.new()
+	picture_a.set_script(picture_script)
+	picture_a.set("class_id", "mage")
+	var picture_b := Node2D.new()
+	picture_b.set_script(picture_script)
+	picture_b.set("class_id", "tank")
+	add_child(picture_a)
+	add_child(picture_b)
+	var Link: GDScript = _forge_party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	add_child(la)
+	add_child(lb)
+	la.set("me", 1)
+	lb.set("me", 2)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	la.set("bodies", {2: picture_b})
+	lb.set("bodies", {1: picture_a})
+	for pair in [[run_a, la], [run_b, lb]]:
+		var party: Node = (pair[0] as Node).get("party")
+		party.set("link", pair[1])
+		(pair[1] as Node).run_received.connect(Callable(party, "_on_run"))
+		(pair[1] as Node).lead_changed.connect(Callable(party, "_on_lead"))
+	var party_a: Node = run_a.get("party")
+	var party_b: Node = run_b.get("party")
+	for r in [run_a, run_b]:
+		r.set("_spawn_clock", 9999.0)
+		r.set("_essence_clock", 9999.0)
+	var roles: bool = bool(run_a.call("party_on")) and not bool(run_a.call("following")) and bool(run_b.call("following"))
+	var says: bool = _code_src("res://src/systems/presence.gd").contains("\"fp\": FORGE_PARTY") \
+		and _code_src("res://src/systems/presence.gd").contains("message.get(\"fr\", 0)")
+	check("the game says it plays a party's Forge as one run ('fp'), and only shares one with a server that seats it ('fr'); the first in leads",
+		roles and says and bool(party_b.call("shares")), [roles, says])
+
+	# ---- the countdown, lit by the follower ----
+	body_b.global_position = Run.CENTRE
+	run_b.call("_process", Run.START_HOLD + 0.05)
+	var asked: bool = int(run_a.get("state")) == Run.State.COUNTDOWN and int(run_a.get("run_key")) > 0
+	party_a.call("flush")
+	var both: bool = int(run_b.get("state")) == Run.State.COUNTDOWN and int(run_b.get("run_key")) == int(run_a.get("run_key"))
+	run_b.call("_process", Run.COUNTDOWN_SECONDS + 0.1)
+	var waits: bool = int(run_b.get("state")) == Run.State.COUNTDOWN
+	check("  the other lights the forge: the countdown on both screens, and the follower waits for the leader to start",
+		asked and both and waits, [asked, both, waits])
+
+	# ---- the run, scaled for two, the tank's light for the party ----
+	run_a.call("_process", Run.COUNTDOWN_SECONDS + 0.1)
+	party_a.call("flush")
+	var same_key: bool = int(run_b.get("run_key")) == int(run_a.get("run_key"))
+	check("  the countdown over, both run it, scaled for two - %d alive, %d at once, x%.2f health - in a tank's light though the leader is a mage"
+		% [int(run_a.call("alive_cap")), int(run_a.call("spawn_count")), float(run_a.call("health_scale"))],
+		bool(run_a.call("running")) and bool(run_b.call("running")) and same_key
+		and int(run_a.get("players")) == 2 and int(run_b.get("players")) == 2
+		and int(run_a.call("alive_cap")) == 15 and int(run_a.call("spawn_count")) == 2
+		and is_equal_approx(float(run_a.call("health_scale")), 1.2)
+		and is_equal_approx(float(run_a.get("safe")), Run.SAFE_TANK) and is_equal_approx(float(run_b.get("safe")), Run.SAFE_TANK),
+		[run_a.get("players"), run_b.get("players"), run_a.get("safe"), run_b.get("safe")])
+	run_b.set("_spawn_clock", 0.0)
+	run_b.call("_process", 0.05)
+	check("  the follower brings no sprites of its own - the leader's are the party's",
+		(run_b.get("monsters") as Array).is_empty() and int(run_b.get("_spawns_owed")) == 0, run_b.get("monsters"))
+
+	# ---- the island sinks on both ----
+	run_a.set("heat", 0.999)
+	run_a.call("_process", Run.FLOOD_SECONDS + 0.5)
+	party_a.call("flush")
+	var first: int = int(Run.ORDER[0])
+	check("  the leader's flood is the other's: the same slice gone, the heat back to nought",
+		int(run_a.get("floods")) == 1 and int(run_b.get("floods")) == 1 and (run_b.get("flooded") as Dictionary).has(first)
+		and int(run_b.get("flooding")) == -1 and float(run_b.get("heat")) < 0.05,
+		[run_a.get("floods"), run_b.get("floods"), run_b.get("flooded"), run_b.get("heat")])
+
+	# ---- the essence, walked over by the other ----
+	run_a.call("_lay_essence")
+	var essence_a: Node2D = run_a.get("_essence")
+	party_a.call("flush")
+	var essence_b: Node2D = run_b.get("_essence")
+	var mirrored: bool = essence_a != null and essence_b != null and essence_b.position.distance_to(essence_a.position) < 1.0
+	run_a.set("heat", 0.5)
+	body_b.global_position = essence_b.global_position if essence_b != null else Vector2.ZERO
+	run_b.call("_process", 0.016)
+	var told: bool = int(run_b.get("took")) == 1 and run_b.get("_essence") == null
+	party_b.call("flush")
+	var cooled: bool = is_equal_approx(float(run_a.get("heat")), 0.5 - Run.ESSENCE_COOL) and run_a.get("_essence") == null
+	party_a.call("flush")
+	check("  the leader's ice essence lies on both islands; the other walks over it and the leader's forge cools - once",
+		mirrored and told and cooled and run_b.get("_essence") == null, [mirrored, told, cooled])
+
+	# ---- every tank's walkway ----
+	picture_b.global_position = Run.CENTRE + Vector2(Run.RADIUS + 60.0, 0.0)
+	picture_b.set("effects", ["ring"])
+	run_a.call("_step_walkways", 1.0)
+	check("  the party's tank, ring lit in the lava, lays a walkway on the mage's island too (%d cells)" % int(run_a.call("walkway_cells")),
+		int(run_a.call("walkway_cells")) > 0, run_a.call("walkway_cells"))
+	picture_b.set("effects", [])
+
+	# ---- a mirrored sprite fills the Forge's chest, not the Endless's ----
+	var sprite: Node = run_a.call("_bring", Run.SPRITE, Run.CENTRE + Vector2(400, 0), 1.0)
+	await get_tree().process_frame
+	var props: Dictionary = sprite.call("net_props") if sprite != null else {}
+	var mirror: Node = (load("res://scene/enemy/%s.tscn" % Run.SPRITE) as PackedScene).instantiate()
+	mirror.call("net_apply_props", props)
+	var stranger: Node = (load("res://scene/enemy/%s.tscn" % Run.SPRITE) as PackedScene).instantiate()
+	stranger.call("net_apply_props", {"rx": 1, "cg": "somewhere"})
+	check("  a sprite's copy on a party's screen carries the Forge's chest ('cg'), so a follower's kill pays the Forge - and no other name is taken",
+		str(props.get("cg", "")) == "forge" and str(mirror.get_meta(&"chest_game", "")) == "forge"
+		and mirror.has_meta(&"run_extra") and not stranger.has_meta(&"chest_game"), props)
+	mirror.free()
+	stranger.free()
+
+	# ---- down, not out, until everybody is ----
+	var downed: bool = bool(run_a.call("knock_out", body_a))
+	var down_not_out: bool = downed and bool(run_a.get("down")) and bool(run_a.call("running")) \
+		and is_equal_approx(body_a.modulate.a, Run.OUT_ALPHA) and body_a.get("down_in_run") == true
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	var nothing_lands: bool = _func_body(player_src, "func take_damage(").contains("if DescentBoons.out or down_in_run:") \
+		and _func_body(player_src, "func effects_let_attack(").contains("if down_in_run:")
+	var pays_nothing: bool = _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _die(").contains("killer.get(\"down_in_run\") != true")
+	party_a.call("flush")
+	run_a.call("_process", 0.016)
+	var still_on: bool = bool(run_a.call("running"))
+	run_b.call("knock_out", body_b)
+	party_b.call("flush")
+	run_a.call("_process", 0.016)
+	party_a.call("flush")
+	check("  down in a party is not the end: a ghost by the anvil, nothing lands and its blows pay nothing, while anybody stands - and with the other down too, it is over on both",
+		down_not_out and nothing_lands and pays_nothing and still_on and not bool(run_a.call("running"))
+		and not bool(run_b.call("running")) and is_equal_approx(body_a.modulate.a, 1.0) and body_b.get("down_in_run") == false,
+		[down_not_out, nothing_lands, pays_nothing, still_on, run_a.get("state"), run_b.get("state")])
+
+	# ---- the leader leaves: the other takes the run over ----
+	run_a.call("begin_countdown")
+	party_a.call("flush")
+	run_a.call("_process", Run.COUNTDOWN_SECONDS + 0.1)
+	party_a.call("flush")
+	var left_behind := Node2D.new()
+	left_behind.set_script(body_script)
+	left_behind.set_meta(Run.MARK, true)
+	(made_b[0] as Node).get_node("ysortworld/enemies").add_child(left_behind)
+	lb.set("leader", 2)
+	lb.lead_changed.emit("forge", 2, 1)
+	check("  the leader gone, the other runs on from its own island: the old leader's sprites, mirrored there, are its own now - the Forge's chest's",
+		bool(run_b.call("running")) and not bool(run_b.call("following")) and (run_b.get("monsters") as Array).has(left_behind)
+		and str(left_behind.get_meta(Run.CHEST_META, "")) == Run.CHEST_GAME, [run_b.get("monsters"), run_b.call("following")])
+
+	for n in [made_a[0], made_b[0], picture_a, picture_b, la, lb]:
+		(n as Node).queue_free()
+	await get_tree().process_frame
+	print("  the forge together: done")

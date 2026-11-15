@@ -214,6 +214,10 @@ var _server_healer_rooms: bool = false
 # THE DESCENT TOGETHER (0.126.0): the server seats the Descent a room per
 # party ("dr" in its welcome), so a party may run it together.
 var _server_descent_rooms: bool = false
+# THE FORGE TOGETHER (0.160.0): the hello says this game plays a party's
+# Forge as one run ("fp"), and the server's welcome says it seats one ("fr").
+const FORGE_PARTY := 1
+var _server_forge_rooms: bool = false
 # While the Healer's Run is played with the party: what this player's state
 # says instead of the world's - {"a", "x", "y", "m"} - and none of the
 # world's monster messages are heard (healerrunscreen.gd sets and clears it).
@@ -331,6 +335,12 @@ func descent_rooms() -> bool:
 	"""True while the link is open to a server that seats the Descent a room
 	per party (0.126.0)."""
 	return runs() and _server_descent_rooms
+
+
+func forge_rooms() -> bool:
+	"""True while the link is open to a server that seats a party's Forge
+	together (0.160.0) - for a game that said "fp", as this one does."""
+	return runs() and _server_forge_rooms
 
 
 func send_run(data: Dictionary, to: int = -1) -> void:
@@ -541,10 +551,11 @@ func _pump(delta: float, player: Node) -> void:
 		_server_runs = false
 		_server_healer_rooms = false
 		_server_descent_rooms = false
+		_server_forge_rooms = false
 		_lead_books = true
 		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
-			"sh": SERVER_HEALTH, "en": RUN_VERSION})
+			"sh": SERVER_HEALTH, "en": RUN_VERSION, "fp": FORGE_PARTY})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
@@ -746,6 +757,7 @@ func handle_message(message: Dictionary) -> void:
 			_server_runs = int(message.get("en", 0)) >= RUN_VERSION
 			_server_healer_rooms = int(message.get("hr", 0)) >= 1
 			_server_descent_rooms = int(message.get("dr", 0)) >= 1
+			_server_forge_rooms = int(message.get("fr", 0)) >= FORGE_PARTY
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":
