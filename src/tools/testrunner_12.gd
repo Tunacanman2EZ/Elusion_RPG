@@ -520,3 +520,77 @@ func _levers_in(root: Node, node: Node, found: Dictionary) -> void:
 			found[String(root.get_path_to(child))] = xform.origin
 		if not child.scene_file_path.begins_with("res://scene/enemy/"):
 			_levers_in(root, child, found)
+
+
+# THE ENDLESS'S RECEIPTS (0.159.0). The server books the Endless now, and with
+# its ELUSION_ENDLESS_RECEIPTS on a chest kill is paid only against its own
+# count: a 202 is "not yet", asked again as an ordinary kill's is, and given
+# up on in time, said once. The server's half is test_receipts.py R-9.
+func _test_the_chest_waits_for_its_receipt() -> void:
+	section("THE ENDLESS'S RECEIPTS (0.159.0): a chest kill waits for the server's count, as a kill does")
+	check("the game is build 8, the first whose chest kill waits (Combat.ENDLESS_RECEIPT_BUILD)",
+		Api.BUILD >= 8 and Combat.ENDLESS_RECEIPT_BUILD == 8, [Api.BUILD, Combat.ENDLESS_RECEIPT_BUILD])
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node2D\nvar notices: Array = []\n" \
+		+ "func show_notice(message: String) -> void:\n\tnotices.append(message)\n"
+	stand_script.reload()
+	var killer: Node2D = Node2D.new()
+	killer.set_script(stand_script)
+	killer.add_to_group("player")
+	add_child(killer)
+	var chest_script := GDScript.new()
+	chest_script.source_code = "extends Node\nvar wins: Array = []\nfunc note_win(data: Dictionary) -> void:\n\twins.append(data)\n"
+	chest_script.reload()
+	var chest: Node = Node.new()
+	chest.set_script(chest_script)
+	chest.add_to_group(&"endless_chest")
+	add_child(chest)
+	var kept_post: Callable = Combat.kill_post
+	var kept_wait: float = Combat.receipt_wait_seconds
+	var kept_token: String = Api.token
+	var kept_known: bool = Api.reachability_known
+	var kept_online: bool = Api.server_online
+	Api.token = "test-not-a-real-token"
+	var posts: Array = []
+	var answers: Array = []
+	Combat.kill_post = func(path: String, body: Dictionary, _timeout: float) -> Dictionary:
+		posts.append([path, body.duplicate()])
+		await get_tree().process_frame
+		return answers.pop_front() if answers.size() > 1 else answers[0]
+	var pending := {"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": 100}}
+	var paid := {"ok": true, "status": 200, "data": {"enemy_id": "bushmage", "added": [], "used": 1, "cut": []}}
+	answers.append_array([pending, pending, paid])
+	Api.reachability_known = true
+	Api.server_online = true
+	await Combat.report_endless_kill("bushmage", killer)
+	var alike: bool = posts.size() == 3
+	for entry in posts:
+		alike = alike and entry[0] == "/api/minigames/kill" and entry[1] == posts[0][1]
+	check("pending twice and then paid: three posts of the same chest kill, into the chest once",
+		alike and (chest.get("wins") as Array).size() == 1 and (killer.get("notices") as Array).is_empty(),
+		[posts, chest.get("wins"), killer.get("notices")])
+	posts.clear()
+	answers.clear()
+	answers.append(pending)
+	Combat.receipt_wait_seconds = 0.35
+	Combat._chest_unseen_said_at = -Combat.CHEST_UNSEEN_SAY_MSEC
+	Api.reachability_known = true
+	Api.server_online = true
+	await Combat.report_endless_kill("bushmage", killer)
+	check("never counted: it gives up in time, nothing in the chest, and says why once",
+		posts.size() >= 2 and posts.size() <= 6 and (chest.get("wins") as Array).size() == 1
+		and (killer.get("notices") as Array).size() == 1, [posts.size(), killer.get("notices")])
+	Api.reachability_known = true
+	Api.server_online = true
+	await Combat.report_endless_kill("bushmage", killer)
+	check("  and a second one given up on inside a minute is not said again - elites fall by the dozen",
+		(killer.get("notices") as Array).size() == 1, killer.get("notices"))
+	Combat.kill_post = kept_post
+	Combat.receipt_wait_seconds = kept_wait
+	Api.token = kept_token
+	Api.reachability_known = kept_known
+	Api.server_online = kept_online
+	killer.queue_free()
+	chest.queue_free()
+	await get_tree().process_frame
+	print("  the chest waits for its receipt: done")

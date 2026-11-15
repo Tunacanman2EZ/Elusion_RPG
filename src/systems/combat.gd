@@ -235,9 +235,19 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 #
 # THE FORGE'S TOO (0.120.0): its fire sprites report here with `game` "forge"
 # (forgerun.gd), into the chest by the island's arrival.
+#
+# THE ENDLESS'S RECEIPTS (0.159.0): the server books the Endless now, and with
+# its ELUSION_ENDLESS_RECEIPTS on a chest kill is paid only against its own
+# count of the fight - so a 202 here is "not yet", asked again exactly as an
+# ordinary kill's is (RECEIPT_WAIT_SECONDS). Given up on, it is said at most
+# once in CHEST_UNSEEN_SAY_MSEC: a run's elites fall by the dozen.
 const DAY_FULL_WORDS := "Today's minigame gold is full - no more coins into your chest today."
 const DAY_FULL_SAY_MSEC := 10 * 60 * 1000
 var _day_full_said_at: int = -DAY_FULL_SAY_MSEC
+# The first build whose chest kill waits for a receipt (Api.BUILD 8).
+const ENDLESS_RECEIPT_BUILD := 8
+const CHEST_UNSEEN_SAY_MSEC := 60 * 1000
+var _chest_unseen_said_at: int = -CHEST_UNSEEN_SAY_MSEC
 
 
 func report_endless_kill(enemy_id: String, killer: Node, game: String = "endless") -> void:
@@ -245,7 +255,22 @@ func report_endless_kill(enemy_id: String, killer: Node, game: String = "endless
 		return
 	var body: Dictionary = {"game": game, "slot": CharacterData.active_character_index, "enemy_id": enemy_id}
 	var res: Dictionary = await kill_post.call("/api/minigames/kill", body, KILL_TIMEOUT)
+	# NOT YET IS NOT NO, as report_kill() asks it.
+	var waited_ms: int = 0
+	while _receipt_pending(res) and waited_ms < int(receipt_wait_seconds * 1000.0):
+		var pause_ms: int = receipt_pause_ms(res)
+		await get_tree().create_timer(pause_ms / 1000.0).timeout
+		waited_ms += pause_ms
+		res = await kill_post.call("/api/minigames/kill", body.duplicate(), KILL_TIMEOUT)
 	var target: Node = _reward_target(killer)
+	if _receipt_pending(res):
+		if Time.get_ticks_msec() - _chest_unseen_said_at >= CHEST_UNSEEN_SAY_MSEC:
+			_chest_unseen_said_at = Time.get_ticks_msec()
+			_notify(target, receipt_gave_up_text(Presence.phase()))
+		if OS.is_debug_build():
+			print("[KILL] %s %s unpaid - no receipt from the server's count in %.1f s"
+				% [game, enemy_id, receipt_wait_seconds])
+		return
 	if not res.get("ok", false):
 		if OS.is_debug_build():
 			print("[KILL] %s %s unpaid (%d) - %s" % [game, enemy_id, int(res.get("status", 0)), res.get("error", "")])

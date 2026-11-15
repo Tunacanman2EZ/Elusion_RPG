@@ -2172,8 +2172,8 @@ func _test_a_kill_waits_for_the_servers_receipt() -> void:
 	# kill only when its books agree the monster died, and answers 202 - "not
 	# yet" - until they have written it down. The server's half is
 	# test_receipts.py; this is the game asking again, and giving up in time.
-	check("the game is build 7, the first that waits for a receipt",
-		Api.BUILD == 7 and Combat.RECEIPT_BUILD == 7, [Api.BUILD, Combat.RECEIPT_BUILD])
+	check("the game is build 7 or later, and 7 is the first that waits for a receipt (8 the chest's, 0.159.0)",
+		Api.BUILD >= 7 and Combat.RECEIPT_BUILD == 7, [Api.BUILD, Combat.RECEIPT_BUILD])
 	var pending := {"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": 100,
 		"message": "The server has not finished counting that fight yet."}}
 	check("a 202 that says pending is the server's \"not yet\" - nothing else is",

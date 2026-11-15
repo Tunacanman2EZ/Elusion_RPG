@@ -14707,6 +14707,30 @@ him alone, chose to open them for everyone.
 `_test_every_minigame_is_open()` (testrunner_12; sabotage-caught: the Forge
 the owner's again).
 
+### The Endless's chest waits for the server's count (0.159.0)
+
+The owner chose to close most of E-22 (the API's SECURITY_NOTES): the server
+books the Endless now, as it books the Field, and with its
+`ELUSION_ENDLESS_RECEIPTS` on, a chest kill is paid only against its own
+count of that fight.
+
+- **What the game sees**: the Endless's lead says `"b": 1` now, so
+  `Presence.books()` and `server_health()` are true there - the leader sends
+  its world even alone, its own hits inside, and in a party every game draws
+  the server's count of the elites and bosses, exactly as in the Field.
+  Their record already carried the run's mark (`"rx": 1`, net_props()),
+  which is how the server accounts for monsters no map holds.
+- **The chest waits** (combat.gd `report_endless_kill()`): a 202 is "not
+  yet", posted again as `report_kill()` does (RECEIPT_WAIT_SECONDS); given
+  up on, said at most once a minute (`CHEST_UNSEEN_SAY_MSEC`) - elites fall
+  by the dozen. Nothing changes with the setting off: the server never
+  answers 202 then.
+- **Build 8** (`Api.BUILD`, `Combat.ENDLESS_RECEIPT_BUILD`): a build-7 game
+  is told to update once the setting is on. The owner sets "Old versions
+  must update" to 8 first (the API's DEPLOY.md, "The Endless's receipts").
+- `_test_the_chest_waits_for_its_receipt()` (testrunner_12; sabotage-caught:
+  the wait taken out). The Forge's fire sprites are not booked yet.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

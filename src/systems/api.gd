@@ -98,13 +98,17 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # server's count of the fight agrees (combat.gd, RECEIPT_WAIT_SECONDS). A
 # build-6 game is refused a kill the count has not backed yet, so the minimum
 # goes to 7 when the owner switches the receipts on.
+# 8 (0.159.0): an Endless elite's or boss's chest kill waits for the server's
+# receipt too (combat.gd report_endless_kill). A build-7 game fills its chest
+# as before while ELUSION_ENDLESS_RECEIPTS is off; the minimum goes to 8
+# before it goes on.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 7
+const BUILD := 8
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.158.0"
+const DISPLAY_VERSION := "0.159.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
