@@ -3947,7 +3947,7 @@ func send_run(data: Dictionary, to: int = -1) -> void:
 	return script
 
 
-func _party_game(Run: GDScript, link: Node, at: Vector2) -> Array:
+func _party_game(Run: GDScript, link: Node, at: Vector2, asks_ready: bool = false) -> Array:
 	"""One game: an area holder with the run's door, the run, its party on
 	`link`, and its player standing at `at`. [holder, run, party, player]."""
 	const PartyScript := preload("res://src/world/endless/endlessparty.gd")
@@ -3967,6 +3967,9 @@ func _party_game(Run: GDScript, link: Node, at: Vector2) -> Array:
 	run.set("corridor_rect", Rect2(694, 1030, 148, 376))
 	run.set("start_rect", Rect2(729, 975, 78, 52))
 	run.set("wake_spot", Vector2(768, 1240))
+	# Through the door as before 0.161.0, unless asked: the Ready panel has
+	# its own test (_test_ready_first()).
+	run.set("asks_ready", asks_ready)
 	var party: Node = PartyScript.new()
 	party.name = "party"
 	party.set("link", link)

@@ -81,6 +81,16 @@ extends CanvasLayer
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
+# THE START PANEL, ONE LOOK (0.161.0, startpanel.gd; the owner: "lets fix
+# the other minigames with the same idea"): a line under the title, HOW TO
+# PLAY as a grid with a gold word a line (TUTORIAL_KEYS; the lines are still
+# TUTORIAL_LINES), YOUR PARTY as four seats (READY, not ready, on the way,
+# Open; her own gold), "N of M ready", what it waits for - and the run's
+# answer (`_lobby_said`) under it, alone too - and the gold button.
+const StartPanel := preload("res://src/ui/minigames/startpanel.gd")
+const TUTORIAL_KEYS := ["Move", "Slow down", "Essence", "Shield", "Potion", "Meteors", "Tiers", "The fire", "Gold"]
+const SUBTITLE := "Outrun the fire, beat each land's boss, and keep the gold."
+const SEAT_SLOTS := [0, 1, 2, 3]
 const Field := preload("res://src/world/field.gd")
 const STORY_KEY := "#guardian"
 const STORY := [
@@ -131,6 +141,10 @@ var meteor_line: Label = null
 var tutorial: PanelContainer = null
 var party_line: Label = null
 var start_button: Button = null
+var party_box: VBoxContainer = null
+var party_count: Label = null
+var _seat_cards: Array = []
+var _seats_said: String = ""
 var board: RichTextLabel = null
 # THE METEORS ON HAND, bottom right (0.106.0): one picture a meteor held, and
 # the next one filling as it recharges (RunScript.METEORS_BASE, METEOR_RECHARGE).
@@ -353,41 +367,36 @@ func _build_words() -> void:
 	tutorial = PanelContainer.new()
 	tutorial.name = "tutorial"
 	var how := StyleBoxFlat.new()
-	how.bg_color = Color(0.1, 0.08, 0.07, 0.94)
+	how.bg_color = Color(0.1, 0.08, 0.07, 0.95)
 	how.border_color = Color(0.85, 0.65, 0.25)
 	how.set_border_width_all(3)
-	how.set_content_margin_all(20)
+	how.set_content_margin_all(22)
 	tutorial.add_theme_stylebox_override("panel", how)
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override("separation", 8)
+	lines.add_theme_constant_override("separation", 6)
 	tutorial.add_child(lines)
-	var title := Label.new()
-	title.text = "The Healer's Run"
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", COLOUR)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lines.add_child(title)
-	for words in TUTORIAL_LINES:
-		var line := Label.new()
-		line.text = str(words)
-		line.add_theme_font_size_override("font_size", 17)
-		line.add_theme_color_override("font_color", COLOUR_HINT)
-		lines.add_child(line)
-		_tutorial_lines.append(line)
-	party_line = Label.new()
-	party_line.name = "partyline"
-	party_line.add_theme_font_size_override("font_size", 17)
-	party_line.add_theme_color_override("font_color", COLOUR)
-	party_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lines.add_child(StartPanel.words("The Healer's Run", 30, COLOUR))
+	lines.add_child(StartPanel.words(SUBTITLE, 15, COLOUR_HINT))
+	lines.add_child(StartPanel.rule())
+	lines.add_child(StartPanel.head("HOW TO PLAY"))
+	lines.add_child(StartPanel.how_grid(TUTORIAL_KEYS, TUTORIAL_LINES, _tutorial_lines))
+	# THE PARTY: four seats, and what it waits for.
+	var part: Dictionary = StartPanel.party_part(SEAT_SLOTS)
+	party_box = part["box"]
+	party_count = part["count"]
+	_seat_cards = part["cards"]
+	lines.add_child(party_box)
+	(part["side"] as Node).queue_free()
+	# Its line stands outside the party's part: alone, it says the run's no.
+	party_line = part["line"]
+	party_box.remove_child(party_line)
 	party_line.visible = false
 	lines.add_child(party_line)
-	start_button = Button.new()
+	var room := Control.new()
+	room.custom_minimum_size = Vector2(0, 4)
+	lines.add_child(room)
+	start_button = StartPanel.go_button("Start  (Space)", begin)
 	start_button.name = "start"
-	start_button.text = "Start  (Space)"
-	start_button.focus_mode = Control.FOCUS_NONE
-	start_button.custom_minimum_size = Vector2(160, 36)
-	start_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	start_button.pressed.connect(begin)
 	lines.add_child(start_button)
 	tutorial.visible = false
 	add_child(tutorial)
@@ -905,27 +914,35 @@ func paint() -> void:
 	var party: Node = _party()
 	if party != null and party_line != null:
 		var here: bool = bool(party.call("active"))
+		party_box.visible = true
+		party_line.visible = true
+		if tutorial.visible:
+			_paint_seats(party)
 		if here:
 			party_line.text = lobby_text(party)
 			var counting: float = float(party.get("counting"))
 			start_button.text = key_hint("Not ready" if bool(party.get("said_ready")) else "Ready", TouchControls.active)
 			start_button.disabled = counting >= 0.0 or _entering
+			StartPanel.paint_go(start_button, not bool(party.get("said_ready")))
 			if int(run.get("players")) > 1:
 				top_line.text += "   party of %d" % int(run.get("players"))
 		else:
-			party_line.text = "Your party joins when they press Go too - wait for them here, or Start alone." \
+			party_line.text = "Your party joins when they press Go too - wait here, or start alone." \
 				+ ("\n" + _lobby_said if _lobby_said != "" else "")
 			start_button.text = key_hint("Start alone", TouchControls.active)
 			start_button.disabled = _entering
+			StartPanel.paint_go(start_button, true)
 		board.visible = not tutorial.visible and (here or int(run.get("players")) > 1)
 		if board.visible:
 			board.text = board_text(party)
 	elif party_line != null:
 		# Alone: the panel says only what went wrong asking for the run.
+		party_box.visible = false
 		party_line.visible = _lobby_said != ""
 		party_line.text = _lobby_said
 		board.visible = false
 		start_button.text = key_hint("Start", TouchControls.active)
+		StartPanel.paint_go(start_button, true)
 	boss_bar.visible = state == RunScript.State.BOSS
 	boss_bar.value = float(run.call("boss_share"))
 	if _leave_armed > 0.0:
@@ -948,20 +965,25 @@ func paint() -> void:
 
 
 func lobby_text(party: Node) -> String:
-	"""The start panel with the party here: who is, who is ready, the count."""
-	var lines: Array = []
-	var counting: float = float(party.get("counting"))
-	if counting >= 0.0:
-		lines.append("Starting in %d..." % maxi(1, ceili(counting)))
-	else:
-		lines.append("Your party - everyone presses Ready, then a count of three.")
-	for row in party.call("roster"):
-		var is_ready: bool = int(row["flags"]) & 1 != 0
-		lines.append("%s%s - %s" % [str(row["name"]), " (you)" if bool(row["me"]) else "",
-			"ready" if is_ready else ("joining..." if not bool(row["heard"]) else "not ready")])
-	if _lobby_said != "":
-		lines.append(_lobby_said)
-	return "\n".join(lines)
+	"""Under the party's seats: what it waits for (the count, who is on their
+	way, who has not pressed Ready), and the run's answer."""
+	var said: String = StartPanel.waiting_text(party.call("roster"), bool(party.get("said_ready")), PartyScript.READY,
+		float(party.get("counting")))
+	return said + ("\n" + _lobby_said if _lobby_said != "" else "")
+
+
+func _paint_seats(party: Node) -> void:
+	"""The four seats - this player first - repainted only when one changed."""
+	var rows: Array = party.call("roster")
+	var here: bool = bool(party.call("active"))
+	var said: Array = []
+	for k in _seat_cards.size():
+		said.append(StartPanel.seat_said(rows[k] if k < rows.size() else {}, here, PartyScript.READY))
+	party_count.text = "%d of %d ready" % [StartPanel.ready_count(said), rows.size()] if here else ""
+	var signature: String = str(said)
+	if signature != _seats_said:
+		_seats_said = signature
+		StartPanel.paint_seats(_seat_cards, said)
 
 
 func board_text(party: Node) -> String:

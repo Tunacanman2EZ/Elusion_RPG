@@ -165,6 +165,24 @@ const TANK_CLASS := "tank"
 # ---- STARTING -----------------------------------------------------------------
 const START_REACH := 56.0
 const START_HOLD := 1.0
+# READY FIRST (0.161.0, readypanel.gd; the owner: "lets fix the other
+# minigames with the same idea", the full Ready panel - "the door or anvil
+# opens only once all are ready"). Waiting, the panel is up and the anvil
+# will not light; Start alone, or everyone here Ready (forgeparty.gd
+# ready_of(), the fourth number of each "me"), opens the gate (gate_open):
+# the panel goes and the anvil lights as it did. After a run, it asks again.
+# `asks_ready` false is the suite's way to play as before.
+const READY_SUBTITLE := "The lava always wins. Hold the island as long as you can."
+const READY_KEYS := ["Heat", "Lava", "Gear", "Sprites", "The light", "The end", "Start"]
+const READY_LINES := [
+	"The heat fills, then a slice of the island floods - quicker each time.",
+	"Out of wading time, anyone in the lava catches fire.",
+	"Hold interact at the anvil to forge armour: each piece buys wading time.",
+	"Fire sprites keep coming - every one you slay pays into your chest.",
+	"The lava never takes the light round the anvil - the tank's is wider.",
+	"With every slice gone the volcano erupts. The score is how long you last.",
+	"Then stand at the anvil a moment to light the forge.",
+]
 const COUNTDOWN_SECONDS := 3.0
 
 # ---- THE HEAT -----------------------------------------------------------------
@@ -217,6 +235,7 @@ const CHEST_META := &"chest_game"
 const ChestScript := preload("res://src/world/endless/endlesschest.gd")
 # ---- THE FORGE TOGETHER (0.160.0) ---------------------------------------------
 const PartyScript := preload("res://src/world/forge/forgeparty.gd")
+const ReadyPanel := preload("res://src/ui/minigames/readypanel.gd")
 const PARTY_MOST := 4
 # By how many started the run, 0 to 4 (the Endless's party_crowd() and
 # party_health()): more sprites alive and at once, and each stronger.
@@ -405,6 +424,11 @@ var _sky: Node2D = null
 
 # ---- THE FORGE TOGETHER (0.160.0) ---------------------------------------------
 var party: Node = null
+# READY FIRST (0.161.0): the panel, whether the gate is open, the suite's
+# switch.
+var ready_panel: CanvasLayer = null
+var gate_open: bool = false
+var asks_ready: bool = true
 # This run's key, the leader's: lines and "me"s from another run are passed over.
 var run_key: int = 0
 # How many the run is scaled for: fixed when it starts.
@@ -465,6 +489,17 @@ func _ready() -> void:
 	party.name = "forgeparty"
 	party.set("run", self)
 	add_child(party)
+	if asks_ready:
+		ready_panel = ReadyPanel.new()
+		ready_panel.name = "readypanel"
+		ready_panel.set("title", "The Forge")
+		ready_panel.set("subtitle", READY_SUBTITLE)
+		ready_panel.set("keys", READY_KEYS)
+		ready_panel.set("lines", READY_LINES)
+		ready_panel.set("party", party)
+		ready_panel.set("ready_of", Callable(party, "ready_of"))
+		ready_panel.connect("go_pressed", open_gate)
+		add_child(ready_panel)
 	_tell_story.call_deferred()
 
 
@@ -692,10 +727,13 @@ func _process(delta: float) -> void:
 
 func _timed_process(delta: float) -> void:
 	_step_scan()
+	_lobby()
 	match state:
 		State.WAITING:
 			var player: Node2D = _player()
-			if player != null and player.global_position.distance_to(CENTRE) <= START_REACH:
+			if not gate_is_open():
+				_hold = 0.0
+			elif player != null and player.global_position.distance_to(CENTRE) <= START_REACH:
 				_hold += delta
 				if _hold >= START_HOLD:
 					# A follower's player lights it for the party: the leader
@@ -1629,8 +1667,42 @@ func line() -> Array:
 
 
 func my_line() -> Array:
-	"""This game's own: [key, down, essences walked over]."""
-	return [run_key, 1 if down else 0, took]
+	"""This game's own: [key, down, essences walked over, Ready (0.161.0)]."""
+	return [run_key, 1 if down else 0, took, 1 if said_ready() else 0]
+
+
+func gate_is_open() -> bool:
+	"""Whether the anvil may be lit: no Ready panel, or it said go."""
+	return ready_panel == null or gate_open
+
+
+func said_ready() -> bool:
+	return ready_panel != null and bool(ready_panel.get("said_ready"))
+
+
+func open_gate() -> void:
+	"""Start alone, or the whole party Ready: the panel goes and the anvil
+	may be lit."""
+	gate_open = true
+	if ready_panel != null:
+		ready_panel.visible = false
+	if party != null:
+		party.call("me_now")
+
+
+func _lobby() -> void:
+	"""Waiting: the panel up until the gate opens; anything else, and the
+	next wait asks again."""
+	if ready_panel == null:
+		return
+	if state != State.WAITING:
+		gate_open = false
+		ready_panel.set("said_ready", false)
+		ready_panel.visible = false
+		return
+	if not gate_open and bool(ready_panel.call("all_ready")):
+		open_gate()
+	ready_panel.visible = not gate_open
 
 
 func party_go() -> void:

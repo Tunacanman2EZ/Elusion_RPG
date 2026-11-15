@@ -218,6 +218,15 @@ var _server_descent_rooms: bool = false
 # Forge as one run ("fp"), and the server's welcome says it seats one ("fr").
 const FORGE_PARTY := 1
 var _server_forge_rooms: bool = false
+# THE MAGE'S STAND TOGETHER (0.161.0): the server seats the Stand a room per
+# party ("ms" in its welcome), so the Stand may say it is there.
+var _server_stand_rooms: bool = false
+# CUT THE CLOTH TOGETHER (0.161.0): the server seats the cloth a room per
+# party ("cc" in its welcome), so a party may cut one cloth.
+var _server_cloth_rooms: bool = false
+# While the Stand is played with the party: everybody drawn in it is drawn as
+# the mage, whatever their class (magestandscreen.gd sets and clears it).
+var class_override: String = ""
 # While the Healer's Run is played with the party: what this player's state
 # says instead of the world's - {"a", "x", "y", "m"} - and none of the
 # world's monster messages are heard (healerrunscreen.gd sets and clears it).
@@ -341,6 +350,18 @@ func forge_rooms() -> bool:
 	"""True while the link is open to a server that seats a party's Forge
 	together (0.160.0) - for a game that said "fp", as this one does."""
 	return runs() and _server_forge_rooms
+
+
+func stand_rooms() -> bool:
+	"""True while the link is open to a server that seats the Mage's Stand a
+	room per party (0.161.0)."""
+	return runs() and _server_stand_rooms
+
+
+func cloth_rooms() -> bool:
+	"""True while the link is open to a server that seats Cut the Cloth a
+	room per party (0.161.0)."""
+	return runs() and _server_cloth_rooms
 
 
 func send_run(data: Dictionary, to: int = -1) -> void:
@@ -552,6 +573,8 @@ func _pump(delta: float, player: Node) -> void:
 		_server_healer_rooms = false
 		_server_descent_rooms = false
 		_server_forge_rooms = false
+		_server_stand_rooms = false
+		_server_cloth_rooms = false
 		_lead_books = true
 		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
@@ -647,14 +670,23 @@ func state_for(player: Node) -> Dictionary:
 			fx.append(effect)
 	var at: Vector2 = (player as Node2D).global_position if player is Node2D else Vector2.ZERO
 	var area: String = AreaRegistry.current_area_id()
+	var aim: int = aim_degrees_of(player)
+	var health: int = health_percent_of(player)
+	var over_screen: bool = false
 	if state_override.is_valid():
-		# IN THE HEALER'S RUN WITH THE PARTY: where her healer runs.
+		# IN THE HEALER'S RUN WITH THE PARTY: where her healer runs (and in
+		# the Mage's Stand, 0.161.0, where her mage walks the wall).
 		var over: Variant = state_override.call()
 		if over is Dictionary and not (over as Dictionary).is_empty():
 			area = str(over.get("a", area))
 			at = over.get("at", at)
 			anim = str(over.get("m", anim)) if _anim_rule.search(str(over.get("m", ""))) != null else anim
 			fx = []
+			over_screen = true
+			# The run's own aim and health, when it says (the Stand: none -
+			# the town player's aim ring is no picture of her meteors).
+			aim = int(over.get("aim", aim))
+			health = int(over.get("hp", health))
 	return {
 		"t": "s",
 		"a": area,
@@ -662,12 +694,12 @@ func state_for(player: Node) -> Dictionary:
 		"y": snappedf(at.y, 0.1),
 		"m": anim,
 		"fx": fx,
-		"pet": "" if area == "healerrun" else (str(player.get("active_pet_id")) if "active_pet_id" in player else ""),
+		"pet": "" if area == "healerrun" or over_screen else (str(player.get("active_pet_id")) if "active_pet_id" in player else ""),
 		# THEIR AIM AND THEIR HEALTH (0.41.0, remoteplayer.gd): where this
 		# player's aim ring points and how much health they have, for the
 		# others to draw.
-		"aim": aim_degrees_of(player),
-		"hp": health_percent_of(player),
+		"aim": aim,
+		"hp": health,
 		# THE ENEMY METER (0.83.0): what this player took, was healed and
 		# regenerated, all told, and their real health. Never passed on to
 		# the others - the server keeps it for an open meter.
@@ -758,6 +790,8 @@ func handle_message(message: Dictionary) -> void:
 			_server_healer_rooms = int(message.get("hr", 0)) >= 1
 			_server_descent_rooms = int(message.get("dr", 0)) >= 1
 			_server_forge_rooms = int(message.get("fr", 0)) >= FORGE_PARTY
+			_server_stand_rooms = int(message.get("ms", 0)) >= 1
+			_server_cloth_rooms = int(message.get("cc", 0)) >= 1
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":
@@ -924,6 +958,10 @@ func _join(entry: Dictionary) -> void:
 	var at: Vector2 = _local(Vector2(float(entry.get("x", 0.0)), float(entry.get("y", 0.0))))
 	var fx: Array = entry.get("fx", []) if entry.get("fx", []) is Array else []
 	var ts: int = _clock_of(entry.get("ts", -1))
+	if class_override != "":
+		# THE MAGE'S STAND WITH THE PARTY: every one of them is the mage.
+		entry = entry.duplicate()
+		entry["cls"] = class_override
 	if body == null:
 		body = RemotePlayer.new()
 		body.user_id = id

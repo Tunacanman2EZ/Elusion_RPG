@@ -133,6 +133,25 @@ const Boons := preload("res://src/world/descent/descentboons.gd")
 const Field := preload("res://src/world/field.gd")
 const LandsScript := preload("res://src/world/descent/descentlands.gd")
 const PartyScript := preload("res://src/world/descent/descentparty.gd")
+# READY FIRST (0.161.0, readypanel.gd; the owner: "lets fix the other
+# minigames with the same idea", the full Ready panel - "the door or anvil
+# opens only once all are ready"). Waiting, the panel is up and both doors
+# shut; Start alone, or everyone here Ready (descentparty.gd ready_of(), the
+# fifth number of each "me"), opens the gate (gate_open): the panel goes and
+# the doors open as they did. After a run, it asks again. `asks_ready` false
+# is the suite's way to play as before.
+const ReadyPanel := preload("res://src/ui/minigames/readypanel.gd")
+const READY_SUBTITLE := "Room by room down a crypt - seven floors, each with its keeper."
+const READY_KEYS := ["Rooms", "Doors", "Upgrades", "Floors", "Danger", "A fall", "Start"]
+const READY_LINES := [
+	"The doors shut and a pack comes at you - clear it to go on.",
+	"Each door says what the next room holds: an upgrade, gold or an elite.",
+	"Pick one of three cards - each lasts the whole run.",
+	"Four rooms, then the floor's keeper. Seven floors, each its own land.",
+	"Deeper floors throw their keeper's hazards - and two keepers from the fourth.",
+	"A fall puts you out - the party fights on while anyone stands.",
+	"Then walk through either door to begin.",
+]
 const STORY_KEY := "#warrior"
 const STORY := [
 	"The warrior was battle-tested his whole life. Monsters were always a threat.",
@@ -402,6 +421,12 @@ var _lands: Node2D = null
 var _impossible_floor: int = -1
 var deepest: int = -1
 var party: Node = null
+# READY FIRST (0.161.0): the panel, whether the gate is open, the suite's
+# switch, and the doors as the gate last had them.
+var ready_panel: CanvasLayer = null
+var gate_open: bool = false
+var asks_ready: bool = true
+var _gated_doors: int = -1
 var run_key: int = 0
 var players: int = 1
 # How many elements have burst on this game's player this run (0.129.0).
@@ -465,6 +490,19 @@ func _ready() -> void:
 	party.name = "descentparty"
 	party.set("run", self)
 	add_child(party)
+	if asks_ready:
+		ready_panel = ReadyPanel.new()
+		ready_panel.name = "readypanel"
+		ready_panel.set("title", "The Descent")
+		ready_panel.set("subtitle", READY_SUBTITLE)
+		ready_panel.set("keys", READY_KEYS)
+		ready_panel.set("lines", READY_LINES)
+		ready_panel.set("party", party)
+		ready_panel.set("ready_of", Callable(party, "ready_of"))
+		ready_panel.connect("go_pressed", open_gate)
+		add_child(ready_panel)
+		_set_doors(false, "begin", "begin")
+		_gated_doors = 0
 	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): every floor's
 	# monsters, elites and keeper, loaded between fights.
 	var warmer: Node = SceneWarmer.add_to(self)
@@ -827,6 +865,7 @@ func _process(delta: float) -> void:
 
 func _timed_process(delta: float) -> void:
 	_hold_camera()
+	_lobby()
 	match state:
 		State.TRAVEL:
 			_travel_t += delta
@@ -1090,6 +1129,8 @@ func _set_doors(open: bool, left: String, right: String) -> void:
 func _on_walked_in(door: Node2D) -> void:
 	match state:
 		State.WAITING:
+			if not gate_is_open():
+				return
 			# TOGETHER (0.126.0): the countdown, on every screen.
 			if not party_on():
 				start_run()
@@ -1726,8 +1767,50 @@ func line() -> Array:
 
 
 func my_line() -> Array:
-	"""This game's own: [key, down, picked, the door it walked into]."""
-	return [run_key, 1 if Boons.out else 0, 0 if state == State.PICK else 1, my_door]
+	"""This game's own: [key, down, picked, the door it walked into, Ready
+	(0.161.0)]."""
+	return [run_key, 1 if Boons.out else 0, 0 if state == State.PICK else 1, my_door, 1 if said_ready() else 0]
+
+
+func gate_is_open() -> bool:
+	"""Whether the doors may open to begin: no Ready panel, or it said go."""
+	return ready_panel == null or gate_open
+
+
+func said_ready() -> bool:
+	return ready_panel != null and bool(ready_panel.get("said_ready"))
+
+
+func open_gate() -> void:
+	"""Start alone, or the whole party Ready: the panel goes and the doors
+	open."""
+	gate_open = true
+	if ready_panel != null:
+		ready_panel.visible = false
+	if party != null:
+		party.call("me_now")
+	_lobby()
+
+
+func _lobby() -> void:
+	"""Waiting: the panel up and the doors shut until the gate opens;
+	anything else, and the next wait asks again."""
+	if ready_panel == null:
+		return
+	if state != State.WAITING:
+		gate_open = false
+		_gated_doors = -1
+		ready_panel.set("said_ready", false)
+		ready_panel.visible = false
+		return
+	if not gate_open and bool(ready_panel.call("all_ready")):
+		open_gate()
+		return
+	ready_panel.visible = not gate_open
+	var wanted: int = 1 if gate_open else 0
+	if wanted != _gated_doors:
+		_gated_doors = wanted
+		_set_doors(gate_open, "begin", "begin")
 
 
 func party_go() -> void:
@@ -1764,7 +1847,7 @@ func follow_line(wire: Array) -> void:
 			_end_run(false)
 		state = State.WAITING
 		run_key = 0
-		_set_doors(true, "begin", "begin")
+		_set_doors(gate_is_open(), "begin", "begin")
 		return
 	if their_state == State.COUNTDOWN:
 		if state == State.WAITING:
@@ -1856,7 +1939,8 @@ func _end_run(won: bool) -> void:
 	state = State.WAITING
 	room = 0
 	room_kind = ""
-	_set_doors(true, "begin", "begin")
+	gate_open = false
+	_set_doors(gate_is_open(), "begin", "begin")
 	if hud != null:
 		hud.call("hide_pick")
 		hud.call("show_result", words, won)

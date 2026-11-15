@@ -43,7 +43,8 @@ var _me_left: float = 0.0
 var _go_left: float = 0.0
 var _last_line: Array = []
 var _last_me: Array = []
-# (Leader.) Each other player's last line: id -> [key, out, picked, door].
+# Each other player's last line: id -> [key, out, picked, door, Ready - 1 for
+# a game from before 0.161.0, which says nothing of it].
 var _members: Dictionary = {}
 
 
@@ -151,6 +152,13 @@ func line_now() -> void:
 	_tick_left = 0.0
 
 
+func ready_of(id: int) -> int:
+	"""READY FIRST (0.161.0): 1 when that player has said Ready (or its game
+	is from before and says nothing of it), 0 when not, -1 when not heard."""
+	var line: Array = _members.get(id, [])
+	return int(line[4]) if line.size() >= 5 else -1
+
+
 func me_now() -> void:
 	"""This game's own line goes out with the next tick."""
 	_me_left = 0.0
@@ -173,8 +181,11 @@ func _on_run(from_id: int, data: Dictionary) -> void:
 		run.call("follow_line", data["r"])
 	if data.get("me") is Array and (data["me"] as Array).size() >= 4:
 		var me: Array = []
-		for n in (data["me"] as Array).slice(0, 4):
+		for n in (data["me"] as Array).slice(0, 5):
 			me.append(int(n))
+		if me.size() < 5:
+			# A game from before 0.161.0 says no Ready: it holds nobody up.
+			me.append(1)
 		_members[from_id] = me
 		if leading and active():
 			run.call("party_me", from_id, me)

@@ -23,8 +23,9 @@
 #   - ITS HITS ON THE SWARM ("h"): [slot, batch, damage], every TICK_SECONDS
 #     (0.2: five messages a second, inside the server's forty).
 #     Every copy takes every hit, so the same slime dies on every screen.
-#   - ITS PLAYER ("me"): [in the run, its own kills], when it changes and every
-#     ME_EVERY. The leader ends the run when nobody is in.
+#   - ITS PLAYER ("me"): [in the run, its own kills, on a phone, busy,
+#     Ready (0.161.0, READY FIRST in endlessrun.gd)], when it changes and
+#     every ME_EVERY. The leader ends the run when nobody is in.
 #   - THE DOOR ("go"): its player stepped through first - the leader starts
 #     the countdown.
 # When the leader leaves, the presence server names the next game in line,
@@ -125,6 +126,22 @@ func any_busy() -> bool:
 		if here.has(id) and (_members[id] as Array).size() >= 4 and int((_members[id] as Array)[3]) == 1:
 			return true
 	return false
+
+
+func ready_of(id: int) -> int:
+	"""READY FIRST (0.161.0): 1 when that player has said Ready in its "me"
+	(or its game is from before and says nothing of it), 0 when not, -1 when
+	not heard from yet."""
+	var said: Variant = _members.get(id)
+	if not (said is Array):
+		return -1
+	return int((said as Array)[4]) if (said as Array).size() >= 5 else 1
+
+
+func me_now() -> void:
+	"""This game's own line goes out with the next beat."""
+	_me_left = 0.0
+	_tick_left = 0.0
 
 
 func others_in() -> int:
@@ -246,7 +263,8 @@ func flush() -> void:
 	# The third: on a phone (PHONES HOLD THE CROWD, endlessrun.gd); the fourth
 	# (0.149.0): drawing slower than its budget (A BUSY COMPUTER HOLDS THE CROWD).
 	var me: Array = [1 if bool(run.get("my_in")) else 0, int(run.get("swarm").get("my_slain")),
-		1 if bool(run.call("on_phone")) else 0, 1 if bool(run.get("busy")) else 0]
+		1 if bool(run.call("on_phone")) else 0, 1 if bool(run.get("busy")) else 0,
+		1 if bool(run.call("said_ready")) else 0]
 	if me != _last_me or _me_left <= 0.0:
 		first["me"] = me
 		_last_me = me
@@ -368,8 +386,9 @@ func _on_run(from_id: int, data: Dictionary) -> void:
 				swarm.call("hurt_remote", int(hit[0]), int(hit[1]), int(hit[2]))
 	if data.get("me") is Array and (data["me"] as Array).size() >= 2:
 		var said: Array = data["me"]
+		# The fifth (0.161.0): Ready. A game from before says none - ready.
 		_members[from_id] = [int(said[0]), int(said[1]), int(said[2]) if said.size() >= 3 else 0,
-			int(said[3]) if said.size() >= 4 else 0]
+			int(said[3]) if said.size() >= 4 else 0, int(said[4]) if said.size() >= 5 else 1]
 	if leading and active():
 		if int(data.get("go", 0)) == 1:
 			run.call("party_go")

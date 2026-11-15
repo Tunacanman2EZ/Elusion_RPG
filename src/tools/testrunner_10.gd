@@ -1892,6 +1892,8 @@ func _test_the_forge() -> void:
 	run.name = "forgerun"
 	run.set("player_override", body)
 	run.set("class_override", "warrior")
+	# Lit as before 0.161.0: the Ready panel has its own test.
+	run.set("asks_ready", false)
 	island.add_child(run)
 	await get_tree().process_frame
 	# Lighting it.

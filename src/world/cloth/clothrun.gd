@@ -70,12 +70,36 @@
 # frayed edges; the open cut as the shot's dotted glowing trail (`_fx`); a
 # cut piece dissolving cell by cell into green motes.
 #
+# CUT THE CLOTH TOGETHER (0.161.0; clothparty.gd has the wire). The owner:
+# "i was thinking of making cut the cloth 4 player and if players lines crash
+# into each other they also die" - "only the player that crashed into it". One
+# cloth for up to four cutters, each with a shot and lives of their own:
+#   - each game rides its own shot and cuts its own line (LINE); the others'
+#     open cuts are on its cloth as OTHER. A shot that runs into one crashes
+#     (_crash()): that player loses a life (the Ward takes it), and the other's
+#     cut stands.
+#   - a closed cut is cut away on every screen; the pieces cut with it are the
+#     leader's to choose - none a slime is on, and none another open cut runs
+#     through (_cut_away()) - sent to everybody as row spans (EV_CUT).
+#   - the leader runs the slimes, saws, flares, gusts, gnawers and pickups and
+#     sends where the slimes and saws are ten times a second (snapshot());
+#     every other game moves its copies between and judges only its own shot
+#     and cut, against the slimes on its own screen.
+#   - a pickup is taken through the leader: Swift, Ward and Life are the
+#     taker's, Slow slows the slimes for everybody.
+#   - out of lives is out (`out`): watching while the party cuts on; the run
+#     is over when everybody is. Each player's gold is the rounds cleared
+#     while they were still in.
+#   - each starts on a side of its own (SEAT_STARTS); the saws are put far
+#     from all of them.
+#
 # No class_name; clothscreen.gd makes it.
 extends Node2D
 
 const Shot := preload("res://src/projectiles/turretprojectile.gd")
 const Sparkle := preload("res://src/characters/castsparkle.gd")
 const HealerRun := preload("res://src/world/healerrun/healerrun.gd")
+const Party := preload("res://src/world/cloth/clothparty.gd")
 
 const VIEW := Vector2(640, 360)
 const ORIGIN := Vector2(8, 30)
@@ -86,6 +110,8 @@ const BORDER := 2
 const OPEN := 0
 const OWN := 1
 const LINE := 2
+# Another cutter's open cut, with the party (0.161.0).
+const OTHER := 3
 const SAFE_SPEED := 300.0
 const CUT_SPEED := 95.0
 const FOE_SPEED := 52.0
@@ -119,6 +145,17 @@ const TURN_RATE := 1.8
 const GNAW_GAP := 0.6
 const GNAW_KEEP := 4
 const SPLIT_SHARE := 0.02
+# THE PARTY'S STARTS (0.161.0): the bottom, the top, the left, the right (the
+# first is where a shot alone starts), and each cutter's colour on the
+# others' cloth. A slime's size on the wire, how many go in a snapshot, how
+# far off a copy is put rather than eased, and what the leader says.
+const SEAT_STARTS := [Vector2i(78, 80), Vector2i(78, 0), Vector2i(0, 40), Vector2i(155, 40)]
+const SEAT_COLOURS := [Color(1.0, 0.82, 0.38), Color(0.45, 0.78, 1.0), Color(1.0, 0.52, 0.75), Color(1.0, 0.62, 0.3)]
+const SIZES := ["small", "elite", "boss"]
+const SNAP_FOES_MOST := 100
+const SNAP_EASE := 20.0
+const SAY_SEALED := 1
+const SAY_SPLIT := 2
 const DISSOLVE := 0.6
 const CLEARED_SECONDS := 1.6
 const HIT_SECONDS := 0.6
@@ -245,6 +282,23 @@ var aim: Variant = null
 var steer := Vector2.ZERO
 var cut_held: bool = false
 var seed_value: int = 0
+# THE PARTY (0.161.0): its node (clothparty.gd; clothscreen.gd makes it); the
+# holder of the party's step-drawn pictures (never shown: where their shots
+# ride); their open cuts (id -> cells, in order); out of lives; how many cut,
+# and this player's seat. A follower waits for the leader's round (EV_ROUND)
+# before it plays.
+var party: Node = null
+var others: Node2D = null
+var others_lines: Dictionary = {}
+var out: bool = false
+var players: int = 1
+var seat: int = 0
+var awaiting_round: bool = false
+var _other_owner: Dictionary = {}
+var _next_foe: int = 1
+var _next_pickup: int = 1
+var _followed: bool = false
+var _crashed: bool = false
 
 var _rng := RandomNumberGenerator.new()
 var _step_left: float = 0.0
@@ -373,6 +427,11 @@ func _ready() -> void:
 	_fx.draw.connect(_draw_fx)
 	add_child(_fx)
 	_make_bullet()
+	others = Node2D.new()
+	others.name = "others"
+	others.visible = false
+	others.set_meta(&"plate_zoom", 1.0)
+	add_child(others)
 	for k in 140:
 		_specks.append(ORIGIN + Vector2(_rng.randf() * COLS * CELL, _rng.randf() * ROWS * CELL))
 	begin(1)
@@ -414,9 +473,18 @@ func _inner() -> int:
 # A ROUND
 # =============================================================================
 
-func begin(which: int) -> void:
+func begin(which: int, seed_now: int = 0) -> void:
 	"""A fresh cloth for round `which`, of its land: the border cut away, the
-	shot on it, its slimes, saws, elites or boss, and its land's rocks or wet."""
+	shot on it, its slimes, saws, elites or boss, and its land's rocks or wet.
+	With the party, from the leader's `seed_now`, so every screen makes the
+	same."""
+	if seed_now != 0:
+		_rng.seed = seed_now
+	others_lines = {}
+	_other_owner = {}
+	_next_foe = 1
+	_next_pickup = 1
+	awaiting_round = false
 	round_now = which
 	land = land_of(which)
 	state = State.PLAYING
@@ -445,7 +513,7 @@ func begin(which: int) -> void:
 	_flare_left = FLARE_GAP * 0.6
 	_gust_left = GUST_GAP * 0.6
 	boss_share = 1.0
-	cutter = Vector2i(int(COLS * 0.5), ROWS - 1)
+	cutter = start_cell()
 	cutter_px = px(cutter)
 	_jump = true
 	for f in foes:
@@ -537,9 +605,10 @@ func _look_for(kind: String) -> Dictionary:
 	return look
 
 
-func _add_slime(kind: String, at: Vector2, dir: Vector2, size: String, trick: String) -> Dictionary:
+func _add_slime(kind: String, at: Vector2, dir: Vector2, size: String, trick: String, id: int = 0) -> Dictionary:
 	"""A slime of `kind` - "small", an "elite" with its `trick`, or the "boss" -
-	at `at`, going `dir`."""
+	at `at`, going `dir`; numbered (`id`, or the next), for the party's
+	snapshots."""
 	var look: Dictionary = _look_for(kind)
 	var sprite := AnimatedSprite2D.new()
 	sprite.sprite_frames = look.get("frames")
@@ -557,7 +626,8 @@ func _add_slime(kind: String, at: Vector2, dir: Vector2, size: String, trick: St
 	var f: Dictionary = {"p": at, "v": dir.normalized() * FOE_SPEED * speed_for(round_now), "sprite": sprite,
 		"dead": -1.0, "kind": kind, "move": "bounce" if size == "boss" else str(MOVES.get(kind, "bounce")),
 		"r": r, "size": size, "trick": trick, "t": _rng.randf() * 3.0, "dazed": 0.0, "zig": 1.0,
-		"gnaw": GNAW_GAP, "brood": BROOD_SECONDS * 0.6}
+		"gnaw": GNAW_GAP, "brood": BROOD_SECONDS * 0.6, "id": id if id > 0 else _next_foe}
+	_next_foe = maxi(_next_foe, int(f["id"]) + 1)
 	if trick != "":
 		sprite.modulate = Color(1.15, 1.0, 1.0) if trick == "hunter" else (Color(1.0, 1.1, 0.9) if trick == "splitter" else Color(0.95, 0.95, 1.15))
 	foes.append(f)
@@ -573,10 +643,20 @@ func _add_saw(k: int) -> void:
 	for c in _edges:
 		var e: Vector2i = c
 		var rim: bool = e.x < BORDER or e.y < BORDER or e.x >= COLS - BORDER or e.y >= ROWS - BORDER
-		if rim and absi(e.x - cutter.x) + absi(e.y - cutter.y) > 60:
+		if rim and _far_from_starts(e):
 			far.append(e)
 	var at: Vector2i = far[_rng.randi() % far.size()] if not far.is_empty() else _edges[_rng.randi() % _edges.size()]
 	saws.append({"c": at, "prev": at, "px": px(at), "step": 0.0, "spin": float(k)})
+
+
+func _far_from_starts(e: Vector2i) -> bool:
+	"""(A saw's place.) Far round the cloth from the shot - with the party,
+	from every start in play, so every screen puts it in the same place."""
+	var starts: Array = [cutter] if not party_on() else SEAT_STARTS.slice(0, clampi(players, 1, SEAT_STARTS.size()))
+	for c in starts:
+		if absi(e.x - (c as Vector2i).x) + absi(e.y - (c as Vector2i).y) <= 60:
+			return false
+	return true
 
 
 func _mark_edges() -> void:
@@ -601,7 +681,8 @@ func _mark_edges() -> void:
 			_edges.append(Vector2i(i % COLS, floori(float(i) / float(COLS))))
 	_near_goal = Vector2i(-1, -1)
 	_sync_astar()
-	if not is_edge(cutter) and not _edges.is_empty():
+	# Never mid-cut: with the party another's cut can change the edges then.
+	if not cutting and not is_edge(cutter) and not _edges.is_empty():
 		cutter = _nearest_edge(cutter)
 		cutter_px = px(cutter)
 	for s in saws:
@@ -691,22 +772,36 @@ func _timed_physics_process(delta: float) -> void:
 	swift_left = maxf(0.0, swift_left - delta)
 	slow_left = maxf(0.0, slow_left - delta)
 	_step_dissolve(delta)
+	# THE LEADER WENT (the party): this game runs the run from where it stands.
+	var now_following: bool = following()
+	if _followed and not now_following:
+		take_over()
+	_followed = now_following
+	if awaiting_round and not now_following:
+		take_over()
 	match state:
 		State.PLAYING:
-			_move_shot(delta)
-			if state == State.PLAYING:
-				_move_slimes(delta)
-			if state == State.PLAYING:
-				_move_saws(delta)
-			if state == State.PLAYING:
-				_land_effects(delta)
-				_tick_pickups(delta)
+			if awaiting_round:
+				pass
+			else:
+				if not out:
+					_move_shot(delta)
+				if state == State.PLAYING:
+					_move_slimes(delta)
+				if state == State.PLAYING:
+					_move_saws(delta)
+				if state == State.PLAYING:
+					_land_effects(delta)
+					_tick_pickups(delta)
 		State.CLEARED:
 			cleared_left -= delta
-			if cleared_left <= 0.0:
-				begin(round_now + 1)
+			# Following the party, the leader's next round comes (EV_ROUND).
+			if cleared_left <= 0.0 and not now_following:
+				_next_round()
 		State.OVER:
 			pass
+	if state != State.OVER and out and (not party_on() or (not now_following and bool(party.call("all_out")))):
+		_end_run()
 	_place_bullet()
 	_fx.queue_redraw()
 	_under.queue_redraw()
@@ -723,6 +818,7 @@ func _shot_speed() -> float:
 
 func _move_shot(delta: float) -> void:
 	var speed: float = _shot_speed()
+	_crashed = false
 	_step_left -= delta
 	var steps: int = 0
 	var moved: bool = false
@@ -735,7 +831,7 @@ func _move_shot(delta: float) -> void:
 			break
 		_step_to(next)
 		moved = true
-		if state != State.PLAYING:
+		if state != State.PLAYING or _crashed:
 			break
 		speed = _shot_speed()
 	if cutting:
@@ -810,6 +906,9 @@ func _may_enter(n: Vector2i, cutting_now: bool) -> bool:
 	var s: int = grid[_i(n.x, n.y)]
 	if s == LINE:
 		return false
+	if s == OTHER:
+		# Into another's open cut: a crash (_step_to()).
+		return cutting_now
 	if cutting_now:
 		return s == OPEN or (s == OWN and cutting)
 	return s == OWN
@@ -840,6 +939,9 @@ func _step_to(next: Vector2i) -> void:
 	"""One cell: on cloth it is cut (the line grows); back on what is cut
 	away from a cut, the cut closes."""
 	var s: int = grid[_i(next.x, next.y)]
+	if s == OTHER:
+		_crash(next)
+		return
 	_last_step = next - cutter
 	if s == OPEN:
 		if not cutting:
@@ -850,6 +952,7 @@ func _step_to(next: Vector2i) -> void:
 			_still = 0.0
 		grid[_i(next.x, next.y)] = LINE
 		line.append(next)
+		_tell(Party.ADD, next.x, next.y)
 		cutter = next
 		_take_pickup_at(next)
 	elif s == OWN and cutting:
@@ -861,11 +964,36 @@ func _step_to(next: Vector2i) -> void:
 
 func _close() -> void:
 	"""The cut meets what is cut away: it is cut away, and so is every piece
-	of cloth no slime is on."""
-	var before: float = taken
+	of cloth no slime is on (_cut_away()). With the party a follower says its
+	cut is closed and the leader chooses the pieces (EV_CUT)."""
+	var turned := PackedInt32Array()
 	for c in line:
 		grid[_i(c.x, c.y)] = OWN
 		dissolving[_i(c.x, c.y)] = DISSOLVE
+		turned.append(_i(c.x, c.y))
+	line = []
+	cutting = false
+	fuse = -1.0
+	_still = 0.0
+	_path = []
+	if party_on():
+		_tell(Party.CLOSE)
+	if following():
+		_mark_edges()
+		_count()
+		_redraw_left = DISSOLVE_STEP
+		_board.queue_redraw()
+		return
+	_cut_away(turned, my_id())
+
+
+func _cut_away(turned: PackedInt32Array, closer: int) -> void:
+	"""Every piece of cloth no slime is on is cut away - and, with the party,
+	none another open cut runs through, so nobody is cut out from under.
+	`turned`: the cells the closed cut itself turned; `closer`: whose cut it
+	was (who takes what is cut free). With the party what is cut goes to
+	everybody as row spans (EV_CUT)."""
+	var before: float = taken
 	var seen := PackedByteArray()
 	seen.resize(COLS * ROWS)
 	var todo: Array = []
@@ -876,6 +1004,11 @@ func _close() -> void:
 		if grid[_i(c.x, c.y)] == OPEN and seen[_i(c.x, c.y)] == 0:
 			seen[_i(c.x, c.y)] = 1
 			todo.append(c)
+	for c in line + _other_cells():
+		var at: Vector2i = c
+		if seen[_i(at.x, at.y)] == 0 and grid[_i(at.x, at.y)] != OWN:
+			seen[_i(at.x, at.y)] = 1
+			todo.append(at)
 	while not todo.is_empty():
 		var c: Vector2i = todo.pop_back()
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -883,7 +1016,7 @@ func _close() -> void:
 			if not _in_board(n):
 				continue
 			var i: int = _i(n.x, n.y)
-			if seen[i] == 0 and grid[i] == OPEN:
+			if seen[i] == 0 and grid[i] != OWN:
 				seen[i] = 1
 				todo.append(n)
 	var gone := PackedVector2Array()
@@ -891,23 +1024,26 @@ func _close() -> void:
 		if grid[i] == OPEN and seen[i] == 0:
 			grid[i] = OWN
 			dissolving[i] = DISSOLVE
+			turned.append(i)
 			if i % 3 == 0:
 				gone.append(ORIGIN + Vector2(i % COLS, floori(float(i) / float(COLS))) * CELL + Vector2(CELL, CELL) * 0.5)
-	line = []
-	cutting = false
-	fuse = -1.0
-	_still = 0.0
-	_path = []
 	_mark_edges()
 	_count()
 	_motes(gone)
 	_redraw_left = DISSOLVE_STEP
 	_board.queue_redraw()
+	if party_on():
+		_announce_cut(turned, closer)
+	if state != State.PLAYING:
+		return
 	# what was cut free
 	for p in pickups.duplicate():
 		var pc: Vector2i = p["c"]
 		if grid[_i(pc.x, pc.y)] == OWN:
-			_take(p)
+			if party_on():
+				_pickup_gone(p, closer)
+			else:
+				_take(p)
 	# the splitter splits when enough is cut
 	if taken - before >= SPLIT_SHARE:
 		for f in foes.duplicate():
@@ -921,17 +1057,48 @@ func _close() -> void:
 				mother["dead"] = 0.0
 				_motes(_burst_points(mother["p"], 40.0, 120))
 			said.emit("The Plague Mother is sealed!")
-			_clear_round()
+			_clear_round(SAY_SEALED)
 		return
 	if taken >= target_for(round_now):
 		_clear_round()
 
 
-func _clear_round() -> void:
+func _announce_cut(turned: PackedInt32Array, closer: int) -> void:
+	"""(Leading the party.) The cells a close turned, as row spans [row, x,
+	length], in as many events as they need."""
+	var cells: Array = Array(turned)
+	cells.sort()
+	var spans: Array = []
+	var k: int = 0
+	while k < cells.size():
+		var first: int = int(cells[k])
+		@warning_ignore("integer_division")
+		var row: int = first / COLS
+		var length: int = 1
+		@warning_ignore("integer_division")
+		while k + length < cells.size() and int(cells[k + length]) == first + length and (first + length) / COLS == row:
+			length += 1
+		spans.append_array([row, first % COLS, length])
+		k += length
+	var per: int = floori(float(Party.BATCH_MOST - 5) / 3.0)
+	var total: int = floori(float(spans.size()) / 3.0)
+	var done: int = 0
+	while done < total:
+		var take: int = mini(per, total - done)
+		_announce([Party.EV_CUT, closer, take] + spans.slice(done * 3, (done + take) * 3))
+		done += take
+
+
+func _clear_round(said_code: int = 0) -> void:
+	"""The round cleared - for this player's gold only while still in. The
+	party's leader tells everybody (EV_CLEAR, with what it said)."""
 	state = State.CLEARED
 	cleared_left = CLEARED_SECONDS
-	best = maxi(best, round_now)
-	best_ever = maxi(best_ever, round_now)
+	if not out:
+		best = maxi(best, round_now)
+		best_ever = maxi(best_ever, round_now)
+	if party_on() and not following():
+		_announce([Party.EV_CLEAR, round_now, said_code])
 	round_cleared.emit(round_now)
 
 
@@ -967,6 +1134,8 @@ func lose_life() -> void:
 	cutting = false
 	fuse = -1.0
 	_still = 0.0
+	if party_on():
+		_tell(Party.DROP)
 	cutter = cut_from if _in_board(cut_from) and grid[_i(cut_from.x, cut_from.y)] == OWN else _nearest_edge(cut_from)
 	cutter_px = px(cutter)
 	_jump = true
@@ -976,9 +1145,34 @@ func lose_life() -> void:
 	grace_left = GRACE_SECONDS
 	hurt.emit()
 	if lives <= 0:
-		state = State.OVER
 		best = maxi(best, round_now - 1)
+		if party_on():
+			# OUT: watching while the party cuts on (_end_run() when all are).
+			out = true
+			party.call("me_now")
+			return
+		state = State.OVER
 		run_over.emit(round_now)
+
+
+func _crash(at: Vector2i) -> void:
+	"""This shot ran into another's open cut: a life lost - this player's
+	alone (the owner: "only the player that crashed into it"); the other's
+	cut stands. The Ward takes it; inside the grace after a hit the shot is
+	only held back."""
+	_crashed = true
+	if grace_left > 0.0 or state != State.PLAYING:
+		return
+	var whose: int = int(_other_owner.get(_i(at.x, at.y), -1))
+	if ward:
+		ward = false
+		grace_left = GRACE_SECONDS
+		hit_left = 0.3
+		said.emit("The Ward held!")
+		return
+	lose_life()
+	var called: String = str(party.call("name_of", whose)) if party != null and is_instance_valid(party) and whose >= 0 else ""
+	said.emit(("You crashed into %s's cut!" % called) if called != "" else "You crashed into another cut!")
 
 
 # =============================================================================
@@ -1005,7 +1199,7 @@ func _move_slimes(delta: float) -> void:
 		var p: Vector2 = f["p"]
 		var v: Vector2 = f["v"]
 		var r: float = float(f["r"])
-		if state_at(p) == OWN:
+		if state_at(p) == OWN and not following():
 			f["dead"] = 0.0
 			continue
 		f["t"] = float(f["t"]) + delta
@@ -1031,14 +1225,14 @@ func _move_slimes(delta: float) -> void:
 					speed *= HOP_SPEED
 					lift = sin((phase - HOP_STILL) / (HOP_CYCLE - HOP_STILL) * PI) * 6.0
 			"hunt":
-				if not line.is_empty():
+				if _any_line():
 					dir = _turn_toward(dir, _nearest_line_px(p) - p, delta)
 			"dart":
 				speed *= DART_SPEED if fmod(t, DART_CYCLE) < DART_SECONDS else DART_REST
 			"fade":
 				sprite.modulate.a = 0.22 + 0.78 * (0.5 + 0.5 * cos(t * FADE_SPEED))
 		if str(f["trick"]) == "hunter":
-			var prey: Vector2 = _nearest_line_px(p) if not line.is_empty() else cutter_px
+			var prey: Vector2 = _nearest_line_px(p) if _any_line() else _nearest_shot_px(p)
 			dir = _turn_toward(dir, prey - p, delta)
 		if dazed > 0.0:
 			speed = 0.0
@@ -1067,7 +1261,7 @@ func _move_slimes(delta: float) -> void:
 			f["v"] = dir.normalized() * _slime_speed(f)
 		sprite.position = p + Vector2(0.0, -lift)
 		f["gnaw"] = float(f["gnaw"]) - delta
-		if str(f["size"]) == "boss":
+		if str(f["size"]) == "boss" and not following():
 			_brood(f, delta)
 		# the open line, or the shot cutting it
 		if cutting:
@@ -1097,13 +1291,38 @@ func _nearest_line_px(from: Vector2) -> Vector2:
 		if d < best_d:
 			best_d = d
 			best_px = q
+	for id in others_lines.keys():
+		var cells: Array = others_lines[id]
+		for k in range(0, cells.size(), 3):
+			var q: Vector2 = px(cells[k])
+			var d: float = from.distance_squared_to(q)
+			if d < best_d:
+				best_d = d
+				best_px = q
+	return best_px
+
+
+func _any_line() -> bool:
+	"""An open cut on the cloth: this player's, or (the party) another's."""
+	return not line.is_empty() or not others_lines.is_empty()
+
+
+func _nearest_shot_px(from: Vector2) -> Vector2:
+	"""The shot nearest `from`: this player's, or (the party) another's."""
+	var best_px: Vector2 = cutter_px
+	var best_d: float = INF if out else from.distance_squared_to(cutter_px)
+	for shot in others_shots():
+		var d: float = from.distance_squared_to(shot[0])
+		if d < best_d:
+			best_d = d
+			best_px = shot[0]
 	return best_px
 
 
 func _gnaw(f: Dictionary, at: Vector2i) -> void:
 	"""The gnawer chews the cut edge back into cloth - never the border, a
 	rock, near the shot, or while a cut is open."""
-	if float(f["gnaw"]) > 0.0 or cutting:
+	if float(f["gnaw"]) > 0.0 or _any_line() or following():
 		return
 	f["gnaw"] = GNAW_GAP
 	var chewed: Array = []
@@ -1112,7 +1331,7 @@ func _gnaw(f: Dictionary, at: Vector2i) -> void:
 		if c.x < BORDER or c.y < BORDER or c.x >= COLS - BORDER or c.y >= ROWS - BORDER:
 			continue
 		var i: int = _i(c.x, c.y)
-		if grid[i] != OWN or rock[i] == 1 or absi(c.x - cutter.x) + absi(c.y - cutter.y) <= GNAW_KEEP:
+		if grid[i] != OWN or rock[i] == 1 or _near_a_shot(c):
 			continue
 		var on_saw: bool = false
 		for s in saws:
@@ -1127,6 +1346,22 @@ func _gnaw(f: Dictionary, at: Vector2i) -> void:
 	_mark_edges()
 	_count()
 	_board.queue_redraw()
+	if party_on():
+		var cells: Array = []
+		for c in chewed:
+			cells.append_array([(c as Vector2i).x, (c as Vector2i).y])
+		_announce([Party.EV_OPEN, chewed.size()] + cells)
+
+
+func _near_a_shot(c: Vector2i) -> bool:
+	"""(The gnawer.) Within GNAW_KEEP of a shot: this player's, or another's."""
+	if not out and absi(c.x - cutter.x) + absi(c.y - cutter.y) <= GNAW_KEEP:
+		return true
+	for shot in others_shots():
+		var at: Vector2i = cell_at(shot[0])
+		if absi(c.x - at.x) + absi(c.y - at.y) <= GNAW_KEEP:
+			return true
+	return false
 
 
 func _split(f: Dictionary) -> void:
@@ -1138,6 +1373,8 @@ func _split(f: Dictionary) -> void:
 	for turn in [PI / 2.0, -PI / 2.0]:
 		_add_slime(str(f["kind"]), f["p"], dir.rotated(turn), "small", "")
 	said.emit("The splitter split in two!")
+	if party_on():
+		_announce([Party.EV_SAY, SAY_SPLIT])
 
 
 func _brood(f: Dictionary, delta: float) -> void:
@@ -1191,14 +1428,17 @@ func _move_saws(delta: float) -> void:
 	var speed: float = SAW_SPEED * minf(1.5, speed_for(round_now)) * (SLOW_SPEED if slow_left > 0.0 else 1.0)
 	for s in saws:
 		s["spin"] = float(s["spin"]) + delta * 14.0
-		s["step"] = float(s["step"]) - delta
-		var guard: int = 0
-		while float(s["step"]) <= 0.0 and guard < 4:
-			guard += 1
-			s["step"] = float(s["step"]) + float(CELL) / speed
-			_saw_step(s)
+		# Following the party, the leader's saws step (snapshot()); this
+		# copy only rides after them.
+		if not following():
+			s["step"] = float(s["step"]) - delta
+			var guard: int = 0
+			while float(s["step"]) <= 0.0 and guard < 4:
+				guard += 1
+				s["step"] = float(s["step"]) + float(CELL) / speed
+				_saw_step(s)
 		s["px"] = (s["px"] as Vector2).move_toward(px(s["c"]), speed * delta * 1.3)
-		if not cutting and (s["px"] as Vector2).distance_to(cutter_px) <= SAW_R + 4.0:
+		if not out and not cutting and (s["px"] as Vector2).distance_to(cutter_px) <= SAW_R + 4.0:
 			_hit(null)
 			return
 
@@ -1229,7 +1469,7 @@ func _land_effects(delta: float) -> void:
 	match land:
 		"light":
 			_flare_left -= delta
-			if _flare_left <= 0.0:
+			if _flare_left <= 0.0 and not following():
 				_flare_left = FLARE_GAP
 				var at: Vector2 = _spawn_spot(4.0)
 				if not foes.is_empty() and _rng.randf() < 0.6:
@@ -1237,12 +1477,14 @@ func _land_effects(delta: float) -> void:
 					if float(f["dead"]) < 0.0:
 						at = (f["p"] as Vector2) + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(4.0, 26.0)
 				flares.append({"at": at, "warn": FLARE_WARN, "flash": 0.0})
+				if party_on():
+					_announce([Party.EV_FLARE, roundi(at.x), roundi(at.y)])
 			for fl in flares.duplicate():
 				if float(fl["warn"]) > 0.0:
 					fl["warn"] = float(fl["warn"]) - delta
 					if float(fl["warn"]) <= 0.0:
 						fl["flash"] = FLARE_FLASH
-						for f in foes:
+						for f in (foes if not following() else []):
 							if float(f["dead"]) < 0.0 and (f["p"] as Vector2).distance_to(fl["at"]) <= FLARE_R + float(f["r"]):
 								f["dazed"] = DAZE_SECONDS * (0.5 if str(f["size"]) == "boss" else 1.0)
 				else:
@@ -1258,11 +1500,15 @@ func _land_effects(delta: float) -> void:
 					gust_on = GUST_SECONDS
 			else:
 				_gust_left -= delta
-				if _gust_left <= 0.0:
+				if _gust_left <= 0.0 and not following():
 					_gust_left = GUST_GAP
-					gust_dir = Vector2.from_angle(float(_rng.randi_range(0, 7)) * PI / 4.0)
+					var way: int = _rng.randi_range(0, 7)
+					gust_dir = Vector2.from_angle(float(way) * PI / 4.0)
 					gust_warn = GUST_WARN
 					_gust_seed = _rng.randi()
+					if party_on():
+						_gust_seed = _gust_seed % 1000000
+						_announce([Party.EV_GUST, way, _gust_seed])
 		"fire":
 			if cutting and _still >= FUSE_AFTER and not line.is_empty():
 				fuse = maxf(fuse, 0.0) + FUSE_SPEED * delta
@@ -1284,7 +1530,13 @@ func _tick_pickups(delta: float) -> void:
 	for p in pickups.duplicate():
 		p["left"] = float(p["left"]) - delta
 		if float(p["left"]) <= 0.0:
-			pickups.erase(p)
+			if party_on() and not following():
+				_pickup_gone(p, 0)
+			else:
+				pickups.erase(p)
+	# Following the party, the leader puts them out (EV_PICKUP).
+	if following():
+		return
 	_pickup_left -= delta
 	if _pickup_left > 0.0:
 		return
@@ -1301,7 +1553,10 @@ func _tick_pickups(delta: float) -> void:
 		for f in foes:
 			clear = clear and (f["p"] as Vector2).distance_to(px(c)) > 40.0
 		if clear:
-			pickups.append({"kind": kind, "c": c, "left": PICKUP_SECONDS})
+			pickups.append({"kind": kind, "c": c, "left": PICKUP_SECONDS, "id": _next_pickup})
+			if party_on():
+				_announce([Party.EV_PICKUP, _next_pickup, PICKUPS.find(kind), c.x, c.y])
+			_next_pickup += 1
 			return
 
 
@@ -1309,12 +1564,42 @@ func _take_pickup_at(c: Vector2i) -> void:
 	for p in pickups.duplicate():
 		var pc: Vector2i = p["c"]
 		if absi(pc.x - c.x) <= 1 and absi(pc.y - c.y) <= 1:
-			_take(p)
+			if not party_on():
+				_take(p)
+			elif following():
+				# The leader's to give: asked once.
+				if not bool(p.get("asked", false)):
+					p["asked"] = true
+					_tell(Party.TAKE, int(p.get("id", 0)))
+			else:
+				_pickup_gone(p, my_id())
 
 
 func _take(p: Dictionary) -> void:
 	pickups.erase(p)
-	match str(p["kind"]):
+	_take_effect(str(p["kind"]))
+	_motes(_burst_points(px(p["c"]), 10.0, 24))
+
+
+func _pickup_gone(p: Dictionary, taker: int) -> void:
+	"""(The party.) A pickup gone - taken by `taker`, or run out (0). Its
+	effect is the taker's; Slow, on the slimes, is everybody's. The leader
+	tells everybody (EV_GONE)."""
+	pickups.erase(p)
+	if not following():
+		_announce([Party.EV_GONE, int(p.get("id", 0)), taker])
+	if taker == 0:
+		return
+	_motes(_burst_points(px(p["c"]), 10.0, 24))
+	if taker == my_id():
+		_take_effect(str(p["kind"]))
+	elif str(p["kind"]) == "slow":
+		slow_left = SLOW_SECONDS
+		said.emit("Slow! The slimes crawl")
+
+
+func _take_effect(kind: String) -> void:
+	match kind:
 		"swift":
 			swift_left = SWIFT_SECONDS
 			said.emit("Swift! The shot is faster")
@@ -1327,7 +1612,6 @@ func _take(p: Dictionary) -> void:
 		"life":
 			lives = mini(LIVES_MOST, lives + 1)
 			said.emit("A life!")
-	_motes(_burst_points(px(p["c"]), 10.0, 24))
 
 
 # =============================================================================
@@ -1458,7 +1742,7 @@ func _place_bullet() -> void:
 		_bullet.reset_physics_interpolation()
 	# The flame's tip trails it (turretprojectile.gd _face_flight()).
 	_flame.rotation = _heading.angle() - PI / 2.0
-	_bullet.visible = state != State.OVER and (hit_left <= 0.0 or int(_t * 12.0) % 2 == 0)
+	_bullet.visible = state != State.OVER and not out and (hit_left <= 0.0 or int(_t * 12.0) % 2 == 0)
 	if _dark.visible:
 		_dark.position = cutter_px
 		_dark.reset_physics_interpolation()
@@ -1733,8 +2017,8 @@ func _draw_cut_edges() -> void:
 					var reach: float = 0.8 + float(hh % 6) * 0.35
 					var tilt: float = (float((hh >> 3) % 5) - 2.0) * 0.12
 					var root := rim + side * (-1.0 + 2.0 * float(k))
-					var out := (-Vector2(d)).rotated(tilt)
-					_board.draw_line(root, root + out * reach, Color(thread.darkened(0.12), 0.45 + 0.08 * float(hh % 4)), 1.0, true)
+					var outward := (-Vector2(d)).rotated(tilt)
+					_board.draw_line(root, root + outward * reach, Color(thread.darkened(0.12), 0.45 + 0.08 * float(hh % 4)), 1.0, true)
 
 
 func _draw_under() -> void:
@@ -1744,8 +2028,9 @@ func _draw_under() -> void:
 			var r: float = float(f["r"])
 			_under.draw_set_transform((f["p"] as Vector2) + Vector2(0, r * 0.8), 0.0, Vector2(1.0, 0.45))
 			_under.draw_circle(Vector2.ZERO, r + 1.0, Color(0.15, 0.08, 0.03, 0.28))
-	_under.draw_set_transform(cutter_px + Vector2(0, 6), 0.0, Vector2(1.0, 0.45))
-	_under.draw_circle(Vector2.ZERO, 8.0, Color(0.08, 0.12, 0.05, 0.3))
+	if not out:
+		_under.draw_set_transform(cutter_px + Vector2(0, 6), 0.0, Vector2(1.0, 0.45))
+		_under.draw_circle(Vector2.ZERO, 8.0, Color(0.08, 0.12, 0.05, 0.3))
 	_under.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	for fl in flares:
 		if float(fl["warn"]) > 0.0:
@@ -1757,7 +2042,9 @@ func _draw_under() -> void:
 func _draw_fx() -> void:
 	"""What moves over the slimes: the open cut as the shot's dotted glowing
 	trail (burnt where the fuse has run), the saws, the pickups, a flare's
-	flash, the gusts' streaks, slimes' eyes in the dark, the Ward."""
+	flash, the gusts' streaks, slimes' eyes in the dark, the Ward - and the
+	party's open cuts and shots, each in its seat's colour."""
+	_draw_others()
 	_draw_trail()
 	for s in saws:
 		_draw_saw(s["px"], float(s["spin"]))
@@ -1883,6 +2170,443 @@ func _draw_gust() -> void:
 		_fx.draw_line(at, at + gust_dir * length, Color(0.95, 0.98, 1.0, a), 1.0)
 
 
+# =============================================================================
+# THE PARTY (0.161.0)
+# =============================================================================
+
+func party_on() -> bool:
+	"""Cutting with the party: its node, somebody else here, and the run begun
+	together."""
+	return party != null and is_instance_valid(party) and bool(party.call("active")) and bool(party.call("started"))
+
+
+func following() -> bool:
+	"""Cutting with the party, and another game leads: its slimes, its saws,
+	its pieces."""
+	return party_on() and not bool(party.call("leads"))
+
+
+func my_id() -> int:
+	return int(party.call("my_id")) if party != null and is_instance_valid(party) else 0
+
+
+func start_cell() -> Vector2i:
+	"""Where this shot starts a round: the bottom alone; with the party, its
+	seat's side."""
+	return SEAT_STARTS[clampi(seat, 0, SEAT_STARTS.size() - 1)] if party_on() else SEAT_STARTS[0]
+
+
+func _announce(event: Array) -> void:
+	if party != null and is_instance_valid(party):
+		party.call("announce", event)
+
+
+func _tell(kind: int, x: int = 0, y: int = 0) -> void:
+	if party != null and is_instance_valid(party):
+		party.call("tell", kind, x, y)
+
+
+func begin_party() -> void:
+	"""The party's count reached nought: the leader begins the first round,
+	with a seed for everybody; the others wait for it (EV_ROUND)."""
+	if party != null and is_instance_valid(party):
+		seat = int(party.call("seat"))
+		players = maxi(1, (party.call("seats") as Array).size())
+	if not party_on():
+		return
+	if following():
+		awaiting_round = true
+		return
+	var seed_now: int = _rng.randi_range(1, 2000000000)
+	_announce([Party.EV_ROUND, 1, seed_now, players])
+	begin(1, seed_now)
+
+
+func _next_round() -> void:
+	"""After a round cleared: the next - with the party, from a seed the
+	leader sends."""
+	if not party_on():
+		begin(round_now + 1)
+		return
+	var seed_now: int = _rng.randi_range(1, 2000000000)
+	_announce([Party.EV_ROUND, round_now + 1, seed_now, players])
+	begin(round_now + 1, seed_now)
+
+
+func _end_run() -> void:
+	"""The run over: this player out alone, or (the party) everybody out -
+	the leader says so."""
+	if state == State.OVER:
+		return
+	if party_on() and not following():
+		_announce([Party.EV_OVER])
+	state = State.OVER
+	run_over.emit(round_now)
+
+
+func presence_state() -> Dictionary:
+	"""What this player's presence says while the cloth is cut with the
+	party: where its shot rides (the others read it from these steps), and no
+	aim or health of the town's."""
+	return {"a": Party.AREA, "at": global_position + cutter_px, "m": "idledown", "aim": -1, "hp": -1}
+
+
+func others_shots() -> Array:
+	"""(With the party.) The others' shots: [where, seat, name], read from
+	their steps - every one in this run and not out."""
+	var shots: Array = []
+	if not party_on():
+		return shots
+	for pair in party.call("cutters"):
+		var body: Node2D = party.call("body_of", int(pair[0]))
+		if body != null and body.is_inside_tree():
+			shots.append([to_local(body.global_position), int(pair[1]), str(party.call("name_of", int(pair[0])))])
+	return shots
+
+
+func _other_cells() -> Array:
+	var cells: Array = []
+	for id in others_lines.keys():
+		cells.append_array(others_lines[id])
+	return cells
+
+
+func line_numbers() -> Array:
+	"""(Leading the party.) For the line: [state, round, cut (thousandths),
+	her piece (thousandths), Slow left (tenths), players]."""
+	return [state, round_now, roundi(taken * 1000.0), roundi(boss_share * 1000.0), roundi(slow_left * 10.0), players]
+
+
+func follow_line(numbers: Array) -> void:
+	"""(Following.) The leader's line: how many cut, her piece, the Slow -
+	and the run over, should its word of that be lost."""
+	if numbers.size() < Party.LINE_SIZE:
+		return
+	players = maxi(1, int(numbers[8]))
+	boss_share = float(numbers[6]) / 1000.0
+	var slow: float = float(numbers[7]) / 10.0
+	if absf(slow - slow_left) > 0.5:
+		slow_left = slow
+	if int(numbers[1]) == State.OVER and not awaiting_round:
+		_end_run()
+
+
+func snapshot_due() -> bool:
+	return party_on() and not following() and not awaiting_round and state != State.OVER
+
+
+func snapshot() -> Array:
+	"""(Leading the party.) Where the slimes and saws are now: [round, slimes,
+	each [id, x, y, vx, vy (eighths of a pixel), code], saws, each [x, y]].
+	The code: the land, then 8 x its size, 32 x its trick, 128 dazed."""
+	var live: Array = []
+	for f in foes:
+		if float(f["dead"]) < 0.0:
+			live.append(f)
+	live = live.slice(0, SNAP_FOES_MOST)
+	var numbers: Array = [round_now, live.size()]
+	for f in live:
+		var at: Vector2 = f["p"]
+		var going: Vector2 = f["v"]
+		var code: int = maxi(0, LANDS.find(str(f["kind"]))) + 8 * maxi(0, SIZES.find(str(f["size"]))) \
+			+ 32 * (ELITE_TRICKS.find(str(f["trick"])) + 1) + (128 if float(f["dazed"]) > 0.0 else 0)
+		numbers.append_array([int(f["id"]), roundi(at.x * 8.0), roundi(at.y * 8.0), roundi(going.x * 8.0),
+			roundi(going.y * 8.0), code])
+	numbers.append(saws.size())
+	for s in saws:
+		numbers.append_array([(s["c"] as Vector2i).x, (s["c"] as Vector2i).y])
+	return numbers
+
+
+func apply_snapshot(numbers: Array) -> void:
+	"""(Following.) Where the leader's slimes and saws are now: each copy put
+	there (eased half way when it is near), one the leader made made here,
+	one it no longer has dissolved."""
+	if awaiting_round or numbers.size() < 2 or int(numbers[0]) != round_now or state == State.OVER:
+		return
+	var by_id: Dictionary = {}
+	for f in foes:
+		by_id[int(f["id"])] = f
+	var heard: Dictionary = {}
+	var k: int = 2
+	for q in int(numbers[1]):
+		if k + 6 > numbers.size():
+			break
+		var id: int = int(numbers[k])
+		var at := Vector2(float(numbers[k + 1]), float(numbers[k + 2])) / 8.0
+		var going := Vector2(float(numbers[k + 3]), float(numbers[k + 4])) / 8.0
+		var code: int = int(numbers[k + 5])
+		k += 6
+		heard[id] = true
+		var f: Dictionary = by_id.get(id, {})
+		if f.is_empty():
+			var trick_k: int = (code >> 5) & 3
+			f = _add_slime(str(LANDS[mini(code & 7, LANDS.size() - 1)]), at, going, str(SIZES[mini((code >> 3) & 3, SIZES.size() - 1)]),
+				str(ELITE_TRICKS[trick_k - 1]) if trick_k >= 1 else "", id)
+		elif float(f["dead"]) < 0.0:
+			var miss: Vector2 = at - (f["p"] as Vector2)
+			f["p"] = at if miss.length() > SNAP_EASE else (f["p"] as Vector2) + miss * 0.5
+		f["v"] = going
+		if code & 128 != 0:
+			f["dazed"] = 0.3
+	for f in foes:
+		if float(f["dead"]) < 0.0 and not heard.has(int(f["id"])):
+			f["dead"] = 0.0
+	if k >= numbers.size():
+		return
+	var count: int = int(numbers[k])
+	k += 1
+	for q in count:
+		if k + 2 > numbers.size():
+			break
+		var c := Vector2i(int(numbers[k]), int(numbers[k + 1]))
+		k += 2
+		if q >= saws.size():
+			saws.append({"c": c, "prev": c, "px": px(c), "step": 0.0, "spin": float(q)})
+		else:
+			saws[q]["c"] = c
+	saws = saws.slice(0, count)
+
+
+func apply_event(_from_id: int, event: Array) -> void:
+	"""(Following.) One of the leader's decisions, once."""
+	if event.is_empty():
+		return
+	match int(event[0]):
+		Party.EV_ROUND:
+			if event.size() >= 4:
+				players = maxi(1, int(event[3]))
+				if party != null and is_instance_valid(party):
+					seat = int(party.call("seat"))
+				begin(int(event[1]), int(event[2]))
+		Party.EV_CUT:
+			_apply_cut(event)
+		Party.EV_OPEN:
+			_apply_open(event)
+		Party.EV_CLEAR:
+			if state == State.PLAYING and not awaiting_round and event.size() >= 3 and int(event[1]) == round_now:
+				if int(event[2]) == SAY_SEALED:
+					var mother: Dictionary = _mother()
+					if not mother.is_empty():
+						mother["dead"] = 0.0
+						_motes(_burst_points(mother["p"], 40.0, 120))
+					said.emit("The Plague Mother is sealed!")
+				_clear_round()
+		Party.EV_PICKUP:
+			if event.size() >= 5 and not awaiting_round:
+				pickups.append({"id": int(event[1]), "kind": str(PICKUPS[clampi(int(event[2]), 0, PICKUPS.size() - 1)]),
+					"c": Vector2i(int(event[3]), int(event[4])), "left": PICKUP_SECONDS})
+		Party.EV_GONE:
+			if event.size() >= 3:
+				for p in pickups:
+					if int(p.get("id", 0)) == int(event[1]):
+						_pickup_gone(p, int(event[2]))
+						break
+		Party.EV_FLARE:
+			if event.size() >= 3:
+				flares.append({"at": Vector2(float(event[1]), float(event[2])), "warn": FLARE_WARN, "flash": 0.0})
+		Party.EV_GUST:
+			if event.size() >= 3:
+				gust_dir = Vector2.from_angle(float(int(event[1])) * PI / 4.0)
+				gust_warn = GUST_WARN
+				_gust_seed = int(event[2])
+		Party.EV_OVER:
+			_end_run()
+		Party.EV_SAY:
+			if event.size() >= 2 and int(event[1]) == SAY_SPLIT:
+				said.emit("The splitter split in two!")
+
+
+func _apply_cut(event: Array) -> void:
+	"""(Following.) A piece the leader cut away, as row spans: cut here too -
+	but never this player's own open cut, which closes on its next step."""
+	if awaiting_round or event.size() < 3:
+		return
+	var gone := PackedVector2Array()
+	var changed: bool = false
+	for q in int(event[2]):
+		var k: int = 3 + q * 3
+		if k + 3 > event.size():
+			break
+		var row: int = int(event[k])
+		if row < 0 or row >= ROWS:
+			continue
+		for x in range(maxi(0, int(event[k + 1])), mini(COLS, int(event[k + 1]) + int(event[k + 2]))):
+			var i: int = _i(x, row)
+			if grid[i] == OWN or grid[i] == LINE:
+				continue
+			if grid[i] == OTHER:
+				_forget_other_cell(i)
+			grid[i] = OWN
+			dissolving[i] = DISSOLVE
+			changed = true
+			if i % 3 == 0:
+				gone.append(px(Vector2i(x, row)))
+	if not changed:
+		return
+	_mark_edges()
+	_count()
+	_motes(gone)
+	_redraw_left = DISSOLVE_STEP
+	_board.queue_redraw()
+
+
+func _apply_open(event: Array) -> void:
+	"""(Following.) Cut edge the leader's gnawer chewed back into cloth."""
+	if awaiting_round or event.size() < 2:
+		return
+	var changed: bool = false
+	for q in int(event[1]):
+		var k: int = 2 + q * 2
+		if k + 2 > event.size():
+			break
+		var c := Vector2i(int(event[k]), int(event[k + 1]))
+		if _in_board(c) and grid[_i(c.x, c.y)] == OWN and rock[_i(c.x, c.y)] == 0:
+			grid[_i(c.x, c.y)] = OPEN
+			dissolving.erase(_i(c.x, c.y))
+			changed = true
+	if changed:
+		_mark_edges()
+		_count()
+		_board.queue_redraw()
+
+
+func party_heard(from_id: int, kind: int, x: int, y: int) -> void:
+	"""Another game's own cut: a cell added, its cut lost or closed, a pickup
+	it crossed (the leader's to give)."""
+	match kind:
+		Party.ADD:
+			other_cut(from_id, Vector2i(x, y))
+		Party.DROP:
+			other_drop(from_id)
+		Party.CLOSE:
+			other_close(from_id)
+		Party.TAKE:
+			if party_on() and not following():
+				for p in pickups:
+					if int(p.get("id", 0)) == x:
+						_pickup_gone(p, from_id)
+						break
+
+
+func other_cut(id: int, c: Vector2i) -> void:
+	"""Another's cut, a cell longer: OTHER on this cloth (only where it is
+	still cloth)."""
+	if awaiting_round or state != State.PLAYING or not _in_board(c):
+		return
+	var i: int = _i(c.x, c.y)
+	if grid[i] != OPEN:
+		return
+	grid[i] = OTHER
+	_other_owner[i] = id
+	if not others_lines.has(id):
+		others_lines[id] = []
+	(others_lines[id] as Array).append(c)
+
+
+func other_drop(id: int) -> void:
+	"""Another's cut lost (a life, or they went): cloth again."""
+	for c in others_lines.get(id, []):
+		var i: int = _i((c as Vector2i).x, (c as Vector2i).y)
+		if grid[i] == OTHER and int(_other_owner.get(i, -1)) == id:
+			grid[i] = OPEN
+			_other_owner.erase(i)
+	others_lines.erase(id)
+
+
+func other_close(id: int) -> void:
+	"""Another's cut closed: cut away on every screen - and the leader cuts
+	away what it leaves no slime and no open cut in."""
+	var turned := PackedInt32Array()
+	for c in others_lines.get(id, []):
+		var i: int = _i((c as Vector2i).x, (c as Vector2i).y)
+		if grid[i] == OTHER and int(_other_owner.get(i, -1)) == id:
+			grid[i] = OWN
+			dissolving[i] = DISSOLVE
+			_other_owner.erase(i)
+			turned.append(i)
+	others_lines.erase(id)
+	if turned.is_empty():
+		return
+	if party_on() and not following():
+		_cut_away(turned, id)
+		return
+	_mark_edges()
+	_count()
+	_redraw_left = DISSOLVE_STEP
+	_board.queue_redraw()
+
+
+func _forget_other_cell(i: int) -> void:
+	var whose: int = int(_other_owner.get(i, -1))
+	_other_owner.erase(i)
+	if others_lines.has(whose):
+		(others_lines[whose] as Array).erase(Vector2i(i % COLS, floori(float(i) / float(COLS))))
+		if (others_lines[whose] as Array).is_empty():
+			others_lines.erase(whose)
+
+
+func forget_gone(here: Array) -> void:
+	"""The open cuts of players no longer here, or not in this run, are let
+	go: their cloth is cloth again."""
+	if others_lines.is_empty():
+		return
+	for id in others_lines.keys():
+		if not here.has(int(id)):
+			other_drop(int(id))
+
+
+func take_over() -> void:
+	"""The leader went (or the party): this game runs the run from where it
+	stands - its copies of the slimes and saws, its pickups - and begins the
+	round itself if the leader went before its seed came."""
+	for s in saws:
+		s["prev"] = s["c"]
+		s["step"] = 0.0
+	for f in foes:
+		_next_foe = maxi(_next_foe, int(f["id"]) + 1)
+	for p in pickups:
+		_next_pickup = maxi(_next_pickup, int(p.get("id", 0)) + 1)
+	_pickup_left = PICKUP_GAP
+	_flare_left = FLARE_GAP
+	_gust_left = GUST_GAP
+	if awaiting_round:
+		awaiting_round = false
+		var seed_now: int = _rng.randi_range(1, 2000000000)
+		_announce([Party.EV_ROUND, round_now, seed_now, players])
+		begin(round_now, seed_now)
+
+
+func _draw_others() -> void:
+	"""The party's open cuts, dotted in each cutter's colour, and their shots,
+	a glowing bead with the name over it."""
+	if others_lines.is_empty() and not party_on():
+		return
+	for id in others_lines.keys():
+		var colour: Color = SEAT_COLOURS[posmod(int(party.call("seat_of", int(id))) if party != null and is_instance_valid(party) else 0, SEAT_COLOURS.size())]
+		var cells: Array = others_lines[id]
+		var n: int = cells.size()
+		for k in n:
+			var c: Vector2i = cells[k]
+			var h: int = absi((c.x * 73856093) ^ (c.y * 19349663))
+			var at: Vector2 = px(c) + Vector2(float(h % 3) - 1.0, float((h >> 3) % 3) - 1.0) * 0.6
+			var twinkle: float = 0.7 + 0.3 * sin(_t * 8.0 + float(k) * 1.7)
+			_fx.draw_circle(at, 2.0, Color(colour.darkened(0.35), 0.55 * twinkle))
+			_fx.draw_rect(Rect2(at - Vector2(1, 1), Vector2(2, 2)), Color(colour.lightened(0.15), twinkle))
+	var font: Font = ThemeDB.fallback_font
+	for shot in others_shots():
+		var at: Vector2 = shot[0]
+		var colour: Color = SEAT_COLOURS[posmod(int(shot[1]), SEAT_COLOURS.size())]
+		var pulse: float = 0.75 + 0.25 * sin(_t * 6.0 + float(int(shot[1])))
+		_fx.draw_circle(at, 7.0, Color(colour, 0.18 * pulse))
+		_fx.draw_circle(at, 3.6, Color(colour, 0.9))
+		_fx.draw_circle(at, 1.6, Color(1.0, 1.0, 0.95, pulse))
+		_fx.draw_string_outline(font, at + Vector2(-40.0, -9.0), str(shot[2]), HORIZONTAL_ALIGNMENT_CENTER, 80.0, 8, 3,
+			Color(0.08, 0.06, 0.1, 0.85))
+		_fx.draw_string(font, at + Vector2(-40.0, -9.0), str(shot[2]), HORIZONTAL_ALIGNMENT_CENTER, 80.0, 8,
+			colour.lightened(0.2))
+
+
 func measure_label() -> String:
 	"""Where this minigame stands, for the readout's Measure (placemeasure.gd)."""
 	return "Cut the Cloth - round %d, %s" % [round_now, land]
@@ -1890,10 +2614,10 @@ func measure_label() -> String:
 
 static func scenes_to_warm() -> Array:
 	"""Each round's slime, in the order the rounds come, and the turret's shot."""
-	var out: Array = []
+	var paths: Array = []
 	for which in range(1, MOVES.size() + 1):
 		var path: String = "res://scene/enemy/%s.tscn" % str(SLIME_SCENES.get(land_of(which), "waterslime"))
-		if not out.has(path):
-			out.append(path)
-	out.append("res://scene/projectiles/turretprojectile.tscn")
-	return out
+		if not paths.has(path):
+			paths.append(path)
+	paths.append("res://scene/projectiles/turretprojectile.tscn")
+	return paths

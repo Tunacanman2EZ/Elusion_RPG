@@ -40,10 +40,26 @@
 # Leave: the button, or Escape - twice while a run is on, once after it.
 # Keys are kept from the rest of the game while it is up.
 #
+# TOGETHER (0.161.0; the owner: "i was thinking of making cut the cloth 4
+# player and if players lines crash into each other they also die" - "only
+# the player that crashed into it"). In a party (Party.members), with a server
+# that seats the cloth a room per party (Presence.cloth_rooms()), the run gets
+# a party node (clothparty.gd), this player's presence says where its shot
+# rides (Presence.state_override), and the party's steps are kept in the run,
+# never drawn as bodies (Presence.world_override, clothrun.gd `others`). The
+# start panel shows the party as four seats; Start is Ready, and everyone
+# ready, a count of three begins one cloth for all. Start alone with nobody
+# here and this run is this player's own (its presence goes back to town).
+# The board in the corner: each other cutter's lives, or out; out of lives,
+# a line says the party cuts on, and the results come when everybody is out.
+#
 # No class_name; the card loads it by path.
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/cloth/clothrun.gd")
+const PartyScript := preload("res://src/world/cloth/clothparty.gd")
+# The party's four seats in the start panel, in seat order.
+const SEAT_SLOTS := [0, 1, 2, 3]
 # A Leave in words, the day's allowance with it - the Healer's Run's, one rule.
 const HealerScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
@@ -70,6 +86,11 @@ const HOW_TO := [
 	"A slime on your open cut costs a life - and saws ride the edge.",
 	"Each map has its own trick. Cut pickups free. Every 5th round, a boss.",
 ]
+# THE START PANEL, ONE LOOK (0.161.0, startpanel.gd; the owner: "lets fix
+# the other minigames with the same idea"): HOW TO PLAY as a grid with a gold
+# word a line, and the gold Start. One player: no party part.
+const StartPanel := preload("res://src/ui/minigames/startpanel.gd")
+const HOW_TO_KEYS := ["Aim", "Cut", "Close it", "Danger", "Each map"]
 const HOW_TO_TOUCH := {
 	0: "Move with the stick - the shot rides the cut edge.",
 	1: "Hold SLICE to cut into the cloth.",
@@ -110,6 +131,15 @@ var space_held: Callable = Callable(self, "_space_held")
 var finish_request: Callable = Callable(Api, "post")
 var enter_request: Callable = Callable(Api, "post")
 var slot_now: Callable = Callable(self, "_slot")
+# The party (0.161.0): the start panel's part, and the suite's doors -
+# whether the server seats the cloth a room per party, and its link.
+var party_box: VBoxContainer = null
+var party_count: Label = null
+var party_line: Label = null
+var party_rooms: Callable = Callable(self, "_party_rooms")
+var party_link: Node = null
+var _seat_cards: Array = []
+var _lobby_said: String = ""
 
 var _how_to_lines: Array = []
 var _worded: int = -1
@@ -233,23 +263,26 @@ func _build_words() -> void:
 	row.add_child(_button("out", "Leave", leave))
 	start_panel = _panel("start")
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override("separation", 7)
+	lines.add_theme_constant_override("separation", 6)
 	start_panel.add_child(lines)
-	lines.add_child(_words("CUT THE CLOTH", 28, GOLD))
+	lines.add_child(_words("CUT THE CLOTH", 30, GOLD))
 	for words in STORY:
 		var told := _words(str(words), 15, Color(CREAM, 0.8))
 		lines.add_child(told)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 6)
-	lines.add_child(gap)
-	for words in HOW_TO:
-		var line := _words(str(words), 16, HINT)
-		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		lines.add_child(line)
-		_how_to_lines.append(line)
-	start_button = _button("go", "Start  (Space)", begin)
-	start_button.custom_minimum_size = Vector2(170, 38)
-	start_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	lines.add_child(StartPanel.rule(GOLD))
+	lines.add_child(StartPanel.head("HOW TO PLAY", GOLD))
+	lines.add_child(StartPanel.how_grid(HOW_TO_KEYS, HOW_TO, _how_to_lines, GOLD, HINT, 16))
+	var part: Dictionary = StartPanel.party_part(SEAT_SLOTS)
+	party_box = part["box"]
+	party_count = part["count"]
+	_seat_cards = part["cards"]
+	party_line = part["line"]
+	(part["side"] as Node).queue_free()
+	lines.add_child(party_box)
+	var room := Control.new()
+	room.custom_minimum_size = Vector2(0, 4)
+	lines.add_child(room)
+	start_button = StartPanel.go_button("Start  (Space)", begin)
 	lines.add_child(start_button)
 
 
@@ -331,7 +364,23 @@ func start() -> void:
 	run.connect("hurt", _on_hurt)
 	run.connect("round_cleared", _on_cleared)
 	run.connect("said", _say)
+	var with_party: bool = bool(party_rooms.call())
+	if with_party:
+		var party: Node = PartyScript.new()
+		party.name = "party"
+		party.set("run", run)
+		if party_link != null:
+			party.set("link", party_link)
+		run.set("party", party)
+		run.add_child(party)
+		party.connect("start_now", _on_start_now)
 	viewport.add_child(run)
+	if with_party and party_link == null:
+		Presence.state_override = Callable(run, "presence_state")
+		Presence.world_override = run.get("others")
+	elif not with_party:
+		_let_presence_go()
+	_lobby_said = ""
 	run.set_physics_process(false)
 	results.visible = false
 	again_button.disabled = false
@@ -343,12 +392,108 @@ func start() -> void:
 
 
 func begin() -> void:
+	"""Start (or Space). With the party here it is Ready - and Not ready -
+	and the count starts everyone together; alone, the run begins, this
+	player's own."""
+	var party: Node = _party()
+	if party != null and bool(party.call("active")) and not bool(party.call("started")):
+		if float(party.get("counting")) < 0.0:
+			party.call("set_ready", not bool(party.get("said_ready")))
+		paint()
+		return
 	if not start_panel.visible:
 		return
+	if party != null:
+		# ALONE: nobody here to share it with - and nobody to come into it.
+		party.set("key", PartyScript.ALONE)
+		_let_presence_go()
 	start_panel.visible = false
 	_wait_release = true
 	run.set_physics_process(true)
 	_round_said = 0
+
+
+func _on_start_now() -> void:
+	"""The party's count reached nought: one cloth for everybody (the leader
+	sends its round)."""
+	if run == null or not is_instance_valid(run):
+		return
+	start_panel.visible = false
+	_wait_release = true
+	run.call("begin_party")
+	run.set_physics_process(true)
+	_round_said = 0
+	paint()
+
+
+func _party_rooms() -> bool:
+	"""In a party, with a server that seats the cloth a room per party.
+	Alone, the cloth is as it always was."""
+	return Presence.cloth_rooms() and Party.members.size() > 1
+
+
+func _party() -> Node:
+	return run.get("party") if run != null and is_instance_valid(run) else null
+
+
+func lobby_text(party: Node) -> String:
+	"""What the party waits for, under its seats: the count, who is on their
+	way, who has not pressed Ready."""
+	if not bool(party.call("active")):
+		return "Your party joins when they press Go too - wait here, or start alone."
+	return StartPanel.waiting_text(party.call("roster"), bool(party.get("said_ready")), PartyScript.READY,
+		float(party.get("counting")))
+
+
+func _paint_seats(party: Node) -> void:
+	"""Each seat - bottom, top, left, right: who cuts from there, and ready or
+	not - repainted only when something on it changed."""
+	var rows: Dictionary = {}
+	for row in party.call("roster"):
+		rows[int(row["id"])] = row
+	var seated: Array = party.call("seats")
+	var here: bool = bool(party.call("active"))
+	var said: Array = []
+	for card in _seat_cards:
+		var place: int = int(str((card as Node).name).trim_prefix("seat"))
+		said.append(StartPanel.seat_said(rows.get(int(seated[place]), {}) if place < seated.size() else {}, here, PartyScript.READY))
+	party_count.text = "%d of %d ready" % [StartPanel.ready_count(said), seated.size()] if here else ""
+	var signature: String = str(said)
+	if signature != _lobby_said:
+		_lobby_said = signature
+		StartPanel.paint_seats(_seat_cards, said)
+
+
+func _paint_party() -> void:
+	"""The start panel's party part and its button."""
+	var touch: bool = TouchControls.active
+	var space: String = "" if touch else "  (Space)"
+	var party: Node = _party()
+	if party == null or int(party.get("key")) == PartyScript.ALONE:
+		party_box.visible = false
+		start_button.text = "Start" + space
+		start_button.disabled = false
+		StartPanel.paint_go(start_button, true)
+		return
+	party_box.visible = true
+	party_line.text = lobby_text(party)
+	if start_panel.visible:
+		_paint_seats(party)
+	if bool(party.call("active")):
+		start_button.text = ("Not ready" if bool(party.get("said_ready")) else "Ready") + space
+		start_button.disabled = float(party.get("counting")) >= 0.0
+		StartPanel.paint_go(start_button, not bool(party.get("said_ready")))
+	else:
+		start_button.text = "Start alone" + space
+		start_button.disabled = false
+		StartPanel.paint_go(start_button, true)
+
+
+func _let_presence_go() -> void:
+	"""Back in town: this player's presence is the character's again."""
+	if party_link == null and Presence.state_override.is_valid():
+		Presence.state_override = Callable()
+		Presence.world_override = null
 
 
 func playing() -> bool:
@@ -374,6 +519,9 @@ func _on_hurt() -> void:
 
 
 func _on_cleared(which: int) -> void:
+	if bool(run.get("out")):
+		_say("The party cleared round %d!" % which)
+		return
 	var gold: int = RunScript.gold_for_round(which, pays)
 	_say(("Round %d cleared!  +%s gold" % [which, thousands(gold)]) if run_id != 0 else ("Round %d cleared!" % which))
 
@@ -503,7 +651,6 @@ func _word_for_touch() -> void:
 	_worded = touch
 	for k in _how_to_lines.size():
 		(_how_to_lines[k] as Label).text = str(HOW_TO_TOUCH[k]) if touch == 1 and HOW_TO_TOUCH.has(k) else str(HOW_TO[k])
-	start_button.text = "Start" if touch == 1 else "Start  (Space)"
 
 
 # =============================================================================
@@ -524,6 +671,7 @@ func paint() -> void:
 	if run == null or not is_instance_valid(run):
 		return
 	leave_button.text = "Sure?" if _leave_armed > 0.0 else "Leave"
+	_paint_party()
 	if playing() and int(run.get("state")) == RunScript.State.PLAYING and int(run.get("round_now")) != _round_said:
 		_round_said = int(run.get("round_now"))
 		_say("%s - %s" % [str(run.call("round_title")), str(run.call("land_name"))])
@@ -533,6 +681,9 @@ func paint() -> void:
 		var cleared: int = int(run.get("best"))
 		best_line.text = "%d %s cleared   ·   best %d" % [cleared, "round" if cleared == 1 else "rounds",
 			int(RunScript.best_ever)]
+		if int(run.get("players")) > 1:
+			best_line.text = "A party of %d   ·   you cleared %d   ·   best %d" % [int(run.get("players")), cleared,
+				int(RunScript.best_ever)]
 		gold_line.text = ("%s gold - yours when you leave" % thousands(int(run.call("gold_now")))) if run_id != 0 \
 			else "Practice - this run pays nothing"
 		if reached <= 0:
@@ -615,6 +766,7 @@ func _draw_hud() -> void:
 		var words: String = str(info[0]) if float(chip[1]) < 0.0 else "%s %ds" % [str(info[0]), ceili(float(chip[1]))]
 		hud_draw.draw_string(font, box.position + Vector2(30, 22), words, HORIZONTAL_ALIGNMENT_LEFT, 76, 14, CREAM)
 		x += 118.0
+	_draw_party(font)
 	# the banner
 	if _banner_left > 0.0 and _banner != "":
 		var a: float = clampf(_banner_left / 0.4, 0.0, 1.0)
@@ -624,6 +776,39 @@ func _draw_hud() -> void:
 		hud_draw.draw_string(font, Vector2(at.position.x, at.position.y + 40), _banner, HORIZONTAL_ALIGNMENT_CENTER,
 			at.size.x, 28, Color(CREAM, a))
 	hud_draw.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_party(font: Font) -> void:
+	"""With the party: each other cutter in the corner - their colour, name
+	and lives, or out - and, out of lives, what this player is doing now."""
+	if not bool(run.call("party_on")):
+		return
+	var party: Node = _party()
+	var rows: Array = []
+	for row in party.call("roster"):
+		if not bool(row["me"]) and bool(party.call("in_run", int(row["id"]))):
+			rows.append(row)
+	for k in rows.size():
+		var row: Dictionary = rows[k]
+		var box := Rect2(Vector2(16, 666 - 38 * k), Vector2(200, 32))
+		hud_draw.draw_style_box(_pill_style(Color(PILL, 0.82)), box)
+		var colour: Color = RunScript.SEAT_COLOURS[posmod(int(party.call("seat_of", int(row["id"]))), RunScript.SEAT_COLOURS.size())]
+		hud_draw.draw_circle(box.position + Vector2(16, 16), 5.0, colour)
+		hud_draw.draw_string(font, box.position + Vector2(28, 21), str(row["name"]), HORIZONTAL_ALIGNMENT_LEFT, 92, 13,
+			CREAM)
+		if int(row["flags"]) & PartyScript.OUT != 0:
+			hud_draw.draw_string(font, box.position + Vector2(124, 21), "out", HORIZONTAL_ALIGNMENT_LEFT, 66, 13,
+				Color(1.0, 1.0, 1.0, 0.45))
+		else:
+			for n in mini(int(row["lives"]), RunScript.LIVES_MOST):
+				_heart(box.position + Vector2(132 + 14 * n, 17), true, 0.36)
+	if bool(run.get("out")) and int(run.get("state")) != RunScript.State.OVER:
+		var words: String = "Out of lives - watching the party cut on"
+		var wide: float = font.get_string_size(words, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x + 40.0
+		var at := Rect2(Vector2((HUD_BASE.x - wide) / 2.0, 70), Vector2(wide, 36))
+		hud_draw.draw_style_box(_pill_style(Color(PILL, 0.88)), at)
+		hud_draw.draw_string(font, Vector2(at.position.x, at.position.y + 24), words, HORIZONTAL_ALIGNMENT_CENTER,
+			at.size.x, 16, Color(CREAM, 0.85))
 
 
 func _draw_coin(at: Vector2) -> void:
@@ -753,6 +938,7 @@ func close() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
 	_held = null
+	_let_presence_go()
 	queue_free()
 
 
@@ -782,3 +968,4 @@ func _input(event: InputEvent) -> void:
 func _exit_tree() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
+	_let_presence_go()

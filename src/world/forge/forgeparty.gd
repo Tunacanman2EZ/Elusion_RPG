@@ -23,8 +23,9 @@
 # follow_line()): the same island, sinking the same way, their own fire,
 # wading, forging and rocks, aimed at their own player.
 # Every game tells its own line ("me", forgerun.gd my_line()): the run's key,
-# down or standing, and how many essences it has walked over - and "go" when
-# its player lights the forge before a run, which starts the countdown.
+# down or standing, how many essences it has walked over and (0.161.0) its
+# Ready - and "go" when its player lights the forge before a run, which
+# starts the countdown.
 extends Node
 
 const AREA := "forge"
@@ -45,7 +46,8 @@ var _me_left: float = 0.0
 var _go_left: float = 0.0
 var _last_line: Array = []
 var _last_me: Array = []
-# (Leader.) Each other player's last line: id -> [key, down, essences].
+# Each other player's last line: id -> [key, down, essences, Ready - 1 for a
+# game from before 0.161.0, which says nothing of it].
 var _members: Dictionary = {}
 
 
@@ -103,6 +105,13 @@ func all_down(key: int) -> bool:
 		if line.size() >= 2 and int(line[0]) == key and int(line[1]) == 0:
 			return false
 	return true
+
+
+func ready_of(id: int) -> int:
+	"""READY FIRST (0.161.0): 1 when that player has said Ready (or its game
+	is from before and says nothing of it), 0 when not, -1 when not heard."""
+	var line: Array = _members.get(id, [])
+	return int(line[3]) if line.size() >= 4 else -1
 
 
 func standing(key: int) -> int:
@@ -186,8 +195,10 @@ func _on_run(from_id: int, data: Dictionary) -> void:
 		run.call("follow_line", data["r"])
 	if data.get("me") is Array and (data["me"] as Array).size() >= 3:
 		var me: Array = []
-		for n in (data["me"] as Array).slice(0, 3):
+		for n in (data["me"] as Array).slice(0, 4):
 			me.append(int(n))
+		if me.size() < 4:
+			me.append(1)
 		_members[from_id] = me
 		if leading and active():
 			run.call("party_me", from_id, me)

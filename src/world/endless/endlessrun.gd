@@ -63,6 +63,27 @@ extends Node
 const SwarmScript := preload("res://src/world/endless/swarm.gd")
 const ChestScript := preload("res://src/world/endless/endlesschest.gd")
 const PartyScript := preload("res://src/world/endless/endlessparty.gd")
+# READY FIRST (0.161.0, readypanel.gd; the owner: "lets fix the other
+# minigames with the same idea", the full Ready panel - "the door or anvil
+# opens only once all are ready"). Waiting in the corridor, the panel is up
+# and the door shut (lock()); Start alone, or everyone here Ready
+# (endlessparty.gd ready_of(), the fifth number of each "me"), opens the
+# gate (gate_open): the panel goes, the door is the door again, and the run
+# starts as it did - through it. Back to the corridor after a run, it asks
+# again. Not in the Testing Ground; `asks_ready` false is the suite's way to
+# play as before.
+const ReadyPanel := preload("res://src/ui/minigames/readypanel.gd")
+const READY_SUBTITLE := "Hold the arena against a horde that never ends."
+const READY_KEYS := ["Fight", "Stages", "Elites", "Lands", "Loot", "A fall", "Start"]
+const READY_LINES := [
+	"Your own character and gear - the horde comes in thousands.",
+	"Every minute a new stage: a new land, more slimes, faster and tougher.",
+	"Elites come in waves, and a land's boss every fifth stage.",
+	"Each land puts its effect on you - soaked, frozen, wind's spikes, wither.",
+	"Elites and bosses drop into your chest by the ladder - loot only, no XP.",
+	"A fall is not a death: you wake by the chest while the party fights on.",
+	"Then walk through the door. Once in, there is no way back.",
+]
 const SpikePath := preload("res://src/world/endless/spikepath.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const Targets := preload("res://src/shared/targets.gd")
@@ -277,6 +298,17 @@ func _ready() -> void:
 		var warmer: Node = SceneWarmer.add_to(self)
 		warmer.set("calm", _calm_for_loading)
 		warmer.call("warm", scenes_to_warm())
+		if asks_ready:
+			ready_panel = ReadyPanel.new()
+			ready_panel.name = "readypanel"
+			ready_panel.set("title", "The Endless")
+			ready_panel.set("subtitle", READY_SUBTITLE)
+			ready_panel.set("keys", READY_KEYS)
+			ready_panel.set("lines", READY_LINES)
+			ready_panel.set("party", party)
+			ready_panel.set("ready_of", Callable(party, "ready_of"))
+			ready_panel.connect("go_pressed", open_gate)
+			add_child(ready_panel)
 
 
 func scenes_to_warm() -> Array:
@@ -564,7 +596,10 @@ func _timed_process(delta: float) -> void:
 	my_in = (state == State.RUNNING or state == State.COUNTDOWN) and player != null \
 		and player.get("is_dying") != true and on_floor(player.global_position)
 	_ease_floor(delta)
+	_lobby()
 	if state == State.WAITING:
+		if not gate_is_open():
+			return
 		if player != null and start_rect.has_point(player.global_position):
 			if not shared():
 				start()
@@ -755,6 +790,49 @@ func party_go() -> void:
 	"""(A party's leader.) Another player stepped through the door first."""
 	if state == State.WAITING:
 		begin_countdown()
+
+
+func gate_is_open() -> bool:
+	"""Whether the way in is open: no Ready panel, or it said go."""
+	return ready_panel == null or gate_open
+
+
+func said_ready() -> bool:
+	"""This player's Ready, for the fifth number of its "me"."""
+	return ready_panel != null and bool(ready_panel.get("said_ready"))
+
+
+func open_gate() -> void:
+	"""Start alone, or the whole party Ready: the panel goes and the door is
+	the door again."""
+	gate_open = true
+	if ready_panel != null:
+		ready_panel.visible = false
+	var door: Node = get_node_or_null(door_path)
+	if door != null and door.has_method("lock") and state == State.WAITING:
+		door.call("lock", false)
+	if party != null:
+		party.call("me_now")
+
+
+func _lobby() -> void:
+	"""Waiting in the corridor: the panel up and the door shut until the gate
+	opens; anything else, and the next wait asks again."""
+	if ready_panel == null:
+		return
+	if state != State.WAITING:
+		gate_open = false
+		ready_panel.set("said_ready", false)
+		ready_panel.visible = false
+		return
+	if not gate_open and bool(ready_panel.call("all_ready")):
+		open_gate()
+	ready_panel.visible = not gate_open
+	if gate_open:
+		return
+	var door: Node = get_node_or_null(door_path)
+	if door != null and door.has_method("lock") and not bool(door.get("locked")):
+		door.call("lock", true)
 
 
 func _set_door(open: bool) -> void:
@@ -1055,6 +1133,11 @@ func follow_everything(numbers: Array, slimes: PackedInt32Array) -> void:
 # The suite's seam: the player this run is about, instead of the "player"
 # group's (two runs in one tree, each its own game).
 var player_override: Node2D = null
+# READY FIRST (0.161.0): the panel, whether the gate is open, and the suite's
+# switch.
+var ready_panel: CanvasLayer = null
+var gate_open: bool = false
+var asks_ready: bool = true
 
 
 func _player() -> Node2D:

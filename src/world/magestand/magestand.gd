@@ -79,8 +79,25 @@
 #
 # No god mode here (the owner: "we also do not need godmode on this mode").
 #
+# THE MAGE'S STAND TOGETHER (0.161.0, step 5; the owner: "the forge should
+# be 4 player mages stand also"): up to four mages, two each side of the gate
+# (side_for()), one run for the party - magestandparty.gd says who decides
+# what and what crosses. The first in (the room's leader) runs the waves, the
+# gate, the wall, the portal and the star (line(), and its decisions as
+# events: the groups that come in, the star dropped and called -
+# apply_event()); the others follow its line (follow_line()). Every game
+# moves its own copy of every monster, made from the same seed, and every
+# player's meteors and burns are told as hits (hurt() -> tell_hit(),
+# strike_remote()), so a monster dies on every screen; their meteors fall on
+# every screen as pictures (show_picture()). Each mage picks her own
+# upgrades; a Repair card mends the leader's wall, a meteor on the lying star
+# counts for the party's claim, and anybody calls the star down
+# (party_repair(), party_star_hit(), party_call_star()). Scaled for the
+# party: PARTY_CROWD_STEP more monsters a player more, PARTY_HEALTH_STEP more
+# health. Alone, none of it: the Stand as it always was.
+#
 # Step 3 brings elites, keepers, shooters and lives; step 4 the
-# leaderboards and the Upgrades tab; step 5 the party.
+# leaderboards and the Upgrades tab.
 #
 # No class_name: preloaded by magestandscreen.gd and the suite.
 extends Node2D
@@ -90,6 +107,7 @@ signal finished
 enum State { READY, WAVE, BETWEEN, LOST, PICK }
 
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+const PartyScript := preload("res://src/world/magestand/magestandparty.gd")
 
 const VIEW := Vector2(960.0, 540.0)
 const HALF := Vector2(480.0, 270.0)
@@ -234,6 +252,19 @@ const KINDS := {"sprite": {"health": 6.0, "speed": 48.0, "radius": 8.0, "drain":
 	"bomber": {"health": 10.0, "speed": 44.0, "radius": 9.0, "drain": 2}}
 const MONSTER_Z := 0
 const HER_Z := 6
+# THE STAND TOGETHER (0.161.0): up to PARTY_MOST, the horde larger and
+# tougher a player more; what the leader decides, as events; the star's
+# states on the wire; three stretches of the wall in one whole number.
+const PARTY_MOST := 4
+const PARTY_CROWD_STEP := 0.6
+const PARTY_HEALTH_STEP := 0.1
+const EVENT_GROUP := 1
+const EVENT_STAR_DROP := 2
+const EVENT_STAR_CALL := 3
+const STAR_CODES := ["", "dropping", "lying", "held", "falling"]
+const WALL_BASE := 302
+# A follower's gate shakes this long after the leader's line says it fell.
+const STRUCK_SECONDS := 0.4
 # The ground's marks under the monsters, over the floor.
 const MARKS_Z := -1
 const SKY_Z := 30
@@ -261,6 +292,11 @@ class Monster extends Node2D:
 	# "" an ordinary monster; "elite" or "keeper" (step 3) - the star hits
 	# those for a share of their health (star_hit()).
 	var rank: String = ""
+	# With the party (0.161.0): the group it came in with - its batch and
+	# its place in it, as hits name it - and how many groups had come in.
+	var batch: int = -1
+	var slot: int = 0
+	var group: int = 0
 
 
 # A bomber's lit fuse, drawn over it.
@@ -503,6 +539,22 @@ var star_marked: Array = []
 var star_afterglow: float = 0.0
 # The party (step 5): its size sets the hits a star needs.
 var players: int = 1
+# THE STAND TOGETHER (0.161.0): its node (magestandparty.gd, made by the
+# screen), whether the run has begun, the monsters this player's meteors
+# finished, where the party's mages are drawn, every monster by its batch and
+# place, the groups come in, the leader's state as last heard, and the next
+# wave held for the party's picks.
+var party: Node = null
+var begun: bool = false
+var my_kills: int = 0
+var others: Node2D = null
+var waiting_on_party: bool = false
+var _net: Dictionary = {}
+var _groups_made: int = 0
+var _line_state: int = State.READY
+var _pick_wait: float = 0.0
+var _party_picks: bool = false
+var _struck_left: float = 0.0
 var _star_rng := RandomNumberGenerator.new()
 var _star_rock: Sprite2D = null
 
@@ -577,6 +629,13 @@ func _build() -> void:
 	wall_bars.run = self
 	wall_bars.z_index = HER_Z - 1
 	add_child(wall_bars)
+	# The party's mages, where their steps say (Presence.world_override).
+	others = Node2D.new()
+	others.name = "others"
+	others.z_index = HER_Z
+	# Drawn without a camera, at 1: their names at their own size.
+	others.set_meta(&"plate_zoom", 1.0)
+	add_child(others)
 	# Beyond the side walls, dark over everything.
 	for x in [-HALF.x - 40.0, PATH_HALF + 9.0]:
 		var beyond := ColorRect.new()
@@ -747,6 +806,9 @@ func step(delta: float) -> void:
 	sky_marks.queue_redraw()
 	if wall_bars != null:
 		wall_bars.queue_redraw()
+	if others != null:
+		others.visible = party_on()
+	_struck_left = maxf(0.0, _struck_left - delta)
 	if state == State.LOST:
 		return
 	if state == State.PICK:
@@ -835,6 +897,7 @@ func drop_meteor(at: Vector2, small: bool = false) -> void:
 	if small:
 		rock.scale = Vector2(0.6, 0.6)
 		falling.append({"at": spot, "left": FALL_SECONDS * 0.6, "rock": rock, "crit": false, "small": true})
+		_tell_meteor(spot, PartyScript.PICTURE_SMALL)
 		return
 	casts += 1
 	var comet: bool = false
@@ -849,6 +912,41 @@ func drop_meteor(at: Vector2, small: bool = false) -> void:
 		rock.scale = Vector2(1.8, 1.8)
 		rock.modulate = Color(1.4, 1.1, 1.6)
 	falling.append({"at": spot, "left": FALL_SECONDS, "rock": rock, "crit": crit, "comet": comet})
+	_tell_meteor(spot, PartyScript.PICTURE_COMET if comet else (PartyScript.PICTURE_CRIT if crit else PartyScript.PICTURE_METEOR))
+
+
+func _tell_meteor(at: Vector2, kind: int) -> void:
+	"""With the party: a picture of this meteor for the others' screens."""
+	if party != null:
+		party.call("tell_picture", at, kind)
+
+
+func show_picture(at: Vector2, kind: int) -> void:
+	"""A party member's meteor (or its pull), on this screen: it falls, blasts
+	and leaves its crater burning here - hurting nothing (its hits come as
+	hits) - and the pull drags the same pack."""
+	if kind >= PartyScript.PULL_PICTURE:
+		_pull(at, float(kind - PartyScript.PULL_PICTURE))
+		return
+	var spot := Vector2(clampf(at.x, -PATH_HALF + 6.0, PATH_HALF - 6.0), clampf(at.y, -HALF.y + 6.0, HALF.y - 6.0))
+	var small: bool = kind == PartyScript.PICTURE_SMALL
+	var rock := Sprite2D.new()
+	rock.texture = load(METEOR_TEXTURE) as Texture2D
+	rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rock.z_index = SKY_Z + 1
+	rock.position = spot + SKY
+	add_child(rock)
+	var crit: bool = kind == PartyScript.PICTURE_CRIT
+	var comet: bool = kind == PartyScript.PICTURE_COMET
+	if small:
+		rock.scale = Vector2(0.6, 0.6)
+	elif comet:
+		rock.scale = Vector2(1.8, 1.8)
+		rock.modulate = Color(1.4, 1.1, 1.6)
+	elif crit:
+		rock.modulate = Color(1.6, 0.8, 0.6)
+	falling.append({"at": spot, "left": FALL_SECONDS * (0.6 if small else 1.0), "rock": rock, "crit": crit,
+		"comet": comet, "small": small, "cosmetic": true})
 
 
 func _falls(delta: float) -> void:
@@ -880,16 +978,20 @@ func _land(fall: Dictionary) -> void:
 	if bool(fall.get("small", false)):
 		damage *= SHOWER_SHARE
 		reach *= SHOWER_SHARE
-	if level("pull") > 0 and _rng.randf() < pull_chance():
+	# A PARTY MEMBER'S, drawn here: its blast and crater, and nothing hit.
+	var cosmetic: bool = bool(fall.get("cosmetic", false))
+	if not cosmetic and level("pull") > 0 and _rng.randf() < pull_chance():
 		_pull(at, reach * PULL_REACH)
-	for node in monsters.get_children():
-		var m := node as Monster
-		if m != null and m.dying < 0.0 and m.position.distance_to(at) <= reach + m.radius:
-			hurt(m, damage)
-	if star_state == "lying" and at.distance_to(star_at) <= reach + STAR_RADIUS:
-		_strike_star()
-	craters.append({"at": at, "left": burn_seconds(), "seed": _fx_rng.randf() * 100.0})
-	if bool(fall["crit"]) and level("shower") > 0:
+		_tell_meteor(at, PartyScript.PULL_PICTURE + mini(roundi(reach * PULL_REACH), 1800))
+	if not cosmetic:
+		for node in monsters.get_children():
+			var m := node as Monster
+			if m != null and m.dying < 0.0 and m.position.distance_to(at) <= reach + m.radius:
+				hurt(m, damage)
+		if star_state == "lying" and at.distance_to(star_at) <= reach + STAR_RADIUS:
+			_strike_star()
+	craters.append({"at": at, "left": burn_seconds(), "seed": _fx_rng.randf() * 100.0, "burns": not cosmetic})
+	if not cosmetic and bool(fall["crit"]) and level("shower") > 0:
 		for i in SHOWER_PIECES:
 			var turn: float = TAU * float(i) / float(SHOWER_PIECES) + _fx_rng.randf() * 0.6
 			drop_meteor(at + Vector2(cos(turn), sin(turn) * 0.6) * SHOWER_SPREAD, true)
@@ -931,31 +1033,40 @@ func _burn(delta: float) -> void:
 		if m == null or m.dying >= 0.0:
 			continue
 		for crater in craters:
+			if not bool(crater.get("burns", true)):
+				continue
 			if m.position.distance_to(crater["at"]) <= reach + m.radius:
 				hurt(m, burn_dps() * delta)
 				break
 
 
-func hurt(m: Monster, damage: float) -> void:
+func hurt(m: Monster, damage: float, mine: bool = true, told: bool = true) -> void:
+	"""`damage` on `m`: `mine` when this player's meteor or burn did it (its
+	kill is hers), `told` when the party hears of it as a hit - a bomber's
+	blast and the star are not told, every screen doing its own."""
 	if m.dying >= 0.0:
 		return
+	if told and mine and party != null and m.batch >= 0:
+		party.call("tell_hit", m.batch, m.slot, damage)
 	m.health -= damage
 	m.flash = 0.08
 	if m.health <= 0.0:
 		m.dying = 0.25
 		slain += 1
+		if mine:
+			my_kills += 1
 		if m.kind == "bomber":
-			_blow_up(m.position)
+			_blow_up(m.position, mine)
 
 
-func _blow_up(at: Vector2) -> void:
+func _blow_up(at: Vector2, mine: bool = true) -> void:
 	"""A bomber slain on its way: it goes up where it stands, hurting what is
 	round it (other bombers too)."""
 	_bang(at, BOMB_REACH)
 	for node in monsters.get_children():
 		var other := node as Monster
 		if other != null and other.dying < 0.0 and other.position.distance_to(at) <= BOMB_REACH + other.radius:
-			hurt(other, BOMB_DAMAGE)
+			hurt(other, BOMB_DAMAGE, mine, false)
 
 
 # =============================================================================
@@ -968,11 +1079,11 @@ static func star_comes(at_wave: int, waves_without: int, roll: float) -> bool:
 	return at_wave >= STAR_FROM and (roll < STAR_CHANCE or waves_without >= STAR_SURE - 1)
 
 
-static func claim_hits(party: int) -> int:
+static func claim_hits(party_size: int) -> int:
 	"""Meteors to land on a star to claim it: STAR_HITS_ALONE alone,
 	STAR_HITS_FOUR for four - a party claims as fast as one alone, the horde
 	already scaled for it."""
-	var n: int = clampi(party, 1, 4)
+	var n: int = clampi(party_size, 1, 4)
 	return roundi(lerpf(float(STAR_HITS_ALONE), float(STAR_HITS_FOUR), float(n - 1) / 3.0))
 
 
@@ -999,12 +1110,23 @@ func _roll_star() -> void:
 
 func _drop_star() -> void:
 	star_drop_in = -1.0
+	var at := Vector2(_star_rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0),
+		_star_rng.randf_range(-HALF.y + 110.0, FOOT - 150.0))
+	if party_on():
+		# THE LEADER'S STAR falls on every screen at once.
+		apply_event(party.call("announce", [EVENT_STAR_DROP, 0, roundi(at.x), roundi(at.y)]))
+		return
+	_drop_star_at(at)
+
+
+func _drop_star_at(at: Vector2) -> void:
+	star_drop_in = -1.0
 	stars_dropped += 1
 	star_state = "dropping"
 	star_left = STAR_DROP_SECONDS
 	star_hits = 0
-	star_at = Vector2(_star_rng.randf_range(-PATH_HALF + 70.0, PATH_HALF - 70.0),
-		_star_rng.randf_range(-HALF.y + 110.0, FOOT - 150.0))
+	star_at = at
+	_drop_star_rock()
 	_star_rock = Sprite2D.new()
 	_star_rock.name = "star"
 	_star_rock.texture = load(METEOR_TEXTURE) as Texture2D
@@ -1019,6 +1141,13 @@ func _drop_star() -> void:
 
 
 func _strike_star() -> void:
+	if following():
+		# THE PARTY'S CLAIM is the leader's count: this hit is told.
+		party.set("star_strikes", int(party.get("star_strikes")) + 1)
+		party.call("me_now")
+		if is_instance_valid(_star_rock):
+			_star_rock.modulate = Color(2.2, 1.8, 1.2)
+		return
 	star_hits += 1
 	if is_instance_valid(_star_rock):
 		_star_rock.modulate = Color(2.2, 1.8, 1.2)
@@ -1041,16 +1170,34 @@ func can_call_star() -> bool:
 
 func call_star() -> bool:
 	"""THE STAR CALLED: its shadow spreads, and STAR_FALL later it lands on
-	what is on the field now."""
+	what is on the field now. With the party, anybody calls it: the others
+	ask the leader, whose call falls on every screen."""
 	if not can_call_star():
 		return false
+	if following():
+		party.set("calls", int(party.get("calls")) + 1)
+		party.call("me_now")
+		banner = "Calling the star..."
+		banner_left = BANNER_SECONDS
+		return true
+	if party_on():
+		apply_event(party.call("announce", [EVENT_STAR_CALL, 0, _groups_made]))
+		return true
+	_call_star_upto(-1)
+	return true
+
+
+func _call_star_upto(groups: int) -> void:
+	"""The star falls on every monster on the field - with the party, on those
+	of the first `groups` groups (-1: all), which every screen has alike."""
 	star_state = "falling"
 	star_left = STAR_FALL
 	stars_called += 1
 	star_marked.clear()
+	_drop_star_rock()
 	for node in monsters.get_children():
 		var m := node as Monster
-		if m != null and m.dying < 0.0:
+		if m != null and m.dying < 0.0 and (groups < 0 or m.group <= groups):
 			star_marked.append(m)
 	_star_rock = Sprite2D.new()
 	_star_rock.name = "star"
@@ -1062,7 +1209,6 @@ func call_star() -> bool:
 	add_child(_star_rock)
 	banner = "A star falls!"
 	banner_left = STAR_FALL
-	return true
 
 
 static func star_sky_at(done: float) -> Vector2:
@@ -1096,12 +1242,11 @@ func _star(delta: float) -> void:
 				_star_rock.modulate = _star_rock.modulate.lerp(Color(1.5 * glow, 1.25 * glow, 0.8), minf(1.0, delta * 6.0))
 				# It blinks as it fades.
 				_star_rock.visible = star_left > 3.0 or fmod(star_left, 0.4) > 0.15
-			if star_left <= 0.0:
-				star_state = ""
-				star_hits = 0
-				_drop_star_rock()
-				banner = "The star faded"
-				banner_left = BANNER_SECONDS
+			if star_left <= 0.0 and following():
+				# The leader's line says when it fades.
+				star_left = 0.0
+			elif star_left <= 0.0:
+				_fade_star()
 		"falling":
 			star_left -= delta
 			var done: float = 1.0 - clampf(star_left / STAR_FALL, 0.0, 1.0)
@@ -1110,6 +1255,14 @@ func _star(delta: float) -> void:
 				_star_rock.rotation += delta * 2.0
 			if star_left <= 0.0:
 				_star_lands()
+
+
+func _fade_star() -> void:
+	star_state = ""
+	star_hits = 0
+	_drop_star_rock()
+	banner = "The star faded"
+	banner_left = BANNER_SECONDS
 
 
 func _star_lands() -> void:
@@ -1122,7 +1275,7 @@ func _star_lands() -> void:
 			continue
 		var m := node as Monster
 		if m != null and m.dying < 0.0:
-			hurt(m, star_hit(m))
+			hurt(m, star_hit(m), false, false)
 	star_marked.clear()
 	star_afterglow = STAR_AFTERGLOW
 	banner = "The field is wiped!"
@@ -1146,7 +1299,22 @@ func _bang(at: Vector2, reach: float) -> void:
 # =============================================================================
 
 func wave_count(n: int) -> int:
-	return WAVE_FIRST + WAVE_MORE * (maxi(1, n) - 1)
+	return roundi((WAVE_FIRST + WAVE_MORE * (maxi(1, n) - 1)) * party_crowd())
+
+
+func party_crowd() -> float:
+	"""How many more monsters a wave brings for the players in this run."""
+	return 1.0 + PARTY_CROWD_STEP * (clampi(players, 1, PARTY_MOST) - 1)
+
+
+func party_health() -> float:
+	"""How much tougher each is for them."""
+	return 1.0 + PARTY_HEALTH_STEP * (clampi(players, 1, PARTY_MOST) - 1)
+
+
+func group_size() -> int:
+	"""How many come in at once: more each wave, and more for a party."""
+	return roundi((GROUP_FIRST + wave) * party_crowd())
 
 
 static func wave_speed(n: int) -> float:
@@ -1210,7 +1378,7 @@ func spawn(kind: String, at: Vector2) -> Monster:
 	var info: Dictionary = KINDS[kind]
 	var m := Monster.new()
 	m.kind = kind
-	m.most = float(info["health"]) * wave_health(wave)
+	m.most = float(info["health"]) * wave_health(wave) * party_health()
 	m.health = m.most
 	m.speed = float(info["speed"]) * wave_speed(wave) * _rng.randf_range(0.85, 1.15)
 	m.radius = float(info["radius"])
@@ -1400,6 +1568,11 @@ func _move_monsters(delta: float) -> void:
 			continue
 		if m.at_gate:
 			hits[m.target] = int(hits.get(m.target, 0)) + 1
+	if following():
+		# THE GATE, THE WALL AND THE PORTAL are the leader's (follow_line()).
+		gate_struck = door > 0.0 and _struck_left > 0.0
+		_shake_gate()
+		return
 	var strength: float = DOOR_HIT * wave_hit(wave) * delta
 	gate_struck = door > 0.0 and int(hits.get(-1, 0)) > 0
 	if gate_struck:
@@ -1418,8 +1591,10 @@ func _move_monsters(delta: float) -> void:
 
 func _bomb_the_wall(m: Monster) -> void:
 	"""A bomber at the wall: BOMB_HIT off its stretch (or the gate), and gone -
-	no kill to anyone."""
-	if m.target < 0:
+	no kill to anyone. (With the party, the wall is the leader's.)"""
+	if following():
+		pass
+	elif m.target < 0:
 		door = maxf(0.0, door - BOMB_HIT)
 		if door <= 0.0:
 			_break_gate()
@@ -1470,6 +1645,9 @@ func gate_broken() -> bool:
 
 
 func _into_portal(m: Monster) -> void:
+	if following():
+		_gone(m)
+		return
 	portal = maxi(0, portal - m.drain)
 	_gone(m)
 	if portal <= 0 and state != State.LOST:
@@ -1487,8 +1665,13 @@ static func _gone(node: Node) -> void:
 
 
 func _waves(delta: float) -> void:
+	if following():
+		# THE WAVES ARE THE LEADER'S: its line and its groups.
+		return
 	match state:
 		State.READY, State.BETWEEN:
+			if state == State.BETWEEN and _held_for_picks(delta):
+				return
 			_left -= delta
 			if _left <= 0.0:
 				_start_wave()
@@ -1514,8 +1697,9 @@ func arrow_showing() -> bool:
 
 
 func can_call_early() -> bool:
-	"""Once a wave has all come in and some of it is still about."""
-	return state == State.WAVE and _to_spawn == 0 and living() > 0
+	"""Once a wave has all come in and some of it is still about - the
+	leader's call, with the party."""
+	return state == State.WAVE and _to_spawn == 0 and living() > 0 and not following()
 
 
 func call_early() -> bool:
@@ -1541,23 +1725,36 @@ func _start_wave() -> void:
 
 
 func _spawn_group() -> void:
-	"""One group of the wave flooding in from the top: bigger each wave."""
-	var size: int = mini(_to_spawn, GROUP_FIRST + wave)
+	"""One group of the wave flooding in from the top: bigger each wave. With
+	the party, the leader's decision, made on every screen from one seed."""
+	var size: int = mini(_to_spawn, group_size())
 	var centre: float = next_x
 	next_x = _group_x()
+	if party_on():
+		apply_event(party.call("announce", [EVENT_GROUP, _rng.randi_range(1, 2000000000), wave, players, size,
+			roundi(centre), _to_spawn - size]))
+		return
+	_group_of(size, centre)
+	_to_spawn -= size
+
+
+func _group_of(size: int, centre: float) -> Array:
+	var made: Array = []
 	for i in size:
 		var kind: String = "sprite" if _rng.randf() < 0.5 else "slime"
 		if wave >= BOMBERS_FROM and _rng.randf() < bomber_chance(wave):
 			kind = "bomber"
 		var at := Vector2(clampf(centre + _rng.randf_range(-70.0, 70.0), -PATH_HALF + 12.0, PATH_HALF - 12.0),
 			-HALF.y - 12.0 - _rng.randf_range(0.0, 40.0))
-		spawn(kind, at)
-	_to_spawn -= size
+		made.append(spawn(kind, at))
+	return made
 
 
 func _end_wave() -> void:
 	var before: int = waves_held
 	waves_held = wave
+	_pick_wait = 0.0
+	_party_picks = picks_due(before, waves_held) > 0
 	picks_left = picks_due(before, waves_held)
 	offers = roll_offers() if picks_left > 0 else []
 	if offers.is_empty():
@@ -1695,7 +1892,11 @@ func pick(index: int) -> bool:
 	if state != State.PICK or index < 0 or index >= offers.size():
 		return false
 	var id: String = str(offers[index])
-	if id == "patch":
+	if id == "patch" and following():
+		# THE WALL IS THE LEADER'S: it mends it for her.
+		party.set("repairs", int(party.get("repairs")) + 1)
+		banner = "Repaired"
+	elif id == "patch":
 		_repair(PATCH_SHARE)
 		banner = "Repaired"
 	elif EVOLUTIONS.has(id):
@@ -1711,7 +1912,337 @@ func pick(index: int) -> bool:
 		picks_left = 0
 		state = State.BETWEEN
 		_left = AFTER_PICK_SECONDS
+		_picked()
+	if party != null:
+		party.call("me_now")
 	return true
+
+
+func _picked() -> void:
+	"""Her picks done for the waves held: said to the leader; a follower goes
+	back to where the leader's run stands."""
+	if party != null:
+		party.set("picked_through", waves_held)
+	if following():
+		state = _followed_state()
+
+
+# =============================================================================
+# THE STAND TOGETHER (0.161.0; magestandparty.gd)
+# =============================================================================
+
+func party_on() -> bool:
+	"""Whether a party run is being shared."""
+	return party != null and bool(party.call("active"))
+
+
+func following() -> bool:
+	"""Whether this game follows the leader's run."""
+	return party_on() and not bool(party.call("leads"))
+
+
+static func start_x(seat: int) -> float:
+	"""Where a seat stands at the start: the first two by the middle of their
+	side, the next two further out."""
+	return side_for(seat) * (150.0 if seat < 2 else 250.0)
+
+
+func take_seat(seat: int) -> void:
+	"""Her side of the gate and her place on it, from her seat in the party."""
+	her_side = side_for(seat)
+	if mage != null:
+		mage.position.x = start_x(seat)
+
+
+func begin_run() -> void:
+	"""Start (or the party's count): the run begins, for this many players,
+	each on her own side."""
+	begun = true
+	if party_on():
+		players = clampi(int(party.call("members")), 1, PARTY_MOST)
+		take_seat(int(party.call("seat")))
+
+
+func line() -> Array:
+	"""(Leader.) The run as it stands, for the party: key, state, wave, waves
+	held, the gate (tenths), the portal, the wall's two sides, the star and
+	its hits, players, started (waiting, begun or counting down), the
+	countdown (tenths), the clock (tenths), where the next group comes in, and
+	the next wave held for the party's picks."""
+	var counting: float = float(party.get("counting")) if party != null else -1.0
+	var started: int = PartyScript.BEGUN if begun else (PartyScript.COUNTING if counting >= 0.0 else PartyScript.WAITING)
+	return [int(party.get("key")) if party != null else 0, state, wave, waves_held, roundi(door * 10.0), portal,
+		_pack_wall(0), _pack_wall(3), maxi(0, STAR_CODES.find(star_state)), star_hits, players, started,
+		maxi(0, ceili(counting * 10.0)) if started == PartyScript.COUNTING else 0, roundi(run_seconds * 10.0),
+		roundi(next_x), 1 if waiting_on_party else 0]
+
+
+func _pack_wall(from: int) -> int:
+	"""Three stretches in one number: each its health and one, or nought
+	broken (WALL_BASE)."""
+	var packed: int = 0
+	var place: int = 1
+	for k in 3:
+		var one: Dictionary = stretches[from + k] if from + k < stretches.size() else {}
+		var code: int = 0 if one.is_empty() or bool(one["broken"]) else clampi(roundi(float(one["health"])), 0, WALL_BASE - 2) + 1
+		packed += code * place
+		place *= WALL_BASE
+	return packed
+
+
+func follow_line(heard: Array) -> void:
+	"""(Not leading.) The leader's line: its waves, its gate, wall and portal,
+	its star, its clock."""
+	if heard.size() < 16:
+		return
+	players = clampi(int(heard[10]), 1, PARTY_MOST)
+	next_x = clampf(float(heard[14]), -PATH_HALF, PATH_HALF)
+	var waiting: bool = int(heard[15]) == 1
+	if waiting and not waiting_on_party and state != State.PICK:
+		banner = "Waiting for the party to pick"
+		banner_left = BANNER_SECONDS
+	waiting_on_party = waiting
+	if not begun or state == State.LOST:
+		return
+	var their_clock: float = float(heard[13]) / 10.0
+	if absf(their_clock - run_seconds) > 1.5:
+		run_seconds = their_clock
+	# THE GATE.
+	var their_door: float = clampf(float(heard[4]) / 10.0, 0.0, door_most)
+	if their_door < door - 0.05:
+		_struck_left = STRUCK_SECONDS
+	if their_door <= 0.0 and door > 0.0:
+		door = 0.0
+		_break_gate()
+	elif their_door > 0.0 and door <= 0.0:
+		_mend_gate(0.0)
+	door = their_door
+	# THE WALL.
+	_follow_wall(0, int(heard[6]))
+	_follow_wall(3, int(heard[7]))
+	portal = clampi(int(heard[5]), 0, PORTAL_MOST)
+	_follow_star(int(heard[8]), int(heard[9]))
+	_follow_wave(int(heard[2]))
+	_follow_held(int(heard[3]))
+	_line_state = int(heard[1])
+	if _line_state == State.LOST:
+		state = State.LOST
+		banner = "The portal fell"
+		banner_left = BANNER_SECONDS * 3.0
+		finished.emit()
+	elif state != State.PICK:
+		state = _followed_state()
+
+
+func _followed_state() -> int:
+	"""Where the leader's run stands, for this screen: its own pick is the
+	leader's wait."""
+	if _line_state == State.PICK:
+		return State.BETWEEN
+	return clampi(_line_state, State.READY, State.PICK)
+
+
+func _follow_wall(from: int, packed: int) -> void:
+	for k in 3:
+		var i: int = from + k
+		if i >= stretches.size():
+			return
+		@warning_ignore("integer_division")
+		var code: int = (packed / int(pow(WALL_BASE, k))) % WALL_BASE
+		if code == 0:
+			if not bool(stretches[i]["broken"]):
+				_breach(i)
+			continue
+		if bool(stretches[i]["broken"]):
+			_rebuild(i, 0.0)
+		stretches[i]["health"] = float(code - 1)
+
+
+func _follow_wave(n: int) -> void:
+	"""The leader's next wave: called early if this one is still about."""
+	if n <= wave:
+		return
+	var early: bool = state == State.WAVE and _line_state == State.WAVE and living() > 0
+	wave = n
+	_to_spawn = wave_count(n)
+	_group_in = 0.0
+	banner = "Wave %d - the %s lands" % [wave, land_name()]
+	banner_left = BANNER_SECONDS
+	if early:
+		called_early += 1
+		rerolls += 1
+		banner = "Wave %d called early - a reroll for it" % wave
+
+
+func _follow_held(held: int) -> void:
+	"""The leader held its wave: her picks for it, if one is due."""
+	if held <= waves_held:
+		return
+	var before: int = waves_held
+	waves_held = held
+	var owed: int = picks_due(before, held)
+	if owed <= 0:
+		if picks_left <= 0:
+			_picked()
+		var next_pick: int = (floori(float(waves_held) / PICK_EVERY) + 1) * PICK_EVERY
+		banner = "Wave %d held - an upgrade after wave %d" % [held, next_pick]
+		banner_left = BANNER_SECONDS
+		return
+	picks_left += owed
+	if state != State.PICK:
+		offers = roll_offers()
+		if offers.is_empty():
+			picks_left = 0
+			_picked()
+		else:
+			state = State.PICK
+			banner = ""
+	if party != null:
+		party.call("me_now")
+
+
+func _follow_star(code: int, hits: int) -> void:
+	"""The party's star as the leader has it: claimed, or faded."""
+	var said: String = str(STAR_CODES[clampi(code, 0, STAR_CODES.size() - 1)])
+	if star_state == "lying" or star_state == "dropping":
+		if star_state == "lying":
+			star_hits = maxi(0, hits)
+		if said == "held":
+			star_state = "held"
+			_drop_star_rock()
+			banner = "The star is yours - call it down when the horde is thick"
+			banner_left = BANNER_SECONDS * 1.5
+		elif said == "" and star_state == "lying":
+			_fade_star()
+	elif star_state == "" and said == "held":
+		star_state = "held"
+
+
+func apply_event(heard: Array) -> void:
+	"""One of the leader's decisions - its own or heard - made here."""
+	if heard.size() < 4:
+		return
+	match int(heard[2]):
+		EVENT_GROUP:
+			if heard.size() >= 9:
+				_make_group(heard)
+		EVENT_STAR_DROP:
+			if heard.size() >= 6:
+				_drop_star_at(Vector2(clampf(float(heard[4]), -PATH_HALF, PATH_HALF), clampf(float(heard[5]), -HALF.y, FOOT)))
+		EVENT_STAR_CALL:
+			if heard.size() >= 5:
+				_call_star_upto(maxi(0, int(heard[4])))
+
+
+func _make_group(heard: Array) -> void:
+	"""A group: [key, number, type, seed, wave, players, how many, where, how
+	many still to come] - the same monsters on every screen, from its seed."""
+	var saved: RandomNumberGenerator = _rng
+	_rng = RandomNumberGenerator.new()
+	_rng.seed = int(heard[3])
+	var wave_was: int = wave
+	var players_was: int = players
+	wave = clampi(int(heard[4]), 1, 100000)
+	players = clampi(int(heard[5]), 1, PARTY_MOST)
+	_groups_made += 1
+	var batch: int = int(heard[0]) * PartyScript.BATCH_SPAN + int(heard[1])
+	var made: Array = _group_of(clampi(int(heard[6]), 0, PartyScript.SLOTS_MOST - 1), float(heard[7]))
+	for i in made.size():
+		var m: Monster = made[i]
+		m.batch = batch
+		m.slot = i
+		m.group = _groups_made
+		_net[batch * PartyScript.SLOTS_MOST + i] = m
+	_rng = saved
+	wave = wave_was
+	players = players_was
+	_to_spawn = maxi(0, int(heard[8]))
+	if _net.size() > 4000:
+		for k in _net.keys():
+			if not is_instance_valid(_net[k]):
+				_net.erase(k)
+
+
+func strike_remote(slot: int, batch: int, damage: float) -> void:
+	"""A party member's hit, on the same monster here."""
+	var found: Variant = _net.get(batch * PartyScript.SLOTS_MOST + slot)
+	if not is_instance_valid(found):
+		return
+	var m := found as Monster
+	if m != null and m.dying < 0.0 and m.get_parent() != null:
+		hurt(m, damage, false, false)
+
+
+func party_star_hit() -> void:
+	"""(Leader.) A party member's meteor on the lying star."""
+	if star_state == "lying":
+		_strike_star()
+
+
+func party_repair() -> void:
+	"""(Leader.) A party member took Repair: the wall mended for them."""
+	_repair(PATCH_SHARE)
+	banner = "Your party repaired the wall"
+	banner_left = BANNER_SECONDS
+
+
+func party_call_star() -> void:
+	"""(Leader.) A party member called the star down."""
+	if can_call_star():
+		call_star()
+
+
+func _held_for_picks(delta: float) -> bool:
+	"""(Leader.) The next wave waits while the party picks - at most
+	PICK_WAIT_MOST."""
+	var waiting: bool = _party_picks and party_on() and not bool(party.call("all_picked", waves_held)) \
+		and _pick_wait < PartyScript.PICK_WAIT_MOST
+	if waiting:
+		_pick_wait += delta
+		if not waiting_on_party:
+			banner = "Waiting for the party to pick"
+			banner_left = BANNER_SECONDS
+	waiting_on_party = waiting
+	return waiting
+
+
+func take_over() -> void:
+	"""The leader went: this game runs the run from where it stands."""
+	if state == State.READY or state == State.BETWEEN:
+		_left = BETWEEN_SECONDS
+	_group_in = 0.0
+	_pick_wait = 0.0
+	waiting_on_party = false
+
+
+func presence_state() -> Dictionary:
+	"""What this player's presence says while the Stand is played with the
+	party: where her mage walks - as the mage's scene would stand to be drawn
+	there (body_lift()) - and no aim or health of the town's."""
+	var anim: String = str(mage.animation) if mage != null else "idleup"
+	var at: Vector2 = mage.global_position if mage != null else global_position
+	return {"a": PartyScript.AREA, "at": at + Vector2(0.0, body_lift()), "m": anim, "aim": -1, "hp": -1}
+
+
+static var _lift: float = NAN
+
+
+static func body_lift() -> float:
+	"""How far over its origin the mage's scene draws her (its sprite's
+	position, 19 px): she is drawn here by her picture's middle, and a party
+	member's picture of her (remoteplayer.gd) by the origin."""
+	if is_nan(_lift):
+		_lift = 0.0
+		var packed: PackedScene = load(MAGE_SCENE) as PackedScene if ResourceLoader.exists(MAGE_SCENE) else null
+		var state_of: SceneState = packed.get_state() if packed != null else null
+		for n in (state_of.get_node_count() if state_of != null else 0):
+			if state_of.get_node_type(n) != &"AnimatedSprite2D":
+				continue
+			for p in state_of.get_node_property_count(n):
+				if state_of.get_node_property_name(n, p) == &"position":
+					_lift = -float((state_of.get_node_property_value(n, p) as Vector2).y)
+			break
+	return _lift
 
 
 func time_text() -> String:
@@ -1721,6 +2252,8 @@ func time_text() -> String:
 
 
 func result_text() -> String:
+	if players > 1:
+		return "The portal fell in wave %d.\n%s held - %d slain, %d yours" % [wave, waves_words(waves_held), slain, my_kills]
 	return "The portal fell in wave %d.\n%s held - %d slain" % [wave, waves_words(waves_held), slain]
 
 

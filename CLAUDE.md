@@ -14790,6 +14790,188 @@ player" - step 3 of FORGE_PLAN.txt, on the Descent's party code
 - Build 9. `_test_the_forge_together()` (testrunner_12; sabotage-caught:
   the follower spawning, the fall ending the run).
 
+### The Mage's Stand together (0.161.0)
+
+The owner: "the forge should be 4 player mages stand also but the cloth 1
+player" - step 5 of MAGES_STAND_PLAN.txt ("2 players can be on left 2 can be
+on right"), on the Healer's Run's party code
+(`src/world/magestand/magestandparty.gd`, made by the screen's `start()`).
+Alone, nothing changes.
+
+- **Seated together**: the server's welcome says `"ms"`
+  (`Presence.stand_rooms()`); in a party (`Party.members`) the screen makes
+  the party node, and the presence says "magestand" and where her mage walks
+  (`Presence.state_override` = `magestand.gd presence_state()`, no aim or
+  health of the town's), the party drawn on the wall (`world_override` =
+  the run's `others`) and every one of them as the mage
+  (`Presence.class_override`, read by `_join()`). `_let_presence_go()` on
+  Leave. A game from before never says "magestand": no build.
+- **Ready, a count of three** (the Healer's Run's): Start is Ready. With
+  nobody here yet: "Your party joins when they press Go too", Start alone.
+- **The start panel, upgraded** (the owner, of the first lobby: "clean this
+  up ... well upgrade"): a line under the title (`SUBTITLE`), HOW TO PLAY as
+  a grid with a gold word a line (`HOW_TO_KEYS`; the lines are still
+  `HOW_TO`), and YOUR PARTY as seats along the wall where they will stand
+  (`SEAT_SLOTS`: outer left, inner left, the gate, inner right, outer
+  right) - each READY, not ready, on the way or Open - with "N of M ready",
+  what it waits for (`lobby_text()`: "Waiting for dan to arrive.",
+  `names_said()`) and her side (`side_text()`). The seats are repainted
+  only when they change (`_paint_seats()`). Alone, no party part at all.
+  His polish after: her own seat warmer with a thicker gold edge
+  (`MINE_BACK`), the Crits line "1 in 5 meteors hits critically, and every
+  one leaves the ground burning." (every crater burns, not only a crit's),
+  and the button gold when it goes - Start, Start alone, Ready - and plain
+  for Not ready (`_paint_go()`).
+- **Two each side**: seats by account id, kept from the start
+  (`party.seats()`, `side_for()`, `start_x()`).
+- **The leader runs it** (the earliest in): the waves, the gate, the wall,
+  the portal and the star. Its line (`line()`, 16 whole numbers): key,
+  state, wave, waves held, gate (tenths), portal, the wall's sides (three
+  stretches packed in `WALL_BASE`), star (`STAR_CODES`) and its hits,
+  players, started, countdown, clock, the next group's x, the wait for
+  picks. Its decisions are events (`apply_event()`): a group (`EVENT_GROUP`,
+  made on every screen from its seed, `_make_group()` - each monster keeps
+  its `batch`, `slot` and `group`), the star dropped and called (the call
+  falls on the groups in at the call, alike everywhere).
+- **Every hit on every screen**: `hurt()` tells this player's meteor and burn
+  damage (`tell_hit()`, whole points); `strike_remote()` lands the others'.
+  A bomber's blast and the star are not told - every screen does its own.
+  `my_kills` is the board's. **Their meteors fall here too**: a hit with a
+  batch under `BATCH_SPAN` is a picture (`tell_picture()`, `show_picture()`:
+  a cosmetic fall and crater, `"burns": false`), and the pull drags the same
+  pack everywhere (`PULL_PICTURE` + reach).
+- **The others follow**: `follow_line()` - the gate, the wall, the portal
+  (their monsters strike nothing, `_bomb_the_wall()`/`_into_portal()`), the
+  waves (`_follow_wave()`; a wave come while hers is about was called early:
+  a reroll), the waves held (`_follow_held()`: her own picks), the star
+  claimed or faded. No calling early but the leader.
+- **Each picks her own**: the leader's next wave waits until everyone has
+  (`_held_for_picks()`, `all_picked()`, at most `PICK_WAIT_MOST` 25 s, only
+  when a pick was due). A follower's Repair, meteor on the lying star and
+  star call go in her "me" and the leader does them (`party_repair()`,
+  `party_star_hit()`, `party_call_star()`); every game keeps the counts
+  heard, so a new leader does none twice.
+- **Scaled**: `PARTY_CROWD_STEP` 0.6 more monsters a player more (waves and
+  groups), `PARTY_HEALTH_STEP` 0.1 more health; the star claimed by
+  `claim_hits(players)` as before.
+- **Late, or the leader leaving**: a game that hears a run begun plays its
+  own (`ALONE`; the last run's end is waited past); the next leader
+  `take_over()`s. The board under the strip: each mage's slain, who is
+  picking.
+- **Drawn where she stands**: her presence says where the mage's scene's
+  origin would be (`body_lift()`, its sprite's 19 px - the party's pictures
+  stood that much high), and `others` says `plate_zoom` 1 (remoteplayer.gd
+  `_camera_zoom()`: with no camera the names were a third of their size).
+- **shop.gd hides only pictures in its own viewport**: the party drawn in a
+  minigame over the town stood in town houses by number.
+- `_test_the_stand_together()` (testrunner_12; sabotage-caught: the group
+  made from the follower's own dice, hits not told, the pick not waited
+  for, the house hiding the Stand's mages); the server's P-29.
+
+### Every minigame's start panel, and Ready first (0.161.0)
+
+The owner, of the Stand's new panel: "fantastic lets fix the other minigames
+with the same idea", then "we need healers run tanks and warriors and arena"
+- and for the three that start in the world he chose the full Ready panel:
+"the door or anvil opens only once all are ready".
+
+- **One look** (`src/ui/minigames/startpanel.gd`, static, preloaded as
+  `StartPanel` - never `Panel`, Godot's own class): `words()`, `rule()`,
+  `head()`, `how_grid()` (a gold word a line; the lines' labels go back to
+  the screen for its phone words), `party_part()` (rule, YOUR PARTY, "N of M
+  ready", a row of `seat_card()`s with a `gate_slot()` where a slot is -1,
+  what it waits for, a quieter line), `seat_said()` / `paint_seats()` (READY,
+  not ready, on the way..., here, Open; her own warmer with a thicker gold
+  edge), `waiting_text()`, `names_said()`, `go_button()` / `paint_go()` (gold
+  going, plain for Not ready). The Stand, the Healer's Run (`TUTORIAL_KEYS`,
+  four seats in roster order, the run's answer - "3 times today", "No runs
+  left." - under them, alone too) and Cut the Cloth (`HOW_TO_KEYS`, no party)
+  are built from it.
+- **The Ready panel for a walk-in game** (`src/ui/minigames/readypanel.gd`,
+  a CanvasLayer at `LAYER` 5 made by the run while it waits): title, line,
+  HOW TO PLAY, and with the party here its seats and what it waits for;
+  Start (Space) alone (`go_pressed`), Ready / Not ready with the party
+  (`said_ready`). `all_ready()`: this player and everyone here (the link's
+  remotes) said Ready - `ready_of(id)` from the run's party: 1, 0, or -1
+  not heard yet.
+- **The gate** (`gate_open`, `gate_is_open()`, `open_gate()`, `_lobby()`
+  in each run): waiting, the panel up and the way in shut - the Endless's
+  door `lock()`ed, the Forge's anvil not lit (`_hold` kept at 0), the
+  Descent's doors shut (`_set_doors(false, ...)`, a walk-in ignored). Start
+  alone, or all ready: the panel goes and the way in is as it was - the
+  first through the door, or lighting the anvil, starts the count. Out of
+  waiting, the gate and Ready reset, so after a run it asks again.
+- **Ready on the wire**: the Endless's "me" fifth number, the Forge's
+  fourth, the Descent's fifth (the server already passes eight). A game
+  from before 0.161.0 sends none: its party's `_members` line gets 1 there,
+  so it never holds the party up.
+- `asks_ready` (true) is the suite's switch: `_party_game()`,
+  `_forge_island_for_test()` and `_descent_room_for_test()` play as before
+  unless asked. Not in the Testing Ground.
+- `_test_ready_first()` (testrunner_12): the panel alone and with the party,
+  a game from before, the Endless's door with two games, the Forge's anvil,
+  the Descent's doors.
+
+### Cut the Cloth together (0.161.0)
+
+The owner: "i was thinking of making cut the cloth 4 player and if players
+lines crash into each other they also die", and of who loses a life, "only
+the player that crashed into it". One cloth for up to four cutters, each
+with a shot and lives of their own. `src/world/cloth/clothparty.gd` is the
+wire (its header has every number); clothrun.gd's header has the rules.
+
+- **Where**: with the party (`Party.members` over one) and a server that
+  says "cc" (`Presence.cloth_rooms()`), the screen gives the run a party
+  node, this player's presence says it stands in "cloth" where its shot
+  rides (`presence_state()`), and the party's steps are kept in the run's
+  `others` - hidden, never drawn as bodies: `others_shots()` reads where
+  their shots are from them. Start alone with nobody here and the run is
+  this player's own (`ALONE`, presence back to town).
+- **Lobby**: the start panel's four seats (`StartPanel.party_part()`), Ready
+  / Not ready, a count of three - the Stand's. Seats by account id: bottom,
+  top, left, right (`SEAT_STARTS`, each with a `SEAT_COLOURS`).
+- **One cloth**: the leader begins each round from a seed (`EV_ROUND`, the
+  players with it) - rocks, wet, slimes, saws alike on every screen; the
+  saws far from every start in play (`_far_from_starts()`).
+- **Each cut**: every game tells its own cut cell by cell ("h" ADD, then
+  DROP or CLOSE) under a stamp of the key and the round, so another run's
+  or round's never lands. The others' are `OTHER` on its cloth
+  (`other_cut()`, `_other_owner`), drawn dotted in their seat's colour with
+  their shot and name over it (`_draw_others()`).
+- **A crash** (`_crash()`, from `_step_to()` - `_may_enter()` lets a cut
+  into `OTHER`): the crasher's life (the Ward takes it), "You crashed into
+  bob's cut!"; the other's cut stands. Slimes on another's cut hurt nobody
+  here - each game judges only its own shot and cut.
+- **Pieces**: a closed cut is OWN on every screen at once; the leader cuts
+  away what no slime is on and no open cut runs through (`_cut_away()`,
+  which seeds its flood from every open cut too - alone, exactly as
+  before) and sends it as row spans (`EV_CUT`, `_announce_cut()`, split to
+  fit 700 numbers). A follower never cuts a piece itself, and a span over
+  its own open cut leaves the cut (it closes on its next step).
+- **The leader runs** the slimes, saws, flares, gusts, gnawers (`EV_OPEN`),
+  brood and splits, and sends them ten times a second (`snapshot()`:
+  id, place, way and a code each); a follower moves its copies between and
+  eases them to it (`apply_snapshot()`, `SNAP_EASE`), dissolving what the
+  leader no longer has. Pickups through the leader (`EV_PICKUP`,
+  `EV_GONE`; a follower crossing one asks, TAKE): Swift, Ward and Life the
+  taker's, Slow everybody's.
+- **Out** (`out`): no shot, watching ("Out of lives - watching the party cut
+  on"); the rounds the party clears after do not count for that player's
+  gold. All out (`all_out()`), the leader ends it (`EV_OVER`). The corner of
+  the HUD shows each other cutter's lives, or out (`_draw_party()`).
+- **The leader goes**: the next takes the run where its copies stand
+  (`take_over()`, seen by the run itself), the round's seed too if it never
+  came.
+- Gold is each player's own run, paid at Leave as ever; the server's time
+  floor (15 s a round, `cloth_believed()`) is unchanged.
+- `_test_the_cloth_together()` (testrunner_12): two games on stand-in
+  links - one cloth from the seed, a cut on the other's cloth, a crash the
+  crasher's alone, a piece kept for a cut running through it then cut
+  away (both grids equal), a pickup through the leader, the slimes, a round
+  cleared and the next, an old round's cut ignored, out and over, the
+  lobby's seats. Two sabotages caught (no flood seed from open cuts; no
+  crash). The server's half is the API's P-30.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

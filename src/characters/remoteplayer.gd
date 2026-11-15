@@ -856,6 +856,11 @@ func _camera_zoom() -> float:
 	var camera: Camera2D = get_viewport().get_camera_2d() if is_inside_tree() else null
 	if camera != null and absf(camera.zoom.x) > 0.01:
 		return absf(camera.zoom.x)
+	# A minigame drawn without a camera says how near it is drawn (the Mage's
+	# Stand, 0.161.0: its `others`, at 1) - else the names are a third size.
+	var holder: Node = get_parent()
+	if holder != null and holder.has_meta(&"plate_zoom"):
+		return maxf(0.1, float(holder.get_meta(&"plate_zoom")))
 	return float(plate_constant("NAMEPLATE_FALLBACK_ZOOM", 3.0))
 
 

@@ -55,7 +55,10 @@ func hide_those_inside() -> void:
 		if not (picture is Node2D) or not picture.has_method("set_hidden_indoors"):
 			continue
 		var id: int = picture.get_instance_id()
-		var out_of_sight: bool = not me_inside and box != null and covers(box, (picture as Node2D).global_position)
+		# Only pictures in this world: the party's mages and healers drawn in
+		# a minigame over the town (its own viewport) are never in a house.
+		var out_of_sight: bool = not me_inside and box != null and (picture as Node).get_viewport() == get_viewport() \
+			and covers(box, (picture as Node2D).global_position)
 		if out_of_sight and not _hid.has(id):
 			_hid[id] = picture
 			picture.call("set_hidden_indoors", true)

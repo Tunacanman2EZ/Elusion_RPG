@@ -56,10 +56,24 @@
 # once a character (field.gd's story_seen(), key STORY_KEY); while it plays
 # this screen leaves every key to it, so any key skips it.
 #
+# WITH THE PARTY (0.161.0; the owner: "the forge should be 4 player mages
+# stand also"). In a party (Party.members), with a server that seats the
+# Stand a room per party (Presence.stand_rooms()), the run gets a party node
+# (magestandparty.gd), this player's presence says where her mage walks the
+# wall (Presence.state_override), and the party's mages are drawn there as
+# mages (Presence.world_override, Presence.class_override). The start panel
+# lists who is here and who is ready, and Start is Ready (Space too);
+# everyone ready, every screen counts three seconds and begins together.
+# With nobody else here yet it says the party joins when they press Go too,
+# and Start alone plays alone. During the run the board (`board`, under the
+# strip) lists each mage's slain and who is still picking.
+#
 # No class_name; open() is how it is made.
 extends CanvasLayer
 
 const StandScript := preload("res://src/world/magestand/magestand.gd")
+const StartPanel := preload("res://src/ui/minigames/startpanel.gd")
+const PartyScript := preload("res://src/world/magestand/magestandparty.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const LAYER := 90
 const COLOUR := Color(1.0, 0.86, 0.45)
@@ -78,11 +92,19 @@ const PICK_PAD_KEYS := [KEY_KP_1, KEY_KP_2, KEY_KP_3]
 const HOW_TO := [
 	"Walk the wall with your move keys.",
 	"Hold the mouse button to rain meteors where you aim - there is no limit.",
-	"One in five lands critical; each leaves the ground burning.",
+	"1 in 5 meteors hits critically, and every one leaves the ground burning.",
 	"The horde breaks the gate, then runs for the portal.",
 	"Each wave is bigger, faster and tougher. Hold as many as you can.",
 	"From wave 4 a star may fall: land meteors on it to claim it, then Q calls it down on the field.",
 ]
+# THE START PANEL, UPGRADED (0.161.0; the owner, of the party's lobby:
+# "clean this up ... well upgrade"): each line under a word in gold, and the
+# party as seats along the wall - two each side of the gate, where they will
+# stand (SEAT_SLOTS: the outer left, the inner left, the gate, the inner
+# right, the outer right) - each saying ready, not ready or on its way.
+const HOW_TO_KEYS := ["Move", "Cast", "Crits", "The gate", "Waves", "The star"]
+const SUBTITLE := "Hold the wall. Keep the horde out of the portal."
+const SEAT_SLOTS := [2, 0, -1, 1, 3]
 # The same on a phone (0.110.2).
 const HOW_TO_TOUCH := {
 	0: "Walk the wall with the stick.",
@@ -148,6 +170,18 @@ static var best: int = 0
 var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
+# WITH THE PARTY (0.161.0): the start panel's line about it, the board, and
+# the suite's doors - whether the server seats the Stand a room per party,
+# and a stand-in presence link.
+var party_line: Label = null
+var board: Label = null
+var party_box: VBoxContainer = null
+var party_count: Label = null
+var side_line: Label = null
+var _seat_cards: Array = []
+var _lobby_said: String = ""
+var party_rooms: Callable = Callable(self, "_party_rooms")
+var party_link: Node = null
 
 
 static func open(tree: SceneTree, on_hud: Node = null) -> CanvasLayer:
@@ -214,6 +248,8 @@ func _build_words() -> void:
 	portal_bar = _bar("portalbar", 10.0, PORTAL_COLOUR)
 	portal_line = portal_bar.get_node("words") as Label
 	banner_line = _label("banner", 30, COLOUR, Control.PRESET_CENTER, Vector2(0, -80))
+	board = _label("board", 14, COLOUR_HINT, Control.PRESET_TOP_LEFT, Vector2(16, STRIP_HIGH + 8.0))
+	board.visible = false
 	leave_button = Button.new()
 	leave_button.name = "leave"
 	leave_button.text = "Leave"
@@ -266,31 +302,28 @@ func _build_words() -> void:
 		b.pressed.connect(pair[2] as Callable)
 		row.add_child(b)
 	start_panel = _panel("start")
+	(start_panel.get_theme_stylebox("panel") as StyleBoxFlat).set_content_margin_all(22)
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override("separation", 8)
+	lines.add_theme_constant_override("separation", 6)
 	start_panel.add_child(lines)
-	var title := Label.new()
-	title.text = "The Mage's Stand"
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", COLOUR)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lines.add_child(title)
-	for words in HOW_TO:
-		var line := Label.new()
-		line.text = str(words)
-		line.add_theme_font_size_override("font_size", 17)
-		line.add_theme_color_override("font_color", COLOUR_HINT)
-		lines.add_child(line)
-		_how_to_lines.append(line)
-	var go := Button.new()
-	go.name = "go"
-	start_button = go
-	go.text = "Start  (Space)"
-	go.focus_mode = Control.FOCUS_NONE
-	go.custom_minimum_size = Vector2(160, 36)
-	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	go.pressed.connect(begin)
-	lines.add_child(go)
+	lines.add_child(StartPanel.words("The Mage's Stand", 30, COLOUR))
+	lines.add_child(StartPanel.words(SUBTITLE, 15, COLOUR_HINT))
+	lines.add_child(StartPanel.rule())
+	lines.add_child(StartPanel.head("HOW TO PLAY"))
+	lines.add_child(StartPanel.how_grid(HOW_TO_KEYS, HOW_TO, _how_to_lines))
+	# THE PARTY: seats along the wall, and what it waits for.
+	var part: Dictionary = StartPanel.party_part(SEAT_SLOTS, DOOR_COLOUR)
+	party_box = part["box"]
+	party_count = part["count"]
+	_seat_cards = part["cards"]
+	party_line = part["line"]
+	side_line = part["side"]
+	lines.add_child(party_box)
+	var room := Control.new()
+	room.custom_minimum_size = Vector2(0, 4)
+	lines.add_child(room)
+	start_button = StartPanel.go_button("Start  (Space)", begin)
+	lines.add_child(start_button)
 
 
 func _build_pick() -> void:
@@ -459,7 +492,23 @@ func start() -> void:
 	run.set("seed_value", seed_value)
 	run.position = StandScript.HALF
 	run.finished.connect(_on_stand_over)
+	var with_party: bool = bool(party_rooms.call())
+	if with_party:
+		var party: Node = PartyScript.new()
+		party.name = "party"
+		party.set("run", run)
+		if party_link != null:
+			party.set("link", party_link)
+		run.set("party", party)
+		run.add_child(party)
+		party.connect("start_now", _on_start_now)
 	viewport.add_child(run)
+	if with_party and party_link == null:
+		Presence.state_override = Callable(run, "presence_state")
+		Presence.world_override = run.get("others")
+		Presence.class_override = "mage"
+	elif not with_party:
+		_let_presence_go()
 	run.set_process(false)
 	results.visible = false
 	pick_panel.visible = false
@@ -489,10 +538,90 @@ func tell_story() -> void:
 
 
 func begin() -> void:
+	"""Start (or Space). With the party here it is Ready - and Not ready -
+	and the count starts everyone together; alone, the run begins."""
+	var party: Node = _party()
+	if party != null and bool(party.call("active")) and not bool(party.call("started")):
+		if float(party.get("counting")) < 0.0:
+			party.call("set_ready", not bool(party.get("said_ready")))
+		paint()
+		return
 	if not start_panel.visible:
 		return
 	start_panel.visible = false
+	run.call("begin_run")
 	run.set_process(true)
+
+
+func _on_start_now() -> void:
+	"""The party's count reached nought: everyone begins together."""
+	if run == null or not is_instance_valid(run):
+		return
+	start_panel.visible = false
+	run.call("begin_run")
+	run.set_process(true)
+	paint()
+
+
+func _party_rooms() -> bool:
+	"""In a party, with a server that seats the Stand a room per party. Alone,
+	the Stand is as it always was."""
+	return Presence.stand_rooms() and Party.members.size() > 1
+
+
+func _party() -> Node:
+	return run.get("party") if run != null and is_instance_valid(run) else null
+
+
+func side_text(party: Node) -> String:
+	return "You hold the %s of the gate." % ("left" if StandScript.side_for(int(party.call("seat"))) < 0.0 else "right")
+
+
+func lobby_text(party: Node) -> String:
+	"""What the party waits for, under its seats: the count, who is on their
+	way, who has not pressed Ready."""
+	if not bool(party.call("active")):
+		return "Your party joins when they press Go too - wait here, or start alone."
+	return StartPanel.waiting_text(party.call("roster"), bool(party.get("said_ready")), PartyScript.READY,
+		float(party.get("counting")))
+
+
+func _paint_seats(party: Node) -> void:
+	"""Each seat on the wall: who sits there, and ready or not - repainted
+	only when something on it changed."""
+	var rows: Dictionary = {}
+	for row in party.call("roster"):
+		rows[int(row["id"])] = row
+	var seated: Array = party.call("seats")
+	var here: bool = bool(party.call("active"))
+	var said: Array = []
+	for card in _seat_cards:
+		var seat: int = int(str((card as Node).name).trim_prefix("seat"))
+		said.append(StartPanel.seat_said(rows.get(int(seated[seat]), {}) if seat < seated.size() else {}, here, PartyScript.READY))
+	party_count.text = "%d of %d ready" % [StartPanel.ready_count(said), seated.size()] if here else ""
+	var signature: String = str(said)
+	if signature != _lobby_said:
+		_lobby_said = signature
+		StartPanel.paint_seats(_seat_cards, said)
+
+
+func board_text(party: Node) -> String:
+	"""The party's board: each mage's slain, and who is still picking."""
+	var rows: Array = party.call("roster")
+	var lines: Array = ["Party of %d - %d slain" % [rows.size(), int(run.get("slain"))]]
+	for row in rows:
+		var picking: bool = int(row["flags"]) & PartyScript.PICKING != 0
+		lines.append("%s%s - %d slain%s" % [str(row["name"]), " (you)" if bool(row["me"]) else "",
+			int(row["kills"]), " - picking" if picking else ""])
+	return "\n".join(lines)
+
+
+func _let_presence_go() -> void:
+	"""Back in town: this player's presence is the character's again."""
+	if party_link == null and Presence.state_override.is_valid():
+		Presence.state_override = Callable()
+		Presence.world_override = null
+		Presence.class_override = ""
 
 
 func choose(index: int) -> void:
@@ -644,6 +773,7 @@ func paint() -> void:
 	best = maxi(best, int(run.get("waves_held")))
 	slain_line.text = "Slain %d   Best: %s" % [int(run.get("slain")), StandScript.waves_words(best)]
 	banner_line.text = "" if start_panel.visible or pick_panel.visible else str(run.get("banner"))
+	_paint_party()
 	leave_button.text = "Sure?" if _leave_armed > 0.0 else "Leave"
 	if state == StandScript.State.PICK and not pick_panel.visible:
 		_show_pick(wave, run.get("offers") as Array)
@@ -653,6 +783,37 @@ func paint() -> void:
 		result_line.text = str(run.call("result_text"))
 		results.visible = true
 		_centre(results)
+
+
+func _paint_party() -> void:
+	"""The start panel's words and its button, and the board."""
+	var touch: bool = TouchControls.active
+	var party: Node = _party()
+	if party == null:
+		party_box.visible = false
+		board.visible = false
+		start_button.text = "Start" if touch else "Start  (Space)"
+		start_button.disabled = false
+		StartPanel.paint_go(start_button, true)
+		return
+	party_box.visible = true
+	var here: bool = bool(party.call("active"))
+	party_line.text = lobby_text(party)
+	side_line.text = side_text(party) if here else ""
+	side_line.visible = here
+	if start_panel.visible:
+		_paint_seats(party)
+	if here:
+		start_button.text = ("Not ready" if bool(party.get("said_ready")) else "Ready") + ("" if touch else "  (Space)")
+		start_button.disabled = float(party.get("counting")) >= 0.0
+		StartPanel.paint_go(start_button, not bool(party.get("said_ready")))
+	else:
+		start_button.text = "Start alone" + ("" if touch else "  (Space)")
+		start_button.disabled = false
+		StartPanel.paint_go(start_button, true)
+	board.visible = not start_panel.visible and (here or int(run.get("players")) > 1)
+	if board.visible:
+		board.text = board_text(party)
 
 
 func _show_pick(wave: int, offers: Array) -> void:
@@ -701,6 +862,7 @@ func close() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
 	_held = null
+	_let_presence_go()
 	queue_free()
 
 
@@ -742,3 +904,4 @@ func _input(event: InputEvent) -> void:
 func _exit_tree() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
+	_let_presence_go()

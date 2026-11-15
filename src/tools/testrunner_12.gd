@@ -609,7 +609,7 @@ func _forge_party_link_script() -> GDScript:
 	return script
 
 
-func _forge_island_for_test(body_script: GDScript, class_id: String) -> Array:
+func _forge_island_for_test(body_script: GDScript, class_id: String, asks_ready: bool = false) -> Array:
 	"""[island, run, body]: a stand-in island with the run and its player by
 	the anvil."""
 	const Run := preload("res://src/world/forge/forgerun.gd")
@@ -630,6 +630,9 @@ func _forge_island_for_test(body_script: GDScript, class_id: String) -> Array:
 	run.name = "forgerun"
 	run.set("player_override", body)
 	run.set("class_override", class_id)
+	# The anvil as before 0.161.0, unless asked: the Ready panel has its own
+	# test (_test_ready_first()).
+	run.set("asks_ready", asks_ready)
 	island.add_child(run)
 	return [island, run, body]
 
@@ -801,3 +804,740 @@ func _test_the_forge_together() -> void:
 		(n as Node).queue_free()
 	await get_tree().process_frame
 	print("  the forge together: done")
+
+
+# =============================================================================
+# THE MAGE'S STAND TOGETHER (0.161.0)
+# =============================================================================
+# The owner: "the forge should be 4 player mages stand also but the cloth 1
+# player". Two games' Stands in one tree, each with a stand-in presence link
+# that passes "en" as the server does (JSON and back): the leader's waves,
+# gate, wall and star; the same monsters on both screens from the leader's
+# seed; every hit and meteor on both; the picks waited for; Repair, the
+# star's claim and its call done by the leader for the other. The server's
+# half is the API's test_presence.py P-29.
+func _stand_party_link_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = _party_link_script().source_code + "\nfunc stand_rooms() -> bool:\n\treturn open\n"
+	script.reload()
+	return script
+
+
+func _stand_for_test(Stand: GDScript, PartyScript: GDScript, link: Node, seed_value: int) -> Array:
+	"""[run, party]: a Stand with its party on `link`, driven by hand."""
+	var run: Node2D = Stand.new()
+	run.set("seed_value", seed_value)
+	var party: Node = PartyScript.new()
+	party.set("link", link)
+	party.set("run", run)
+	run.set("party", party)
+	run.add_child(party)
+	add_child(run)
+	run.set_process(false)
+	party.set_process(false)
+	party.start_now.connect(Callable(run, "begin_run"))
+	return [run, party]
+
+
+func _stand_monsters(run: Node) -> Dictionary:
+	"""Every living monster by its slot: [kind, spot, health]."""
+	var out: Dictionary = {}
+	for m in (run.get("monsters") as Node).get_children():
+		if float(m.get("dying")) < 0.0:
+			out[int(m.get("slot"))] = [str(m.get("kind")), (m as Node2D).position.round(), snappedf(float(m.get("health")), 0.001)]
+	return out
+
+
+func _stand_monster(run: Node, slot: int) -> Node:
+	for m in (run.get("monsters") as Node).get_children():
+		if int(m.get("slot")) == slot:
+			return m
+	return null
+
+
+func _test_the_stand_together() -> void:
+	section("THE MAGE'S STAND TOGETHER (0.161.0): up to four mages, two each side - the leader's waves, gate and star, every hit on every screen")
+	const Stand := preload("res://src/world/magestand/magestand.gd")
+	const PartyScript := preload("res://src/world/magestand/magestandparty.gd")
+	var picture_script := GDScript.new()
+	picture_script.source_code = "extends Node2D\nvar display_name: String = \"\"\n"
+	picture_script.reload()
+	var picture_a := Node2D.new()
+	picture_a.set_script(picture_script)
+	picture_a.set("display_name", "ann")
+	var picture_b := Node2D.new()
+	picture_b.set_script(picture_script)
+	picture_b.set("display_name", "bob")
+	add_child(picture_a)
+	add_child(picture_b)
+	var Link: GDScript = _stand_party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	add_child(la)
+	add_child(lb)
+	la.set("me", 1)
+	lb.set("me", 2)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	la.set("bodies", {2: picture_b})
+	lb.set("bodies", {1: picture_a})
+	# Different seeds: what makes the monsters alike is the leader's group.
+	var made_a: Array = _stand_for_test(Stand, PartyScript, la, 11)
+	var made_b: Array = _stand_for_test(Stand, PartyScript, lb, 9922)
+	var run_a: Node2D = made_a[0]
+	var run_b: Node2D = made_b[0]
+	var party_a: Node = made_a[1]
+	var party_b: Node = made_b[1]
+	await get_tree().process_frame
+	var says: bool = _code_src("res://src/systems/presence.gd").contains("message.get(\"ms\", 0)") \
+		and _code_src("res://src/systems/presence.gd").contains("entry[\"cls\"] = class_override") \
+		and _code_src("res://src/world/magestand/magestandscreen.gd").contains("Presence.stand_rooms() and Party.members.size() > 1")
+	var spot: Dictionary = run_b.call("presence_state")
+	check("the Stand is shared with a server that seats it a room per party ('ms'), every mage drawn as the mage; the first in leads; her steps are her mage's",
+		says and bool(run_a.call("party_on")) and not bool(run_a.call("following")) and bool(run_b.call("following"))
+		and str(spot.get("a", "")) == "magestand" and int(spot.get("aim", 0)) == -1
+		and is_equal_approx(float(Stand.body_lift()), 19.0)
+		and ((spot["at"] as Vector2) - (run_b.get("mage") as Node2D).global_position).is_equal_approx(Vector2(0, 19)),
+		[says, spot, Stand.body_lift()])
+
+	# ---- Ready, the countdown, two each side ----
+	party_a.call("_timed_process", 0.05)
+	party_a.call("flush")
+	party_b.call("_timed_process", 0.05)
+	var sides: bool = is_equal_approx(float(run_a.get("her_side")), -1.0) and is_equal_approx(float(run_b.get("her_side")), 1.0) \
+		and (run_b.get("mage") as Node2D).position.x > 0.0 and int(party_b.get("key")) == int(party_a.get("key")) and int(party_a.get("key")) > 0
+	party_b.call("set_ready", true)
+	party_b.call("flush")
+	party_a.call("set_ready", true)
+	party_a.call("_timed_process", 0.05)
+	party_a.call("flush")
+	var counting: bool = float(party_a.get("counting")) > 0.0 and float(party_b.get("counting")) > 0.0
+	for i in 70:
+		party_a.call("_timed_process", 0.05)
+		party_b.call("_timed_process", 0.05)
+	check("  the leader's key heard; everyone Ready, a count of three on both; then both begin, for two - the leader left of the gate, the other right",
+		sides and counting and bool(run_a.get("begun")) and bool(run_b.get("begun")) and int(run_a.get("players")) == 2
+		and int(run_b.get("players")) == 2, [sides, counting, run_a.get("begun"), run_b.get("begun"), run_b.get("players")])
+
+	# ---- the leader's group, the same on both screens ----
+	run_a.call("step", Stand.READY_SECONDS + 0.05)
+	run_a.call("step", 0.01)
+	party_a.call("flush")
+	var mine: Dictionary = _stand_monsters(run_a)
+	var theirs: Dictionary = _stand_monsters(run_b)
+	check("  the leader's first wave, scaled for two (%d monsters, %d at once, x%.1f health): its group comes in on both screens alike - kind, spot and health, by its seed"
+		% [int(run_a.call("wave_count", 1)), int(run_a.call("group_size")), float(run_a.call("party_health"))],
+		int(run_a.call("wave_count", 1)) == 38 and int(run_a.call("group_size")) == 14 and is_equal_approx(float(run_a.call("party_health")), 1.1)
+		and mine.size() == 14 and mine == theirs and int(run_b.get("wave")) == 1 and int(run_b.get("_to_spawn")) == 24
+		and int(run_b.get("state")) == Stand.State.WAVE, [mine.size(), theirs.size(), run_b.get("wave"), run_b.get("_to_spawn")])
+
+	# ---- every hit on every screen; a meteor's picture ----
+	var hit_b: Node = _stand_monster(run_b, 3)
+	run_b.call("hurt", hit_b, 5.0)
+	run_b.call("hurt", _stand_monster(run_b, 4), 1000.0)
+	party_b.call("flush")
+	var hit_a: Node = _stand_monster(run_a, 3)
+	var same_health: bool = is_equal_approx(float(hit_a.get("health")), float(hit_b.get("health")))
+	var died: bool = float(_stand_monster(run_a, 4).get("dying")) >= 0.0
+	party_b.call("flush")
+	var kills_told: bool = int(run_b.get("my_kills")) == 1 and int(run_a.get("my_kills")) == 0 and int(run_a.get("slain")) == 1
+	var board: Array = party_a.call("roster")
+	var board_b: bool = board.size() == 2 and str(board[1]["name"]) == "bob" and int(board[1]["kills"]) == 1
+	var total_before: float = 0.0
+	for m in (run_a.get("monsters") as Node).get_children():
+		total_before += float(m.get("health"))
+	run_b.call("drop_meteor", Vector2(10, -50))
+	party_b.call("flush")
+	var pictured: bool = false
+	for fall in run_a.get("falling"):
+		pictured = pictured or (bool(fall.get("cosmetic", false)) and (fall["at"] as Vector2).is_equal_approx(Vector2(10, -50)))
+	run_a.call("_falls", Stand.FALL_SECONDS + 0.01)
+	var total_after: float = 0.0
+	for m in (run_a.get("monsters") as Node).get_children():
+		total_after += float(m.get("health"))
+	var crater_cold: bool = not (run_a.get("craters") as Array).is_empty() and not bool((run_a.get("craters") as Array).back().get("burns", true))
+	check("  the other's hit lands on the leader's copy too, and its kill is its own on the board; its meteor falls on the leader's screen, hurting nothing there",
+		same_health and died and kills_told and board_b and pictured and crater_cold and is_equal_approx(total_before, total_after),
+		[same_health, died, kills_told, board_b, pictured, crater_cold, total_before, total_after])
+
+	# ---- the gate and the wall are the leader's ----
+	run_a.set("door", 120.0)
+	run_a.call("_breach", 2)
+	party_a.call("flush")
+	var broke: bool = is_equal_approx(float(run_b.get("door")), 120.0) and bool((run_b.get("stretches") as Array)[2]["broken"])
+	run_a.call("_rebuild", 2, 0.5)
+	party_a.call("flush")
+	var mended: bool = not bool((run_b.get("stretches") as Array)[2]["broken"]) and is_equal_approx(float((run_b.get("stretches") as Array)[2]["health"]), 150.0)
+	run_b.set("door", 400.0)
+	run_b.call("_move_monsters", 0.01)
+	check("  the leader's gate and wall are the other's: struck to 120, a stretch breached and built again - and the other's own monsters strike nothing",
+		broke and mended and is_equal_approx(float(run_b.get("door")), 400.0), [broke, mended, run_b.get("door")])
+	run_b.set("door", 120.0)
+
+	# ---- the pick waits for the party; the other's Repair mends the leader's wall ----
+	run_a.set("wave", 3)
+	run_b.set("wave", 3)
+	run_a.call("_end_wave")
+	party_a.call("flush")
+	var both_pick: bool = int(run_a.get("state")) == Stand.State.PICK and int(run_b.get("state")) == Stand.State.PICK \
+		and not (run_b.get("offers") as Array).is_empty()
+	party_b.call("flush")
+	var says_picking: bool = int(party_a.call("flags_of", 2)) & PartyScript.PICKING != 0
+	run_a.set("offers", ["cast"])
+	run_a.call("pick", 0)
+	var held: bool = bool(run_a.call("_held_for_picks", 0.1)) and bool(run_a.get("waiting_on_party"))
+	run_b.set("offers", ["patch"])
+	run_b.call("pick", 0)
+	party_b.call("flush")
+	check("  three waves held: both pick; the leader's next wave waits for the other's; its Repair mends the leader's gate (120 -> %d), and the wave goes on"
+		% roundi(float(run_a.get("door"))),
+		both_pick and says_picking and held and int(party_b.get("picked_through")) == 3 and is_equal_approx(float(run_a.get("door")), 240.0)
+		and not bool(run_a.call("_held_for_picks", 0.1)) and int(run_b.get("state")) != Stand.State.PICK,
+		[both_pick, says_picking, held, party_b.get("picked_through"), run_a.get("door"), run_b.get("state")])
+
+	# ---- one star for the party: dropped, claimed together, called by the other ----
+	run_a.set("state", Stand.State.WAVE)
+	run_b.set("state", Stand.State.WAVE)
+	party_a.call("flush")
+	run_a.call("_drop_star")
+	party_a.call("flush")
+	var same_spot: bool = str(run_b.get("star_state")) == "dropping" and (run_b.get("star_at") as Vector2).is_equal_approx(run_a.get("star_at"))
+	run_a.call("_star", Stand.STAR_DROP_SECONDS + 0.01)
+	run_b.call("_star", Stand.STAR_DROP_SECONDS + 0.01)
+	run_b.call("_strike_star")
+	party_b.call("flush")
+	var counted: bool = int(run_a.get("star_hits")) == 1 and int(run_b.get("star_hits")) == 0
+	for i in 4:
+		run_a.call("_strike_star")
+	party_a.call("flush")
+	var claimed: bool = str(run_a.get("star_state")) == "held" and str(run_b.get("star_state")) == "held" and Stand.claim_hits(2) == 5
+	run_b.call("call_star")
+	party_b.call("flush")
+	party_a.call("flush")
+	check("  the leader's star lies at the same spot on both; the other's meteor counts toward the claim (5 for two); claimed, the other calls it - and it falls on the same monsters on both",
+		same_spot and counted and claimed and str(run_a.get("star_state")) == "falling" and str(run_b.get("star_state")) == "falling"
+		and (run_a.get("star_marked") as Array).size() == (run_b.get("star_marked") as Array).size()
+		and (run_a.get("star_marked") as Array).size() > 0,
+		[same_spot, counted, claimed, run_a.get("star_state"), run_b.get("star_state")])
+
+	# ---- the portal falls on both ----
+	run_a.set("state", Stand.State.LOST)
+	party_a.call("flush")
+	check("  the leader's portal falls: the run is over on the other's screen too",
+		int(run_b.get("state")) == Stand.State.LOST, run_b.get("state"))
+
+	# ---- a game come late plays its own; the last run's end is no new run ----
+	var lc: Node = Link.new()
+	add_child(lc)
+	lc.set("me", 3)
+	var made_c: Array = _stand_for_test(Stand, PartyScript, lc, 5)
+	var party_c: Node = made_c[1]
+	await get_tree().process_frame
+	party_c.call("_on_run", 1, {"r": run_a.call("line")})
+	var waits: bool = int(party_c.get("key")) == 0
+	run_a.set("state", Stand.State.WAVE)
+	party_c.call("_on_run", 1, {"r": run_a.call("line")})
+	check("  a game come late hears a run begun and plays its own; one that hears the last run's end waits for the next",
+		waits and int(party_c.get("key")) == PartyScript.ALONE and not bool(party_c.call("active")), [waits, party_c.get("key")])
+
+	# ---- the leader leaves: the other runs on ----
+	run_a.set("state", Stand.State.WAVE)
+	run_b.set("state", Stand.State.WAVE)
+	lb.set("leader", 2)
+	party_b.call("_timed_process", 0.05)
+	check("  the leader gone, the other runs the waves from where it stands",
+		not bool(run_b.call("following")) and bool(party_b.call("leads")), run_b.call("following"))
+
+	# ---- alone, the Stand as it always was ----
+	var alone: Node2D = Stand.new()
+	add_child(alone)
+	await get_tree().process_frame
+	alone.set("wave", 1)
+	check("  alone: no party - 24 a first wave, 9 at once, no more health, no hit told",
+		int(alone.call("wave_count", 1)) == 24 and int(alone.call("group_size")) == 9 and is_equal_approx(float(alone.call("party_health")), 1.0)
+		and not bool(alone.call("party_on")), [alone.call("wave_count", 1), alone.call("group_size")])
+
+	# ---- the screen: Ready, the lobby, her side ----
+	const Screen := preload("res://src/world/magestand/magestandscreen.gd")
+	var lx: Node = Link.new()
+	add_child(lx)
+	lx.set("me", 5)
+	lx.set("leader", 5)
+	lx.set("bodies", {6: picture_b})
+	var screen: CanvasLayer = Screen.new()
+	screen.set("party_rooms", func() -> bool: return true)
+	screen.set("party_link", lx)
+	add_child(screen)
+	await get_tree().process_frame
+	screen.call("paint")
+	var ready_word: bool = str((screen.get("start_button") as Button).text).begins_with("Ready")
+	screen.call("begin")
+	screen.call("paint")
+	var party_s: Node = screen.call("_party")
+	var lobby: String = str((screen.get("party_line") as Label).text)
+	var seat_said: Array = []
+	for card in screen.get("_seat_cards"):
+		seat_said.append("%s: %s" % [(card as Node).find_child("who", true, false).text, (card as Node).find_child("said", true, false).text])
+	check("  the screen with the party here: Start is Ready, pressed it is Not ready; the seats along the wall (%s), what it waits for and her side"
+		% ", ".join(seat_said),
+		ready_word and bool(party_s.get("said_ready")) and str((screen.get("start_button") as Button).text).begins_with("Not ready")
+		and lobby == "Waiting for bob to arrive." and str((screen.get("side_line") as Label).text) == "You hold the left of the gate."
+		and seat_said == ["Open: for the party", "You: READY", "bob: on the way...", "Open: for the party"]
+		and str((screen.get("party_count") as Label).text) == "1 of 2 ready" and (load("res://src/ui/minigames/startpanel.gd") as GDScript).call("names_said", ["a", "b", "c"]) == "a, b and c",
+		[ready_word, lobby, seat_said])
+	screen.call("close")
+
+	for n in [run_a, run_b, made_c[0], alone, picture_a, picture_b, la, lb, lc, lx]:
+		(n as Node).queue_free()
+	await get_tree().process_frame
+	print("  the stand together: done")
+
+
+# =============================================================================
+# READY FIRST (0.161.0)
+# =============================================================================
+# The owner, of the Stand's new start panel: "lets fix the other minigames
+# with the same idea" - "we need healers run tanks and warriors and arena" -
+# and for the three that start in the world, the full Ready panel: "the door
+# or anvil opens only once all are ready".
+func _test_ready_first() -> void:
+	section("READY FIRST (0.161.0): the Endless, the Forge and the Descent ask Ready - the door shut and the anvil cold until everyone says it")
+	const Panel := preload("res://src/ui/minigames/readypanel.gd")
+	const EndlessRun := preload("res://src/world/endless/endlessrun.gd")
+	const EndlessParty := preload("res://src/world/endless/endlessparty.gd")
+	# ---- the panel on its own ----
+	var away := Node.new()
+	away.set_script(_ready_party_stand_in(false))
+	var near := Node.new()
+	near.set_script(_ready_party_stand_in(true))
+	add_child(away)
+	add_child(near)
+	var heard: Dictionary = {2: 1, 3: -1}
+	var who := GDScript.new()
+	who.source_code = "extends Node\nvar bodies: Dictionary = {}\nfunc remotes() -> Dictionary:\n\treturn bodies\n"
+	who.reload()
+	var link: Node = who.new()
+	add_child(link)
+	var pic := GDScript.new()
+	pic.source_code = "extends Node2D\nvar display_name: String = \"\"\n"
+	pic.reload()
+	var bob := Node2D.new()
+	bob.set_script(pic)
+	bob.set("display_name", "bob")
+	var cat := Node2D.new()
+	cat.set_script(pic)
+	cat.set("display_name", "cat")
+	add_child(bob)
+	add_child(cat)
+	link.set("bodies", {2: bob, 3: cat})
+	var panel: CanvasLayer = Panel.new()
+	panel.set("title", "Test")
+	panel.set("keys", ["One"])
+	panel.set("lines", ["A line."])
+	panel.set("party", away)
+	panel.set("link", link)
+	panel.set("ready_of", func(id: int) -> int: return int(heard.get(id, -1)))
+	panel.set("own_name", func() -> String: return "ann")
+	var went: Array = []
+	panel.connect("go_pressed", func() -> void: went.append(1))
+	add_child(panel)
+	panel.call("paint")
+	var alone_word: String = str((panel.get("start_button") as Button).text)
+	var alone_party: bool = (panel.get("party_box") as Control).visible
+	panel.call("press")
+	check("the panel alone: Start, no party part; pressed, it goes (and says Ready for anybody who comes)",
+		alone_word.begins_with("Start") and not alone_party and went.size() == 1 and bool(panel.get("said_ready")),
+		[alone_word, alone_party, went])
+	panel.set("said_ready", false)
+	panel.set("party", near)
+	panel.call("paint")
+	var ready_word: String = str((panel.get("start_button") as Button).text)
+	panel.call("press")
+	panel.call("paint")
+	var waits_for_cat: String = str((panel.get("party_line") as Label).text)
+	var held: bool = not bool(panel.call("all_ready"))
+	heard[3] = 0
+	panel.call("paint")
+	var waits_ready: String = str((panel.get("party_line") as Label).text)
+	heard[3] = 1
+	check("  with the party: Ready, then what it waits for (\"%s\", \"%s\"); all ready only when everyone here has said it"
+		% [waits_for_cat, waits_ready],
+		ready_word.begins_with("Ready") and waits_for_cat == "Waiting for cat to arrive."
+		and waits_ready == "Waiting for cat to press Ready." and held and bool(panel.call("all_ready"))
+		and str((panel.get("party_count") as Label).text) == "2 of 3 ready" and went.size() == 1,
+		[ready_word, waits_for_cat, waits_ready, held])
+	panel.queue_free()
+	# ---- a game from before says no Ready: it holds nobody up ----
+	var holder := Node.new()
+	var old_party: Node = EndlessParty.new()
+	old_party.set("run", holder)
+	old_party.call("_on_run", 9, {"me": [0, 0, 0, 0]})
+	var said_new: Node = EndlessParty.new()
+	said_new.set("run", holder)
+	said_new.call("_on_run", 9, {"me": [0, 0, 0, 0, 0]})
+	check("  a game from before 0.161.0 (four numbers in its line) counts as ready; one that says 0 is not; one unheard is -1",
+		int(old_party.call("ready_of", 9)) == 1 and int(said_new.call("ready_of", 9)) == 0 and int(said_new.call("ready_of", 4)) == -1)
+	old_party.free()
+	said_new.free()
+	holder.free()
+
+	# ---- THE ENDLESS: two games, the door shut until both say Ready ----
+	var Link: GDScript = _party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	add_child(la)
+	add_child(lb)
+	la.set("me", 1)
+	lb.set("me", 2)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	var body_a := Node2D.new()
+	var body_b := Node2D.new()
+	add_child(body_a)
+	add_child(body_b)
+	la.set("bodies", {2: body_b})
+	lb.set("bodies", {1: body_a})
+	var at_door := Vector2(768, 1000)
+	var games: Array = [_party_game(EndlessRun, la, at_door, true), _party_game(EndlessRun, lb, Vector2(768, 1200), true)]
+	var run_a: Node = games[0][1]
+	var run_b: Node = games[1][1]
+	await get_tree().process_frame
+	_party_frames(games, 0.4)
+	var door_a: Node = (games[0][0] as Node).get_node("ysortworld/props/rundoor")
+	var shut: bool = bool(door_a.get("locked")) and bool((run_a.get("ready_panel") as CanvasLayer).visible) \
+		and int(run_a.get("state")) == EndlessRun.State.WAITING and int(run_b.get("state")) == EndlessRun.State.WAITING
+	(games[0][3] as Node2D).global_position = Vector2(768, 1200)
+	(run_a.get("ready_panel") as Node).call("press")
+	_party_frames(games, 0.6)
+	var one_ready: bool = int((run_b.get("party") as Node).call("ready_of", 1)) == 1 and not bool(run_a.get("gate_open"))
+	(run_b.get("ready_panel") as Node).call("press")
+	_party_frames(games, 0.6)
+	var opened: bool = bool(run_a.get("gate_open")) and bool(run_b.get("gate_open")) and not bool(door_a.get("locked")) \
+		and not bool((run_a.get("ready_panel") as CanvasLayer).visible) and int(run_a.get("state")) == EndlessRun.State.WAITING
+	(games[0][3] as Node2D).global_position = at_door
+	_party_frames(games, 0.3)
+	check("the Endless: the panel up and the door shut while it waits - a player in the doorway starts nothing; one Ready is not enough; both, and the door opens on both, and stepping through starts the count",
+		shut and one_ready and opened and int(run_a.get("state")) == EndlessRun.State.COUNTDOWN
+		and int(run_b.get("state")) == EndlessRun.State.COUNTDOWN, [shut, one_ready, opened, run_a.get("state"), run_b.get("state")])
+	run_a.set("state", EndlessRun.State.OVER)
+	run_a.call("_clear_arena")
+	_party_frames([games[0]], 0.1)
+	check("  back in the corridor after a run, it asks again", not bool(run_a.get("gate_open"))
+		and bool((run_a.get("ready_panel") as CanvasLayer).visible) and not bool((run_a.get("ready_panel") as Node).get("said_ready"))
+		and bool(door_a.get("locked")))
+	for g in games:
+		(g[0] as Node).queue_free()
+
+	# ---- THE FORGE: the anvil cold until Start ----
+	const ForgeRun := preload("res://src/world/forge/forgerun.gd")
+	var forge_body := GDScript.new()
+	forge_body.source_code = _forge_body_script().source_code + "var down_in_run: bool = false\n"
+	forge_body.reload()
+	var made: Array = _forge_island_for_test(forge_body, "tank", true)
+	var forge_asks: Node = made[1]
+	(made[2] as Node2D).global_position = ForgeRun.CENTRE
+	await get_tree().process_frame
+	forge_asks.call("_timed_process", ForgeRun.START_HOLD + 0.2)
+	var cold: bool = int(forge_asks.get("state")) == ForgeRun.State.WAITING and bool((forge_asks.get("ready_panel") as CanvasLayer).visible)
+	(forge_asks.get("ready_panel") as Node).call("press")
+	forge_asks.call("_timed_process", ForgeRun.START_HOLD + 0.2)
+	check("the Forge: standing at the anvil lights nothing while the panel is up; Start, and it lights - and its line says Ready",
+		cold and int(forge_asks.get("state")) == ForgeRun.State.COUNTDOWN and int((forge_asks.call("my_line") as Array)[3]) == 1
+		and int((forge_asks.call("my_line") as Array).size()) == 4, [cold, forge_asks.get("state")])
+	(made[0] as Node).queue_free()
+
+	# ---- THE DESCENT: both doors shut until Start ----
+	const DescentRun := preload("res://src/world/descent/descentrun.gd")
+	var room_made: Array = _descent_room_for_test(_endless_body_script(), true)
+	var room: Node2D = room_made[0]
+	var descent: Node = room_made[1]
+	await get_tree().process_frame
+	descent.call("_timed_process", 0.05)
+	var doors: Array = descent.get("doors")
+	var both_shut: bool = doors.size() == 2 and not bool(descent.call("_doors_open"))
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	var still: bool = int(descent.get("state")) == DescentRun.State.WAITING
+	(descent.get("ready_panel") as Node).call("press")
+	descent.call("_timed_process", 0.05)
+	var both_open: bool = bool(descent.call("_doors_open"))
+	(doors[0] as Node).emit_signal("walked_in", doors[0])
+	check("the Descent: both doors shut while the panel is up, walking at one starts nothing; Start, and they open, and a door begins the run - its line says Ready",
+		both_shut and still and both_open and int(descent.get("state")) != DescentRun.State.WAITING
+		and (descent.call("my_line") as Array).size() == 5, [both_shut, still, both_open, descent.get("state")])
+	room.queue_free()
+	for n in [away, near, link, bob, cat, la, lb, body_a, body_b]:
+		(n as Node).queue_free()
+	await get_tree().process_frame
+	print("  ready first: done")
+
+
+func _ready_party_stand_in(here: bool) -> GDScript:
+	var script := GDScript.new()
+	script.source_code = "extends Node\nfunc active() -> bool:\n\treturn %s\n" % ("true" if here else "false")
+	script.reload()
+	return script
+
+
+# =============================================================================
+# CUT THE CLOTH TOGETHER (0.161.0)
+# =============================================================================
+# The owner: "i was thinking of making cut the cloth 4 player and if players
+# lines crash into each other they also die" - "only the player that crashed
+# into it". Two games' cloths in one tree, each on a stand-in link that
+# passes "en" as the server does (JSON and back): the same cloth from the
+# leader's seed; each cut on the other's cloth; a crash costing the crasher
+# alone; a piece kept while another's cut runs through it, then cut away; a
+# pickup given through the leader; the slimes where the leader has them; a
+# round cleared and the next from its seed; out, and the run over when both
+# are. The server's half is the API's test_presence.py P-30.
+func _cloth_party_link_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = _party_link_script().source_code + "\nfunc cloth_rooms() -> bool:\n\treturn open\n"
+	script.reload()
+	return script
+
+
+func _cloth_for_test(Run: GDScript, PartyScript: GDScript, link: Node, seed_value: int) -> Array:
+	"""[run, party]: a cloth with its party on `link`, driven by hand."""
+	var run: Node2D = Run.new()
+	run.set("seed_value", seed_value)
+	var party: Node = PartyScript.new()
+	party.set("link", link)
+	party.set("run", run)
+	run.set("party", party)
+	run.add_child(party)
+	add_child(run)
+	run.set_physics_process(false)
+	party.set_process(false)
+	party.start_now.connect(Callable(run, "begin_party"))
+	return [run, party]
+
+
+func _cloth_cut(run: Node, cells: Array) -> void:
+	"""Steps the shot through `cells`, one at a time, as its frames would."""
+	for c in cells:
+		run.call("_step_to", c)
+
+
+func _test_the_cloth_together() -> void:
+	section("CUT THE CLOTH TOGETHER (0.161.0): one cloth for up to four - every cut on every screen, a crash the crasher's alone")
+	const Run := preload("res://src/world/cloth/clothrun.gd")
+	const PartyScript := preload("res://src/world/cloth/clothparty.gd")
+	const Screen := preload("res://src/world/cloth/clothscreen.gd")
+	var picture_script := GDScript.new()
+	picture_script.source_code = "extends Node2D\nvar display_name: String = \"\"\n"
+	picture_script.reload()
+	var picture_a := Node2D.new()
+	picture_a.set_script(picture_script)
+	picture_a.set("display_name", "ann")
+	var picture_b := Node2D.new()
+	picture_b.set_script(picture_script)
+	picture_b.set("display_name", "bob")
+	add_child(picture_a)
+	add_child(picture_b)
+	var Link: GDScript = _cloth_party_link_script()
+	var la: Node = Link.new()
+	var lb: Node = Link.new()
+	add_child(la)
+	add_child(lb)
+	la.set("me", 1)
+	lb.set("me", 2)
+	la.set("peers", [lb])
+	lb.set("peers", [la])
+	la.set("bodies", {2: picture_b})
+	lb.set("bodies", {1: picture_a})
+	# Different seeds: what makes the cloths alike is the leader's round.
+	var made_a: Array = _cloth_for_test(Run, PartyScript, la, 31)
+	var made_b: Array = _cloth_for_test(Run, PartyScript, lb, 7777)
+	var run_a: Node2D = made_a[0]
+	var run_b: Node2D = made_b[0]
+	var party_a: Node = made_a[1]
+	var party_b: Node = made_b[1]
+	await get_tree().process_frame
+	var says: bool = _code_src("res://src/systems/presence.gd").contains("message.get(\"cc\", 0)") \
+		and _code_src("res://src/world/cloth/clothscreen.gd").contains("Presence.cloth_rooms() and Party.members.size() > 1")
+
+	# ---- Ready, the countdown, one cloth from the leader's seed ----
+	party_a.call("_timed_process", 0.05)
+	party_a.call("flush")
+	party_b.call("_timed_process", 0.05)
+	party_b.call("set_ready", true)
+	party_b.call("flush")
+	party_a.call("set_ready", true)
+	party_a.call("_timed_process", 0.05)
+	party_a.call("flush")
+	var counting: bool = float(party_a.get("counting")) > 0.0 and float(party_b.get("counting")) > 0.0
+	for i in 70:
+		party_a.call("_timed_process", 0.05)
+		party_b.call("_timed_process", 0.05)
+	var foes_alike: bool = (run_a.get("foes") as Array).size() == (run_b.get("foes") as Array).size()
+	for k in (run_a.get("foes") as Array).size() if foes_alike else 0:
+		var fa: Dictionary = (run_a.get("foes") as Array)[k]
+		var fb: Dictionary = (run_b.get("foes") as Array)[k]
+		foes_alike = foes_alike and int(fa["id"]) == int(fb["id"]) and (fa["p"] as Vector2).distance_to(fb["p"]) < 0.5 \
+			and str(fa["kind"]) == str(fb["kind"])
+	var saws_alike: bool = str((run_a.get("saws") as Array).map(func(s: Dictionary) -> Vector2i: return s["c"])) \
+		== str((run_b.get("saws") as Array).map(func(s: Dictionary) -> Vector2i: return s["c"]))
+	var spot: Dictionary = run_b.call("presence_state")
+	check("the cloth is shared with a server that seats it a room per party ('cc'); its steps are its shot's; everyone Ready, a count of three, then one cloth on both screens from the leader's seed - its slimes, its saws - each on a side of its own",
+		says and str(spot.get("a", "")) == "cloth" and (spot["at"] as Vector2).is_equal_approx(run_b.get("cutter_px"))
+		and counting and bool(run_a.call("party_on")) and not bool(run_a.call("following")) and bool(run_b.call("following"))
+		and not bool(run_b.get("awaiting_round")) and int(run_a.get("players")) == 2 and int(run_b.get("players")) == 2
+		and run_a.get("grid") == run_b.get("grid") and foes_alike and saws_alike and int(run_a.get("seat")) == 0
+		and int(run_b.get("seat")) == 1 and (run_a.get("cutter") as Vector2i).y > 70 and (run_b.get("cutter") as Vector2i).y < 10,
+		[says, spot, counting, run_b.get("awaiting_round"), foes_alike, saws_alike, run_a.get("cutter"), run_b.get("cutter"),
+		run_a.get("grid") == run_b.get("grid"), run_a.get("players"), run_b.get("players"), run_a.get("seat"), run_b.get("seat")])
+
+	# ---- bob's cut on ann's cloth; ann runs into it ----
+	var grid_a: PackedByteArray
+	var corner: Array = []
+	for x in range(2, 11):
+		corner.append(Vector2i(x, 10))
+	for y in range(9, 1, -1):
+		corner.append(Vector2i(10, y))
+	run_b.set("cutter", Vector2i(1, 10))
+	_cloth_cut(run_b, corner)
+	party_b.call("flush")
+	grid_a = run_a.get("grid")
+	var marked: bool = int(grid_a[10 * Run.COLS + 5]) == Run.OTHER and int(grid_a[5 * Run.COLS + 10]) == Run.OTHER \
+		and ((run_a.get("others_lines") as Dictionary).get(2, []) as Array).size() == corner.size()
+	run_a.set("cutter", Vector2i(5, 1))
+	var down: Array = []
+	for y in range(2, 11):
+		down.append(Vector2i(5, y))
+	_cloth_cut(run_a, down)
+	grid_a = run_a.get("grid")
+	var crashed: bool = int(run_a.get("lives")) == Run.LIVES - 1 and int(run_b.get("lives")) == Run.LIVES \
+		and not bool(run_a.get("cutting")) and int(grid_a[10 * Run.COLS + 5]) == Run.OTHER and int(grid_a[5 * Run.COLS + 5]) == Run.OPEN
+	party_a.call("flush")
+	var grid_b: PackedByteArray = run_b.get("grid")
+	var dropped: bool = int(grid_b[5 * Run.COLS + 5]) == Run.OPEN and not (run_b.get("others_lines") as Dictionary).has(1) \
+		and bool(run_b.get("cutting")) and int(grid_b[10 * Run.COLS + 5]) == Run.LINE
+	check("  a cut is on the other's cloth as it goes; running into it costs the crasher a life, its own cut gone on both screens - and the other's cut stands",
+		marked and crashed and dropped, [marked, crashed, dropped, run_a.get("lives"), run_b.get("lives")])
+
+	# ---- a piece kept while ann's cut runs through it, then cut away ----
+	run_a.set("grace_left", 0.0)
+	_cloth_cut(run_a, [Vector2i(5, 2), Vector2i(5, 3)])
+	party_a.call("flush")
+	_cloth_cut(run_b, [Vector2i(10, 1)])
+	party_b.call("flush")
+	party_a.call("flush")
+	grid_a = run_a.get("grid")
+	grid_b = run_b.get("grid")
+	var kept: bool = int(grid_a[3 * Run.COLS + 3]) == Run.OPEN and int(grid_b[3 * Run.COLS + 3]) == Run.OPEN \
+		and int(grid_a[10 * Run.COLS + 7]) == Run.OWN and int(grid_b[10 * Run.COLS + 7]) == Run.OWN \
+		and not bool(run_b.get("cutting")) and bool(run_a.get("cutting"))
+	var rest: Array = []
+	for y in range(4, 11):
+		rest.append(Vector2i(5, y))
+	_cloth_cut(run_a, rest)
+	party_a.call("flush")
+	grid_a = run_a.get("grid")
+	grid_b = run_b.get("grid")
+	var cut_both: bool = int(grid_a[3 * Run.COLS + 3]) == Run.OWN and int(grid_a[8 * Run.COLS + 8]) == Run.OWN \
+		and grid_a == grid_b and is_equal_approx(float(run_a.get("taken")), float(run_b.get("taken"))) \
+		and not bool(run_a.get("cutting"))
+	check("  bob's cut closes round a corner ann is cutting into: the piece is kept for her; her cut closes, and it is cut away - on both screens alike (%d%% cut)"
+		% roundi(float(run_a.get("taken")) * 100.0), kept and cut_both, [kept, cut_both, run_a.get("taken"), run_b.get("taken")])
+
+	# ---- a pickup through the leader ----
+	var swift_id: int = int(run_a.get("_next_pickup"))
+	(run_a.get("pickups") as Array).append({"kind": "swift", "c": Vector2i(60, 40), "left": 15.0, "id": swift_id})
+	run_a.call("_announce", [PartyScript.EV_PICKUP, swift_id, Run.PICKUPS.find("swift"), 60, 40])
+	run_a.set("_next_pickup", swift_id + 1)
+	party_a.call("flush")
+	var out_there: bool = (run_b.get("pickups") as Array).size() == 1
+	run_b.call("_take_pickup_at", Vector2i(60, 40))
+	party_b.call("flush")
+	party_a.call("flush")
+	var swift_b: bool = float(run_b.get("swift_left")) > 0.0 and float(run_a.get("swift_left")) <= 0.0 \
+		and (run_a.get("pickups") as Array).is_empty() and (run_b.get("pickups") as Array).is_empty()
+	var slow_id: int = int(run_a.get("_next_pickup"))
+	(run_a.get("pickups") as Array).append({"kind": "slow", "c": Vector2i(80, 30), "left": 15.0, "id": slow_id})
+	run_a.call("_announce", [PartyScript.EV_PICKUP, slow_id, Run.PICKUPS.find("slow"), 80, 30])
+	party_a.call("flush")
+	run_a.call("_take_pickup_at", Vector2i(80, 30))
+	party_a.call("flush")
+	var slow_both: bool = float(run_a.get("slow_left")) > 0.0 and float(run_b.get("slow_left")) > 0.0
+	check("  a pickup the leader puts out is on both cloths; crossed by bob it is his - Swift his alone - and gone on both; Slow, ann's, slows the slimes on both",
+		out_there and swift_b and slow_both, [out_there, swift_b, slow_both])
+
+	# ---- the slimes where the leader has them ----
+	var foe_a: Dictionary = (run_a.get("foes") as Array)[0]
+	foe_a["p"] = (foe_a["p"] as Vector2) + Vector2(40, 0)
+	var gone_a: Dictionary = (run_a.get("foes") as Array)[1]
+	gone_a["dead"] = 0.0
+	party_a.call("flush")
+	var foe_b: Dictionary = (run_b.get("foes") as Array)[0]
+	var gone_b: Dictionary = (run_b.get("foes") as Array)[1]
+	check("  a slime moved on the leader's cloth is moved on bob's; one gone there dissolves on his",
+		(foe_b["p"] as Vector2).distance_to(foe_a["p"]) < 0.5 and float(gone_b["dead"]) >= 0.0,
+		[foe_a["p"], foe_b["p"], gone_b["dead"]])
+
+	# ---- a round cleared, the next from the leader's seed; an old round's cut lands nowhere ----
+	run_a.call("_clear_round")
+	party_a.call("flush")
+	var cleared: bool = int(run_b.get("state")) == Run.State.CLEARED and int(run_b.get("best")) == 1 and int(run_a.get("best")) == 1
+	var old_stamp: int = int(party_b.call("stamp"))
+	run_a.set("cleared_left", 0.0)
+	run_a.call("_timed_physics_process", 0.01)
+	party_a.call("flush")
+	var next_alike: bool = int(run_a.get("round_now")) == 2 and int(run_b.get("round_now")) == 2 \
+		and int(run_b.get("state")) == Run.State.PLAYING and run_a.get("grid") == run_b.get("grid") \
+		and (run_a.get("saws") as Array).size() == (run_b.get("saws") as Array).size()
+	party_b.set("_cuts", [[20, old_stamp * PartyScript.KIND_SPAN + PartyScript.ADD, 21]])
+	party_b.call("flush")
+	grid_a = run_a.get("grid")
+	check("  the leader clears the round on both screens (each cleared it, still in); its next round comes from its seed, alike; a cut stamped with the old round lands nowhere",
+		cleared and next_alike and int(grid_a[20 * Run.COLS + 20]) == Run.OPEN, [cleared, next_alike, run_b.get("round_now")])
+
+	# ---- out, and the run over when everybody is ----
+	for i in 3:
+		run_a.set("grace_left", 0.0)
+		run_a.call("lose_life")
+	party_a.call("flush")
+	var a_out: bool = bool(run_a.get("out")) and int(run_a.get("state")) == Run.State.PLAYING \
+		and int(party_b.call("flags_of", 1)) & PartyScript.OUT != 0 and (run_b.call("others_shots") as Array).is_empty()
+	run_a.call("_clear_round")
+	party_a.call("flush")
+	var best_held: bool = int(run_a.get("best")) == 1 and int(run_b.get("best")) == 2
+	run_a.set("cleared_left", 0.0)
+	run_a.call("_timed_physics_process", 0.01)
+	party_a.call("flush")
+	for i in 3:
+		run_b.set("grace_left", 0.0)
+		run_b.call("lose_life")
+	party_b.call("flush")
+	run_a.call("_timed_physics_process", 0.01)
+	party_a.call("flush")
+	check("  out of lives, ann watches: the run goes on for bob, and the rounds he clears are his alone; both out, the run is over on both screens",
+		a_out and best_held and int(run_a.get("state")) == Run.State.OVER and int(run_b.get("state")) == Run.State.OVER,
+		[a_out, best_held, run_a.get("state"), run_b.get("state"), run_a.get("best"), run_b.get("best")])
+
+	# ---- the start panel: four seats, Ready ----
+	var lc: Node = Link.new()
+	add_child(lc)
+	lc.set("me", 5)
+	lc.set("leader", 5)
+	lc.set("bodies", {6: picture_b})
+	var screen: CanvasLayer = Screen.new()
+	screen.set("party_rooms", func() -> bool: return true)
+	screen.set("party_link", lc)
+	add_child(screen)
+	await get_tree().process_frame
+	screen.call("paint")
+	var lobby: bool = (screen.get("party_box") as Control).visible and (screen.get("_seat_cards") as Array).size() == 4 \
+		and str((screen.get("start_button") as Button).text).begins_with("Ready")
+	screen.call("begin")
+	screen.call("paint")
+	var readied: bool = bool(((screen.get("run") as Node).get("party") as Node).get("said_ready")) \
+		and str((screen.get("start_button") as Button).text).begins_with("Not ready") \
+		and (screen.get("start_panel") as Control).visible
+	check("  the start panel: the party as four seats, and Start is Ready - then Not ready, the panel staying up for the count",
+		lobby and readied, [lobby, readied, (screen.get("start_button") as Button).text])
+	screen.queue_free()
+	for n in [run_a, run_b, la, lb, lc, picture_a, picture_b]:
+		(n as Node).queue_free()
+	await get_tree().process_frame
+	print("  the cloth together: done")

@@ -2512,13 +2512,18 @@ func _test_the_healers_run_with_a_party() -> void:
 	screen.call("begin")
 	screen.call("paint")
 	var ready_said: String = str(screen.get("party_line").text)
+	var seat_said: Array = []
+	for card in screen.get("_seat_cards"):
+		seat_said.append("%s: %s" % [(card as Node).find_child("who", true, false).text, (card as Node).find_child("said", true, false).text])
 	var held: bool = screen.get("tutorial").visible and not bool(screen.get("run").get("begun")) and bool(sp.get("said_ready"))
 	var button_said: String = str(screen.get("start_button").text)
 	sp.emit_signal("start_now")
-	check("the start panel with the party: who is here and who is ready, Start is Ready, and the count starts it",
-		waiting_said.contains("mia (you) - not ready") and waiting_said.contains("a player - joining")
-		and ready_said.contains("mia (you) - ready") and button_said.begins_with("Not ready") and held
-		and not screen.get("tutorial").visible and bool(screen.get("run").get("begun")), [waiting_said, ready_said])
+	check("the start panel with the party (0.161.0, the seats): who is here and who is ready (%s), Start is Ready, and the count starts it"
+		% ", ".join(seat_said),
+		waiting_said == "Press Ready when you are set." and ready_said == "Waiting for a player to arrive."
+		and seat_said == ["mia (you): READY", "a player: on the way...", "Open: for the party", "Open: for the party"]
+		and str(screen.get("party_count").text) == "1 of 2 ready" and button_said.begins_with("Not ready") and held
+		and not screen.get("tutorial").visible and bool(screen.get("run").get("begun")), [waiting_said, ready_said, seat_said])
 	screen.call("close")
 	for g in games:
 		(g[0] as Node).queue_free()
@@ -4073,6 +4078,8 @@ func _test_the_descent() -> void:
 	var run: Node = RunScript.new()
 	run.name = "descentrun"
 	run.set("player_override", body)
+	# The doors as before 0.161.0: the Ready panel has its own test.
+	run.set("asks_ready", false)
 	room.add_child(run)
 	await get_tree().process_frame
 	var doors: Array = run.get("doors")
@@ -4388,6 +4395,17 @@ func _test_after_the_first_descent() -> void:
 	check("another player inside the shop is hidden from you outside it, shown when you are in, and again when they come out",
 		hidden_out and shown_in and shown_out and trigger.call("covers", box, box.global_position)
 		and not trigger.call("covers", box, box.global_position + Vector2(0, 400)), [hidden_out, shown_in, shown_out])
+	var elsewhere := SubViewport.new()
+	add_child(elsewhere)
+	var far := Node2D.new()
+	far.set_script(stand)
+	far.add_to_group(&"remoteplayers")
+	elsewhere.add_child(far)
+	far.global_position = box.global_position
+	trigger.call("hide_those_inside")
+	check("  but a party member drawn in a minigame over the town (its own picture, 0.161.0) is in no house of the town's, wherever it stands",
+		far.visible)
+	elsewhere.queue_free()
 	them.global_position = box.global_position
 	trigger.call("hide_those_inside")
 	house.free()
@@ -4937,6 +4955,8 @@ func _test_the_descent_is_kinder() -> void:
 	var run: Node = RunScript.new()
 	run.name = "descentrun"
 	run.set("player_override", body)
+	# The doors as before 0.161.0: the Ready panel has its own test.
+	run.set("asks_ready", false)
 	room.add_child(run)
 	await get_tree().process_frame
 	var doors: Array = run.get("doors")
@@ -5039,7 +5059,7 @@ func _test_the_descent_is_kinder() -> void:
 # =============================================================================
 # Step 2a of DESCENT_PLAN_2.txt: upgrades with rarities, five new ones, and
 # four new doors.
-func _descent_room_for_test(body_script: GDScript) -> Array:
+func _descent_room_for_test(body_script: GDScript, asks_ready: bool = false) -> Array:
 	"""[room, run, body, doors]: a Descent room of stand-ins."""
 	const RunScript := preload("res://src/world/descent/descentrun.gd")
 	const DoorScript := preload("res://src/world/descent/descentdoor.gd")
@@ -5068,6 +5088,9 @@ func _descent_room_for_test(body_script: GDScript) -> Array:
 	var run: Node = RunScript.new()
 	run.name = "descentrun"
 	run.set("player_override", body)
+	# The doors as before 0.161.0, unless asked: the Ready panel has its own
+	# test (_test_ready_first()).
+	run.set("asks_ready", asks_ready)
 	room.add_child(run)
 	return [room, run, body, run.get("doors")]
 
