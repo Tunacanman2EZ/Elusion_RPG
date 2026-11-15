@@ -14937,7 +14937,14 @@ wire (its header has every number); clothrun.gd's header has the rules.
   DROP or CLOSE) under a stamp of the key and the round, so another run's
   or round's never lands. The others' are `OTHER` on its cloth
   (`other_cut()`, `_other_owner`), drawn dotted in their seat's colour with
-  their shot and name over it (`_draw_others()`).
+  their shot and name over it (`_draw_others()`) - since 0.161.1 every dot
+  solid on a dark shadow and the shot in a dark ring (`OTHER_EDGE`), so the
+  gold and orange seats show on tan parchment (the owner's suggestion; a
+  full dark edge round each dot swamped the gold).
+- **HOW TO PLAY with the party here** (0.161.1; `HOW_TO_PARTY`,
+  `_word_for_touch()`):
+  "Close it" says pieces with no slime and no open cut are cut away, and
+  "Danger" names the crash; alone, the lines are as before.
 - **A crash** (`_crash()`, from `_step_to()` - `_may_enter()` lets a cut
   into `OTHER`): the crasher's life (the Ward takes it), "You crashed into
   bob's cut!"; the other's cut stands. Slimes on another's cut hurt nobody

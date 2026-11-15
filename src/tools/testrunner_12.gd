@@ -1526,16 +1526,19 @@ func _test_the_cloth_together() -> void:
 	screen.set("party_link", lc)
 	add_child(screen)
 	await get_tree().process_frame
+	screen.call("_word_for_touch")
 	screen.call("paint")
+	var how: Array = (screen.get("_how_to_lines") as Array).map(func(l: Label) -> String: return l.text)
 	var lobby: bool = (screen.get("party_box") as Control).visible and (screen.get("_seat_cards") as Array).size() == 4 \
-		and str((screen.get("start_button") as Button).text).begins_with("Ready")
+		and str((screen.get("start_button") as Button).text).begins_with("Ready") \
+		and str(how[2]).contains("no open cut") and str(how[3]).contains("teammate's cut") and str(how[0]) == str(Screen.HOW_TO[0])
 	screen.call("begin")
 	screen.call("paint")
 	var readied: bool = bool(((screen.get("run") as Node).get("party") as Node).get("said_ready")) \
 		and str((screen.get("start_button") as Button).text).begins_with("Not ready") \
 		and (screen.get("start_panel") as Control).visible
-	check("  the start panel: the party as four seats, and Start is Ready - then Not ready, the panel staying up for the count",
-		lobby and readied, [lobby, readied, (screen.get("start_button") as Button).text])
+	check("  the start panel: the party as four seats, HOW TO PLAY telling of open cuts kept and the crash, and Start is Ready - then Not ready, the panel staying up for the count",
+		lobby and readied, [lobby, readied, (screen.get("start_button") as Button).text, how])
 	screen.queue_free()
 	for n in [run_a, run_b, la, lb, lc, picture_a, picture_b]:
 		(n as Node).queue_free()

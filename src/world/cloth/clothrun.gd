@@ -147,10 +147,13 @@ const GNAW_KEEP := 4
 const SPLIT_SHARE := 0.02
 # THE PARTY'S STARTS (0.161.0): the bottom, the top, the left, the right (the
 # first is where a shot alone starts), and each cutter's colour on the
-# others' cloth. A slime's size on the wire, how many go in a snapshot, how
+# others' cloth, with a dark shadow under every dot so any colour shows on
+# the parchment (OTHER_EDGE, 0.161.1; the owner, of the gold seat on tan
+# cloth). A slime's size on the wire, how many go in a snapshot, how
 # far off a copy is put rather than eased, and what the leader says.
 const SEAT_STARTS := [Vector2i(78, 80), Vector2i(78, 0), Vector2i(0, 40), Vector2i(155, 40)]
 const SEAT_COLOURS := [Color(1.0, 0.82, 0.38), Color(0.45, 0.78, 1.0), Color(1.0, 0.52, 0.75), Color(1.0, 0.62, 0.3)]
+const OTHER_EDGE := Color(0.08, 0.06, 0.1, 0.75)
 const SIZES := ["small", "elite", "boss"]
 const SNAP_FOES_MOST := 100
 const SNAP_EASE := 20.0
@@ -2579,7 +2582,9 @@ func take_over() -> void:
 
 func _draw_others() -> void:
 	"""The party's open cuts, dotted in each cutter's colour, and their shots,
-	a glowing bead with the name over it."""
+	a glowing bead with the name over it - each dot on a dark shadow and the
+	bead in a dark ring (OTHER_EDGE), so the gold and orange seats show on
+	tan parchment."""
 	if others_lines.is_empty() and not party_on():
 		return
 	for id in others_lines.keys():
@@ -2591,14 +2596,15 @@ func _draw_others() -> void:
 			var h: int = absi((c.x * 73856093) ^ (c.y * 19349663))
 			var at: Vector2 = px(c) + Vector2(float(h % 3) - 1.0, float((h >> 3) % 3) - 1.0) * 0.6
 			var twinkle: float = 0.7 + 0.3 * sin(_t * 8.0 + float(k) * 1.7)
-			_fx.draw_circle(at, 2.0, Color(colour.darkened(0.35), 0.55 * twinkle))
-			_fx.draw_rect(Rect2(at - Vector2(1, 1), Vector2(2, 2)), Color(colour.lightened(0.15), twinkle))
+			_fx.draw_rect(Rect2(at - Vector2(0.5, 0.5), Vector2(3, 3)), OTHER_EDGE)
+			_fx.draw_rect(Rect2(at - Vector2(1.5, 1.5), Vector2(3, 3)), colour.lightened(0.1 + 0.25 * (twinkle - 0.7) / 0.3))
 	var font: Font = ThemeDB.fallback_font
 	for shot in others_shots():
 		var at: Vector2 = shot[0]
 		var colour: Color = SEAT_COLOURS[posmod(int(shot[1]), SEAT_COLOURS.size())]
 		var pulse: float = 0.75 + 0.25 * sin(_t * 6.0 + float(int(shot[1])))
 		_fx.draw_circle(at, 7.0, Color(colour, 0.18 * pulse))
+		_fx.draw_circle(at, 4.6, OTHER_EDGE)
 		_fx.draw_circle(at, 3.6, Color(colour, 0.9))
 		_fx.draw_circle(at, 1.6, Color(1.0, 1.0, 0.95, pulse))
 		_fx.draw_string_outline(font, at + Vector2(-40.0, -9.0), str(shot[2]), HORIZONTAL_ALIGNMENT_CENTER, 80.0, 8, 3,

@@ -95,6 +95,11 @@ const HOW_TO_TOUCH := {
 	0: "Move with the stick - the shot rides the cut edge.",
 	1: "Hold SLICE to cut into the cloth.",
 }
+# With the party here (0.161.0): what cuts away, and the crash.
+const HOW_TO_PARTY := {
+	2: "Close the cut on an edge: pieces with no slime and no open cut are cut away.",
+	3: "A slime on your cut costs a life - and so does running into a teammate's cut.",
+}
 const STORY := [
 	"The town's first map maker drew the world on enchanted parchment.",
 	"The slime plague was stopped by cutting the land out from under it.",
@@ -645,12 +650,21 @@ func _fit_frame() -> void:
 
 
 func _word_for_touch() -> void:
+	"""HOW TO PLAY for a phone (its lines), and for the party here (theirs:
+	the open cuts kept, the crash)."""
 	var touch: int = 1 if TouchControls.active else 0
-	if touch == _worded:
+	var party: Node = _party()
+	var with_party: int = 2 if party != null and bool(party.call("active")) else 0
+	if touch + with_party == _worded:
 		return
-	_worded = touch
+	_worded = touch + with_party
 	for k in _how_to_lines.size():
-		(_how_to_lines[k] as Label).text = str(HOW_TO_TOUCH[k]) if touch == 1 and HOW_TO_TOUCH.has(k) else str(HOW_TO[k])
+		var words: String = str(HOW_TO[k])
+		if with_party == 2 and HOW_TO_PARTY.has(k):
+			words = str(HOW_TO_PARTY[k])
+		elif touch == 1 and HOW_TO_TOUCH.has(k):
+			words = str(HOW_TO_TOUCH[k])
+		(_how_to_lines[k] as Label).text = words
 
 
 # =============================================================================
