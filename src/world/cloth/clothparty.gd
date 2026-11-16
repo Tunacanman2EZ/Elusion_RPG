@@ -44,7 +44,15 @@
 #     rounds cleared while still in. Every screen draws the party from them;
 #     the run is over when everybody is out.
 # A KEY A RUN: the leader picks it while the party waits. A game that hears a
-# run already begun cuts its own, alone. The stamp is the key and the round,
+# run already begun cuts its own, alone.
+#
+# A DROPPED LINK IS THE END OF THE PARTY (0.161.2; the owner, asked what a
+# dropped connection does: "yes" to finishing alone). While its link was down
+# this game went on with its own copy of the cloth, so once the link drops
+# mid-run it finishes the run alone (ALONE) and never rejoins it, even when
+# the link comes back. The others forget a player no longer here (_members),
+# so a game back in the room on a run of its own is neither drawn nor waited
+# for. The stamp is the key and the round,
 # so a cut from another run, or a round gone, never lands.
 #
 # READY, THEN A COUNTDOWN - the Stand's (magestandparty.gd): each presses
@@ -390,6 +398,9 @@ func _process(delta: float) -> void:
 func _timed_process(delta: float) -> void:
 	if run == null or link == null:
 		return
+	if _started and key > 0 and not rooms():
+		# THE LINK DROPPED MID-RUN: finish it alone, for good.
+		key = ALONE
 	if not active():
 		_cuts.clear()
 		_outbox.clear()
@@ -408,8 +419,13 @@ func _timed_process(delta: float) -> void:
 	_count(delta)
 	if _tick_left <= 0.0:
 		_tick_left = TICK_SECONDS
+		var present: Array = _here()
+		if _started:
+			for id in _members.keys():
+				if not present.has(int(id)):
+					_members.erase(id)
 		var here: Array = []
-		for id in _here():
+		for id in present:
 			if in_run(int(id)):
 				here.append(int(id))
 		run.call("forget_gone", here)

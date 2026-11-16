@@ -302,6 +302,7 @@ var _next_foe: int = 1
 var _next_pickup: int = 1
 var _followed: bool = false
 var _crashed: bool = false
+var _together: bool = false
 
 var _rng := RandomNumberGenerator.new()
 var _step_left: float = 0.0
@@ -782,6 +783,12 @@ func _timed_physics_process(delta: float) -> void:
 	_followed = now_following
 	if awaiting_round and not now_following:
 		take_over()
+	# THE PARTY GONE (everybody else left, or this game's link dropped): the
+	# rest of the run is this player's own, and it says so.
+	var together: bool = party_on()
+	if _together and not together and state != State.OVER:
+		said.emit("Your party is gone - the rest of this run is yours alone")
+	_together = together
 	match state:
 		State.PLAYING:
 			if awaiting_round:

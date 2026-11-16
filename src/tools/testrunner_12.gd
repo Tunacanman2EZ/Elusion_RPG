@@ -1515,6 +1515,18 @@ func _test_the_cloth_together() -> void:
 		a_out and best_held and int(run_a.get("state")) == Run.State.OVER and int(run_b.get("state")) == Run.State.OVER,
 		[a_out, best_held, run_a.get("state"), run_b.get("state"), run_a.get("best"), run_b.get("best")])
 
+	# ---- a dropped link: alone for good; the others forget it ----
+	lb.set("open", false)
+	party_b.call("_timed_process", 0.05)
+	lb.set("open", true)
+	party_b.call("_timed_process", 0.05)
+	la.set("bodies", {})
+	party_a.call("_timed_process", 0.2)
+	check("  bob's link drops mid-run: his game finishes the run alone and stays alone when it comes back; ann's game forgets him",
+		int(party_b.get("key")) == PartyScript.ALONE and not bool(party_b.call("active")) and not bool(run_b.call("party_on"))
+		and not bool(party_a.call("in_run", 2)) and (party_a.get("_members") as Dictionary).is_empty(),
+		[party_b.get("key"), party_b.call("active"), party_a.call("in_run", 2), party_a.get("_members")])
+
 	# ---- the start panel: four seats, Ready ----
 	var lc: Node = Link.new()
 	add_child(lc)

@@ -14969,6 +14969,14 @@ wire (its header has every number); clothrun.gd's header has the rules.
 - **The leader goes**: the next takes the run where its copies stand
   (`take_over()`, seen by the run itself), the round's seed too if it never
   came.
+- **A dropped link** (0.161.2; the owner, asked what a drop does: "yes" to
+  finishing alone): a game whose link goes down mid-run finishes it alone
+  (`key` `ALONE`, in clothparty.gd `_timed_process()`) and never rejoins,
+  even when the link comes back - its cloth went its own way while it was
+  cut off. The others drop a player no longer here from `_members`, so a
+  game back in the room on its own run is neither drawn nor waited for in
+  `all_out()`. Losing the party either way, the run says "Your party is
+  gone - the rest of this run is yours alone".
 - Gold is each player's own run, paid at Leave as ever; the server's time
   floor (15 s a round, `cloth_believed()`) is unchanged.
 - `_test_the_cloth_together()` (testrunner_12): two games on stand-in
