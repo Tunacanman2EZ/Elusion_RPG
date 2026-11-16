@@ -419,6 +419,28 @@ func _test_a_days_minigame_gold_and_a_rollback_held_back() -> void:
 		all_written = all_written and not arrivals.is_empty()
 	check("gamedata.json writes where each area's teleport pads land, for the server's walk check (%s)" % ", ".join(
 		PackedStringArray(with_pads)), all_written and with_pads.has("elusion"), with_pads)
+	# THE WAYSTONES ARE PADS TOO (0.161.3): a trip lands in front of a stone,
+	# inside the Big Field too, so each landing is one of its "arrivals".
+	var stone_consts: Dictionary = (load("res://src/world/waystones.gd") as GDScript).get_script_constant_map()
+	var stone_area: String = String(stone_consts.get("AREA", ""))
+	var written: Array = ((areas.get(stone_area, {}) as Dictionary).get("arrivals", [])) if areas.has(stone_area) else []
+	var landings: Array = []
+	for stone in stone_consts.get("STONES", []):
+		var at: Vector2 = (stone as Dictionary)["at"] + (stone_consts.get("ARRIVE", Vector2.ZERO) as Vector2)
+		landings.append(at)
+	var missing: Array = []
+	for at in landings:
+		var found: bool = false
+		for point in written:
+			if point is Array and (point as Array).size() == 2 \
+					and Vector2(float(point[0]), float(point[1])).distance_to(at) < 0.5:
+				found = true
+		if not found:
+			missing.append(at)
+	var exported: Array = (load("res://src/tools/exportgamedata.gd") as GDScript).call("waystone_arrivals", stone_area)
+	check("  and where each of the %d waystones lands, in %s - the export writes them (re-export when a stone moves)" % [
+		landings.size(), stone_area], landings.size() >= 7 and missing.is_empty() and exported.size() == landings.size(),
+		[missing, exported.size()])
 	print("  the Leave's words, the chest's notice and the Save history's line, as the server answers")
 
 

@@ -14695,6 +14695,14 @@ him alone, chose to open them for everyone.
   server's walk check lets a step onto one through (the town's pad was 90 of
   115 jumps in `killwatch.py --moves`). **Move a pad, or add one: re-export
   and copy gamedata.json to the API.**
+- **The waystones are pads too (0.161.3)**: a trip lands in front of a
+  stone (`waystones.gd` STONES + ARRIVE), from inside the Big Field too, and
+  `killwatch.py --moves` wrote 20 of them down as jumps there. The export
+  (`waystone_arrivals()`) adds each landing to the stones' area's
+  `"arrivals"`, so with HELD TO A WALK on a trip is still a clean jump on
+  other screens. The pad check in `_test_a_days_minigame_gold_and_a_rollback_held_back()`
+  holds the file to every stone. **Move or add a stone: re-export and copy
+  gamedata.json to the API.**
 - **Where each lever stands** (exportgamedata.gd `_collect_levers()`): every
   area in gamedata.json carries `"levers"`, the lever's path in its scene
   (`Presence.lever_name()`, the name a pull goes by) to its spot, and

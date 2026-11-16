@@ -1829,6 +1829,13 @@ const TELEPORTER_SCRIPT := "res://src/world/teleporter.gd"
 # stands near that lever.
 const LEVER_SCRIPT := "res://src/world/lever.gd"
 const ENEMY_SCENES := "res://scene/enemy/"
+# THE WAYSTONES ARE PADS TOO (0.161.3). A waystone trip (waystones.gd) puts
+# the player in front of a stone in the Big Field - from inside the Big
+# Field too, a jump within the area like a pad's - and killwatch.py --moves
+# found 20 of them written down as jumps. So each stone's landing is one of
+# its area's "arrivals", read from waystones.gd's own STONES and ARRIVE: move
+# a stone and the next export moves its landing.
+const WAYSTONES_SCRIPT := "res://src/world/waystones.gd"
 
 
 # =============================================================================
@@ -1915,6 +1922,7 @@ func _export_areas() -> Dictionary:
 		spawns.sort_custom(func(a, b): return String(a["o"]) < String(b["o"]))
 		var arrivals: Array = []
 		_collect_arrivals(root, root, arrivals)
+		arrivals.append_array(waystone_arrivals(String(area_id)))
 		var levers: Dictionary = {}
 		_collect_levers(root, root, levers)
 		arrivals.sort()
@@ -1941,6 +1949,23 @@ func _collect_arrivals(root: Node, node: Node, arrivals: Array) -> void:
 			arrivals.append([snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
 		if not child.scene_file_path.begins_with(ENEMY_SCENES):
 			_collect_arrivals(root, child, arrivals)
+
+
+static func waystone_arrivals(area_id: String) -> Array:
+	"""Where each waystone puts a player, for the area the stones stand in
+	(waystones.gd AREA), else none - as [x, y] like a pad's."""
+	var script: GDScript = load(WAYSTONES_SCRIPT) as GDScript
+	if script == null:
+		return []
+	var consts: Dictionary = script.get_script_constant_map()
+	if String(consts.get("AREA", "")) != area_id:
+		return []
+	var arrive: Vector2 = consts.get("ARRIVE", Vector2.ZERO)
+	var out: Array = []
+	for stone in consts.get("STONES", []):
+		var at: Vector2 = (stone as Dictionary).get("at", Vector2.ZERO) + arrive
+		out.append([snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
+	return out
 
 
 func _collect_levers(root: Node, node: Node, levers: Dictionary) -> void:
