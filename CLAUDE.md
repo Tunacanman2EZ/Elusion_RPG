@@ -14995,6 +14995,161 @@ wire (its header has every number); clothrun.gd's header has the rules.
   lobby's seats. Two sabotages caught (no flood seed from open cuts; no
   crash). The server's half is the API's P-30.
 
+### Crownfall: a brick breaker through the monster kingdoms (0.162.0)
+
+The owner: "draw out a brick breaker let me see a video", then "improve the
+game ui majorly and make the bricks more structural brick breaker games were
+known for bonuses and complex maps", "needs a story to go with the game and
+a diff game name we need a ton of new maps", and the story's seed, "damage
+plagued the lands when the mysterious portals opened the monsters built
+kingdoms and castles". Phase 1, "sounds good": the Light kingdom. Phase 2 is
+the other six kingdoms, Phase 3 the Beholder's keep, a party version and an
+endless rift. Two sandbox sketches came first (zz/brickpic.gd, brickpic2.gd).
+The owner's alone while it is built (`shows_crownfall`, TESTING).
+
+- **The world** (`src/world/crownfall/crownfallmaps.gd`, data only): seven
+  kingdoms of plague-stone, gentlest to deepest, each ruler wearing one of
+  the Crowned Beholder's seven crowns; only `made` ones are played (Light).
+  A map is rows of letters, a brick a letter - the legend is in the header.
+  Most maps are `COLS` (32) by up to `ROWS_MOST` (18); a big map is
+  `BIG_COLS` (48) by up to `BIG_ROWS_MOST` (28) (the owner: "make the maps
+  bigger", "we can even make the map bigger in some"). A kingdom is
+  `MAPS_A_KINGDOM` (25) maps in `STRETCHES` (5) of five, every fifth a boss
+  in Boss.KINDS's order (`BOSS_SLOTS` names the ones not made yet), the last
+  crowned. A map may carry `short`, its name on the side rail (the owner:
+  "The Spire", "The Throne"). The story (`STORY`) is told once a character.
+- **Drafting maps** (the owner: "dense maps with designs in the bricks"):
+  the 25 were drawn by sandbox Python helpers (a grid with rect, frame, disc,
+  ring, mirror) and written into MAPS; nothing in the game depends on them.
+  **No two share a shape** (the owner: "we need more variety in maps we
+  cannot reuse any"): twelve that were a full wall of bricks, or towers
+  either side of a hall, were redrawn - a slime mound, three trees, a great
+  key, a stone circle, a turtle, four market stalls, one tower with drifting
+  platforms, a round vault door, a bell under storm clouds, a hall in a
+  thicket's heart, three steaming baths, a diamond maze. Guards (`D`) were
+  placed by rule: at a core's corners, beside each key, in each gold hoard,
+  at the corners under a boss's hall, and beside a map's prizes.
+- **The play** (`crownfallrun.gd`, a Node2D drawn in code at 1280 x 720 in
+  the screen's SubViewport): stone, iron, TNT, bonus and land bricks, six
+  bonuses (BONUS_ORDER, a capsule every `BONUS_EVERY` (30) bricks, at most
+  `CAPS_MOST` (3) falling), tracers, the HUD, the side panels, plus:
+  **mirrors** never break and bend the ball `MIRROR_BEND` (22) degrees, one
+  way on even cells and the other on odd (drawn a deeper blue, the owner's
+  "pop immediately"); **blight** grows back every `BLIGHT_EVERY` (9 s) into
+  an empty cell the map once held (`footprint`), and with no room corrupts a
+  land brick beside it into **plague**-stone (`CORRUPT_CHANCE`, two hits);
+  the **core** is one brick over every H cell, and shattered sends a
+  shockwave - a hit on every brick within `CORE_BLAST` (130 px) - and a
+  bonus always falls (the owner: "a high-value weak point when
+  breached"); no ball runs flat (`steady()`). Big maps set `cols`, `cw`, `ch` and `gap` per map (48
+  across: 20 by 10 px) and draw each brick scaled from the 30 x 15 drawing
+  (`draw_set_transform`). The ball finds bricks by cell (`cells`,
+  `_bricks_near()` - the nine round it), never the whole map.
+- **The elements mixed** (the owner: "we can mix elements in bricks"): the
+  ball carries the land it last broke (`b["el"]`, drawn on the ball and in
+  "THE BALL" panel); breaking another land sets the two off
+  (`reaction_of()`, `REACTIONS`): fire+ice **steam** (two hits round it),
+  fire+wind **firestorm** (`FIRESTORM_REACH` (5) cells each way along the
+  row burn), ice+water **glacier**
+  (round it frozen: a frozen brick breaks at a touch and its frozen
+  neighbours shatter after), water+wind **storm** (`STORM_JUMPS` bolts),
+  earth+fire **magma** (drips down the column), ice+wind **blizzard**
+  (shards up it), light+dark **eclipse** (the `ECLIPSE_MOST` (16) bricks
+  of the land most left nearest it take a hit); any other two clash (a
+  spark). A **mixed brick** (`1`-`7`) is two lands already and goes off when
+  the ball or a reaction breaks it - never a burn, a drip, a shatter or TNT
+  - `REACT_DEPTH` (2) deep at most. Fire spreads to the fire touching it
+  `FIRE_SPREAD` (3) steps from where it caught (`spark`). Words at most
+  every `REACT_WORD_GAP`.
+- **Measured before it was tamed** (zz/crownbench.gd, the video's bot
+  playing each map headless, lives endless): a firestorm burning the whole
+  row, every brick it burnt going off, a 48-wide band of fire burning down
+  whole and an eclipse on every brick of a land took 90% of The Mixing Well
+  in under six seconds and The Last Wall in nine. After: the Well in about
+  1.5 to 3 minutes. A plain 32 x 18 map takes the bot 3 to 7 minutes.
+- **The side lanes** (the owner: "a small gap on the left and right of the
+  maps use unbreakable brick"): `SIDE_GAP` (32 px) of open floor between
+  each wall and the bricks - the field is `FIELD_X`, `FIELD_W` (896), every
+  map a touch narrower, so no design loses a column - and an iron rail
+  (`rails`, in `bricks` but off the grid, found by `_bricks_near()`) down
+  the field's side from the arena's top to the foot of its rows, open at
+  two gates `GATE_H` tall (`_make_rails()`, `gates()`). A ball in a lane
+  comes back down unless it goes through a gate.
+- **The Guard** (`D`; the owner: "bricks that protect for defense"): two
+  hits; while it stands, the eight bricks touching it take no harm - any
+  blow, reaction, shockwave or burn glances off (`_guarded()`, `warded`
+  flash) - and a soft blue frame marks them. A Guard is never guarded. The
+  last bricks' pull counts only bricks that can be hurt now.
+- **Bricks that change** (the owner: "changing brick types has to be
+  hard"): **crystal** splits the ball; **bumper** kicks it `BUMPER_KICK`
+  faster, never breaks; **portals** pair in reading order and send the ball
+  out of the other; **keys** open every **lock** when the last breaks;
+  **gold** pays score; **runes** break only while lit (`RUNE_LIT` of every
+  `RUNE_CYCLE`); a **shell** hardens into stone instead of breaking; a
+  **prism** turns through the lands every `PRISM_EVERY`; a **mimic** becomes
+  what broke beside it; **drifters** (`<`) slide along their row into the
+  room beside them (`movers`, off the grid). The last `PULL_BELOW` (6)
+  bricks of a map with no boss call a rising ball, `PULL_TURN` degrees a
+  second, and glow.
+- **The bosses** (`crownfallboss.gd`, a RefCounted the run makes on a map
+  with `boss`, drawn in the run's `_draw()`; the owner: "more bosses for
+  other maps"): the kingdom's own monster from its art (`sprite_of()`,
+  recoloured by EnemyPortraits' gates; no crown drawn over it - "no need for
+  crown above slime"), `HP` each, in its hall (the R cells). **Tough** (the owner: "bosses die
+  to fast we really need to buff up bosses", "hitting with a ball does a bit
+  more damage"): a ball strikes for `BALL_HIT` (3), a laser for 1, and the
+  health is about twice the ball hits it was (Slime King 180, Sprite 160,
+  Sniper 190, Bush Mage 200, Dawn Warden 300); splits count damage
+  (`SPLIT_EVERY` 15, `RULER_SPLIT_EVERY` 18). A ball touching a boss counts
+  once a `BOSS_HIT_GAP` (0.2 s) and goes off it the way it came: before, a
+  ball landing on a boss's head was sent down into it and struck every
+  sub-step, which is why bosses fell in seconds. **The
+  Slime King** walks and throws (a hit stuns the paddle `STUN_SECONDS`),
+  splits every `SPLIT_EVERY` hits, his young planting blight. **The
+  Sprite** darts about the hall, blinks every `BLINK_EVERY`, throws sparks
+  in pairs. **The Sniper** marks the paddle's column, `AIM_SECONDS`, then a
+  beam stuns a paddle still under it. **The Bush Mage** keeps `WARDS` (4)
+  orbiting wards that throw the ball back and grow back in `WARD_BACK`, and
+  rebuilds the `REBUILD_COUNT` broken cells nearest his hall in stone every
+  `REBUILD_EVERY`. **The Dawn Warden** (crowned, 50) splits under two
+  thirds and snipes under one. Down: "<NAME> IS DEFEATED!" or "THE CROWN
+  FALLS!", and the walls crumble from the hall outward (no score).
+- **Words never land on words** (the owner, of the sketch: "SHIELD and
+  3 BALLS! stack right on top of each other"): `_say()` keeps a word inside
+  the arena and moves it up past every word it would touch.
+- **The kingdom map** (`State.KINGDOMS`): the seven crests on an arc, each
+  glowing its land; the picked kingdom's 25 maps in five rows of five, a
+  boss's node horned and the citadel's crowned; any map up to the next to
+  clear may be started (`can_start_at()`). Under it the map's line, the
+  kingdom's trick and `map_hint` ("Enter / Space: enter Sundial · Esc:
+  leave"). In play the right rail is the stretch's five, the boss's always
+  shown (the owner: "adding the 5th node").
+- **The screen** (`crownfallscreen.gd`): Leave in the top bar, Start on the
+  kingdom map, the results with Again and Leave. Mouse, keys and a finger
+  as the sketch; Escape asks to leave (twice in a run).
+- **Gold, three runs a day, how far you got** (the API's minigames/,
+  `CROWNFALL_MAP_GOLD`: 250 rising 15 a map, the bosses 1,000, 1,200,
+  1,500, 1,800 and the crown's 4,000 - 17,950 a kingdom): Go asks for a run
+  and is handed `pays` and `progress` (maps cleared in order, kept in
+  minigame_bests); Leave or Again finishes it with `from` and `cleared`,
+  held to 40 s a map since the Go. The server never lets a run start past
+  the next map to clear.
+- **Two engine traps found by the suite (M3)**: a drifter's rect was set
+  through a cast (`(k["rect"] as Rect2).position.x = ...`), which writes a
+  copy - drifters never moved; and `_load()`'s letter was a local `ch`,
+  hiding the member brick height.
+- `_test_crownfall()` (testrunner_12): the maps' letters and sizes, the
+  bosses' order, every map built (inside the arena, portals paired, boss and
+  hall), a big map's bricks found by the ball, the kingdom map, a map built
+  from its rows, a mirror's bend, stone and earth and TNT, the blight
+  growing back and corrupting, the core and its shockwave, every reaction
+  and its reach, a mixed brick, fire's spread, the new bricks, drifters, the
+  pull, the lanes and their gates, the Guard, a boss's toughness, a life, a
+  map cleared and the next, the last life, each boss, three words at once
+  by the right wall, the screen and the card. Twenty-three sabotages
+  caught, one a check each. `_test_every_minigame_is_open()` counts only
+  the TESTING tags a player can see. The server's half is the API's MG-17.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

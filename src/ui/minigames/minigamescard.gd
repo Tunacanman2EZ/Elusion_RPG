@@ -68,6 +68,13 @@
 # Run's has been since 0.99.0 (the seams stay, for the suite), and no tile
 # carries TESTING. TAG_TESTING is kept for the next game built.
 #
+# CROWNFALL (0.162.0, crownfall/) is the seventh, the owner's alone while it
+# is built (`shows_crownfall`, TESTING): a brick breaker through seven monster
+# kingdoms, played over the screen from town like the Cloth. Three runs a
+# day: Go asks the server (game "crownfall") and opens the run with its id,
+# what each map pays and how far the account has got (`progress`); the
+# listing says the runs left and how many maps are cleared. Any class.
+#
 # A TILE A GAME (0.119.1). The owner, of the card grown to five games: "need
 # image 1 upgraded", and of the mock-up, "looks great". Each game is a tile
 # (`_tile()`): a portrait from the game's own art (PORTRAITS - a frame of the
@@ -82,6 +89,7 @@
 extends PanelContainer
 
 const COLOUR := Color(1.0, 0.86, 0.5)
+const CrownMaps := preload("res://src/world/crownfall/crownfallmaps.gd")
 const COLOUR_HINT := Color(0.82, 0.78, 0.7)
 const COLOUR_READY := Color(0.6, 0.9, 0.55)
 const COLOUR_WAIT := Color(1.0, 0.72, 0.4)
@@ -110,6 +118,8 @@ const FORGE := "forge"
 const FORGE_ENTRANCE := "forge_entrance"
 const CLOTH_BLURB := "Cut the old map away from the slimes, piece by piece."
 const CLOTH_GAME := "cloth"
+const CROWN_BLURB := "Break the plague-stone walls of the monster kingdoms."
+const CROWN_GAME := "crownfall"
 # THE TILES (0.119.1): each game's portrait (a scene whose sprite is the
 # picture), its rim, and its tags - [words, colour, what it means].
 const PORTRAITS := {
@@ -119,6 +129,7 @@ const PORTRAITS := {
 	"descent": ["res://scene/characters/warrior.tscn", Color(0.95, 0.4, 0.35)],
 	"forge": ["res://scene/characters/tank.tscn", Color(1.0, 0.6, 0.25)],
 	"cloth": ["res://scene/projectiles/turretprojectile.tscn", Color(0.86, 0.77, 0.61)],
+	"crownfall": ["res://scene/enemy/lightslimelarge.tscn", Color(1.0, 0.82, 0.38)],
 	"testingground": ["res://scene/enemy/skeletonelite.tscn", Color(0.8, 0.35, 0.3)],
 }
 const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
@@ -159,6 +170,9 @@ var shows_forge: Callable = Callable(self, "_shows_forge")
 # Cut the Cloth's: who sees it (the owner, while it is built) and Go.
 var shows_cloth: Callable = Callable(self, "_shows_cloth")
 var open_cloth: Callable = Callable(self, "_open_cloth")
+# Crownfall's: who sees it (the owner, while it is built) and Go.
+var shows_crownfall: Callable = Callable(self, "_shows_crownfall")
+var open_crownfall: Callable = Callable(self, "_open_crownfall")
 
 var hud: Node = null
 var title: Label = null
@@ -183,6 +197,9 @@ var forge_go: Button = null
 var cloth_box: PanelContainer = null
 var cloth_status: Label = null
 var cloth_go: Button = null
+var crown_box: PanelContainer = null
+var crown_status: Label = null
+var crown_go: Button = null
 var testing_box: PanelContainer = null
 var testing_status: Label = null
 var testing_go: Button = null
@@ -197,6 +214,14 @@ var _cloth_known: bool = false
 var _cloth_said_msec: int = 0
 var _cloth_busy: bool = false
 var _cloth_said: String = ""
+# Crownfall's the same, and how many of its maps the account has cleared.
+var crown_left: int = 3
+var crown_wait: int = 0
+var crown_progress: int = 0
+var _crown_known: bool = false
+var _crown_said_msec: int = 0
+var _crown_busy: bool = false
+var _crown_said: String = ""
 # The Healer's Run's runs left today, and the wait when none are, as the
 # server said and when.
 var healer_left: int = 3
@@ -307,6 +332,12 @@ func _init() -> void:
 	cloth_status = cloth[3]
 	cloth_go = _go_button("clothgo", _on_cloth_go)
 	(cloth[4] as HBoxContainer).add_child(cloth_go)
+	var crown: Array = _tile(column, "crownfall", "Crownfall", CROWN_BLURB,
+		[TAG_THREE, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
+	crown_box = crown[0]
+	crown_status = crown[3]
+	crown_go = _go_button("crowngo", _on_crown_go)
+	(crown[4] as HBoxContainer).add_child(crown_go)
 	var testing: Array = _tile(column, "testingground", "Testing Ground", TESTING_BLURB, [TAG_OWNER])
 	testing_box = testing[0]
 	testing_status = testing[3]
@@ -591,6 +622,14 @@ func take_listing(res: Dictionary) -> void:
 				_cloth_known = true
 				if bool(shows_cloth.call()):
 					note_wait(CLOTH_GAME, 0 if cloth_left > 0 else cloth_wait)
+			if game is Dictionary and str(game.get("id", "")) == CROWN_GAME:
+				crown_left = maxi(0, int(game.get("plays_left", 3)))
+				crown_wait = maxi(0, int(game.get("ready_in", 0)))
+				crown_progress = maxi(0, int(game.get("progress", 0)))
+				_crown_said_msec = Time.get_ticks_msec()
+				_crown_known = true
+				if bool(shows_crownfall.call()):
+					note_wait(CROWN_GAME, 0 if crown_left > 0 else crown_wait)
 			if game is Dictionary and str(game.get("id", "")) == FORGE:
 				forge_wait = maxi(0, int(game.get("ready_in", 0)))
 				forge_best = maxi(0, int(game.get("best", 0)))
@@ -643,6 +682,7 @@ func paint() -> void:
 	_paint_descent()
 	_paint_forge()
 	_paint_cloth()
+	_paint_crown()
 	_paint_testing()
 	if inside_endless():
 		var held: int = chest_held()
@@ -1013,6 +1053,66 @@ func _on_cloth_go() -> void:
 	paint()
 
 
+func _paint_crown() -> void:
+	crown_box.visible = bool(shows_crownfall.call())
+	var in_town: bool = str(area_now.call()) == TOWN
+	@warning_ignore("integer_division")
+	var wait_left: int = maxi(0, crown_wait - int((Time.get_ticks_msec() - _crown_said_msec) / 1000)) \
+		if _crown_known else 0
+	var none_left: bool = _crown_known and crown_left <= 0 and wait_left > 0
+	if _crown_said != "":
+		crown_status.text = _crown_said
+	elif not in_town:
+		crown_status.text = FROM_TOWN
+	elif none_left:
+		crown_status.text = wait_text(wait_left)
+	elif _crown_known:
+		crown_status.text = "Ready - %d of 3 runs left today · %d of %d maps cleared" % [crown_left,
+			mini(crown_progress, CrownMaps.made_count()), CrownMaps.made_count()]
+	else:
+		crown_status.text = "Ready"
+	var go_on: bool = in_town and not none_left and not _crown_busy
+	crown_status.add_theme_color_override("font_color", COLOUR_READY if go_on else (COLOUR_WAIT if none_left else COLOUR_HINT))
+	crown_go.disabled = not go_on
+	crown_go.tooltip_text = "Play Crownfall - your character waits in town" if in_town else "Go back to town first"
+
+
+func _on_crown_go() -> void:
+	"""Go: the server asked for a run of the day first; let in, the screen
+	opens on it, on the kingdom map at the next map to clear."""
+	if str(area_now.call()) != TOWN or not bool(shows_crownfall.call()) or _crown_busy:
+		paint()
+		return
+	_crown_busy = true
+	_crown_said = "Asking the server..."
+	paint()
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": CROWN_GAME, "slot": int(CharacterData.active_character_index)}, 6.0)
+	_crown_busy = false
+	_crown_said = ""
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		crown_left = maxi(0, int(data.get("plays_left", 0)))
+		crown_progress = maxi(crown_progress, int(data.get("progress", 0)))
+		if crown_left <= 0:
+			forget_wait(CROWN_GAME)
+		close()
+		open_crownfall.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {},
+			crown_progress)
+		return
+	if int(res.get("status", 0)) == 409:
+		crown_left = 0
+		crown_wait = maxi(0, int(data.get("ready_in", 0)))
+		_crown_said_msec = Time.get_ticks_msec()
+		_crown_known = true
+		note_wait(CROWN_GAME, crown_wait)
+	else:
+		_crown_said = UNREACHABLE
+	paint()
+
+
 func _paint_testing() -> void:
 	testing_box.visible = bool(shows_testing.call())
 	var can_go: bool = false
@@ -1042,6 +1142,15 @@ func _on_testing_go() -> void:
 
 func _shows_cloth() -> bool:
 	return true
+
+
+func _shows_crownfall() -> bool:
+	return bool(Api.is_owner)
+
+
+func _open_crownfall(run_id: int = 0, what_it_pays: Dictionary = {}, how_far: int = 0) -> void:
+	(load("res://src/world/crownfall/crownfallscreen.gd") as GDScript).call("open", get_tree(), hud, run_id,
+		what_it_pays, how_far)
 
 
 func _open_cloth(run_id: int = 0, what_it_pays: Dictionary = {}) -> void:
