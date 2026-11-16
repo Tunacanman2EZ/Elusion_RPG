@@ -3746,3 +3746,135 @@ func _test_crownfall() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  crownfall: done")
+
+
+func _cf_finger(screen: CanvasLayer, index: int, at: Vector2, down: bool) -> void:
+	"""Crownfall's phone checks: a finger put down or lifted at `at` on the
+	window."""
+	var touch := InputEventScreenTouch.new()
+	touch.index = index
+	touch.position = at
+	touch.pressed = down
+	screen.call("_input", touch)
+
+
+func _cf_slide(screen: CanvasLayer, index: int, by_x: float) -> void:
+	var drag := InputEventScreenDrag.new()
+	drag.index = index
+	drag.relative = Vector2(by_x, 0.0)
+	screen.call("_input", drag)
+
+
+func _test_crownfall_on_a_phone() -> void:
+	section("CROWNFALL ON A PHONE (0.166.0): the slider, a tap on the field, the slower aim and tracer")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
+	var screen: CanvasLayer = Screen.new()
+	screen.set("pays", {"maps": []})
+	screen.set("progress", 1)
+	screen.set("run_id", 0)
+	screen.set("on_touch", func() -> bool: return true)
+	add_child(screen)
+	await get_tree().process_frame
+	var srun: Node2D = screen.get("run")
+	srun.set("running_by_clock", false)
+	var box: Rect2 = screen.call("drawn_rect")
+	var fit: float = box.size.x / Run.VIEW.x
+	# ---- the kingdom map: a tap still picks ----
+	var spot: Vector2 = box.position + srun.map_spot(0) * fit
+	_cf_finger(screen, 0, spot, true)
+	_cf_finger(screen, 0, spot, false)
+	var picked: bool = srun.selected == 0 and srun.state == Run.State.KINGDOMS
+	screen.call("begin")
+	screen.call("paint")
+	var told: bool = srun.touch_slider and str(srun.launch_hint) == "Tap the field to launch"
+	# ---- the slider: a thumb left of the field ----
+	var thumb: Vector2 = box.position + Vector2(70, 610) * fit
+	_cf_finger(screen, 0, thumb, true)
+	var from: float = srun.target_x
+	_cf_slide(screen, 0, 20.0 * fit)
+	var slid: float = srun.target_x - from
+	var slider_ok: bool = is_equal_approx(slid, 20.0 * Screen.SLIDER_GAIN) and srun.state == Run.State.AIM
+	# another thumb on the left while it is held takes nothing
+	_cf_finger(screen, 7, box.position + Vector2(40, 300) * fit, true)
+	var before_other: float = srun.target_x
+	_cf_slide(screen, 7, 25.0 * fit)
+	var one_slider: bool = srun.target_x == before_other
+	_cf_finger(screen, 7, box.position + Vector2(40, 300) * fit, false)
+	# a finger on the field launches, and moves nothing
+	var field: Vector2 = box.position + Vector2(640, 420) * fit
+	_cf_finger(screen, 1, field, true)
+	var launched: bool = srun.state == Run.State.PLAY
+	var held: float = srun.target_x
+	_cf_slide(screen, 1, 30.0 * fit)
+	var field_still: bool = srun.target_x == held
+	_cf_slide(screen, 0, -10.0 * fit)
+	var both: bool = is_equal_approx(srun.target_x, held - 10.0 * Screen.SLIDER_GAIN)
+	_cf_finger(screen, 1, field, false)
+	_cf_slide(screen, 0, -2000.0 * fit)
+	var clamped: bool = srun.target_x == Run.ARENA.position.x
+	_cf_finger(screen, 0, thumb, false)
+	_cf_slide(screen, 0, 50.0 * fit)
+	var let_go: bool = srun.target_x == Run.ARENA.position.x
+	check("on a phone a thumb landing left of the field is the slider: it moves the paddle %dx as far as it slides (%.0f for 20), wherever it goes, held to the arena, and a second thumb there takes nothing; a finger on the field launches and moves nothing, and both work at once; lifted, the slider lets go; on the kingdom map a tap still picks; the waiting ball says \"Tap the field to launch\"" % [int(Screen.SLIDER_GAIN), slid],
+		fit > 0.0 and picked and told and slider_ok and one_slider and launched and field_still and both and clamped and let_go,
+		[fit, picked, told, slid, one_slider, launched, field_still, both, clamped, let_go])
+	# ---- the Laser: a tap fires it ----
+	srun.active = {"laser": 10.0}
+	srun.bolts = []
+	srun._laser_t = 0.0
+	for i in 30:
+		srun._lasers(1.0 / 60.0)
+	var quiet: bool = srun.bolts.is_empty()
+	_cf_finger(screen, 2, field, true)
+	var volley: bool = srun.bolts.size() == 2
+	_cf_finger(screen, 2, field, false)
+	_cf_finger(screen, 3, field, true)
+	var waits: bool = srun.bolts.size() == 2
+	_cf_finger(screen, 3, field, false)
+	for i in roundi(Run.LASER_EVERY * 60.0) + 1:
+		srun._lasers(1.0 / 60.0)
+	var n: int = srun.bolts.size()
+	_cf_finger(screen, 4, field, true)
+	var again: bool = srun.bolts.size() == n + 2
+	_cf_finger(screen, 4, field, false)
+	# the Magnet's ball let go by a tap
+	var ball: Dictionary = srun.balls[0]
+	ball["stuck"] = 0.0
+	ball["v"] = Vector2.ZERO
+	_cf_finger(screen, 5, field, true)
+	var magnet_let_go: bool = not ball.has("stuck") and ball["v"] != Vector2.ZERO
+	_cf_finger(screen, 5, field, false)
+	# a computer: by itself, as before
+	srun.touch_slider = false
+	srun.bolts = []
+	srun._laser_t = 0.0
+	srun._lasers(1.0 / 60.0)
+	var pc_fires: bool = srun.bolts.size() == 2
+	# the tap that launches only launches
+	srun.begin(0)
+	srun.touch_slider = true
+	srun.active = {"laser": 10.0}
+	srun.bolts = []
+	srun._laser_t = 0.0
+	_cf_finger(screen, 6, field, true)
+	var launch_only: bool = srun.state == Run.State.PLAY and srun.bolts.is_empty()
+	_cf_finger(screen, 6, field, false)
+	check("on a phone the Laser never fires by itself: a tap on the field fires a volley, another within %.2f s nothing, one after it the next; the tap that launches only launches; a tap lets go of a ball the Magnet holds; on a computer the Laser fires by itself as before" % Run.LASER_EVERY,
+		quiet and volley and waits and again and launch_only and magnet_let_go and pc_fires,
+		[quiet, volley, waits, again, launch_only, magnet_let_go, pc_fires])
+	# ---- the aim and the tracer, slower ----
+	srun.begin(0)
+	srun.t = 0.0
+	srun.step(0.5)
+	var swayed_to: float = srun.aim
+	var sway_ok: bool = srun.state == Run.State.AIM and is_equal_approx(swayed_to, deg_to_rad(-90.0 + Run.AIM_SWAY * sin(0.5 * 0.8)))
+	var src: String = (load("res://src/world/crownfall/crownfallrun.gd") as GDScript).source_code
+	var tracer_at: int = src.find("func _draw_tracer(")
+	var tracer: String = src.substr(tracer_at, src.find("\nfunc ", tracer_at + 10) - tracer_at)
+	var tracer_ok: bool = Run.TRACER_SPEED <= 500.0 and tracer.contains("fmod(t * TRACER_SPEED, spacing)")
+	check("the waiting ball's aim sways half as fast as it did (the owner: \"it sways left and right to fast\"), and a tracer's streaks run at %d px a second, a third of what they did (\"the tracer is too fast also\")" % int(Run.TRACER_SPEED),
+		sway_ok and tracer_ok, [rad_to_deg(swayed_to), tracer_ok])
+	screen.queue_free()
+	await get_tree().process_frame
+	print("  crownfall on a phone: done")

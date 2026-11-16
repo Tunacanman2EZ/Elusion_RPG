@@ -81,7 +81,13 @@ const STUN_SECONDS := 0.8
 const MIRROR_BEND := 22.0
 const STEEPEST_FLAT := 0.28
 const AIM_SWAY := 50.0
-const AIM_SWAY_SPEED := 1.6
+# The owner (0.166.0): "it sways left and right to fast" - half what it was.
+const AIM_SWAY_SPEED := 0.8
+# A tracer's bright streaks run along it this fast (px a second), one every
+# TRACER_SPACING; the owner, the same day: "the tracer is too fast also"
+# (they ran at 1,500).
+const TRACER_SPEED := 500.0
+const TRACER_SPACING := 170.0
 const WORD_TRIES := 8
 # The kingdom map's panel: the picked kingdom's maps, five stretches of five,
 # each stretch ending in its boss.
@@ -431,6 +437,9 @@ var night_left: float = 0.0
 var _night_warned: bool = false
 var hexed: float = 0.0         # the Shade Sniper's shot: left and right swapped
 var light_stolen: float = 0.0  # the Wisp: the balls' light stolen
+# A PHONE (0.166.0, the screen sets it): the left panel's foot is the
+# slider (_draw_slider), and the Laser fires on a tap (tap()), not by itself.
+var touch_slider: bool = false
 var blackout: float = 0.0      # the Beholder's eclipse: only the balls give light
 var prisms: Array = []
 var keys_left: int = 0
@@ -544,6 +553,16 @@ func launch() -> void:
 		for b in balls:
 			if b.has("stuck"):
 				_unstick(b)
+
+
+func tap() -> void:
+	"""A PHONE'S TAP ON THE FIELD (0.166.0): a launch, a ball the Magnet holds
+	let go, and - once the ball is flying - the Laser's volley, at most one
+	every LASER_EVERY (on a phone it never fires by itself)."""
+	var flying: bool = state == State.PLAY
+	launch()
+	if flying and active.has("laser") and _laser_t <= 0.0:
+		_fire_lasers()
 
 
 func element() -> String:
@@ -2116,13 +2135,10 @@ func _take(kind: String) -> void:
 
 func _lasers(dt: float) -> void:
 	if active.has("laser") and state == State.PLAY:
-		_laser_t -= dt
-		if _laser_t <= 0.0:
-			_laser_t = LASER_EVERY
-			_muzzle = 1.0
-			for side in [-1.0, 1.0]:
-				var from := Vector2(paddle_x + side * (paddle_w / 2.0 - 12.0), PADDLE_Y - 14.0)
-				bolts.append({"p": from, "from": from})
+		_laser_t = maxf(0.0, _laser_t - dt)
+		# by itself on a computer; on a phone a tap fires it (tap())
+		if _laser_t <= 0.0 and not touch_slider:
+			_fire_lasers()
 	for bolt in bolts:
 		bolt["p"].y -= 950.0 * dt
 		if boss != null and boss.alive():
@@ -2141,6 +2157,15 @@ func _lasers(dt: float) -> void:
 		if bolt["p"].y < ARENA.position.y:
 			bolt["dead"] = true
 	bolts = bolts.filter(func(b): return not b.get("dead", false))
+
+
+func _fire_lasers() -> void:
+	"""The Laser's volley: a bolt from each end of the paddle."""
+	_laser_t = LASER_EVERY
+	_muzzle = 1.0
+	for side in [-1.0, 1.0]:
+		var from := Vector2(paddle_x + side * (paddle_w / 2.0 - 12.0), PADDLE_Y - 14.0)
+		bolts.append({"p": from, "from": from})
 
 
 func _multiplier() -> float:
@@ -4258,8 +4283,8 @@ func _draw_tracer(pts: PackedVector2Array, c: Color, aiming: bool, bolt: bool = 
 			draw_polyline(seg, Color(c, 0.3), 9.0, true)
 			draw_polyline(seg, Color(1, 0.9, 0.7), 3.0, true)
 		return
-	var spacing: float = 170.0
-	var head: float = fmod(t * 1500.0, spacing)
+	var spacing: float = TRACER_SPACING
+	var head: float = fmod(t * TRACER_SPEED, spacing)
 	while head < total:
 		var seg := _segment_along(pts, lens, head - 46.0, head)
 		if seg.size() >= 2:
@@ -4544,6 +4569,9 @@ func _draw_left_panel() -> void:
 			var lands: Array = MIX_LANDS[kind]
 			_text(Vector2(136 - _word_width(word, 10), yy), word, 10, COLOURS[lands[0]].lerp(COLOURS[lands[1]], 0.5).lightened(0.3))
 			yy += 15.0
+	if touch_slider:
+		_draw_slider()
+		return
 	# what can fall, each kind once
 	_text(Vector2(79, 556), "CAN FALL", 13, GOLD, null, true)
 	_divider(566, 22, 136, GOLD)
@@ -4558,6 +4586,66 @@ func _draw_left_panel() -> void:
 		i += 1
 	_text(Vector2(79, 680), "? bricks drop", 11, Color(INK, 0.5), _font, true)
 	_text(Vector2(79, 694), "one for sure", 11, Color(INK, 0.5), _font, true)
+
+
+func _draw_slider() -> void:
+	"""A PHONE'S SLIDER: a sunken pad like a little arena floor, a ruler along
+	it, and the paddle in small riding it where the paddle is in the arena
+	(the ball on it while it waits). The pad is where the thumb is shown to
+	go: any finger that lands left of the field moves the paddle
+	(crownfallscreen.gd, A PHONE)."""
+	var land: Color = COLOURS.get(Maps.kingdom_of(map_index).get("land", "light"), GOLD)
+	var breathe: float = 0.5 + 0.5 * sin(t * 3.0)
+	_text(Vector2(79, 556), "MOVE", 13, GOLD, null, true)
+	_divider(566, 22, 136, GOLD)
+	# the pad: sunken, its top in shadow, edged in the kingdom's colour
+	var pad := Rect2(20, 578, 118, 76)
+	draw_rect(pad, Color(0.015, 0.015, 0.03, 0.9))
+	draw_rect(Rect2(pad.position, Vector2(pad.size.x, 7)), Color(0, 0, 0, 0.45))
+	draw_rect(Rect2(pad.position.x, pad.end.y - 22, pad.size.x, 22), Color(land, 0.07))
+	draw_rect(pad, Color(land, 0.45), false, 1.0)
+	draw_rect(pad.grow(-3), Color(1, 1, 1, 0.035), false, 1.0)
+	for corner in [pad.position, Vector2(pad.end.x, pad.position.y), pad.end, Vector2(pad.position.x, pad.end.y)]:
+		_diamond(corner, 3.5, GOLD)
+	_text(Vector2(79, pad.position.y + 17), "slide here", 10, Color(INK, 0.45), _font, true)
+	# its floor: a lit line and a ruler under it
+	var lane: float = pad.position.y + 52.0
+	var x0: float = pad.position.x + 18.0
+	var x1: float = pad.end.x - 18.0
+	draw_line(Vector2(x0, lane), Vector2(x1, lane), Color(land, 0.55), 2.0)
+	for i in 9:
+		var tx: float = lerpf(x0, x1, i / 8.0)
+		draw_line(Vector2(tx, lane + 4), Vector2(tx, lane + (9.0 if i % 4 == 0 else 6.0)), Color(INK, 0.3 if i % 4 else 0.5), 1.0)
+	# chevrons at its ends, breathing
+	for side in [-1.0, 1.0]:
+		var tip := Vector2(79.0 + side * 52.0, lane - 9.0)
+		var arm := Vector2(-side * 5.0, 5.0)
+		draw_polyline(PackedVector2Array([tip + Vector2(arm.x, -arm.y), tip, tip + arm]), Color(GOLD, 0.35 + 0.45 * breathe), 2.0)
+	# the paddle in small, where the paddle is
+	var share: float = clampf((paddle_x - ARENA.position.x - paddle_w / 2.0) / maxf(1.0, ARENA.size.x - paddle_w), 0.0, 1.0)
+	var at := Vector2(lerpf(x0, x1, share), lane - 9.0)
+	# where the thumb goes: a soft glow, a ring of dashes turning slowly
+	draw_circle(at + Vector2(0, 3), 17.0, Color(land, 0.1 + 0.06 * breathe))
+	for d in 10:
+		var a0: float = t * 0.8 + d * TAU / 10.0
+		draw_arc(at + Vector2(0, 3), 19.0, a0, a0 + TAU / 20.0, 4, Color(GOLD, 0.3 + 0.3 * breathe), 1.5)
+	var body := Rect2(at.x - 15.0, at.y - 4.5, 30.0, 9.0)
+	draw_rect(body.grow(2.0), Color(GOLD, 0.15))
+	draw_rect(body, Color(0.2, 0.18, 0.25))
+	draw_circle(Vector2(body.position.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
+	draw_circle(Vector2(body.end.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
+	draw_rect(Rect2(body.position, Vector2(body.size.x, 3.5)), GOLD)
+	draw_line(Vector2(body.position.x + 6, at.y + 1.5), Vector2(body.end.x - 6, at.y + 1.5), Color(0.55, 0.95, 1.0, 0.8), 1.0)
+	draw_rect(Rect2(body.position, Vector2(body.size.x, 1.0)), Color(1, 0.95, 0.8))
+	for x in [body.position.x, body.end.x]:
+		draw_circle(Vector2(x, at.y), 2.4, GOLD)
+		draw_circle(Vector2(x, at.y), 1.1, Color(1, 1, 1))
+	if state == State.AIM:
+		draw_circle(at + Vector2(0, -9), 5.0, Color(0.75, 0.95, 1.0, 0.25))
+		draw_circle(at + Vector2(0, -9), 3.0, Color(0.92, 0.98, 1.0))
+	# what a tap does
+	_text(Vector2(79, 674), "TAP THE FIELD", 11, GOLD, null, true)
+	_text(Vector2(79, 690), "launch · fire · let go", 11, Color(INK, 0.6), _font, true)
 
 
 func _draw_right_panel() -> void:

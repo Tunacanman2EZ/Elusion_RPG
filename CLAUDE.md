@@ -15539,6 +15539,37 @@ your light finds them."
 - `_test_crownfall_dark()` (testrunner_12). Twenty-nine sabotages caught,
   every one the first time.
 
+### Crownfall on a phone: a slider and a tap (0.166.0)
+
+The owner: "for mobile i was thinking about using a slider to control the
+movement maybe just tap on the screen to fire bullets or magnet", "we can
+put on the left of the screen", and of the aim's tracer "it sways left and
+right to fast" and "the tracer is too fast also". Pictured before building.
+
+- **The slider** (crownfallscreen.gd `_finger_input()`): in a run a finger
+  that lands left of the field (the left panel, or the dark edge past it) is
+  `_slider_finger`, and moves the paddle `SLIDER_GAIN` (3) times as far as
+  it slides, wherever it goes after, held to the arena. A second thumb there
+  takes nothing while it is held. Before and after a run the old rule
+  stands: the first finger, lifted without moving `TAP_SLACK`, is a tap.
+- **Drawn at the left panel's foot** where CAN FALL is on a computer
+  (crownfallrun.gd `_draw_slider()`, while `touch_slider`, which the
+  screen's `paint()` sets from `on_touch`): MOVE, a sunken pad with gold
+  corners, a ruler, the paddle in small riding it where the paddle is (the
+  ball on it while it waits), arrows each side, and "TAP THE FIELD /
+  launch · fire · let go" under it.
+- **Any other finger is a tap there and then** (`run.tap()`): a launch, a
+  ball the Magnet holds let go, and once the ball is flying the Laser's
+  volley (`_fire_lasers()`) at most one every `LASER_EVERY`. On a phone the
+  Laser never fires by itself (`_lasers()`); on a computer it does, as
+  before. A finger on the field moves nothing. The waiting ball says "Tap
+  the field to launch".
+- **Slower**: `AIM_SWAY_SPEED` 1.6 -> 0.8; a tracer's streaks run at
+  `TRACER_SPEED` (500 px a second; they were 1,500), one every
+  `TRACER_SPACING` (170).
+- `_test_crownfall_on_a_phone()` (testrunner_12). Fourteen sabotages
+  caught, one (the launching tap firing too) after a check was added.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

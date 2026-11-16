@@ -29,9 +29,14 @@
 #   - keys: the move keys steer the paddle (a move key takes over from the
 #     mouse until the mouse moves again); Space or Enter launches. On the
 #     kingdom map up and down pick, Space or Enter starts.
-#   - a phone: a finger dragged anywhere moves the paddle by as much as it
-#     moved (so the finger never hides it); a tap launches. On the kingdom
-#     map a tap picks, and Start starts.
+#   - a phone (0.166.0, the owner: "using a slider to control the movement
+#     maybe just tap on the screen to fire bullets or magnet"): in a run a
+#     finger that lands left of the field is the slider's (drawn at the left
+#     panel's foot) and moves the paddle SLIDER_GAIN times as far as it
+#     moves, wherever it goes after; any other finger is a tap, at once - a
+#     launch, a ball the Magnet holds let go, the Laser's volley (which on a
+#     phone never fires by itself). One thumb slides while another taps. On
+#     the kingdom map a tap picks, and Start starts.
 # The ball waits on the paddle with its aim swaying (crownfallrun.gd): launch
 # when it points where you want.
 #
@@ -66,6 +71,8 @@ const MOUSE_MOVED := 2.0
 const KEY_LEAD := 220.0
 # A tap is a finger that moved less than this (px on the picture).
 const TAP_SLACK := 14.0
+# The slider moves the paddle this many times as far as the thumb moves.
+const SLIDER_GAIN := 3.0
 
 var run: Node2D = null
 var viewport: SubViewport = null
@@ -98,6 +105,7 @@ var on_touch: Callable = Callable(self, "_on_touch")
 var _by_mouse: bool = true
 var _finger: int = -1
 var _finger_moved: float = 0.0
+var _slider_finger: int = -1
 var _flash_left: float = 0.0
 var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
@@ -447,7 +455,8 @@ func paint() -> void:
 		return
 	leave_button.text = "Sure?" if _leave_armed > 0.0 else "Leave"
 	var touch: bool = bool(on_touch.call())
-	run.set("launch_hint", "Tap to launch" if touch else "Click or Space to launch")
+	run.set("launch_hint", "Tap the field to launch" if touch else "Click or Space to launch")
+	run.set("touch_slider", touch)
 	run.set("map_hint", "Tap Start to enter %s" if touch else "Enter / Space: enter %s   ·   Esc: leave")
 	var on_map: bool = int(run.get("state")) == RunScript.State.KINGDOMS
 	start_button.visible = on_map and not story_playing()
@@ -562,32 +571,46 @@ func _press_at(at: Vector2, twice: bool) -> void:
 
 
 func _finger_input(event: InputEvent) -> void:
-	"""A PHONE: the first finger down drags the paddle by as much as it moves
-	(so it never covers it), and lifted without moving far it is a tap. Not
-	consumed: Godot's own click from it still presses the buttons."""
+	"""A PHONE (the header's THE CONTROLS): in a run a finger landing left of
+	the field takes the slider, any other is a tap there and then (run.tap());
+	before and after a run the first finger down, lifted without moving far,
+	is a tap. Not consumed: Godot's own click from it still presses the
+	buttons."""
+	if run == null or not is_instance_valid(run):
+		return
 	var touch := event as InputEventScreenTouch
 	if touch != null:
-		if touch.pressed and _finger < 0:
+		if touch.pressed:
 			if _on_a_button(touch.position):
 				return
-			_finger = touch.index
-			_finger_moved = 0.0
 			_by_mouse = false
-			if run != null and is_instance_valid(run):
-				run.set("target_x", float(run.get("paddle_x")))
-		elif not touch.pressed and touch.index == _finger:
-			_finger = -1
-			if _finger_moved < TAP_SLACK:
-				_press_at(world_from_screen(touch.position), false)
+			if playing():
+				if world_from_screen(touch.position).x < RunScript.ARENA.position.x:
+					if _slider_finger < 0:
+						_slider_finger = touch.index
+						run.set("target_x", float(run.get("paddle_x")))
+				else:
+					run.call("tap")
+			elif _finger < 0:
+				_finger = touch.index
+				_finger_moved = 0.0
+		else:
+			if touch.index == _slider_finger:
+				_slider_finger = -1
+			if touch.index == _finger:
+				_finger = -1
+				if _finger_moved < TAP_SLACK:
+					_press_at(world_from_screen(touch.position), false)
 		return
 	var drag := event as InputEventScreenDrag
-	if drag != null and drag.index == _finger and run != null and is_instance_valid(run):
-		var fit: float = maxf(_fit(), 0.001)
-		var moved: float = drag.relative.x / fit
+	if drag == null:
+		return
+	var moved: float = drag.relative.x / maxf(_fit(), 0.001)
+	if drag.index == _slider_finger and playing():
+		run.set("target_x", clampf(float(run.get("target_x")) + moved * SLIDER_GAIN, RunScript.ARENA.position.x,
+			RunScript.ARENA.end.x))
+	elif drag.index == _finger:
 		_finger_moved += absf(moved)
-		if playing():
-			run.set("target_x", clampf(float(run.get("target_x")) + moved, RunScript.ARENA.position.x,
-				RunScript.ARENA.end.x))
 
 
 func _on_a_button(at: Vector2) -> bool:
