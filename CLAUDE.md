@@ -15196,6 +15196,60 @@ bosses are `Boss.KINDS_OF[kingdom]`.
   a kite's bob, the crests, and each Wind boss. Nine sabotages caught - the
   first whirl check passed a plain bounce and was made to read six throws.
 
+### Crownfall: the Kingdom of Water (0.164.0)
+
+The owner, of the plan ("A tide that rebuilds what you leave too long"):
+"sounds interesting send video" - the first four maps were filmed with the
+bot (the tide brought in early) before the rest. Water is `made`, maps
+51-75 of MAPS; the run carries on into it from the Tempest's citadel.
+
+- **25 maps, none a Light or Wind map's shape**, ten big: a harbour, an
+  anchor, a coral reef, tidepools, a grotto, kelp, jellyfish, a sea
+  serpent, a waterfall, a spring, a trident, starfish, a whale, a pearl
+  clam, a harpooner's rock, a kraken, seahorses, a dam, a fountain, an
+  atoll, a lily pond, a crab, a sunken city, a river delta and a deep
+  trench (sandbox maps6.py). Sand is light bricks, so the floor of a map
+  breaks at one hit (the first film: a 2-hit seabed and the bot broke
+  nothing in twelve seconds).
+- **The tide** (`"tide"`: the row it reaches): every `TIDE_EVERY` (30 s)
+  it rises from the foot of the rows (`TIDE_RISE`), stands (`TIDE_HIGH`)
+  and falls. As it stands, `tide_rebuild()` brings back every cell under
+  the mark broken more than `TIDE_WAIT` (20 s) ago as a one-hit water brick
+  (`"tide"`, foam on its top), the oldest first, `TIDE_MOST` (12) at most,
+  never by a ball, never a core's, Guard's, key's, lock's or bonus's cell
+  (`placed`, the kind the map put there; `gone_at`, when it broke). Its
+  mark shows in both lanes always; the water tints the bricks it covers.
+- **Buoys** (`u`): water bricks that float up into the hole above them, a
+  cell each `BUOY_RISE`, only into cells the map held (`_waters()`).
+- **Bubbles** (`o`): broken, a bubble rises up the column at
+  `BUBBLE_SPEED` and breaks the first brick it meets.
+- **Clams** (`Q`): open `CLAM_OPEN` of every `CLAM_CYCLE`; shut, nothing
+  hurts them (`_shut()`, which runes share now); open, one hit, and the
+  pearl always drops a bonus.
+- **Water's bosses** (crownfallboss.gd, from water art; `hittable()` is
+  whether a ball or laser can strike the body now): the **Tide King**
+  (240; splits, his young turn to water bricks where they land - the run's
+  `plant_water()` - and he calls the tide in early every
+  `TIDE_CALL_EVERY`), the **Undine** (220; darts, and every `DIVE_EVERY`
+  dives where nothing can hit it, then comes up in a splash that throws
+  every ball within `SPLASH_REACH` away - `splash_from()`), the
+  **Harpooner** (260; a line to the paddle for `AIM_SECONDS`, then the
+  harpoon: a paddle still there is hooked - `tug_paddle()`, slowed and
+  pulled - and the rope is a wall for `ROPE_SECONDS`), the **Tide Mage**
+  (275; a bubble of `BUBBLE_HITS` round him, open `BUBBLE_DOWN` once it
+  pops, and he raises bubble bricks - `rebuild_near(..., "bubble")`), and
+  the **Leviathan** (420, crowned; a tidal wave every `WAVE_EVERY` that
+  warns, crosses the field carrying the balls its way and leaves at most
+  `WAVE_BRICKS` water bricks - `wave_brick()`; splits under two thirds,
+  dives once at half health).
+- **Gold**: Water a quarter more again, 28,060 (the API's CLAUDE.md,
+  "Crownfall").
+- `_test_crownfall_water()` (testrunner_12): the tide's rules and its
+  call, a buoy, a bubble, a clam, the way on from the Tempest, and each
+  Water boss. Seventeen sabotages caught - the tide ignoring its wait
+  passed at first (its cap was full of older cells), so a second tide is
+  checked too.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

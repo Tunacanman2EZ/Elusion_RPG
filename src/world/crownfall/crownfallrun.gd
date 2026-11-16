@@ -92,7 +92,7 @@ const BANNER_SECONDS := 2.4
 const WORD_GAP := 6.0
 const SCORE := {"land": 50, "stone": 120, "tnt": 80, "bonus": 150, "blight": 60, "heart": 1500, "crystal": 120,
 	"key": 200, "gold": 400, "rune": 150, "shell": 100, "prism": 120, "mimic": 100, "plague": 80, "mix": 150,
-	"guard": 150}
+	"guard": 150, "clam": 250, "buoy": 80, "bubble": 60}
 const LAND_OF := {"l": "light", "a": "wind", "w": "water", "i": "ice", "e": "earth", "f": "fire", "d": "dark"}
 const COLOURS := {
 	"dark": Color(0.427, 0.157, 0.851), "fire": Color(1.0, 0.416, 0.122), "earth": Color(0.631, 0.384, 0.027),
@@ -181,6 +181,27 @@ const UNBREAKABLE := ["iron", "mirror", "bumper", "portal", "lock", "whirl"]
 const GUST_PUSH := 900.0
 const KITE_REACH := 2
 const KITE_SPEED := 1.3
+# THE KINGDOM OF WATER (0.164.0) - "a tide that rebuilds what you leave too
+# long". THE TIDE: a map's "tide" is the row it reaches up to. Every
+# TIDE_EVERY the water rises from the foot of the rows (TIDE_RISE), stands
+# TIDE_HIGH and falls; as it stands, every cell under the mark broken more
+# than TIDE_WAIT ago comes back as a one-hit water brick - TIDE_MOST at most a
+# tide, the oldest first, never where a ball is, never a core, a Guard, a key,
+# a lock or a bonus's cell. BUOYS (u): a water brick that floats up into the
+# hole above it, a cell each BUOY_RISE. BUBBLES (o): broken, a bubble rises up
+# the column at BUBBLE_SPEED and breaks the first brick it meets. CLAMS (Q):
+# open CLAM_OPEN of every CLAM_CYCLE, each at its own moment; shut, nothing
+# hurts them; open, one hit, and the pearl always drops a bonus.
+const TIDE_EVERY := 30.0
+const TIDE_RISE := 2.5
+const TIDE_HIGH := 2.0
+const TIDE_WAIT := 20.0
+const TIDE_MOST := 12
+const TIDE_KEEP := ["heart", "guard", "key", "lock", "bonus"]
+const BUOY_RISE := 0.3
+const BUBBLE_SPEED := 300.0
+const CLAM_CYCLE := 5.0
+const CLAM_OPEN := 2.0
 const GOLD := Color(1.0, 0.82, 0.38)
 const INK := Color(0.93, 0.95, 1.0)
 const PANEL := Color(0.055, 0.06, 0.1, 0.94)
@@ -212,6 +233,8 @@ var target_x: float = 640.0
 var paddle_x: float = 640.0
 var paddle_w: float = PADDLE_W
 var stunned: float = 0.0
+var tugged: float = 0.0         # hooked by the Harpooner: slowed, pulled to tug_x
+var tug_x: float = 640.0
 var aim: float = -PI / 2.0
 var t: float = 0.0
 var bricks: Array = []
@@ -246,6 +269,12 @@ var drips: Array = []
 var zaps: Array = []
 var movers: Array = []
 var gusts: Array = []          # {"y0", "y1", "way"} in px, this map's gusts
+var tide_mark: int = -1        # the row this map's tide reaches up to; -1 none
+var tide_t: float = 0.0        # how far into its cycle the tide is
+var gone_at: Dictionary = {}   # Vector2i -> when the cell's brick broke
+var placed: Dictionary = {}    # Vector2i -> the kind the map put there
+var buoys: Array = []
+var bubbles: Array = []        # {"p", "last"}: rising, to break what they meet
 var prisms: Array = []
 var keys_left: int = 0
 var rails: Array = []          # the lanes' iron rails (in bricks too, off the grid)
@@ -416,6 +445,13 @@ func _load(index: int) -> void:
 					whirl["phase"] = (col + row) * 0.7
 				"Y":
 					_add(col, row, "mimic", "", 1)
+				"u":
+					buoys.append(_add(col, row, "buoy", "water", 1))
+				"o":
+					_add(col, row, "bubble", "water", 1)
+				"Q":
+					var clam := _add(col, row, "clam", "water", 1)
+					clam["phase"] = fmod((col * 2 + row) * 0.61, CLAM_CYCLE)
 				"p":
 					_add(col, row, "plague", "", 2)
 				"1", "2", "3", "4", "5", "6", "7":
@@ -444,9 +480,15 @@ func _load(index: int) -> void:
 		var y0: float = MAP_TOP + int(g[0]) * (ch + gap) - gap
 		var y1: float = minf(MAP_TOP + (int(g[1]) + 1) * (ch + gap), PADDLE_Y - 90.0)
 		gusts.append({"y0": y0, "y1": y1, "way": signf(float(g[2]))})
+	tide_mark = int(data.get("tide", -1))
+	tide_t = 0.0
 	for k in bricks:
 		if _breaks(k):
 			breakable += 1
+		if k.has("cell"):
+			placed[k["cell"]] = k["kind"]
+		for c in k.get("cells", []):
+			placed[c] = k["kind"]
 		if k["kind"] == "key":
 			keys_left += 1
 	rows_count = rows.size()
@@ -477,6 +519,12 @@ func _clear_map() -> void:
 	prisms.clear()
 	rails.clear()
 	gusts.clear()
+	buoys.clear()
+	bubbles.clear()
+	gone_at.clear()
+	placed.clear()
+	tide_mark = -1
+	tide_t = 0.0
 	_new_balls.clear()
 	keys_left = 0
 	pulling = false
@@ -486,6 +534,7 @@ func _clear_map() -> void:
 	broken = 0
 	combo = 0
 	stunned = 0.0
+	tugged = 0.0
 	hall = Rect2()
 	rows_count = 0
 	if boss != null:
@@ -694,6 +743,7 @@ func step(dt: float) -> void:
 	_muzzle = maxf(0.0, _muzzle - dt * 6.0)
 	_shield_flash = maxf(0.0, _shield_flash - dt * 3.0)
 	stunned = maxf(0.0, stunned - dt)
+	tugged = maxf(0.0, tugged - dt)
 	_banner_t = maxf(0.0, _banner_t - dt)
 	_effects(dt)
 	if state == State.KINGDOMS or state == State.OVER:
@@ -707,7 +757,9 @@ func step(dt: float) -> void:
 	var half: float = paddle_w / 2.0
 	if stunned <= 0.0:
 		var want: float = clampf(target_x, ARENA.position.x + half, ARENA.end.x - half)
-		paddle_x = move_toward(paddle_x, want, PADDLE_SPEED * dt)
+		paddle_x = move_toward(paddle_x, want, PADDLE_SPEED * (0.3 if tugged > 0.0 else 1.0) * dt)
+	if tugged > 0.0:
+		paddle_x = move_toward(paddle_x, tug_x, 170.0 * dt)
 	paddle_x = clampf(paddle_x, ARENA.position.x + half, ARENA.end.x - half)
 	if state == State.CLEARED:
 		_cleared_t -= dt
@@ -750,6 +802,7 @@ func step(dt: float) -> void:
 	_boss_step(dt)
 	_bricks_move(dt)
 	_blight(dt)
+	_tide(dt)
 	_burns(dt)
 	_capsules(dt)
 	if state == State.PLAY or state == State.AIM:
@@ -852,7 +905,7 @@ func _move(b: Dictionary, dt: float) -> void:
 			_shield_flash = 1.0
 			_burst(p, COLOURS["water"], 12, 200.0, 1.4)
 		if boss != null and boss.alive():
-			if boss.body_rect().grow(BALL_R).has_point(p):
+			if boss.hittable() and boss.body_rect().grow(BALL_R).has_point(p):
 				# off the boss the way it came - up off its head, down off its
 				# feet - and one hit a touch: a ball pressed into it, or caught
 				# between it and the hall's roof, counts once a BOSS_HIT_GAP
@@ -902,7 +955,7 @@ func _move(b: Dictionary, dt: float) -> void:
 					score += 10
 					_burst(r.get_center(), Color(1.0, 0.6, 0.85), 8, 200.0, 0.0)
 					break
-				var through: bool = active.has("fire") and _breaks(k) and not (k["kind"] == "rune" and not _rune_lit(k))
+				var through: bool = active.has("fire") and _breaks(k) and not _shut(k)
 				if not through:
 					var was_out_x: bool = prev.x < r.position.x - BALL_R + 0.5 or prev.x > r.end.x + BALL_R - 0.5
 					if was_out_x:
@@ -935,8 +988,9 @@ func _move(b: Dictionary, dt: float) -> void:
 func _damage(k: Dictionary, n: int, b) -> void:
 	var mid: Vector2 = (k["rect"] as Rect2).get_center()
 	k["flash"] = 1.0
-	if not _breaks(k) or (k["kind"] == "rune" and not _rune_lit(k)):
-		# iron, a mirror, a lock - or a rune while it is dark: nothing
+	if not _breaks(k) or _shut(k):
+		# iron, a mirror, a lock - or a rune while it is dark, a clam while it
+		# is shut: nothing
 		_burst(mid, Color(0.85, 0.88, 0.95), 6, 160.0)
 		return
 	if k["hp"] <= 0:
@@ -964,8 +1018,10 @@ func _damage(k: Dictionary, n: int, b) -> void:
 	k["hp"] = 0
 	if k.has("cell"):
 		cells.erase(k["cell"])
+		gone_at[k["cell"]] = t
 	for spot in k.get("cells", []):
 		cells.erase(spot)
+		gone_at[spot] = t
 	broken += 1
 	combo += 1
 	_combo_t = 1.7
@@ -1024,6 +1080,18 @@ func _damage(k: Dictionary, n: int, b) -> void:
 				_react(str(k["mix"]), k, mid)
 		"mimic":
 			_burst(mid, Color(0.7, 0.68, 0.8), 12, 180.0)
+		"clam":
+			# A CLAM BROKEN OPEN: its pearl always drops a bonus
+			_burst(mid, Color(0.95, 0.95, 1.0), 22, 240.0, 0.3)
+			_say(mid + Vector2(0, -14), "PEARL!", Color(0.92, 0.94, 1.0), 16, 0.8)
+			_drop(mid)
+		"bubble":
+			# A BUBBLE BROKEN: one rises up the column
+			_burst(mid, COLOURS["water"].lightened(0.3), 12, 160.0, -0.4)
+			bubbles.append({"p": mid, "last": k.get("cell", cell_at(mid))})
+		"buoy":
+			_burst(mid, Color(0.95, 0.35, 0.3), 12, 180.0, 1.0)
+			_burst(mid, COLOURS["water"], 8, 140.0, 1.2)
 		_:
 			# a land brick or a prism (breaking as the land it shows)
 			_land_breaks(k, mid, b)
@@ -1139,6 +1207,142 @@ func _rune_lit(k: Dictionary) -> bool:
 	"""A RUNE is breakable only while lit: RUNE_LIT of every RUNE_CYCLE, each
 	at its own moment."""
 	return fmod(t + float(k.get("phase", 0.0)), RUNE_CYCLE) < RUNE_LIT
+
+
+func clam_open(k: Dictionary) -> float:
+	"""How open a clam is, 0 shut to 1: open CLAM_OPEN of every CLAM_CYCLE,
+	easing a fifth of a second either side."""
+	var u: float = fmod(t + float(k.get("phase", 0.0)), CLAM_CYCLE)
+	if u >= CLAM_OPEN:
+		return 0.0
+	return clampf(minf(u, CLAM_OPEN - u) / 0.2, 0.0, 1.0)
+
+
+func _shut(k: Dictionary) -> bool:
+	"""Hard to every blow right now: a rune while it is dark, a clam while it
+	is shut."""
+	match k["kind"]:
+		"rune":
+			return not _rune_lit(k)
+		"clam":
+			return clam_open(k) <= 0.0
+	return false
+
+
+# ---------------------------------------------------------------- the tide --
+
+func tide_level() -> float:
+	"""How far up its mark the tide stands, 0 to 1."""
+	if tide_mark < 0:
+		return 0.0
+	var u: float = tide_t - (TIDE_EVERY - 2.0 * TIDE_RISE - TIDE_HIGH)
+	if u <= 0.0:
+		return 0.0
+	if u < TIDE_RISE:
+		return smoothstep(0.0, 1.0, u / TIDE_RISE)
+	if u < TIDE_RISE + TIDE_HIGH:
+		return 1.0
+	return 1.0 - smoothstep(0.0, 1.0, (u - TIDE_RISE - TIDE_HIGH) / TIDE_RISE)
+
+
+func tide_line() -> float:
+	"""The tide's mark in px: the top of its row."""
+	return MAP_TOP + tide_mark * (ch + gap) - gap
+
+
+func tide_y() -> float:
+	"""Where the water stands now, in px."""
+	return lerpf(field_bottom() + 6.0, tide_line(), tide_level())
+
+
+func tide_now() -> void:
+	"""The tide comes in at once (the Tide King's call), when it is out."""
+	var low: float = TIDE_EVERY - 2.0 * TIDE_RISE - TIDE_HIGH
+	if tide_mark >= 0 and tide_t < low - 0.05:
+		tide_t = low - 0.05
+
+
+func _tide(dt: float) -> void:
+	"""The tide's cycle: it says when it comes in, and rebuilds as it stands."""
+	if tide_mark < 0:
+		return
+	var low: float = TIDE_EVERY - 2.0 * TIDE_RISE - TIDE_HIGH
+	var before: float = tide_t
+	tide_t += dt
+	if before < low and tide_t >= low:
+		_say(Vector2(640, 470), "THE TIDE COMES IN", COLOURS["water"].lightened(0.35), 20, 1.4)
+	if before < low + TIDE_RISE and tide_t >= low + TIDE_RISE:
+		tide_rebuild()
+	if tide_t >= TIDE_EVERY:
+		tide_t -= TIDE_EVERY
+
+
+func tide_rebuild() -> int:
+	"""THE TIDE REBUILDS WHAT YOU LEFT: every empty cell under the mark that
+	the map once held, broken more than TIDE_WAIT ago, comes back as a water
+	brick - the oldest first, TIDE_MOST at most."""
+	var spots: Array = []
+	for c in footprint.keys():
+		if c.y < tide_mark or cells.has(c) or TIDE_KEEP.has(str(placed.get(c, ""))):
+			continue
+		if t - float(gone_at.get(c, t)) < TIDE_WAIT:
+			continue
+		var r := _cell(c.x, c.y)
+		if _ball_near(r) or (hall.size != Vector2.ZERO and hall.grow(2.0).intersects(r)):
+			continue
+		spots.append(c)
+	spots.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return float(gone_at[a]) < float(gone_at[b]))
+	var made: int = 0
+	for c in spots.slice(0, TIDE_MOST):
+		var k := _add(c.x, c.y, "land", "water", 1)
+		k["tide"] = true
+		k["flash"] = 1.0
+		gone_at.erase(c)
+		breakable += 1
+		made += 1
+		_burst(_cell(c.x, c.y).get_center(), COLOURS["water"].lightened(0.2), 8, 120.0, -0.3)
+	if made > 0:
+		_say(Vector2(640, 500), "THE TIDE REBUILDS %d" % made, COLOURS["water"].lightened(0.35), 18, 1.2)
+	return made
+
+
+func _waters(dt: float) -> void:
+	"""Buoys float up into the holes above them; bubbles rise and burst."""
+	for k in buoys:
+		if k["hp"] <= 0:
+			continue
+		var home: Vector2i = k["cell"]
+		if k.has("rise"):
+			k["rise"] = float(k["rise"]) - dt
+			var to: Rect2 = _cell(home.x, home.y)
+			var r: Rect2 = to
+			r.position.y += (ch + gap) * clampf(float(k["rise"]) / BUOY_RISE, 0.0, 1.0)
+			k["rect"] = r
+			if float(k["rise"]) <= 0.0:
+				k.erase("rise")
+				k["rect"] = to
+			continue
+		var up: Vector2i = home + Vector2i(0, -1)
+		if footprint.has(up) and not cells.has(up) and not _ball_near(_cell(up.x, up.y)):
+			cells.erase(home)
+			gone_at[home] = t
+			cells[up] = k
+			k["cell"] = up
+			k["rise"] = BUOY_RISE
+			_burst(_cell(home.x, home.y).get_center(), COLOURS["water"].lightened(0.3), 5, 90.0, -0.5)
+	for bu in bubbles:
+		bu["p"].y -= BUBBLE_SPEED * dt
+		var c: Vector2i = cell_at(bu["p"])
+		if c != bu["last"]:
+			bu["last"] = c
+			var o: Variant = cells.get(c)
+			if o != null and (o["hp"] > 0 or not _breaks(o)):
+				_damage(o, 1, null)
+				bu["dead"] = true
+				_burst(bu["p"], COLOURS["water"].lightened(0.45), 10, 150.0, -0.2)
+		if bu["p"].y < ARENA.position.y + 6.0:
+			bu["dead"] = true
+	bubbles = bubbles.filter(func(bu): return not bu.get("dead", false))
 
 
 static func reaction_of(a: String, b: String) -> String:
@@ -1315,7 +1519,9 @@ func _open_locks() -> void:
 
 func _bricks_move(dt: float) -> void:
 	"""What moves among the bricks each tick: drifters slide, prisms turn,
-	lava falls, frozen bricks shatter, bolts and the eclipse fade."""
+	lava falls, frozen bricks shatter, buoys float, bubbles rise, bolts and
+	the eclipse fade."""
+	_waters(dt)
 	for k in movers:
 		if k["hp"] > 0:
 			# a Rect2 is a value: set a copy, then put it back
@@ -1433,7 +1639,7 @@ func _lasers(dt: float) -> void:
 	for bolt in bolts:
 		bolt["p"].y -= 950.0 * dt
 		if boss != null and boss.alive():
-			if boss.body_rect().has_point(bolt["p"]):
+			if boss.hittable() and boss.body_rect().has_point(bolt["p"]):
 				_hit_boss(1)
 				bolt["dead"] = true
 				continue
@@ -1482,13 +1688,78 @@ func stun_paddle(seconds: float, at: Vector2, land: String) -> void:
 	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "STUNNED", Color(1.0, 0.5, 0.45), 22, 0.9)
 
 
+func tug_paddle(seconds: float, to_x: float, land: String) -> void:
+	"""THE HARPOONER'S HOOK: the paddle slowed and pulled toward `to_x`."""
+	tugged = seconds
+	tug_x = to_x
+	_burst(Vector2(paddle_x, PADDLE_Y - 6.0), COLOURS.get(land, Color.WHITE), 18, 220.0)
+	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "HOOKED!", Color(1.0, 0.65, 0.35), 22, 0.9)
+
+
+func splash_from(at: Vector2, reach: float, kick: float) -> void:
+	"""A SPLASH (the Undine, the Leviathan surfacing): every ball within
+	`reach` thrown straight away from `at`, a touch faster."""
+	for b in balls:
+		var v: Vector2 = b["v"]
+		if v == Vector2.ZERO or (b["p"] as Vector2).distance_to(at) > reach:
+			continue
+		var away: Vector2 = ((b["p"] as Vector2) - at).normalized()
+		if away == Vector2.ZERO:
+			away = Vector2.DOWN
+		b["v"] = steady(away * maxf(v.length(), SPEED) * kick)
+		_burst(b["p"], COLOURS["water"], 6, 160.0, 0.0)
+	_burst(at, COLOURS["water"].lightened(0.3), 30, 300.0, 0.8)
+	_say(at + Vector2(0, -40), "SPLASH!", COLOURS["water"].lightened(0.4), 20, 0.7)
+
+
+func plant_water(at: Vector2) -> bool:
+	"""THE TIDE KING'S YOUNG: a water brick where one lands, when the cell is
+	empty, on the map's grid and not the hall. Whether it took."""
+	var c: Vector2i = cell_at(at)
+	if c.x < 0 or c.x >= cols or c.y < 0 or c.y >= maxi(rows_count, 1) or cells.has(c):
+		return false
+	if hall.size != Vector2.ZERO and hall.grow(2.0).intersects(_cell(c.x, c.y)):
+		return false
+	var k := _add(c.x, c.y, "land", "water", 1)
+	k["flash"] = 1.0
+	k["tide"] = true
+	footprint[c] = true
+	breakable += 1
+	_burst(_cell(c.x, c.y).get_center(), COLOURS["water"], 12, 140.0, -0.2)
+	return true
+
+
+func wave_brick(x: float, below: float) -> bool:
+	"""THE LEVIATHAN'S WAKE: a water brick in an empty cell of the column at
+	`x` the map once held, under `below`, no ball near. Whether one was."""
+	var col: int = int(floor((x - FIELD_X) / cw))
+	if col < 0 or col >= cols:
+		return false
+	var spots: Array = []
+	for row in rows_count:
+		var c := Vector2i(col, row)
+		var r := _cell(col, row)
+		if footprint.has(c) and not cells.has(c) and r.position.y > below and not _ball_near(r):
+			spots.append(c)
+	if spots.is_empty():
+		return false
+	var c: Vector2i = spots[rng.randi_range(0, spots.size() - 1)]
+	var k := _add(c.x, c.y, "land", "water", 1)
+	k["flash"] = 1.0
+	k["tide"] = true
+	gone_at.erase(c)
+	breakable += 1
+	return true
+
+
 func burst_at(at: Vector2, land: String, n: int) -> void:
 	_burst(at, COLOURS.get(land, Color.WHITE), n, 220.0)
 
 
-func rebuild_near(n: int, around: Rect2) -> void:
+func rebuild_near(n: int, around: Rect2, kind: String = "stone") -> void:
 	"""THE BUSH MAGE REBUILDS: the `n` broken cells nearest its hall (cells the
-	map once held, empty now) come back as stone, two hits."""
+	map once held, empty now) come back as stone, two hits - or, the Tide
+	Mage's, as bubble bricks."""
 	var spots: Array = []
 	for c in footprint.keys():
 		if not cells.has(c):
@@ -1501,9 +1772,14 @@ func rebuild_near(n: int, around: Rect2) -> void:
 			break
 		if _ball_near(_cell(c.x, c.y)):
 			continue
-		var k := _add(c.x, c.y, "stone", "", 2)
-		k["most"] = 3
+		var k: Dictionary
+		if kind == "bubble":
+			k = _add(c.x, c.y, "bubble", "water", 1)
+		else:
+			k = _add(c.x, c.y, "stone", "", 2)
+			k["most"] = 3
 		k["flash"] = 1.0
+		gone_at.erase(c)
 		breakable += 1
 		made += 1
 		_burst(_cell(c.x, c.y).get_center(), Color(0.6, 0.58, 0.55), 8, 120.0, -0.2)
@@ -1697,6 +1973,7 @@ func _draw() -> void:
 	draw_set_transform(jolt)
 	_draw_arena()
 	_draw_building()
+	_draw_tide_body()
 	_draw_gusts()
 	_draw_rails()
 	for k in bricks:
@@ -1714,6 +1991,12 @@ func _draw() -> void:
 				var glow: float = 0.5 + 0.5 * sin(t * 6.0)
 				draw_rect((k["rect"] as Rect2).grow(3.0 + glow * 3.0), Color(GOLD, 0.35 + 0.35 * glow), false, 2.0)
 	_draw_guards()
+	_draw_tide_top()
+	for bu in bubbles:
+		var at: Vector2 = bu["p"] + Vector2(sin(t * 9.0 + bu["p"].y * 0.05) * 2.5, 0)
+		draw_circle(at, 6.0, Color(COLOURS["water"], 0.25))
+		draw_arc(at, 5.0, 0, TAU, 16, Color(0.8, 0.92, 1.0, 0.9), 1.4)
+		draw_circle(at + Vector2(-1.8, -1.8), 1.3, Color(1, 1, 1, 0.9))
 	for d in drips:
 		draw_circle(d["p"], 9.0, Color(COLOURS["fire"], 0.3))
 		draw_circle(d["p"], 5.0, Color(1.0, 0.55, 0.15))
@@ -1891,6 +2174,62 @@ func _draw_gusts() -> void:
 				Vector2(edge - way * 5.0, mid + 7.0)]), Color(COLOURS["wind"], 0.7), 2.0)
 
 
+func _draw_tide_body() -> void:
+	"""THE TIDE: its mark in each lane and faint across the field, always; the
+	water itself from the foot of the rows up to where it stands, under the
+	bricks."""
+	if tide_mark < 0:
+		return
+	var mark: float = tide_line()
+	var blue: Color = COLOURS["water"]
+	for x in range(int(FIELD_X) + 4, int(FIELD_X + FIELD_W) - 4, 14):
+		draw_line(Vector2(x, mark), Vector2(x + 6, mark), Color(blue, 0.18), 1.0)
+	for x in [ARENA.position.x + 4.0, FIELD_X + FIELD_W + RAIL_W + 4.0]:
+		for i in 2:
+			var y: float = mark - 3.0 + i * 5.0
+			draw_polyline(PackedVector2Array([Vector2(x, y), Vector2(x + 5, y - 2.5), Vector2(x + 10, y), Vector2(x + 15, y - 2.5),
+				Vector2(x + 20, y)]), Color(blue.lightened(0.3), 0.75), 1.4)
+	var level: float = tide_level()
+	if level <= 0.0:
+		return
+	var top: float = tide_y()
+	var foot: float = field_bottom() + 6.0
+	draw_rect(Rect2(ARENA.position.x, top, ARENA.size.x, foot - top), Color(blue, 0.16 + 0.06 * level))
+	for i in 3:
+		var y: float = top + 14.0 + i * 22.0
+		if y < foot - 4.0:
+			draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), Color(blue.lightened(0.2), 0.05), 6.0)
+
+
+func _draw_tide_top() -> void:
+	"""Over the bricks: the water they stand in, tinting them blue, and its
+	surface - a moving wave, foam on its crests."""
+	var level: float = tide_level()
+	if tide_mark < 0 or level <= 0.0:
+		return
+	var top: float = tide_y()
+	draw_rect(Rect2(ARENA.position.x, top, ARENA.size.x, field_bottom() + 6.0 - top), Color(COLOURS["water"], 0.2 * level))
+	var pts := PackedVector2Array()
+	var x: float = ARENA.position.x
+	while x <= ARENA.end.x:
+		pts.append(Vector2(x, top + sin(x * 0.045 + t * 3.0) * 3.0 + sin(x * 0.11 - t * 2.0) * 1.5))
+		x += 8.0
+	draw_polyline(pts, Color(COLOURS["water"].lightened(0.25), 0.55 * level), 4.0)
+	draw_polyline(pts, Color(0.88, 0.95, 1.0, 0.8 * level), 1.5)
+
+
+func _draw_half_shell(mid: Vector2, w: float, h: float, up: bool, c: Color) -> void:
+	"""Half an ellipse, flat side to `mid`: up, the clam's lid; down, its foot."""
+	var pts := PackedVector2Array([mid + Vector2(-w, 0)])
+	for i in range(1, 12):
+		var a: float = PI * i / 12.0
+		pts.append(mid + Vector2(-cos(a) * w, sin(a) * h * (-1.0 if up else 1.0)))
+	pts.append(mid + Vector2(w, 0))
+	draw_colored_polygon(pts, c)
+	for i in [-1, 0, 1]:
+		draw_line(mid, mid + Vector2(i * w * 0.55, h * 0.8 * (-1.0 if up else 1.0)), Color(0, 0, 0, 0.25), 1.0)
+
+
 func _draw_guards() -> void:
 	"""Round every standing Guard, the cells it shields: a soft blue frame."""
 	var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
@@ -2013,6 +2352,19 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 			draw_line(mid + Vector2(-3, 3), mid + Vector2(3, -3), Color(1, 1, 1, spark), 1.4)
 			draw_rect(r, Color(1, 1, 1, 0.35), false, 1.0)
 			return
+		"clam":
+			# A CLAM: its lid lifts when it opens, the pearl shining inside
+			var o: float = clam_open(k)
+			draw_rect(r, Color(0.08, 0.14, 0.24).lerp(Color.WHITE, flash * 0.4))
+			var shell := Color(0.72, 0.62, 0.78).lerp(Color.WHITE, flash * 0.5)
+			var hinge: Vector2 = mid + Vector2(0, 2.0)
+			if o > 0.0:
+				draw_circle(hinge + Vector2(0, -2.0 * o), 3.4, Color(1, 1, 1, 0.25 * o))
+				draw_circle(hinge + Vector2(0, -2.0 * o), 2.6, Color(0.96, 0.96, 1.0, o))
+			_draw_half_shell(hinge, r.size.x * 0.4, r.size.y * 0.42, false, shell.darkened(0.15))
+			_draw_half_shell(hinge + Vector2(0, -1.0 - 4.5 * o), r.size.x * 0.4, r.size.y * 0.5, true, shell)
+			draw_rect(r, Color(0.85, 0.75, 0.95, 0.4 + 0.5 * o), false, 1.2)
+			return
 		"heart":
 			var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
 			var hw: float = r.size.x * 0.46
@@ -2031,6 +2383,11 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 	draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.38))
 	draw_rect(Rect2(r.position.x, r.end.y - 2, r.size.x, 2), Color(0, 0, 0, 0.4))
 	var ink := Color(1, 1, 1, 0.6)
+	if k.has("tide"):
+		# BROUGHT BACK BY THE TIDE: foam along its top
+		for i in 4:
+			draw_arc(Vector2(r.position.x + 3.5 + i * (r.size.x - 7.0) / 3.0, r.position.y + 2.0), 2.4, 0, PI, 6,
+				Color(0.9, 0.97, 1.0, 0.8), 1.2)
 	if k.has("kite"):
 		# A KITE: a cross-spar, and a tail of bows fluttering under it
 		draw_line(Vector2(mid.x, r.position.y + 1), Vector2(mid.x, r.end.y - 1), Color(1, 1, 1, 0.45), 1.0)
@@ -2089,6 +2446,20 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 				var w: float = r.size.x / ELEMENTS.size()
 				draw_rect(Rect2(r.position.x + i * w, r.end.y - 3, w, 3), COLOURS[ELEMENTS[i]])
 			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 3), mid + Vector2(-5, 3)]), Color(1, 1, 1, 0.75))
+		"buoy":
+			# A BUOY: a red float banded white, its lamp blinking
+			var float_r := Rect2(mid.x - r.size.x * 0.28, r.position.y + 2.5, r.size.x * 0.56, r.size.y - 5.0)
+			draw_rect(float_r, Color(0.9, 0.24, 0.2).lerp(Color.WHITE, flash * 0.5))
+			draw_rect(Rect2(float_r.position.x, mid.y - 1.5, float_r.size.x, 3.0), Color(0.97, 0.95, 0.92))
+			draw_rect(Rect2(float_r.position, Vector2(float_r.size.x, 1.5)), Color(1, 1, 1, 0.45))
+			var blink: float = 0.5 + 0.5 * sin(t * 5.0 + r.position.x * 0.07)
+			draw_circle(Vector2(mid.x, float_r.position.y + 0.5), 1.6, Color(1.0, 0.95, 0.55, 0.4 + 0.6 * blink))
+			draw_line(Vector2(r.position.x + 2, r.end.y - 2.5), Vector2(r.end.x - 2, r.end.y - 2.5), Color(0.8, 0.92, 1.0, 0.5), 1.0)
+		"bubble":
+			# A BUBBLE BRICK: bubbles caught in it, wobbling
+			for i in 3:
+				var at: Vector2 = mid + Vector2(-7 + i * 7, sin(t * 4.0 + i * 1.7 + r.position.x) * 2.0)
+				draw_arc(at, 2.2 + (i % 2) * 1.2, 0, TAU, 10, Color(0.85, 0.95, 1.0, 0.85), 1.1)
 		"mimic":
 			var shimmer: float = 0.5 + 0.5 * sin(t * 4.0 + r.position.x * 0.1)
 			draw_arc(mid, 4.0, t * 4.0, t * 4.0 + PI * 1.4, 10, Color(1, 1, 1, 0.5 + 0.4 * shimmer), 1.4)

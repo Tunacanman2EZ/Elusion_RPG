@@ -34,6 +34,27 @@
 #            that never stops wanders the field, catching balls and throwing
 #            them out any way; under two thirds he splits, under a third a
 #            second tornado comes.
+# THE KINGDOM OF WATER (0.164.0) has its own five:
+#   map 5    the Tide King (its large slime) - splits like the Slime King,
+#            but his young turn to water bricks where they land on nothing;
+#            and every TIDE_CALL_EVERY he calls the tide in early.
+#   map 10   the Undine (its sprite) - darts and throws sparks like the
+#            Sprite; every DIVE_EVERY it dives under the water, where nothing
+#            can hit it (DIVE_SECONDS), and comes up somewhere else in a
+#            SPLASH that throws every ball within SPLASH_REACH away from it.
+#   map 15   the Harpooner (its bush sniper) - aims a harpoon at the paddle
+#            down a line it shows (AIM_SECONDS), then throws: a paddle still
+#            there is hooked, tugged toward him and slowed (TUG_SECONDS); the
+#            rope hangs ROPE_SECONDS as a wall the ball bounces off.
+#   map 20   the Tide Mage (its bush mage) - a BUBBLE round him that takes
+#            BUBBLE_HITS to pop, then he is open BUBBLE_DOWN before it forms
+#            again; every REBUILD_EVERY he raises bubble bricks near his hall.
+#   map 25   the Leviathan (the water's boss, the crown) - throws; every
+#            WAVE_EVERY a TIDAL WAVE crosses the field: the balls it passes
+#            are carried along its way, and it leaves WAVE_BRICKS water bricks
+#            in its wake at most; under two thirds he splits (his young turn
+#            to water like the Tide King's), at half health he dives once,
+#            and under a third the waves come faster.
 # Every one walks its hall (the map's R cells), takes the ball's and the
 # lasers' hits, and - but the Sniper - throws at the paddle (a hit stuns it).
 # It is down at no health: the run says so, and its walls crumble.
@@ -44,22 +65,28 @@
 extends RefCounted
 
 const KINDS := ["slimeking", "sprite", "sniper", "mage", "ruler",
-	"galeking", "whirlwind", "gustsniper", "stormmage", "tempest"]
+	"galeking", "whirlwind", "gustsniper", "stormmage", "tempest",
+	"tideking", "undine", "harpooner", "tidemage", "leviathan"]
 # Each kingdom's five, in the order of its stretches.
 const KINDS_OF := {"light": ["slimeking", "sprite", "sniper", "mage", "ruler"],
-	"wind": ["galeking", "whirlwind", "gustsniper", "stormmage", "tempest"]}
+	"wind": ["galeking", "whirlwind", "gustsniper", "stormmage", "tempest"],
+	"water": ["tideking", "undine", "harpooner", "tidemage", "leviathan"]}
 # TOUGH (the owner: "bosses die too fast we really need to buff up bosses",
 # and "hitting with a ball does a bit more damage"): a ball's hit is the run's
 # BALL_HIT (3), a laser's 1, and a fight is about twice the ball hits it was.
 const HP := {"slimeking": 180, "sprite": 160, "sniper": 190, "mage": 200, "ruler": 300,
-	"galeking": 220, "whirlwind": 200, "gustsniper": 240, "stormmage": 250, "tempest": 380}
+	"galeking": 220, "whirlwind": 200, "gustsniper": 240, "stormmage": 250, "tempest": 380,
+	"tideking": 240, "undine": 220, "harpooner": 260, "tidemage": 275, "leviathan": 420}
 # How big each is drawn (their frames differ: a slime 48 px, a mage 150).
 const SCALE := {"slimeking": 3.0, "sprite": 1.7, "sniper": 2.3, "mage": 1.3, "ruler": 2.2, "minion": 1.25,
-	"galeking": 3.0, "whirlwind": 1.7, "gustsniper": 2.3, "stormmage": 1.3, "tempest": 2.2}
+	"galeking": 3.0, "whirlwind": 1.7, "gustsniper": 2.3, "stormmage": 1.3, "tempest": 2.2,
+	"tideking": 3.0, "undine": 1.7, "harpooner": 2.3, "tidemage": 1.3, "leviathan": 2.2}
 const BODY := {"slimeking": Vector2(66, 46), "sprite": Vector2(40, 40), "sniper": Vector2(44, 52),
 	"mage": Vector2(56, 64), "ruler": Vector2(70, 70),
 	"galeking": Vector2(66, 46), "whirlwind": Vector2(40, 40), "gustsniper": Vector2(44, 52),
-	"stormmage": Vector2(56, 64), "tempest": Vector2(70, 70)}
+	"stormmage": Vector2(56, 64), "tempest": Vector2(70, 70),
+	"tideking": Vector2(66, 46), "undine": Vector2(40, 40), "harpooner": Vector2(44, 52),
+	"tidemage": Vector2(56, 64), "leviathan": Vector2(70, 70)}
 const WALK_SPEED := 110.0
 const THROW_EVERY := 2.3
 const SHOT_SPEED := 250.0
@@ -111,6 +138,28 @@ const FAN_SPREAD := 16.0
 const WALL_EVERY := 6.0
 const WALL_ON := 2.5
 const WALL_TALL := 26.0
+# THE TIDE KING
+const TIDE_CALL_EVERY := 12.0
+# THE UNDINE, and the Leviathan's one dive
+const DIVE_EVERY := 6.0
+const DIVE_SECONDS := 2.0
+const SPLASH_REACH := 260.0
+const SPLASH_KICK := 1.15
+# THE HARPOONER
+const HARPOON_EVERY := 3.6
+const HARPOON_SPEED := 1100.0
+const TUG_SECONDS := 1.2
+const ROPE_SECONDS := 1.2
+# THE TIDE MAGE
+const BUBBLE_HITS := 3
+const BUBBLE_R := 50.0
+const BUBBLE_DOWN := 5.0
+# THE LEVIATHAN
+const WAVE_EVERY := 9.0
+const WAVE_SPEED := 460.0
+const WAVE_WARN := 0.8
+const WAVE_W := 46.0
+const WAVE_BRICKS := 8
 
 var run: Node2D = null
 # The run's arena, its paddle's line and the foot of its view, handed in.
@@ -150,6 +199,24 @@ var fan_t: float = FAN_EVERY
 var wall_t: float = WALL_EVERY
 var wall_left: float = 0.0
 var second_storm: bool = false
+var call_t: float = TIDE_CALL_EVERY
+var dive_t: float = DIVE_EVERY
+var dive_left: float = 0.0       # under the water: nothing can hit it
+var dived: bool = false          # the Leviathan's one dive taken
+var splashes: Array = []         # {"p", "age"}, drawn
+# The harpoon: aimed (aim_left, along harpoon_from -> harpoon_to), flying
+# (harpoon_u 0..1), then its rope hanging (rope_left).
+var harpoon_t: float = HARPOON_EVERY
+var harpoon_from := Vector2.ZERO
+var harpoon_to := Vector2.ZERO
+var harpoon_u: float = -1.0
+var harpoon_aim: float = 0.0
+var rope_left: float = 0.0
+var bubble_hits: int = BUBBLE_HITS
+var bubble_down: float = 0.0
+# The Leviathan's wave: {"x", "way", "warn", "made"}; null between.
+var wave = null
+var wave_t: float = WAVE_EVERY
 # Each minion: {p, from, to, t (into its hop), rest, sprite}.
 var minions: Array = []
 var sprite: AnimatedSprite2D = null
@@ -243,6 +310,37 @@ func step(dt: float, playing: bool) -> void:
 				if hp * 3 < most and not second_storm:
 					second_storm = true
 					vortices.append(_vortex(TORNADO_R, true))
+			"tideking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				call_t -= dt
+				if call_t <= 0.0:
+					call_t = TIDE_CALL_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("tide_now")
+					flash = 0.6
+			"undine":
+				_dive(dt)
+				if dive_left <= 0.0:
+					_dart(dt)
+			"harpooner":
+				_walk(dt, 0.5)
+				_harpoon(dt)
+			"tidemage":
+				_walk(dt, 0.7)
+				_throw(dt, 1.3)
+				_bubble_step(dt)
+			"leviathan":
+				if hp * 2 < most and not dived:
+					dived = true
+					dive_left = DIVE_SECONDS + 0.5
+					dest = _hall_spot()
+					run.call("burst_at", p, land, 24)
+				if dive_left > 0.0:
+					_dive(dt)
+				else:
+					_walk(dt, 0.8)
+					_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				_wave(dt)
 			"ruler":
 				_walk(dt, 0.8)
 				_throw(dt, 0.8 if hp * 3 < most else 1.0)
@@ -255,9 +353,20 @@ func step(dt: float, playing: bool) -> void:
 		sprite.position = p + Vector2(0, -6)
 		sprite.visible = hp > 0
 		sprite.self_modulate = Color(1, 1, 1).lerp(Color(4, 4, 4), flash * 0.5)
+		sprite.modulate.a = 0.18 if dive_left > 0.0 else 1.0
 	_step_shots(dt)
 	_step_minions(dt, playing)
 	_step_winds(dt, playing)
+	for s in splashes:
+		s["age"] += dt
+	splashes = splashes.filter(func(s: Dictionary) -> bool: return float(s["age"]) < GALE_SHOWN)
+	rope_left = maxf(0.0, rope_left - dt)
+
+
+func hittable() -> bool:
+	"""Whether a ball or a laser can strike its body now: alive, not under
+	the water, not inside its bubble."""
+	return hp > 0 and dive_left <= 0.0 and not (kind == "tidemage" and bubble_hits > 0)
 
 
 func _walk(dt: float, pace: float) -> void:
@@ -347,6 +456,18 @@ func ward_touch(at: Vector2, reach: float) -> Vector2:
 	stood is handed back to bounce off. Vector2.INF for none."""
 	if hp <= 0:
 		return Vector2.INF
+	if kind == "tidemage" and bubble_hits > 0:
+		# THE TIDE MAGE'S BUBBLE: a hit off it, BUBBLE_HITS and it pops
+		if p.distance_to(at) <= BUBBLE_R + reach:
+			bubble_hits -= 1
+			flash = 0.5
+			run.call("burst_at", at, land, 8)
+			if bubble_hits <= 0:
+				bubble_down = BUBBLE_DOWN
+				run.call("burst_at", p, land, 30)
+				splashes.append({"p": p, "age": 0.0})
+			return p
+		return Vector2.INF
 	for i in wards.size():
 		if float(wards[i]["back"]) <= 0.0:
 			var w: Vector2 = ward_at(i)
@@ -376,8 +497,8 @@ func hit(n: int) -> bool:
 		return false
 	hp = maxi(0, hp - n)
 	flash = 1.0
-	var kingly: bool = kind == "slimeking" or kind == "galeking"
-	var splits: bool = kingly or ((kind == "ruler" or kind == "tempest") and hp * 3 < most * 2)
+	var kingly: bool = kind == "slimeking" or kind == "galeking" or kind == "tideking"
+	var splits: bool = kingly or ((kind == "ruler" or kind == "tempest" or kind == "leviathan") and hp * 3 < most * 2)
 	if splits and hp > 0:
 		var every: int = SPLIT_EVERY if kingly else RULER_SPLIT_EVERY
 		hits_since_split += n
@@ -392,8 +513,111 @@ func hit(n: int) -> bool:
 		shots.clear()
 		vortices.clear()
 		wall_left = 0.0
+		wave = null
+		rope_left = 0.0
+		harpoon_u = -1.0
+		aim_left = 0.0
+		dive_left = 0.0
 		return true
 	return false
+
+
+# ---------------------------------------------------------------- the waters --
+
+func _dive(dt: float) -> void:
+	"""UNDER THE WATER: nothing can hit it; it drifts to a new spot in its
+	hall and comes up in a SPLASH. The Undine dives every DIVE_EVERY, the
+	Leviathan once (step())."""
+	if dive_left > 0.0:
+		dive_left -= dt
+		p = p.move_toward(dest, DART_SPEED * 0.6 * dt)
+		if dive_left <= 0.0:
+			dive_left = 0.0
+			splashes.append({"p": p, "age": 0.0})
+			run.call("splash_from", p, SPLASH_REACH, SPLASH_KICK)
+			flash = 1.0
+		return
+	if kind != "undine":
+		return
+	dive_t -= dt
+	if dive_t <= 0.0:
+		dive_t = DIVE_EVERY * (0.75 if hp * 2 < most else 1.0)
+		dive_left = DIVE_SECONDS
+		dest = _hall_spot()
+		run.call("burst_at", p, land, 18)
+
+
+func _harpoon(dt: float) -> void:
+	"""THE HARPOONER: a line to where the paddle is, AIM_SECONDS, then the
+	harpoon down it; a paddle still there is hooked; the rope hangs."""
+	if harpoon_u >= 0.0:
+		harpoon_u += dt * HARPOON_SPEED / maxf(1.0, harpoon_from.distance_to(harpoon_to))
+		if harpoon_u >= 1.0:
+			harpoon_u = -1.0
+			rope_left = ROPE_SECONDS
+			var paddle_x: float = float(run.get("paddle_x"))
+			if absf(paddle_x - harpoon_to.x) < float(run.get("paddle_w")) / 2.0 + 8.0:
+				run.call("tug_paddle", TUG_SECONDS, harpoon_from.x, land)
+			else:
+				run.call("burst_at", harpoon_to, land, 10)
+		return
+	if harpoon_aim > 0.0:
+		harpoon_aim -= dt
+		if harpoon_aim <= 0.0:
+			harpoon_u = 0.0
+		return
+	harpoon_t -= dt
+	if harpoon_t <= 0.0:
+		harpoon_t = HARPOON_EVERY * (0.7 if hp * 2 < most else 1.0)
+		harpoon_aim = AIM_SECONDS
+		harpoon_from = p + Vector2(0, 20)
+		harpoon_to = Vector2(float(run.get("paddle_x")), paddle_y)
+
+
+func _bubble_step(dt: float) -> void:
+	"""THE TIDE MAGE: his bubble forms again BUBBLE_DOWN after it pops; he
+	raises bubble bricks near his hall every REBUILD_EVERY."""
+	if bubble_hits <= 0:
+		bubble_down -= dt
+		if bubble_down <= 0.0:
+			bubble_hits = BUBBLE_HITS
+			run.call("burst_at", p, land, 16)
+	rebuild_t -= dt
+	if rebuild_t <= 0.0:
+		rebuild_t = REBUILD_EVERY
+		run.call("rebuild_near", REBUILD_COUNT, hall, "bubble")
+
+
+func _wave(dt: float) -> void:
+	"""THE LEVIATHAN'S TIDAL WAVE: a warning at one side (WAVE_WARN), then a
+	wall of water across the field at WAVE_SPEED, leaving a few water bricks
+	in its wake."""
+	var rng: RandomNumberGenerator = run.get("rng")
+	if wave == null:
+		wave_t -= dt
+		if wave_t <= 0.0:
+			wave_t = WAVE_EVERY * (0.7 if hp * 3 < most else 1.0)
+			var way: float = 1.0 if rng.randf() < 0.5 else -1.0
+			wave = {"x": arena.position.x if way > 0.0 else arena.end.x, "way": way, "warn": WAVE_WARN, "made": 0,
+				"n": rng.randi()}
+		return
+	if float(wave["warn"]) > 0.0:
+		wave["warn"] = float(wave["warn"]) - dt
+		return
+	wave["x"] = float(wave["x"]) + float(wave["way"]) * WAVE_SPEED * dt
+	if int(wave["made"]) < WAVE_BRICKS and rng.randf() < dt * 6.0:
+		if bool(run.call("wave_brick", float(wave["x"]) - float(wave["way"]) * WAVE_W, hall.end.y)):
+			wave["made"] = int(wave["made"]) + 1
+	if float(wave["x"]) < arena.position.x - WAVE_W or float(wave["x"]) > arena.end.x + WAVE_W:
+		wave = null
+
+
+func wave_band() -> Rect2:
+	"""The wall of water as it stands (empty between waves and while it warns)."""
+	if wave == null or float(wave["warn"]) > 0.0:
+		return Rect2()
+	var top: float = hall.end.y + 8.0
+	return Rect2(float(wave["x"]) - WAVE_W / 2.0, top, WAVE_W, paddle_y - 70.0 - top)
 
 
 # ---------------------------------------------------------------- the winds --
@@ -504,6 +728,22 @@ func work_balls(balls: Array, dt: float) -> void:
 					b["v"] = Vector2.ZERO
 					run.call("burst_at", b["p"], land, 10)
 					break
+		if rope_left > 0.0 and hp > 0:
+			# THE HARPOONER'S ROPE: a wall while it hangs
+			var q: Vector2 = Geometry2D.get_closest_point_to_segment(b["p"], harpoon_from, harpoon_to)
+			var off: Vector2 = (b["p"] as Vector2) - q
+			if off.length() < 8.0:
+				var n: Vector2 = off.normalized() if off.length() > 0.01 else (harpoon_to - harpoon_from).orthogonal().normalized()
+				if (b["v"] as Vector2).dot(n) < 0.0:
+					b["v"] = (b["v"] as Vector2).bounce(n)
+					run.call("burst_at", b["p"], land, 4)
+		var band: Rect2 = wave_band()
+		if band.size != Vector2.ZERO and hp > 0 and band.has_point(b["p"]) and int(b.get("wave_n", -1)) != int(wave["n"]):
+			# THE TIDAL WAVE carries the ball its way
+			b["wave_n"] = int(wave["n"])
+			var v: Vector2 = b["v"]
+			b["v"] = Vector2(float(wave["way"]), 0.44 * (1.0 if v.y >= 0.0 else -1.0)).normalized() * maxf(v.length(), 1.0)
+			run.call("burst_at", b["p"], land, 6)
 		if wall_left > 0.0 and hp > 0 and (b["v"] as Vector2).y < 0.0 and wall_rect().has_point(b["p"]):
 			var rng: RandomNumberGenerator = run.get("rng")
 			b["v"] = Vector2((b["v"] as Vector2).x + rng.randf_range(-60.0, 60.0), absf((b["v"] as Vector2).y))
@@ -554,8 +794,16 @@ func _step_minions(dt: float, playing: bool) -> void:
 		m["p"] = (m["from"] as Vector2).lerp(m["to"], u)
 		if u >= 1.0:
 			m["rest"] = rng.randf_range(0.5, 1.3)
-			if rng.randf() < PLANT_CHANCE:
+			if land == "water":
+				# THE TIDE KING'S YOUNG turn to water where they land on nothing
+				if rng.randf() < PLANT_CHANCE and bool(run.call("plant_water", m["p"])):
+					m["gone"] = true
+			elif rng.randf() < PLANT_CHANCE:
 				run.call("plant_blight", m["p"])
+	for m in minions:
+		if m.get("gone", false):
+			_free_minion(m)
+	minions = minions.filter(func(m: Dictionary) -> bool: return not m.get("gone", false))
 	for m in minions:
 		var art: AnimatedSprite2D = m["sprite"]
 		if art != null and is_instance_valid(art):
@@ -641,6 +889,59 @@ func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
 			var y: float = w.position.y + fposmod(now * 60.0 + x, w.size.y)
 			c.draw_polyline(PackedVector2Array([Vector2(x - 6, y - 4), Vector2(x, y + 3), Vector2(x + 6, y - 4)]),
 				Color(colour.lightened(0.4), 0.8), 2.0)
+	for sp in splashes:
+		var u: float = float(sp["age"]) / GALE_SHOWN
+		c.draw_arc(sp["p"], SPLASH_REACH * u, 0, TAU, 48, Color(colour.lightened(0.4), 0.7 * (1.0 - u)), 5.0 * (1.0 - u) + 1.0)
+	if hp > 0 and dive_left > 0.0:
+		# under the water: ripples where it swims
+		for i in 3:
+			var r: float = fmod(now * 40.0 + i * 14.0, 42.0)
+			c.draw_arc(p, r, 0, TAU, 24, Color(colour.lightened(0.4), 0.6 * (1.0 - r / 42.0)), 2.0)
+	if hp > 0 and harpoon_aim > 0.0:
+		# the Harpooner's mark: a dashed line to where the paddle was
+		var a: float = 0.35 + 0.5 * absf(sin((AIM_SECONDS - harpoon_aim) * 14.0))
+		var d: Vector2 = (harpoon_to - harpoon_from)
+		var steps: int = int(d.length() / 18.0)
+		for i in steps:
+			var u0: float = float(i) / steps
+			c.draw_line(harpoon_from + d * u0, harpoon_from + d * minf(1.0, u0 + 10.0 / d.length()), Color(1.0, 0.55, 0.3, a), 2.0)
+	if hp > 0 and (harpoon_u >= 0.0 or rope_left > 0.0):
+		var head: Vector2 = harpoon_from.lerp(harpoon_to, clampf(harpoon_u, 0.0, 1.0)) if harpoon_u >= 0.0 else harpoon_to
+		var fade: float = 1.0 if harpoon_u >= 0.0 else clampf(rope_left / 0.3, 0.0, 1.0)
+		c.draw_line(harpoon_from, head, Color(0.75, 0.6, 0.4, 0.9 * fade), 3.0)
+		c.draw_line(harpoon_from, head, Color(1.0, 0.9, 0.7, 0.5 * fade), 1.0)
+		var dir2: Vector2 = (harpoon_to - harpoon_from).normalized()
+		var side: Vector2 = dir2.orthogonal()
+		c.draw_colored_polygon(PackedVector2Array([head + dir2 * 10.0, head + side * 6.0 - dir2 * 4.0, head - side * 6.0 - dir2 * 4.0]),
+			Color(0.85, 0.88, 0.95, fade))
+	if hp > 0 and kind == "tidemage" and bubble_hits > 0:
+		c.draw_circle(p, BUBBLE_R, Color(colour, 0.12))
+		c.draw_arc(p, BUBBLE_R, 0, TAU, 40, Color(0.85, 0.95, 1.0, 0.75), 2.0)
+		c.draw_arc(p, BUBBLE_R - 6.0, PI * 1.1, PI * 1.45, 10, Color(1, 1, 1, 0.8), 3.0)
+		for i in BUBBLE_HITS - bubble_hits:
+			var a0: float = 0.7 + i * 2.1
+			c.draw_polyline(PackedVector2Array([p + Vector2.from_angle(a0) * BUBBLE_R, p + Vector2.from_angle(a0 + 0.15) * BUBBLE_R * 0.7,
+				p + Vector2.from_angle(a0 - 0.1) * BUBBLE_R * 0.5]), Color(1, 1, 1, 0.8), 1.5)
+	if wave != null and hp > 0:
+		if float(wave["warn"]) > 0.0:
+			var edge: float = float(wave["x"]) + float(wave["way"]) * 20.0
+			var blink: float = 0.4 + 0.6 * absf(sin(now * 12.0))
+			for i in 4:
+				var y: float = hall.end.y + 60.0 + i * 70.0
+				c.draw_polyline(PackedVector2Array([Vector2(edge - float(wave["way"]) * 8.0, y - 12.0), Vector2(edge + float(wave["way"]) * 8.0, y),
+					Vector2(edge - float(wave["way"]) * 8.0, y + 12.0)]), Color(colour.lightened(0.4), blink), 3.0)
+		else:
+			var band: Rect2 = wave_band()
+			c.draw_rect(band, Color(colour, 0.32))
+			c.draw_rect(Rect2(band.position.x + (band.size.x * 0.5 if float(wave["way"]) < 0.0 else 0.0), band.position.y,
+				band.size.x * 0.5, band.size.y), Color(colour.lightened(0.3), 0.25))
+			var front: float = band.end.x if float(wave["way"]) > 0.0 else band.position.x
+			var y2: float = band.position.y
+			while y2 < band.end.y:
+				c.draw_line(Vector2(front, y2), Vector2(front - float(wave["way"]) * 8.0, y2 + 6.0), Color(0.9, 0.97, 1.0, 0.85), 2.0)
+				y2 += 12.0
+			c.draw_arc(Vector2(front - float(wave["way"]) * 12.0, band.position.y + 10.0), 14.0,
+				PI if float(wave["way"]) > 0.0 else 0.0, PI * 2.0 if float(wave["way"]) > 0.0 else PI, 10, Color(1, 1, 1, 0.85), 3.0)
 	for i in wards.size():
 		if float(wards[i]["back"]) <= 0.0 and hp > 0:
 			var w: Vector2 = ward_at(i)

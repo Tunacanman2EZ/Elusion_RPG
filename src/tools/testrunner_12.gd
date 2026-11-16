@@ -1636,7 +1636,7 @@ func _test_crownfall_wind(run: Node2D, wind: Array) -> void:
 	# ---- the kingdom map's crests ----
 	run.show_kingdoms(int(wind[5]))
 	var crests: bool = run.kingdom_at(run.kingdom_spot(0)) == 0 and run.kingdom_at(run.kingdom_spot(1)) == 1 \
-		and run.kingdom_at(run.kingdom_spot(2)) == -1 and run.open_map_in(0) == int(wind[0]) - 1 \
+		and run.kingdom_at(run.kingdom_spot(3)) == -1 and run.open_map_in(2) == -1 and run.open_map_in(0) == int(wind[0]) - 1 \
 		and run.open_map_in(1) == int(wind[5]) and run.kingdom_index(int(wind[3])) == 1
 	run.show_kingdoms(3)
 	crests = crests and run.open_map_in(1) == -1 and run.open_map_in(0) == 3
@@ -1714,6 +1714,218 @@ func _test_crownfall_wind(run: Node2D, wind: Array) -> void:
 	print("  crownfall wind: done")
 
 
+func _test_crownfall_water(run: Node2D, water: Array) -> void:
+	"""The Kingdom of Water (0.164.0): the tide, buoys, bubbles, clams, the
+	way on from the Tempest, and its five bosses."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	# ---- the tide ----
+	_cf_bare(run)
+	run.tide_mark = 10
+	for c in 16:
+		run.footprint[Vector2i(c, 12)] = true
+		run.placed[Vector2i(c, 12)] = "land"
+		run.gone_at[Vector2i(c, 12)] = -45.0 + c
+	for spot in [[Vector2i(20, 11), "guard"], [Vector2i(21, 11), "key"], [Vector2i(22, 11), "heart"], [Vector2i(23, 11), "land"],
+			[Vector2i(24, 9), "land"]]:
+		run.footprint[spot[0]] = true
+		run.placed[spot[0]] = spot[1]
+		run.gone_at[spot[0]] = -60.0
+	run.gone_at[Vector2i(23, 11)] = -5.0
+	run.balls = [run._ball(run._cell(0, 12).get_center(), Vector2(0, -Run.SPEED))]
+	var made: int = run.tide_rebuild()
+	var back: Array = []
+	for c in 16:
+		if run.cells.has(Vector2i(c, 12)):
+			back.append(c)
+	# the ball over cell 0 keeps it and its neighbour clear (_ball_near's reach)
+	var rebuilt: Variant = run.cells.get(Vector2i(2, 12))
+	var tide_ok: bool = made == Run.TIDE_MOST and back == range(2, 2 + Run.TIDE_MOST) and rebuilt != null \
+		and str(rebuilt["land"]) == "water" and int(rebuilt["hp"]) == 1 and rebuilt.has("tide") and run.breakable == Run.TIDE_MOST \
+		and not run.cells.has(Vector2i(20, 11)) and not run.cells.has(Vector2i(21, 11)) and not run.cells.has(Vector2i(22, 11)) \
+		and not run.cells.has(Vector2i(23, 11)) and not run.cells.has(Vector2i(24, 9))
+	# a second tide takes the two old cells left, never the fresh one
+	var made_again: int = run.tide_rebuild()
+	tide_ok = tide_ok and made_again == 2 and run.cells.has(Vector2i(15, 12)) and not run.cells.has(Vector2i(23, 11))
+	var low: float = Run.TIDE_EVERY - 2.0 * Run.TIDE_RISE - Run.TIDE_HIGH
+	run.tide_t = 0.0
+	var level_low: float = run.tide_level()
+	run.tide_t = low + Run.TIDE_RISE + 0.1
+	var level_high: float = run.tide_level()
+	run.tide_t = 0.0
+	run.tide_now()
+	run.words.clear()
+	run._tide(0.1)
+	var came_in: bool = run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "THE TIDE COMES IN")
+	tide_ok = tide_ok and level_low == 0.0 and level_high == 1.0 and came_in
+	check("WATER'S TIDE: as it stands it brings back the cells under its mark broken over %ds ago as one-hit water bricks - the oldest first, %d at most, none by a ball, none a core's, a Guard's or a key's, none over the mark; it comes in when called" % [int(Run.TIDE_WAIT), Run.TIDE_MOST],
+		tide_ok, [made, back, level_low, level_high, came_in])
+	# ---- buoys, bubbles, clams ----
+	_cf_bare(run)
+	for r in [6, 7, 8]:
+		run.footprint[Vector2i(5, r)] = true
+	var buoy: Dictionary = run._add(5, 8, "buoy", "water", 1)
+	run.buoys.append(buoy)
+	for i in 60:
+		run._waters(1.0 / 60.0)
+	var floated: bool = buoy["cell"] == Vector2i(5, 6) and run.cells.get(Vector2i(5, 6)) == buoy and not run.cells.has(Vector2i(5, 8)) \
+		and (buoy["rect"] as Rect2).is_equal_approx(run._cell(5, 6)) and not buoy.has("rise")
+	_cf_bare(run)
+	var bubble: Dictionary = run._add(7, 10, "bubble", "water", 1)
+	var near: Dictionary = run._add(7, 6, "land", "light", 1)
+	var far: Dictionary = run._add(7, 4, "land", "light", 1)
+	run._damage(bubble, 1, null)
+	var rose: bool = run.bubbles.size() == 1
+	for i in 60:
+		run._waters(1.0 / 60.0)
+	rose = rose and int(near["hp"]) == 0 and int(far["hp"]) == 1 and run.bubbles.is_empty()
+	_cf_bare(run)
+	var clam: Dictionary = run._add(9, 9, "clam", "water", 1)
+	clam["phase"] = 0.0
+	run.t = Run.CLAM_OPEN + 0.5
+	run._damage(clam, 1, null)
+	var shut_held: bool = int(clam["hp"]) == 1 and run.caps.is_empty()
+	run.t = Run.CLAM_OPEN / 2.0
+	run._damage(clam, 1, null)
+	var pearl: bool = int(clam["hp"]) == 0 and run.caps.size() == 1
+	check("  a buoy floats up into the holes above it, cell by cell, while the map held them; a bubble rises up its column and breaks the first brick it meets, no more; a clam shut takes no harm, open breaks at a hit and its pearl drops a bonus",
+		floated and rose and shut_held and pearl, [floated, rose, shut_held, pearl])
+	# ---- on from the Tempest ----
+	run.begin(int(water[0]) - 1)
+	run._hit_boss(run.boss.hp)
+	run.step(1.0 / 60.0)
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	var on_to_water: bool = run.state == Run.State.AIM and run.map_index == int(water[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "water" \
+		and run.tide_mark >= 0
+	# ---- the Tide King ----
+	run.begin(int(water[4]))
+	var king = run.boss
+	run.state = Run.State.PLAY
+	var king_ok: bool = str(king.kind) == "tideking" and king.hp == int(Boss.HP["tideking"])
+	run._hit_boss(Boss.SPLIT_EVERY)
+	king_ok = king_ok and king.minions.size() == 1
+	var before_young: int = run.breakable
+	for i in 60 * 30:
+		king._step_minions(1.0 / 60.0, true)
+		if king.minions.is_empty():
+			break
+	king_ok = king_ok and king.minions.is_empty() and run.breakable == before_young + 1
+	run.tide_t = 0.0
+	king.call_t = 0.001
+	king.step(0.01, true)
+	king_ok = king_ok and run.tide_t > Run.TIDE_EVERY - 2.0 * Run.TIDE_RISE - Run.TIDE_HIGH - 0.2
+	# ---- the Undine ----
+	run.begin(int(water[9]))
+	var undine = run.boss
+	run.state = Run.State.PLAY
+	undine.dive_t = 0.001
+	undine.step(0.01, true)
+	var under: bool = undine.dive_left > 0.0 and not undine.hittable()
+	var at_it: Dictionary = run._ball(undine.p, Vector2(0, -Run.SPEED))
+	run.balls = [at_it]
+	run._move(at_it, 1.0 / 60.0)
+	under = under and undine.hp == undine.most
+	undine.dest = undine.p
+	undine.dive_left = 0.01
+	var splashed: Dictionary = run._ball(undine.p + Vector2(0, 120), Vector2(0, -Run.SPEED))
+	var dry: Dictionary = run._ball(undine.p + Vector2(0, Boss.SPLASH_REACH + 40.0), Vector2(0, -Run.SPEED))
+	run.balls = [splashed, dry]
+	undine.step(0.02, true)
+	var splash_ok: bool = under and undine.dive_left == 0.0 and undine.hittable() and (splashed["v"] as Vector2).y > 0.0 \
+		and (dry["v"] as Vector2) == Vector2(0, -Run.SPEED) and undine.splashes.size() == 1
+	# ---- the Harpooner ----
+	run.begin(int(water[14]))
+	var harp = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 500.0
+	run.target_x = 500.0
+	harp.harpoon_t = 0.001
+	harp._harpoon(0.01)
+	var aimed: bool = harp.harpoon_aim > 0.0 and absf(harp.harpoon_to.x - 500.0) < 0.1
+	for i in 120:
+		harp._harpoon(1.0 / 60.0)
+		if harp.rope_left > 0.0:
+			break
+	var hooked: bool = aimed and run.tugged > 0.0 and harp.rope_left > 0.0
+	var mid: Vector2 = harp.harpoon_from.lerp(harp.harpoon_to, 0.5)
+	var n: Vector2 = (harp.harpoon_to - harp.harpoon_from).orthogonal().normalized()
+	var crossing: Dictionary = run._ball(mid - n * 5.0, n * Run.SPEED)
+	harp.work_balls([crossing], 0.01)
+	var roped: bool = (crossing["v"] as Vector2).dot(n) < 0.0
+	run.tugged = 0.0
+	harp.rope_left = 0.0
+	harp.harpoon_t = 0.001
+	harp._harpoon(0.01)
+	run.paddle_x = 900.0
+	for i in 120:
+		harp._harpoon(1.0 / 60.0)
+		if harp.rope_left > 0.0:
+			break
+	var missed: bool = run.tugged == 0.0 and harp.rope_left > 0.0
+	# ---- the Tide Mage ----
+	run.begin(int(water[19]))
+	var tm = run.boss
+	run.state = Run.State.PLAY
+	var shielded: bool = tm.bubble_hits == Boss.BUBBLE_HITS and not tm.hittable()
+	for i in Boss.BUBBLE_HITS:
+		tm.ward_touch(tm.p + Vector2(Boss.BUBBLE_R, 0), 6.0)
+	var popped: bool = tm.bubble_hits == 0 and tm.hittable() and tm.ward_touch(tm.p + Vector2(Boss.BUBBLE_R, 0), 6.0) == Vector2.INF
+	tm._bubble_step(Boss.BUBBLE_DOWN + 0.1)
+	var formed: bool = tm.bubble_hits == Boss.BUBBLE_HITS
+	var gone: int = 0
+	for k in run.bricks:
+		if gone < Boss.REBUILD_COUNT and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and str(k["kind"]) == "land" and (k["rect"] as Rect2).position.y > tm.hall.end.y:
+			run._damage(k, 99, null)
+			gone += 1
+	var bubbles_before: int = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "bubble" and int(k["hp"]) > 0).size()
+	tm.rebuild_t = 0.001
+	tm._bubble_step(0.01)
+	var bubbles_after: int = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "bubble" and int(k["hp"]) > 0).size()
+	var mage_ok: bool = shielded and popped and formed and bubbles_after == bubbles_before + Boss.REBUILD_COUNT
+	# ---- the Leviathan ----
+	run.begin(int(water[24]))
+	var lev = run.boss
+	run.state = Run.State.PLAY
+	var lev_ok: bool = lev.crowned and str(lev.title) == "The Leviathan" and lev.hp == int(Boss.HP["leviathan"])
+	for k in run.bricks:
+		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) and (k["rect"] as Rect2).position.y > lev.hall.end.y + 60.0:
+			run._damage(k, 99, null)
+	var before_wave: int = run.breakable
+	lev.wave_t = 0.001
+	lev._wave(0.01)
+	var warned: bool = lev.wave != null and float(lev.wave["warn"]) > 0.0 and lev.wave_band().size == Vector2.ZERO
+	lev._wave(Boss.WAVE_WARN + 0.01)
+	lev._wave(0.3)
+	var band: Rect2 = lev.wave_band()
+	var swept: Dictionary = run._ball(band.get_center(), Vector2(0, -Run.SPEED))
+	var way: float = float(lev.wave["way"])
+	lev.work_balls([swept], 0.01)
+	var carried: bool = signf((swept["v"] as Vector2).x) == way and absf((swept["v"] as Vector2).length() - Run.SPEED) < 1.0
+	for i in 400:
+		if lev.wave == null:
+			break
+		lev._wave(1.0 / 60.0)
+	var wake: int = run.breakable - before_wave
+	lev_ok = lev_ok and warned and carried and lev.wave == null and wake > 0 and wake <= Boss.WAVE_BRICKS
+	@warning_ignore("integer_division")
+	run._hit_boss(lev.hp - lev.most / 2 + 1)
+	lev.step(0.01, true)
+	lev_ok = lev_ok and lev.dived and lev.dive_left > 0.0 and not lev.hittable() and lev.minions.size() > 0
+	lev.dive_left = 0.0
+	run._hit_boss(lev.hp)
+	run.step(1.0 / 60.0)
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	lev_ok = lev_ok and run.state == Run.State.OVER
+	check("  WATER'S BOSSES: the Tempest's fall leads on into the Kingdom of Water; the Tide King's young turn to water where they land and he calls the tide; the Undine under the water cannot be hit and comes up in a splash that throws near balls away; the Harpooner marks the paddle, hooks it and his rope turns the ball (missing when it moved); the Tide Mage's bubble takes %d hits, forms again, and he raises bubble bricks; the Leviathan's wave warns, carries a ball its way and leaves at most %d bricks, he dives at half health, and his fall ends the run" % [Boss.BUBBLE_HITS, Boss.WAVE_BRICKS],
+		on_to_water and king_ok and splash_ok and hooked and roped and missed and mage_ok and lev_ok,
+		[on_to_water, king_ok, splash_ok, hooked, roped, missed, mage_ok, lev_ok, wake])
+	print("  crownfall water: done")
+
+
 func _cf_bare(run: Node2D) -> void:
 	"""Crownfall's checks: an empty 32-wide grid to set bricks on by hand -
 	the map, its ball and boss gone, nothing in the footprint, the clock at
@@ -1735,7 +1947,7 @@ func _test_crownfall() -> void:
 	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
 	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
 	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
-	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<DWk"
+	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<DWkuoQ"
 	var bad_rows: Array = []
 	for m in Maps.MAPS:
 		var rows: Array = m["rows"]
@@ -1763,14 +1975,20 @@ func _test_crownfall() -> void:
 				and "".join(Maps.MAPS[i]["rows"]).contains("R")
 	var made: Array = Maps.KINGDOMS.filter(func(k: Dictionary) -> bool: return bool(k["made"]))
 	var wind_maps: Array = Maps.maps_of("wind")
-	var big_wind: int = wind_maps.filter(func(i: int) -> bool: return str(Maps.MAPS[i]["rows"][0]).length() == Maps.BIG_COLS).size()
-	check("the maps: Light's %d and Wind's %d (%d of them big), every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms, two made; a boss on every %dth map (%s) in each kingdom's own order, the last crowned, each with a hall; the story told in %d lines" % [
-		light.size(), wind_maps.size(), big_wind, Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
-		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 2 and str(made[0]["id"]) == "light"
-		and str(made[1]["id"]) == "wind" and light.size() == Maps.MAPS_A_KINGDOM and wind_maps.size() == Maps.MAPS_A_KINGDOM
-		and light.size() + wind_maps.size() == Maps.made_count() and big_wind >= 10 and int(wind_maps[0]) == light.size()
+	var water_maps: Array = Maps.maps_of("water")
+	var big_of := func(of: Array) -> int:
+		return of.filter(func(i: int) -> bool: return str(Maps.MAPS[i]["rows"][0]).length() == Maps.BIG_COLS).size()
+	var big_wind: int = big_of.call(wind_maps)
+	var big_water: int = big_of.call(water_maps)
+	check("the maps: Light's %d, Wind's %d (%d of them big) and Water's %d (%d big), every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms, three made; a boss on every %dth map (%s) in each kingdom's own order, the last crowned, each with a hall; the story told in %d lines" % [
+		light.size(), wind_maps.size(), big_wind, water_maps.size(), big_water, Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
+		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 3 and str(made[0]["id"]) == "light"
+		and str(made[1]["id"]) == "wind" and str(made[2]["id"]) == "water" and light.size() == Maps.MAPS_A_KINGDOM
+		and wind_maps.size() == Maps.MAPS_A_KINGDOM and water_maps.size() == Maps.MAPS_A_KINGDOM
+		and light.size() + wind_maps.size() + water_maps.size() == Maps.made_count() and big_wind >= 10 and big_water >= 10
+		and int(wind_maps[0]) == light.size() and int(water_maps[0]) == light.size() + wind_maps.size()
 		and Maps.MAPS_A_KINGDOM == Maps.BOSS_EVERY * Maps.STRETCHES
-		and bosses.size() == 2 * Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
+		and bosses.size() == 3 * Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
 		and boss_kinds and Maps.STORY.size() == 5 and Maps.BOSS_SLOTS.size() == Maps.STRETCHES,
 		[bad_rows, bosses, boss_kinds])
 	var run: Node2D = Run.new()
@@ -2360,6 +2578,7 @@ func _test_crownfall() -> void:
 		and run.state == Run.State.AIM and run.map_index == int(wind_maps[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "wind",
 		[crowned_now, none_yet, one_split, three_split, ruler_aimed, crown_words, crown_won, run.state, run.map_index])
 	await _test_crownfall_wind(run, wind_maps)
+	await _test_crownfall_water(run, water_maps)
 	# ---- words never land on words ----
 	run.begin(0)
 	run.words.clear()
