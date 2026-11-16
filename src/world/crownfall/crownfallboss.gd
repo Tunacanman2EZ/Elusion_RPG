@@ -16,6 +16,24 @@
 #   map 25   the ruler (the land's own boss, the crown) - throws; under two
 #            thirds of its health it splits like the Slime King, under a third
 #            it marks columns like the Sniper too.
+# THE KINGDOM OF WIND (0.163.0) has its own five, from its own monsters:
+#   map 5    the Gale King (its large slime) - splits like the Slime King,
+#            and every GALE_EVERY stamps: a gust out of him knocks every
+#            ball within GALE_REACH sideways, away from him.
+#   map 10   the Whirlwind (its sprite) - darts and blinks like the Sprite,
+#            and every WHIRL_EVERY spins up a vortex that wanders the open
+#            field: a ball it touches is caught, spun SPIN_SECONDS and
+#            thrown out any way at all (the owner's "whirlwind throws balls
+#            diff directions").
+#   map 15   the Gust Sniper (its bush sniper) - fires a FAN of three shots
+#            at the paddle (five under half its health).
+#   map 20   the Storm Mage (its bush mage) - wards and rebuilding like the
+#            Bush Mage, and a WIND WALL under his hall WALL_ON in every
+#            WALL_EVERY that blows a rising ball back down.
+#   map 25   the Tempest (the wind's boss, the crown) - throws; a TORNADO
+#            that never stops wanders the field, catching balls and throwing
+#            them out any way; under two thirds he splits, under a third a
+#            second tornado comes.
 # Every one walks its hall (the map's R cells), takes the ball's and the
 # lasers' hits, and - but the Sniper - throws at the paddle (a hit stuns it).
 # It is down at no health: the run says so, and its walls crumble.
@@ -25,15 +43,23 @@
 # children of the run. No class_name; the run preloads it.
 extends RefCounted
 
-const KINDS := ["slimeking", "sprite", "sniper", "mage", "ruler"]
+const KINDS := ["slimeking", "sprite", "sniper", "mage", "ruler",
+	"galeking", "whirlwind", "gustsniper", "stormmage", "tempest"]
+# Each kingdom's five, in the order of its stretches.
+const KINDS_OF := {"light": ["slimeking", "sprite", "sniper", "mage", "ruler"],
+	"wind": ["galeking", "whirlwind", "gustsniper", "stormmage", "tempest"]}
 # TOUGH (the owner: "bosses die too fast we really need to buff up bosses",
 # and "hitting with a ball does a bit more damage"): a ball's hit is the run's
 # BALL_HIT (3), a laser's 1, and a fight is about twice the ball hits it was.
-const HP := {"slimeking": 180, "sprite": 160, "sniper": 190, "mage": 200, "ruler": 300}
+const HP := {"slimeking": 180, "sprite": 160, "sniper": 190, "mage": 200, "ruler": 300,
+	"galeking": 220, "whirlwind": 200, "gustsniper": 240, "stormmage": 250, "tempest": 380}
 # How big each is drawn (their frames differ: a slime 48 px, a mage 150).
-const SCALE := {"slimeking": 3.0, "sprite": 1.7, "sniper": 2.3, "mage": 1.3, "ruler": 2.2, "minion": 1.25}
+const SCALE := {"slimeking": 3.0, "sprite": 1.7, "sniper": 2.3, "mage": 1.3, "ruler": 2.2, "minion": 1.25,
+	"galeking": 3.0, "whirlwind": 1.7, "gustsniper": 2.3, "stormmage": 1.3, "tempest": 2.2}
 const BODY := {"slimeking": Vector2(66, 46), "sprite": Vector2(40, 40), "sniper": Vector2(44, 52),
-	"mage": Vector2(56, 64), "ruler": Vector2(70, 70)}
+	"mage": Vector2(56, 64), "ruler": Vector2(70, 70),
+	"galeking": Vector2(66, 46), "whirlwind": Vector2(40, 40), "gustsniper": Vector2(44, 52),
+	"stormmage": Vector2(56, 64), "tempest": Vector2(70, 70)}
 const WALK_SPEED := 110.0
 const THROW_EVERY := 2.3
 const SHOT_SPEED := 250.0
@@ -65,6 +91,26 @@ const REBUILD_EVERY := 5.0
 const REBUILD_COUNT := 3
 # THE RULER
 const RULER_SPLIT_EVERY := 18   # damage, so every six ball hits
+# THE GALE KING
+const GALE_EVERY := 3.2
+const GALE_REACH := 320.0
+const GALE_KICK := 380.0
+const GALE_SHOWN := 0.5
+# THE WHIRLWIND, and the Tempest's tornado
+const WHIRL_EVERY := 4.5
+const WHIRL_LIFE := 6.0
+const VORTEX_R := 44.0
+const TORNADO_R := 62.0
+const VORTEX_SPEED := 70.0
+const SPIN_SECONDS := 0.6
+const FREE_SECONDS := 0.5
+# THE GUST SNIPER
+const FAN_EVERY := 3.0
+const FAN_SPREAD := 16.0
+# THE STORM MAGE
+const WALL_EVERY := 6.0
+const WALL_ON := 2.5
+const WALL_TALL := 26.0
 
 var run: Node2D = null
 # The run's arena, its paddle's line and the foot of its view, handed in.
@@ -96,6 +142,14 @@ var rebuild_t: float = REBUILD_EVERY
 # Each ward: {back} - how long until it grows back (0: up).
 var wards: Array = []
 var _beam_hit: bool = false
+var gale_t: float = GALE_EVERY
+var gales: Array = []           # {"p", "age"}: the Gale King's stamps, drawn
+var vortices: Array = []        # {"p", "v", "life", "r", "forever"}
+var whirl_t: float = WHIRL_EVERY
+var fan_t: float = FAN_EVERY
+var wall_t: float = WALL_EVERY
+var wall_left: float = 0.0
+var second_storm: bool = false
 # Each minion: {p, from, to, t (into its hop), rest, sprite}.
 var minions: Array = []
 var sprite: AnimatedSprite2D = null
@@ -120,7 +174,9 @@ func setup(on_run: Node2D, info: Dictionary, land_id: String, the_hall: Rect2, t
 	hp = most
 	p = hall.get_center() + Vector2(0, 4)
 	dest = p
-	if kind == "mage":
+	if kind == "tempest":
+		vortices.append(_vortex(TORNADO_R, true))
+	if kind == "mage" or kind == "stormmage":
 		for i in WARDS:
 			wards.append({"back": 0.0})
 	if enemy_id != "":
@@ -163,6 +219,30 @@ func step(dt: float, playing: bool) -> void:
 				_walk(dt, 0.7)
 				_ward_step(dt)
 				_throw(dt, 1.3)
+			"galeking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				_gale(dt)
+			"whirlwind":
+				_dart(dt)
+				whirl_t -= dt
+				if whirl_t <= 0.0:
+					whirl_t = WHIRL_EVERY * (0.75 if hp * 2 < most else 1.0)
+					vortices.append(_vortex(VORTEX_R, false))
+			"gustsniper":
+				_walk(dt, 0.55)
+				_fan(dt)
+			"stormmage":
+				_walk(dt, 0.7)
+				_ward_step(dt)
+				_throw(dt, 1.3)
+				_wall(dt)
+			"tempest":
+				_walk(dt, 0.8)
+				_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				if hp * 3 < most and not second_storm:
+					second_storm = true
+					vortices.append(_vortex(TORNADO_R, true))
 			"ruler":
 				_walk(dt, 0.8)
 				_throw(dt, 0.8 if hp * 3 < most else 1.0)
@@ -177,6 +257,7 @@ func step(dt: float, playing: bool) -> void:
 		sprite.self_modulate = Color(1, 1, 1).lerp(Color(4, 4, 4), flash * 0.5)
 	_step_shots(dt)
 	_step_minions(dt, playing)
+	_step_winds(dt, playing)
 
 
 func _walk(dt: float, pace: float) -> void:
@@ -295,9 +376,10 @@ func hit(n: int) -> bool:
 		return false
 	hp = maxi(0, hp - n)
 	flash = 1.0
-	var splits: bool = kind == "slimeking" or (kind == "ruler" and hp * 3 < most * 2)
+	var kingly: bool = kind == "slimeking" or kind == "galeking"
+	var splits: bool = kingly or ((kind == "ruler" or kind == "tempest") and hp * 3 < most * 2)
 	if splits and hp > 0:
-		var every: int = SPLIT_EVERY if kind == "slimeking" else RULER_SPLIT_EVERY
+		var every: int = SPLIT_EVERY if kingly else RULER_SPLIT_EVERY
 		hits_since_split += n
 		while hits_since_split >= every:
 			hits_since_split -= every
@@ -308,8 +390,124 @@ func hit(n: int) -> bool:
 			_free_minion(m)
 		minions.clear()
 		shots.clear()
+		vortices.clear()
+		wall_left = 0.0
 		return true
 	return false
+
+
+# ---------------------------------------------------------------- the winds --
+
+func _gale(dt: float) -> void:
+	"""THE GALE KING STAMPS: a gust out of him, every ball near knocked away."""
+	gale_t -= dt
+	if gale_t > 0.0:
+		return
+	gale_t = GALE_EVERY * (0.75 if hp * 2 < most else 1.0)
+	gales.append({"p": p, "age": 0.0})
+	run.call("gale_from", p, GALE_REACH, GALE_KICK)
+	flash = 0.6
+
+
+func _fan(dt: float) -> void:
+	"""THE GUST SNIPER: a fan of shots at the paddle, wider under half health."""
+	fan_t -= dt
+	if fan_t > 0.0:
+		return
+	var hurt: bool = hp * 2 < most
+	fan_t = FAN_EVERY * (0.75 if hurt else 1.0)
+	var from: Vector2 = p + Vector2(0, 24)
+	var at := Vector2(float(run.get("paddle_x")), paddle_y)
+	var n: int = 5 if hurt else 3
+	for i in n:
+		var turn: float = (i - (n - 1) / 2.0) * FAN_SPREAD
+		shots.append({"p": from, "v": (at - from).normalized().rotated(deg_to_rad(turn)) * SHOT_SPEED})
+
+
+func _wall(dt: float) -> void:
+	"""THE STORM MAGE'S WIND WALL: up WALL_ON in every WALL_EVERY."""
+	if wall_left > 0.0:
+		wall_left -= dt
+		return
+	wall_t -= dt
+	if wall_t <= 0.0:
+		wall_t = WALL_EVERY
+		wall_left = WALL_ON
+
+
+func wall_rect() -> Rect2:
+	return Rect2(hall.position.x - 20.0, hall.end.y + 2.0, hall.size.x + 40.0, WALL_TALL)
+
+
+func _field_box() -> Rect2:
+	"""Where a vortex may wander: the open floor between the bricks and the
+	paddle, the walls' width."""
+	var top: float = float(run.call("field_bottom")) + 34.0
+	var foot: float = paddle_y - 110.0
+	if foot - top < 60.0:
+		top = foot - 60.0
+	return Rect2(arena.position.x + 50.0, top, arena.size.x - 100.0, foot - top)
+
+
+func _vortex(radius: float, forever: bool) -> Dictionary:
+	var rng: RandomNumberGenerator = run.get("rng")
+	var box: Rect2 = _field_box()
+	var at := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+	run.call("burst_at", at, land, 18)
+	return {"p": at, "v": Vector2.from_angle(rng.randf() * TAU) * VORTEX_SPEED, "life": WHIRL_LIFE,
+		"r": radius, "forever": forever}
+
+
+func _step_winds(dt: float, playing: bool) -> void:
+	for g in gales:
+		g["age"] += dt
+	gales = gales.filter(func(g: Dictionary) -> bool: return float(g["age"]) < GALE_SHOWN)
+	if not playing:
+		return
+	var box: Rect2 = _field_box()
+	for v in vortices:
+		v["p"] += v["v"] * dt
+		if v["p"].x < box.position.x or v["p"].x > box.end.x:
+			v["v"].x = -v["v"].x
+		if v["p"].y < box.position.y or v["p"].y > box.end.y:
+			v["v"].y = -v["v"].y
+		v["p"] = Vector2(clampf(v["p"].x, box.position.x, box.end.x), clampf(v["p"].y, box.position.y, box.end.y))
+		if not bool(v["forever"]):
+			v["life"] -= dt
+	vortices = vortices.filter(func(v: Dictionary) -> bool: return bool(v["forever"]) or float(v["life"]) > 0.0)
+
+
+func work_balls(balls: Array, dt: float) -> void:
+	"""What the winds do to the balls: a vortex catches one it touches and
+	spins it SPIN_SECONDS, then throws it out any way (the run's fling()); the
+	Storm Mage's wall blows a rising ball back down."""
+	for b in balls:
+		if b.has("spin"):
+			var on: Dictionary = b["spin_on"]
+			b["spin"] = float(b["spin"]) - dt
+			b["spin_a"] = float(b["spin_a"]) + dt * 14.0
+			b["p"] = (on["p"] as Vector2) + Vector2.from_angle(float(b["spin_a"])) * float(on["r"]) * 0.45
+			b["v"] = Vector2.ZERO
+			if float(b["spin"]) <= 0.0 or hp <= 0:
+				b.erase("spin")
+				b.erase("spin_on")
+				b["free_t"] = FREE_SECONDS
+				run.call("fling", b, b["p"])
+			continue
+		b["free_t"] = maxf(0.0, float(b.get("free_t", 0.0)) - dt)
+		if float(b["free_t"]) <= 0.0 and hp > 0:
+			for v in vortices:
+				if (b["p"] as Vector2).distance_to(v["p"]) < float(v["r"]):
+					b["spin"] = SPIN_SECONDS
+					b["spin_on"] = v
+					b["spin_a"] = ((b["p"] as Vector2) - (v["p"] as Vector2)).angle()
+					b["v"] = Vector2.ZERO
+					run.call("burst_at", b["p"], land, 10)
+					break
+		if wall_left > 0.0 and hp > 0 and (b["v"] as Vector2).y < 0.0 and wall_rect().has_point(b["p"]):
+			var rng: RandomNumberGenerator = run.get("rng")
+			b["v"] = Vector2((b["v"] as Vector2).x + rng.randf_range(-60.0, 60.0), absf((b["v"] as Vector2).y))
+			run.call("burst_at", b["p"], land, 6)
 
 
 # ---------------------------------------------------------------- the split --
@@ -421,6 +619,28 @@ func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
 		var foot := Vector2(beam_x, paddle_y + 14.0)
 		c.draw_line(top, foot, Color(colour, 0.35), BEAM_HALF * 2.0)
 		c.draw_line(top, foot, Color(1, 1, 1, 0.9), 4.0)
+	var now: float = float(run.get("t"))
+	for g in gales:
+		var u: float = float(g["age"]) / GALE_SHOWN
+		c.draw_arc(g["p"], GALE_REACH * u, 0, TAU, 48, Color(colour.lightened(0.3), 0.6 * (1.0 - u)), 4.0 * (1.0 - u) + 1.0)
+	for v in vortices:
+		var r: float = v["r"]
+		var fade: float = 1.0 if bool(v["forever"]) else clampf(float(v["life"]) / 0.6, 0.0, 1.0)
+		c.draw_circle(v["p"], r + 6.0, Color(colour, 0.06 * fade))
+		c.draw_circle(v["p"], r, Color(colour.darkened(0.6), 0.35 * fade))
+		for i in 4:
+			var a0: float = now * (7.0 - i) + i * 1.6
+			c.draw_arc(v["p"], r * (0.3 + 0.2 * i), a0, a0 + 3.6, 18, Color(colour.lightened(0.45), (0.95 - i * 0.12) * fade), 3.5)
+		for i in 5:
+			var a: float = now * 5.0 + i * TAU / 5.0
+			c.draw_circle((v["p"] as Vector2) + Vector2.from_angle(a) * r * 0.85, 2.2, Color(1, 1, 1, 0.7 * fade))
+	if wall_left > 0.0 and hp > 0:
+		var w: Rect2 = wall_rect()
+		c.draw_rect(w, Color(colour, 0.18))
+		for x in range(int(w.position.x) + 14, int(w.end.x), 34):
+			var y: float = w.position.y + fposmod(now * 60.0 + x, w.size.y)
+			c.draw_polyline(PackedVector2Array([Vector2(x - 6, y - 4), Vector2(x, y + 3), Vector2(x + 6, y - 4)]),
+				Color(colour.lightened(0.4), 0.8), 2.0)
 	for i in wards.size():
 		if float(wards[i]["back"]) <= 0.0 and hp > 0:
 			var w: Vector2 = ward_at(i)

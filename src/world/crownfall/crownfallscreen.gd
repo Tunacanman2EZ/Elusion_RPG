@@ -346,6 +346,19 @@ func pick(index: int) -> void:
 	paint()
 
 
+func step_kingdom(way: int) -> void:
+	"""Left or right along the crests: the next made kingdom with a map open."""
+	if run == null or not is_instance_valid(run):
+		return
+	var at: int = int(run.call("kingdom_index", int(run.get("selected")))) + way
+	while at >= 0 and at < Maps.KINGDOMS.size():
+		var index: int = int(run.call("open_map_in", at))
+		if index >= 0:
+			pick(index)
+			return
+		at += way
+
+
 func step_pick(way: int) -> void:
 	"""Up or down the kingdom's open maps."""
 	var picked: int = int(run.get("selected")) + way
@@ -518,6 +531,10 @@ func _key(key: InputEventKey) -> void:
 			step_pick(-1)
 		elif key.is_action(&"move_down") or key.keycode == KEY_DOWN:
 			step_pick(1)
+		elif key.is_action(&"move_left") or key.keycode == KEY_LEFT:
+			step_kingdom(-1)
+		elif key.is_action(&"move_right") or key.keycode == KEY_RIGHT:
+			step_kingdom(1)
 	elif go and state == RunScript.State.AIM:
 		run.call("launch")
 
@@ -529,6 +546,9 @@ func _press_at(at: Vector2, twice: bool) -> void:
 	var state: int = int(run.get("state"))
 	if state == RunScript.State.KINGDOMS:
 		var index: int = int(run.call("pick_at", at))
+		if index < 0:
+			# a kingdom's crest: its next map to clear
+			index = int(run.call("open_map_in", int(run.call("kingdom_at", at))))
 		if index >= 0 and index == int(run.get("selected")) and (twice or not bool(on_touch.call())):
 			begin()
 		else:

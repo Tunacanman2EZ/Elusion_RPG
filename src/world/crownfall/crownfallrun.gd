@@ -172,7 +172,15 @@ const PORTAL_HUES := [Color(0.62, 0.32, 0.95), Color(0.2, 0.85, 0.8), Color(1.0,
 # toward the nearest, PULL_TURN degrees a second at most.
 const PULL_BELOW := 6
 const PULL_TURN := 40.0
-const UNBREAKABLE := ["iron", "mirror", "bumper", "portal", "lock"]
+const UNBREAKABLE := ["iron", "mirror", "bumper", "portal", "lock", "whirl"]
+# THE KINGDOM OF WIND (0.163.0): GUSTS - bands of a map's rows ("gusts" in
+# its data: [first row, last row, way]) that push a ball sideways while it is
+# in them, GUST_PUSH a second; WHIRLS (W) that never break and fling the ball
+# off in a direction of their own; KITES (k) - wind bricks that bob up and
+# down into the room above and below them, KITE_REACH cells at most.
+const GUST_PUSH := 900.0
+const KITE_REACH := 2
+const KITE_SPEED := 1.3
 const GOLD := Color(1.0, 0.82, 0.38)
 const INK := Color(0.93, 0.95, 1.0)
 const PANEL := Color(0.055, 0.06, 0.1, 0.94)
@@ -237,6 +245,7 @@ var _jolt := Vector2.ZERO
 var drips: Array = []
 var zaps: Array = []
 var movers: Array = []
+var gusts: Array = []          # {"y0", "y1", "way"} in px, this map's gusts
 var prisms: Array = []
 var keys_left: int = 0
 var rails: Array = []          # the lanes' iron rails (in bricks too, off the grid)
@@ -340,6 +349,7 @@ func _load(index: int) -> void:
 	var heart_cells: Array = []
 	var portals: Array = []
 	var drifting: Array = []
+	var kites: Array = []
 	var rows: Array = data["rows"]
 	cols = str(rows[0]).length() if not rows.is_empty() else Maps.COLS
 	cw = FIELD_W / cols
@@ -357,6 +367,9 @@ func _load(index: int) -> void:
 				continue
 			if letter == "<":
 				drifting.append(Vector2i(col, row))
+				continue
+			if letter == "k":
+				kites.append(Vector2i(col, row))
 				continue
 			footprint[Vector2i(col, row)] = true
 			match letter:
@@ -398,6 +411,9 @@ func _load(index: int) -> void:
 					prisms.append(prism)
 				"D":
 					_add(col, row, "guard", "light", 2)
+				"W":
+					var whirl := _add(col, row, "whirl", "wind", 0)
+					whirl["phase"] = (col + row) * 0.7
 				"Y":
 					_add(col, row, "mimic", "", 1)
 				"p":
@@ -423,6 +439,11 @@ func _load(index: int) -> void:
 		portals[i]["pair"] = i >> 1
 		portals[i + 1]["pair"] = i >> 1
 	_make_drifters(drifting)
+	_make_kites(kites, rows.size())
+	for g in data.get("gusts", []):
+		var y0: float = MAP_TOP + int(g[0]) * (ch + gap) - gap
+		var y1: float = minf(MAP_TOP + (int(g[1]) + 1) * (ch + gap), PADDLE_Y - 90.0)
+		gusts.append({"y0": y0, "y1": y1, "way": signf(float(g[2]))})
 	for k in bricks:
 		if _breaks(k):
 			breakable += 1
@@ -455,6 +476,7 @@ func _clear_map() -> void:
 	movers.clear()
 	prisms.clear()
 	rails.clear()
+	gusts.clear()
 	_new_balls.clear()
 	keys_left = 0
 	pulling = false
@@ -575,6 +597,53 @@ func _guarded(k: Dictionary) -> bool:
 	return false
 
 
+func _make_kites(spots: Array, rows_in: int) -> void:
+	"""KITES (k): wind bricks bobbing up and down into the empty cells above
+	and below them, KITE_REACH at most, each on its own beat. Off the grid,
+	like drifters: the ball finds them in `movers`."""
+	for c in spots:
+		var up: int = 0
+		while up < KITE_REACH and c.y - up - 1 >= 0 and not cells.has(Vector2i(c.x, c.y - up - 1)) \
+				and not spots.has(Vector2i(c.x, c.y - up - 1)):
+			up += 1
+		var down: int = 0
+		while down < KITE_REACH and c.y + down + 1 < rows_in + KITE_REACH and not cells.has(Vector2i(c.x, c.y + down + 1)) \
+				and not spots.has(Vector2i(c.x, c.y + down + 1)):
+			down += 1
+		var k := _brick(_cell(c.x, c.y), "land", "wind", 1)
+		k["kite"] = true
+		k["home"] = (k["rect"] as Rect2).position.y
+		k["lo"] = -up * (ch + gap)
+		k["hi"] = down * (ch + gap)
+		k["phase"] = (c.x * 0.9 + c.y * 0.4)
+		bricks.append(k)
+		movers.append(k)
+
+
+func _gusts(dt: float) -> void:
+	"""A ball in a gust's band is pushed its way, its speed kept."""
+	if gusts.is_empty():
+		return
+	for b in balls:
+		var v: Vector2 = b["v"]
+		if v == Vector2.ZERO:
+			continue
+		for g in gusts:
+			if (b["p"] as Vector2).y >= float(g["y0"]) and (b["p"] as Vector2).y <= float(g["y1"]):
+				var speed: float = v.length()
+				v.x += float(g["way"]) * GUST_PUSH * dt
+				v = steady(v.normalized() * speed)
+		b["v"] = v
+
+
+func fling(b: Dictionary, at: Vector2) -> void:
+	"""A whirl's or a whirlwind's throw: the ball off from `at` in a direction
+	of its own (never flat), at least full speed."""
+	var speed: float = maxf((b["v"] as Vector2).length(), SPEED)
+	b["v"] = steady(Vector2.from_angle(rng.randf() * TAU) * speed)
+	_burst(at, COLOURS["wind"], 12, 240.0, 0.0)
+
+
 func _make_drifters(spots: Array) -> void:
 	"""DRIFTERS (`<`): runs of light bricks along a row that slide back and
 	forth into the empty cells beside them, at most DRIFT_REACH each way. Not
@@ -658,6 +727,7 @@ func step(dt: float) -> void:
 	else:
 		var speed: float = SPEED * (SLOW_SHARE if active.has("slow") else 1.0)
 		_pull(dt)
+		_gusts(dt)
 		for b in balls:
 			if b["v"] != Vector2.ZERO:
 				b["v"] = (b["v"] as Vector2).normalized() * move_toward((b["v"] as Vector2).length(), speed, 600.0 * dt)
@@ -813,6 +883,13 @@ func _move(b: Dictionary, dt: float) -> void:
 					out["flash"] = 1.0
 					_burst((k["rect"] as Rect2).get_center(), PORTAL_HUES[int(k.get("pair", 0)) % PORTAL_HUES.size()], 10, 160.0, 0.0)
 					_burst(p, PORTAL_HUES[int(k.get("pair", 0)) % PORTAL_HUES.size()], 10, 160.0, 0.0)
+					break
+				if k["kind"] == "whirl":
+					# A WHIRL throws the ball off any way it likes
+					p = prev
+					fling(b, r.get_center())
+					k["flash"] = 1.0
+					score += 10
 					break
 				if k["kind"] == "bumper":
 					# A BUMPER kicks the ball straight off its middle, faster.
@@ -1241,10 +1318,14 @@ func _bricks_move(dt: float) -> void:
 	lava falls, frozen bricks shatter, bolts and the eclipse fade."""
 	for k in movers:
 		if k["hp"] > 0:
-			var u: float = 0.5 + 0.5 * sin(t * DRIFT_SPEED + float(k["phase"]))
 			# a Rect2 is a value: set a copy, then put it back
 			var r: Rect2 = k["rect"]
-			r.position.x = float(k["home"]) + lerpf(float(k["lo"]), float(k["hi"]), u)
+			if k.has("kite"):
+				var w: float = 0.5 + 0.5 * sin(t * KITE_SPEED + float(k["phase"]))
+				r.position.y = float(k["home"]) + lerpf(float(k["lo"]), float(k["hi"]), w)
+			else:
+				var u: float = 0.5 + 0.5 * sin(t * DRIFT_SPEED + float(k["phase"]))
+				r.position.x = float(k["home"]) + lerpf(float(k["lo"]), float(k["hi"]), u)
 			k["rect"] = r
 	for k in prisms:
 		if k["hp"] > 0 and k["kind"] == "prism":
@@ -1378,6 +1459,20 @@ func _multiplier() -> float:
 func _boss_step(dt: float) -> void:
 	if boss != null:
 		boss.step(dt, state == State.PLAY)
+		if state == State.PLAY:
+			boss.work_balls(balls, dt)
+
+
+func gale_from(at: Vector2, reach: float, kick: float) -> void:
+	"""THE GALE KING'S STAMP: every ball within `reach` of `at` is knocked
+	away from it sideways, its speed kept."""
+	for b in balls:
+		var v: Vector2 = b["v"]
+		if v == Vector2.ZERO or (b["p"] as Vector2).distance_to(at) > reach:
+			continue
+		var away: float = 1.0 if (b["p"] as Vector2).x >= at.x else -1.0
+		b["v"] = steady((v + Vector2(away * kick, 0.0)).normalized() * v.length())
+		_burst(b["p"], COLOURS["wind"], 6, 160.0, 0.0)
 
 
 func stun_paddle(seconds: float, at: Vector2, land: String) -> void:
@@ -1602,6 +1697,7 @@ func _draw() -> void:
 	draw_set_transform(jolt)
 	_draw_arena()
 	_draw_building()
+	_draw_gusts()
 	_draw_rails()
 	for k in bricks:
 		if (k["hp"] > 0 or not _breaks(k)) and not k.has("rail"):
@@ -1774,6 +1870,27 @@ func _draw_rails() -> void:
 				draw_rect(Rect2(r.position.x - 1.5, y - 1.5, r.size.x + 3.0, 3.0), GOLD)
 
 
+func _draw_gusts() -> void:
+	"""A gust: a faint band of its own, streaks running its way through it,
+	and chevrons at its edges pointing that way."""
+	for g in gusts:
+		var y0: float = g["y0"]
+		var y1: float = g["y1"]
+		var way: float = g["way"]
+		draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["wind"], 0.05))
+		var lanes: int = maxi(2, int((y1 - y0) / 11.0))
+		for i in lanes:
+			var y: float = y0 + (i + 0.5) * (y1 - y0) / lanes
+			var run_x: float = fposmod(t * 260.0 * way + i * 137.0, ARENA.size.x + 120.0) - 60.0
+			for j in 3:
+				var x: float = ARENA.position.x + fposmod(run_x + j * (ARENA.size.x / 3.0), ARENA.size.x)
+				draw_line(Vector2(x, y), Vector2(x - way * 46.0, y), Color(COLOURS["wind"], 0.28), 2.0)
+		for edge in [ARENA.position.x + 12.0, ARENA.end.x - 12.0]:
+			var mid: float = (y0 + y1) / 2.0
+			draw_polyline(PackedVector2Array([Vector2(edge - way * 5.0, mid - 7.0), Vector2(edge + way * 5.0, mid),
+				Vector2(edge - way * 5.0, mid + 7.0)]), Color(COLOURS["wind"], 0.7), 2.0)
+
+
 func _draw_guards() -> void:
 	"""Round every standing Guard, the cells it shields: a soft blue frame."""
 	var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
@@ -1840,6 +1957,18 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 				draw_arc(mid, 6.0 - i * 1.5, a0, a0 + PI * 1.2, 10, Color(hue.lerp(Color.WHITE, flash * 0.6), 0.9 - i * 0.2), 1.6)
 			draw_rect(r, Color(hue, 0.8), false, 1.2)
 			return
+		"whirl":
+			# A WHIRL: a pinwheel always turning, faster when struck
+			draw_rect(r, Color(0.08, 0.16, 0.14))
+			var spin: float = t * (5.0 + flash * 14.0) + float(k.get("phase", 0.0))
+			for i in 4:
+				var a: float = spin + i * TAU / 4.0
+				var tip: Vector2 = mid + Vector2.from_angle(a) * (r.size.y * 0.5 + 2.0)
+				var side: Vector2 = mid + Vector2.from_angle(a + 0.9) * (r.size.y * 0.32)
+				draw_colored_polygon(PackedVector2Array([mid, tip, side]), COLOURS["wind"].lerp(Color.WHITE, 0.15 + flash * 0.5))
+			draw_circle(mid, 2.0, Color(1, 1, 1, 0.9))
+			draw_rect(r, Color(COLOURS["wind"], 0.6), false, 1.2)
+			return
 		"guard":
 			# A GUARD: a steel plate, a gold shield on it (dimmed once struck)
 			draw_rect(r, Color(0.22, 0.3, 0.45).lerp(Color.WHITE, flash * 0.5))
@@ -1902,6 +2031,13 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 	draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.38))
 	draw_rect(Rect2(r.position.x, r.end.y - 2, r.size.x, 2), Color(0, 0, 0, 0.4))
 	var ink := Color(1, 1, 1, 0.6)
+	if k.has("kite"):
+		# A KITE: a cross-spar, and a tail of bows fluttering under it
+		draw_line(Vector2(mid.x, r.position.y + 1), Vector2(mid.x, r.end.y - 1), Color(1, 1, 1, 0.45), 1.0)
+		for i in 3:
+			var at: Vector2 = Vector2(mid.x + sin(t * 6.0 + i + r.position.y) * 3.0, r.end.y + 4.0 + i * 5.0)
+			draw_line(at + Vector2(-3, -2), at + Vector2(3, 2), Color(COLOURS["fire"], 0.85), 2.0)
+			draw_line(at + Vector2(-3, 2), at + Vector2(3, -2), Color(COLOURS["fire"], 0.85), 2.0)
 	match k["kind"]:
 		"stone":
 			draw_line(Vector2(r.position.x, mid.y), Vector2(r.end.x, mid.y), Color(0, 0, 0, 0.28), 1.0)
@@ -2389,6 +2525,34 @@ func slot_spot(slot: int) -> Vector2:
 	return MAP_PANEL.position + Vector2(150.0 + (slot % Maps.BOSS_EVERY) * NODE_GAP.x, 74.0 + stretch * NODE_GAP.y)
 
 
+func kingdom_at(point: Vector2) -> int:
+	"""The made kingdom whose crest is at `point` (the kingdom map), or -1."""
+	for i in Maps.KINGDOMS.size():
+		if bool(Maps.KINGDOMS[i]["made"]) and kingdom_spot(i).distance_to(point) <= 46.0:
+			return i
+	return -1
+
+
+func open_map_in(kingdom: int) -> int:
+	"""The map to pick in a kingdom: the next to clear there, or its last once
+	all are cleared; -1 while none of it is open."""
+	if kingdom < 0 or kingdom >= Maps.KINGDOMS.size():
+		return -1
+	var mine: Array = Maps.maps_of(str(Maps.KINGDOMS[kingdom]["id"]))
+	if mine.is_empty() or not can_start_at(int(mine[0])):
+		return -1
+	return mini(furthest, int(mine[-1]))
+
+
+func kingdom_index(index: int) -> int:
+	"""Which kingdom (in KINGDOMS) map `index` is in."""
+	var id: String = str(Maps.kingdom_of(index).get("id", ""))
+	for i in Maps.KINGDOMS.size():
+		if Maps.KINGDOMS[i]["id"] == id:
+			return i
+	return 0
+
+
 func pick_at(point: Vector2) -> int:
 	"""The made map whose node is at `point` (the kingdom map), or -1: only
 	the maps of the kingdom on show."""
@@ -2412,7 +2576,8 @@ func _draw_kingdoms() -> void:
 		var p: Vector2 = kingdom_spot(i)
 		var c: Color = COLOURS[k["land"]]
 		var made: bool = bool(k["made"])
-		var cleared_all: bool = made and furthest >= Maps.maps_of(k["id"]).size()
+		var theirs: Array = Maps.maps_of(k["id"])
+		var cleared_all: bool = made and not theirs.is_empty() and furthest > int(theirs[-1])
 		# EVERY CREST GLOWS ITS LAND (the owner: "giving Wind (teal), Water
 		# (blue), Ice (cyan), and Earth (amber/green) those same subtle inner
 		# glows"): a kingdom still to come is a dim crest with its colour

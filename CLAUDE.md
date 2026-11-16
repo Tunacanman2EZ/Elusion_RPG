@@ -15150,6 +15150,52 @@ The owner's alone while it is built (`shows_crownfall`, TESTING).
   caught, one a check each. `_test_every_minigame_is_open()` counts only
   the TESTING tags a player can see. The server's half is the API's MG-17.
 
+### Crownfall: the Kingdom of Wind (0.163.0)
+
+The owner: "im pretty sure we can make the next set of maps bigger bosses
+can do different things maybe whirlwind throws balls diff directions", then
+"ok resume" to the plan. Wind is `made` in KINGDOMS and is maps 26-50 of MAPS
+(the run carries on from Light's citadel into it); each kingdom's five
+bosses are `Boss.KINDS_OF[kingdom]`.
+
+- **25 maps, none a Light map's shape**, ten big (48 x 28), the last
+  stretch all big: a windmill, kites, cloud islands, a weathervane, a nest,
+  a whirlpool, a sky bridge, feathers, balloons, a storm's eye, a glider, a
+  dandelion, chimes, a ship, a crow's nest, a tornado, an aerie, lanterns,
+  pinwheels, a mage's spire, a thunderhead, a rainbow gate, an airship, a
+  storm's rings and a crescent citadel (sandbox maps5.py). The Whirlpool and
+  the Eye of the Storm keep a slot straight up the middle to their core and
+  its Guards (the owner: "clear sightlines so players don't have to rely
+  purely on random rebounds").
+- **Gusts**: a map's `"gusts"` ([first row, last row, way]) are bands that
+  push a ball in them sideways, `GUST_PUSH` a second, its speed kept
+  (`_gusts()`); drawn as a faint band of streaks and chevrons.
+- **Whirls** (`W`): never break; throw the ball off any way at all
+  (`fling()`, also the vortices').
+- **Kites** (`k`): wind bricks bobbing up and down into the room above and
+  below, `KITE_REACH` cells (`_make_kites()`, movers with `kite`), a tail of
+  bows under each.
+- **The kingdom map**: a click on a made kingdom's crest picks its next map
+  to clear, or its last once cleared (`kingdom_at()`, `open_map_in()`);
+  left and right step along the crests (screen `step_kingdom()`). A crest's
+  "crown taken" reads the kingdom's own last map.
+- **Wind's bosses** (crownfallboss.gd, from wind art): the **Gale King**
+  (220; splits, and his stamp every `GALE_EVERY` knocks every ball within
+  `GALE_REACH` sideways - the run's `gale_from()`), the **Whirlwind** (200;
+  darts and blinks, and every `WHIRL_EVERY` a vortex wanders the open floor:
+  a ball it touches is caught, spun `SPIN_SECONDS` and flung any way -
+  `work_balls()`, called from the run's `_boss_step()`), the **Gust Sniper**
+  (240; a fan of three shots, five under half health), the **Storm Mage**
+  (250; wards and rebuilding, and a wind wall under his hall `WALL_ON` in
+  every `WALL_EVERY` that blows a rising ball back down), and the
+  **Tempest** (380, crowned; a tornado that never fades, splits under two
+  thirds, a second tornado under one third).
+- **Gold**: the server's table runs on (Wind a quarter more, 22,475; the
+  API's CLAUDE.md, "Crownfall").
+- `_test_crownfall_wind()` (testrunner_12): a gust, a whirl's six throws,
+  a kite's bob, the crests, and each Wind boss. Nine sabotages caught - the
+  first whirl check passed a plain bounce and was made to read six throws.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

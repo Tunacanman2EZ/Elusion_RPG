@@ -1587,6 +1587,133 @@ func _test_the_cloth_together() -> void:
 # maps as rows of letters (crownfallmaps.gd), the play (crownfallrun.gd), the
 # screen (crownfallscreen.gd) and the Minigames card's tile, the owner's while
 # it is built. The server's half is test_minigames.py MG-17.
+func _test_crownfall_wind(run: Node2D, wind: Array) -> void:
+	"""The Kingdom of Wind (0.163.0): gusts, whirls, kites, the kingdom map's
+	crests, and its five bosses."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	# ---- gusts, whirls, kites ----
+	_cf_bare(run)
+	run.gusts = [{"y0": 300.0, "y1": 360.0, "way": 1.0}]
+	var in_gust: Dictionary = run._ball(Vector2(640, 330), Vector2(0, -Run.SPEED))
+	var under_gust: Dictionary = run._ball(Vector2(640, 420), Vector2(0, -Run.SPEED))
+	run.balls = [in_gust, under_gust]
+	run._gusts(0.1)
+	var pushed: bool = (in_gust["v"] as Vector2).x > 20.0 and absf((in_gust["v"] as Vector2).length() - Run.SPEED) < 1.0 \
+		and (under_gust["v"] as Vector2).x == 0.0
+	var whirl: Dictionary = run._add(10, 6, "whirl", "wind", 0)
+	var ways: Array = []
+	for n in 6:
+		var flung: Dictionary = run._ball((whirl["rect"] as Rect2).get_center() + Vector2(0, 30), Vector2(0, -Run.SPEED))
+		for i in 12:
+			run._move(flung, 1.0 / 60.0)
+			if (flung["v"] as Vector2).y > -Run.SPEED + 1.0:
+				break
+		if absf((flung["v"] as Vector2).length() - Run.SPEED) < 1.0:
+			ways.append((flung["v"] as Vector2).normalized())
+	var spread: float = 0.0
+	for a in ways:
+		for b in ways:
+			spread = maxf(spread, rad_to_deg(absf((a as Vector2).angle_to(b))))
+	var whirled: bool = ways.size() == 6 and spread > 30.0 and run.cells.get(Vector2i(10, 6)) == whirl
+	run.begin(int(wind[1]))
+	var kite: Dictionary = {}
+	for k in run.movers:
+		if k.has("kite") and float(k["hi"]) - float(k["lo"]) > 0.0 and (kite.is_empty() or float(k["hi"]) - float(k["lo"]) > float(kite["hi"]) - float(kite["lo"])):
+			kite = k
+	var y_most: float = -INF
+	var y_least: float = INF
+	var x_was: float = (kite["rect"] as Rect2).position.x
+	for i in 90:
+		run.t += 1.0 / 30.0
+		run._bricks_move(0.0)
+		y_most = maxf(y_most, (kite["rect"] as Rect2).position.y)
+		y_least = minf(y_least, (kite["rect"] as Rect2).position.y)
+	var bobbed: bool = y_most - y_least > 8.0 and y_least >= float(kite["home"]) + float(kite["lo"]) - 0.01 \
+		and y_most <= float(kite["home"]) + float(kite["hi"]) + 0.01 and (kite["rect"] as Rect2).position.x == x_was
+	check("WIND: a gust pushes a ball in its band sideways, its speed kept, and no ball out of it; a whirl never breaks and throws the ball off its own way each time; a kite bobs up and down into the room beside it, no further",
+		pushed and whirled and bobbed, [pushed, whirled, bobbed])
+	# ---- the kingdom map's crests ----
+	run.show_kingdoms(int(wind[5]))
+	var crests: bool = run.kingdom_at(run.kingdom_spot(0)) == 0 and run.kingdom_at(run.kingdom_spot(1)) == 1 \
+		and run.kingdom_at(run.kingdom_spot(2)) == -1 and run.open_map_in(0) == int(wind[0]) - 1 \
+		and run.open_map_in(1) == int(wind[5]) and run.kingdom_index(int(wind[3])) == 1
+	run.show_kingdoms(3)
+	crests = crests and run.open_map_in(1) == -1 and run.open_map_in(0) == 3
+	check("  the kingdom map: a click on a made kingdom's crest picks its next map to clear (its last once cleared); a kingdom not reached yet picks nothing",
+		crests)
+	# ---- the Gale King ----
+	run.begin(int(wind[4]))
+	var gale = run.boss
+	run.state = Run.State.PLAY
+	var knocked: Dictionary = run._ball(gale.p + Vector2(90, 160), Vector2(0, -Run.SPEED))
+	var far_ball: Dictionary = run._ball(gale.p + Vector2(-50, Boss.GALE_REACH + 60.0), Vector2(0, -Run.SPEED))
+	run.balls = [knocked, far_ball]
+	gale.gale_t = 0.001
+	gale.step(0.01, true)
+	var gale_ok: bool = str(gale.kind) == "galeking" and gale.hp == int(Boss.HP["galeking"]) and (knocked["v"] as Vector2).x > 50.0 \
+		and (far_ball["v"] as Vector2).x == 0.0 and gale.gales.size() == 1
+	run._hit_boss(Boss.SPLIT_EVERY)
+	gale_ok = gale_ok and gale.minions.size() == 1
+	# ---- the Whirlwind ----
+	run.begin(int(wind[9]))
+	var whirlwind = run.boss
+	run.state = Run.State.PLAY
+	whirlwind.whirl_t = 0.001
+	whirlwind.step(0.01, true)
+	var spun: bool = whirlwind.vortices.size() == 1 and (whirlwind._field_box() as Rect2).grow(1.0).has_point(whirlwind.vortices[0]["p"])
+	var caught: Dictionary = run._ball((whirlwind.vortices[0]["p"] as Vector2) + Vector2(10, 0), Vector2(0, -Run.SPEED))
+	whirlwind.work_balls([caught], 0.01)
+	spun = spun and caught.has("spin") and (caught["v"] as Vector2) == Vector2.ZERO
+	for i in roundi(Boss.SPIN_SECONDS * 60.0) + 2:
+		whirlwind.work_balls([caught], 1.0 / 60.0)
+	spun = spun and not caught.has("spin") and absf((caught["v"] as Vector2).length() - Run.SPEED) < 1.0 and float(caught["free_t"]) > 0.0
+	for i in roundi((Boss.WHIRL_LIFE + 0.2) * 10.0):
+		whirlwind._step_winds(0.1, true)
+	spun = spun and whirlwind.vortices.is_empty()
+	# ---- the Gust Sniper ----
+	run.begin(int(wind[14]))
+	var fanner = run.boss
+	fanner.fan_t = 0.001
+	fanner._fan(0.01)
+	var three: int = fanner.shots.size()
+	fanner.shots.clear()
+	@warning_ignore("integer_division")
+	fanner.hp = fanner.most / 3
+	fanner.fan_t = 0.001
+	fanner._fan(0.01)
+	var five: int = fanner.shots.size()
+	# ---- the Storm Mage ----
+	run.begin(int(wind[19]))
+	var storm = run.boss
+	storm.wall_t = 0.001
+	storm._wall(0.01)
+	var wall_up: bool = storm.wall_left > 0.0 and storm.wards.size() == Boss.WARDS
+	var rising: Dictionary = run._ball((storm.wall_rect() as Rect2).get_center(), Vector2(0, -Run.SPEED))
+	storm.work_balls([rising], 0.01)
+	var blown_back: bool = (rising["v"] as Vector2).y > 0.0
+	for i in roundi(Boss.WALL_ON * 10.0) + 2:
+		storm._wall(0.1)
+	var wall_down: bool = storm.wall_left <= 0.0
+	# ---- the Tempest ----
+	run.begin(int(wind[24]))
+	var tempest = run.boss
+	var storm_on: bool = tempest.crowned and str(tempest.title) == "The Tempest" and tempest.vortices.size() == 1 \
+		and bool(tempest.vortices[0]["forever"])
+	for i in roundi((Boss.WHIRL_LIFE + 1.0) * 10.0):
+		tempest._step_winds(0.1, true)
+	storm_on = storm_on and tempest.vortices.size() == 1
+	@warning_ignore("integer_division")
+	run._hit_boss(tempest.hp - tempest.most / 3 + 1)
+	run.state = Run.State.PLAY
+	tempest.step(0.01, true)
+	storm_on = storm_on and tempest.vortices.size() == 2 and tempest.minions.size() > 0
+	check("  WIND'S BOSSES: the Gale King's stamp knocks near balls aside and he splits; the Whirlwind's vortex catches a ball, spins it and throws it on, then fades; the Gust Sniper fires a fan of %d (%d hurt); the Storm Mage's wall blows a rising ball back down, then drops; the Tempest's tornado never fades, and a second comes under a third of his health" % [three, five],
+		gale_ok and spun and three == 3 and five == 5 and wall_up and blown_back and wall_down and storm_on,
+		[gale_ok, spun, three, five, wall_up, blown_back, wall_down, storm_on])
+	print("  crownfall wind: done")
+
+
 func _cf_bare(run: Node2D) -> void:
 	"""Crownfall's checks: an empty 32-wide grid to set bricks on by hand -
 	the map, its ball and boss gone, nothing in the footprint, the clock at
@@ -1608,7 +1735,7 @@ func _test_crownfall() -> void:
 	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
 	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
 	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
-	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<D"
+	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<DWk"
 	var bad_rows: Array = []
 	for m in Maps.MAPS:
 		var rows: Array = m["rows"]
@@ -1631,16 +1758,19 @@ func _test_crownfall() -> void:
 			bosses.append(i)
 			@warning_ignore("integer_division")
 			var stretch: int = Maps.in_kingdom(i) / Maps.BOSS_EVERY
-			boss_kinds = boss_kinds and str(info["kind"]) == str(Boss.KINDS[stretch]) \
+			boss_kinds = boss_kinds and str(info["kind"]) == str(Boss.KINDS_OF[str(Maps.MAPS[i]["kingdom"])][stretch]) \
 				and bool(info.get("crown", false)) == (Maps.in_kingdom(i) == Maps.MAPS_A_KINGDOM - 1) \
 				and "".join(Maps.MAPS[i]["rows"]).contains("R")
 	var made: Array = Maps.KINGDOMS.filter(func(k: Dictionary) -> bool: return bool(k["made"]))
-	check("the maps: Light's %d, every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms; a boss on every %dth map (%s) in Boss.KINDS's order, the last crowned, each with a hall; the story told in %d lines" % [
-		light.size(), Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
-		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 1 and str(made[0]["id"]) == "light"
-		and light.size() == Maps.made_count() and Maps.made_count() == Maps.MAPS_A_KINGDOM
+	var wind_maps: Array = Maps.maps_of("wind")
+	var big_wind: int = wind_maps.filter(func(i: int) -> bool: return str(Maps.MAPS[i]["rows"][0]).length() == Maps.BIG_COLS).size()
+	check("the maps: Light's %d and Wind's %d (%d of them big), every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms, two made; a boss on every %dth map (%s) in each kingdom's own order, the last crowned, each with a hall; the story told in %d lines" % [
+		light.size(), wind_maps.size(), big_wind, Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
+		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 2 and str(made[0]["id"]) == "light"
+		and str(made[1]["id"]) == "wind" and light.size() == Maps.MAPS_A_KINGDOM and wind_maps.size() == Maps.MAPS_A_KINGDOM
+		and light.size() + wind_maps.size() == Maps.made_count() and big_wind >= 10 and int(wind_maps[0]) == light.size()
 		and Maps.MAPS_A_KINGDOM == Maps.BOSS_EVERY * Maps.STRETCHES
-		and bosses.size() == Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
+		and bosses.size() == 2 * Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
 		and boss_kinds and Maps.STORY.size() == 5 and Maps.BOSS_SLOTS.size() == Maps.STRETCHES,
 		[bad_rows, bosses, boss_kinds])
 	var run: Node2D = Run.new()
@@ -2200,7 +2330,7 @@ func _test_crownfall() -> void:
 		str(mage.kind) == "mage" and mage.wards.size() == Boss.WARDS and broke_ward and gone_now and bounced
 		and run.breakable == before_rebuild + Boss.REBUILD_COUNT, [broke_ward, gone_now, bounced, run.breakable - before_rebuild])
 	# ---- the Dawn Warden ----
-	run.begin(Maps.made_count() - 1)
+	run.begin(int(light[-1]))
 	var ruler = run.boss
 	var crowned_now: bool = ruler.crowned and str(ruler.title) == "The Dawn Warden" and ruler.hp == int(Boss.HP["ruler"])
 	@warning_ignore("integer_division")
@@ -2225,10 +2355,11 @@ func _test_crownfall() -> void:
 	var crown_won: bool = run.state == Run.State.CLEARED and ruler.minions.is_empty()
 	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
 		run.step(1.0 / 60.0)
-	check("the Dawn Warden wears the crown: past a third of his health gone he splits every %d damage, past two thirds he snipes too; brought down, THE CROWN FALLS and the kingdom is won" % Boss.RULER_SPLIT_EVERY,
+	check("the Dawn Warden wears the crown: past a third of his health gone he splits every %d damage, past two thirds he snipes too; brought down, THE CROWN FALLS and the run goes on into the Kingdom of Wind" % Boss.RULER_SPLIT_EVERY,
 		crowned_now and none_yet and one_split and three_split and ruler_aimed and crown_words and crown_won
-		and run.state == Run.State.OVER and run.furthest == Maps.made_count(),
-		[crowned_now, none_yet, one_split, three_split, ruler_aimed, crown_words, crown_won, run.state])
+		and run.state == Run.State.AIM and run.map_index == int(wind_maps[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "wind",
+		[crowned_now, none_yet, one_split, three_split, ruler_aimed, crown_words, crown_won, run.state, run.map_index])
+	await _test_crownfall_wind(run, wind_maps)
 	# ---- words never land on words ----
 	run.begin(0)
 	run.words.clear()
