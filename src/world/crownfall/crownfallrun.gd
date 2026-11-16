@@ -92,7 +92,10 @@ const BANNER_SECONDS := 2.4
 const WORD_GAP := 6.0
 const SCORE := {"land": 50, "stone": 120, "tnt": 80, "bonus": 150, "blight": 60, "heart": 1500, "crystal": 120,
 	"key": 200, "gold": 400, "rune": 150, "shell": 100, "prism": 120, "mimic": 100, "plague": 80, "mix": 150,
-	"guard": 150, "clam": 250, "buoy": 80, "bubble": 60}
+	"guard": 150, "clam": 250, "buoy": 80, "bubble": 60, "packed": 140, "drift": 90, "icicle": 70,
+	"foot": 80, "column": 60, "boulder": 300, "ore": 500, "sand": 40,
+	"wood": 60, "fuse": 30, "keg": 150, "obsidian": 200, "lava": 70, "basalt": 120,
+	"lantern": 120, "shadow": 90, "void": 250}
 const LAND_OF := {"l": "light", "a": "wind", "w": "water", "i": "ice", "e": "earth", "f": "fire", "d": "dark"}
 const COLOURS := {
 	"dark": Color(0.427, 0.157, 0.851), "fire": Color(1.0, 0.416, 0.122), "earth": Color(0.631, 0.384, 0.027),
@@ -202,11 +205,115 @@ const BUOY_RISE := 0.3
 const BUBBLE_SPEED := 300.0
 const CLAM_CYCLE := 5.0
 const CLAM_OPEN := 2.0
+# THE KINGDOM OF ICE (0.165.0) - "frost that takes two hits, and icicles that
+# fall"; the owner: "make them bigger and have bricks that take more then 1
+# hit". FROST (F, a map's "frost" rows, the Frost King's young, the Frost
+# Mage): a coat on a brick that one hit knocks off before the brick can be
+# hurt (`frost`). PACKED ICE (P): three hits, cracking. SNOWDRIFTS (s): two
+# hits, and a ball that strikes one keeps DRIFT_KEEP of its speed a moment.
+# ICICLES (V): hang under a brick; when that brick goes, or a Snow Sprite's
+# icicle has hung ICICLE_HANG, it falls at ICICLE_SPEED, ICICLE_HIT to the
+# first brick it meets - or a stun on the paddle if it gets there. SLICK
+# ICE (a map's "slick" rows): a ball in them runs SLICK_SPEED times as fast.
+const DRIFT_KEEP := 0.55
+const ICICLE_SPEED := 430.0
+const ICICLE_HIT := 2
+const ICICLE_HANG := 4.0
+const ICICLE_STUN := 0.6
+const SLICK_SPEED := 1.35
+const ICED_SECONDS := 2.5
+# THE KINGDOM OF EARTH (the same 0.165.0) - "break a pillar's foot and all
+# above it falls"; every map big, and bricks that take more than one hit (the
+# owner: "sounds good" to the plan). PILLARS: a FOOT (A, two hits, cracked by
+# the first) under a column of earth stone (E, two hits) - break the foot and
+# every brick stacked on it, up to the first gap, lets go: RUBBLE falls at
+# RUBBLE_SPEED and smashes the first brick it meets (RUBBLE_HIT), and the
+# topple scores TOPPLE_SCORE a block. BOULDERS (b, two cells to a boulder):
+# four hits, cracking. ORE (g): three hits, a shower of score. SAND (n): one
+# hit, and it settles - with an empty cell under it, it drops into it, a cell
+# every SAND_STEP. TREMORS: on an earth map, every TREMOR_EVERY the ground
+# rumbles (TREMOR_WARN before) and shakes - every pillar on a cracked foot
+# falls, and every ball is jolted up to TREMOR_TURN degrees. HEAVY (the Rock
+# Sniper's shot): the paddle moves at HEAVY_SHARE of its pace.
+const RUBBLE_SPEED := 520.0
+const RUBBLE_HIT := 1
+const TOPPLE_SCORE := 60
+const TOPPLE_KEEP := ["heart", "key", "lock", "guard"]
+const SAND_STEP := 0.08
+const TREMOR_EVERY := 30.0
+const TREMOR_WARN := 2.0
+const TREMOR_TURN := 10.0
+const HEAVY_SHARE := 0.35
+# THE KINGDOM OF FIRE (the same 0.165.0) - "TNT that chains, and fire that
+# spreads"; every map big (the owner: "sounds good" to the plan). WOOD (h):
+# two hits from a ball, but fire catches it - a blast, a Fireball or a fire
+# ball, burning wood or fuse beside it, lava or a fire brick broken beside it
+# - and it burns WOOD_BURN, then breaks and lights what touches it
+# (_catch_round()). FUSE (z): a blow lights it rather than breaks it; it
+# burns FUSE_STEP, then lights the fuse, TNT, kegs and wood touching it - the
+# spark runs down the line. POWDER KEGS (J): two hits; they blow KEG_BLAST
+# wide and set off every TNT and keg in reach. OBSIDIAN (q): four hits. LAVA
+# (r): one hit while it is hot; left LAVA_COOL (playing) it cools into
+# basalt, three hits. ERUPTIONS: on a fire map, every ERUPT_EVERY the volcano
+# rumbles (ERUPT_WARN) and ERUPT_BOMBS lava bombs fall from the sky at
+# BOMB_SPEED - on whatever stands they set as lava in the cell over it (empty,
+# on the grid, not the hall, no ball there); past the bricks, the paddle they
+# fall on is stunned (BOMB_STUN). FIRE ON THE FLOOR (the Flame Sprite): a
+# patch on the paddle's line, embers PATCH_WARN then flames PATCH_LIFE - the
+# paddle in it is stunned, once a patch. SCORCHED (the Fire Sniper's shot):
+# the paddle SCORCH_SHARE of its width.
+const WOOD_BURN := 0.9
+const FUSE_STEP := 0.12
+const KEG_BLAST := 150.0
+const LAVA_COOL := 20.0
+const ERUPT_EVERY := 30.0
+const ERUPT_WARN := 2.0
+const ERUPT_BOMBS := 6
+const BOMB_SPEED := 340.0
+const BOMB_STUN := 0.7
+const PATCH_W := 64.0
+const PATCH_WARN := 0.9
+const PATCH_LIFE := 4.0
+const SCORCH_SHARE := 0.6
+const CATCHES := ["wood", "fuse", "tnt", "keg"]
+# THE KINGDOM OF DARK (the same 0.165.0) - "bricks unseen until your light
+# finds them"; every map big, the last kingdom (the owner: "sounds good" to
+# the plan). THE DARK (a dark map, `dark`): a brick shows only where light
+# falls on it - LIGHT_BALL round each ball (more for a light Elemental Ball),
+# LIGHT_PADDLE over the paddle, LANTERN_R round each lantern lit - and fades
+# back over SEEN_FADE once the light moves on (`seen`); unseen it is a ghost
+# (GHOST). LANTERNS (t): one hit; broken, its light stays for good
+# (`lanterns`). SHADOW BRICKS (m): two hits; in the dark one heals a hit every
+# SHADOW_HEAL. VOID WELLS (v): three hits; a ball within VOID_REACH is drawn
+# toward one, VOID_TURN degrees a second. NIGHTFALL: on a dark map, every
+# NIGHT_EVERY the dark deepens (NIGHT_WARN before) for NIGHT_SECONDS - every
+# light at NIGHT_SHARE. HEXED (the Shade Sniper's shot): the paddle's left
+# and right swapped. LIGHT STOLEN (the Wisp): the balls' light at DIM_SHARE.
+# BLACKOUT (the Beholder's eclipse): only the balls give light.
+const LIGHT_BALL := 125.0
+const LIGHT_PADDLE := 95.0
+const LANTERN_R := 160.0
+const SEEN_FADE := 1.6
+const GHOST := 0.07
+const SHADOW_HEAL := 3.0
+const VOID_REACH := 95.0
+const VOID_TURN := 140.0
+const NIGHT_EVERY := 30.0
+const NIGHT_WARN := 2.0
+const NIGHT_SECONDS := 6.0
+const NIGHT_SHARE := 0.5
+const DIM_SHARE := 0.3
+const DARK_KEEP := ["heart", "guard", "key", "lock", "lantern", "void", "shadow"]
 const GOLD := Color(1.0, 0.82, 0.38)
 const INK := Color(0.93, 0.95, 1.0)
 const PANEL := Color(0.055, 0.06, 0.1, 0.94)
 const EDGE := Color(0.36, 0.32, 0.27)
-const BONUS_ORDER := ["multi", "laser", "shield", "wide", "fire", "slow"]
+# THE BONUSES IN TURN (0.165.0 added five - the owner: "we also need more
+# kinds of power ups magnet was always a good one split balls elemental
+# balls"): an Elemental Ball twice in the turn, and an Extra Life in place of
+# every LIFE_EVERY-th bonus. CAN_FALL is each kind once, for the panel.
+const BONUS_ORDER := ["multi", "laser", "element", "shield", "magnet", "wide", "split", "fire", "element", "slow", "big"]
+const CAN_FALL := ["multi", "laser", "shield", "wide", "fire", "slow", "magnet", "split", "big", "element", "life"]
 const BONUS := {
 	"wide": {"name": "Wide", "land": "earth", "secs": 9.0},
 	"laser": {"name": "Laser", "land": "fire", "secs": 6.0},
@@ -214,7 +321,31 @@ const BONUS := {
 	"shield": {"name": "Shield", "land": "water", "secs": 8.0},
 	"fire": {"name": "Fireball", "land": "fire", "secs": 6.0},
 	"slow": {"name": "Slow", "land": "ice", "secs": 6.0},
+	"magnet": {"name": "Magnet", "land": "dark", "secs": 12.0},
+	"split": {"name": "Split", "land": "wind", "secs": 10.0},
+	"big": {"name": "Big Ball", "land": "earth", "secs": 8.0},
+	"element": {"name": "Elemental Ball", "land": "light", "secs": 12.0},
+	"life": {"name": "Extra Life", "land": "fire", "secs": 0.0},
 }
+# MAGNET: a ball landing on the paddle sticks where it lands, and goes at a
+# click or Space - or by itself after MAGNET_HOLD - off that spot as a bounce
+# would. SPLIT: every brick a ball breaks splits it in two (SPLIT_TURN apart),
+# MOST_BALLS at most. BIG BALL: BIG_SIZE times the size, and the bricks round
+# what it strikes take a hit. EXTRA LIFE: every LIFE_EVERY-th bonus, up to
+# LIVES_MOST. ELEMENTAL BALL: the ball keeps one land (ELEMENT_LAND, in turn
+# through the seven) - every other land's brick it breaks sets off their
+# reaction - and the land's own way: fire sets what it breaks burning, water
+# splashes the bricks beside, ice freezes what it hits, wind curves the ball
+# toward the nearest brick (WIND_TURN a second), earth hits twice as hard,
+# light goes through Guards' shields and finds runes lit and clams open,
+# dark doubles the score.
+const MAGNET_HOLD := 2.0
+const SPLIT_TURN := 20.0
+const BIG_SIZE := 1.8
+const LIFE_EVERY := 40
+const LIVES_MOST := 5
+const WIND_TURN := 70.0
+const HEART_RED := Color(0.95, 0.28, 0.36)
 
 var state: State = State.KINGDOMS
 # The map now, where this run began, and the maps cleared before it (the
@@ -275,6 +406,32 @@ var gone_at: Dictionary = {}   # Vector2i -> when the cell's brick broke
 var placed: Dictionary = {}    # Vector2i -> the kind the map put there
 var buoys: Array = []
 var bubbles: Array = []        # {"p", "last"}: rising, to break what they meet
+var slicks: Array = []         # {"y0", "y1"} in px: this map's slick ice
+var falling: Array = []        # {"p", "last"}: icicles falling
+var iced: float = 0.0          # the Ice Sniper's lance: the paddle slides
+var paddle_v: float = 0.0
+var hanging: Array = []        # the Snow Sprite's icicles, each to fall in its time
+var rubble: Array = []         # {"p", "last", "c"}: a toppled pillar, falling
+var tremors: bool = false      # this map shakes (the Kingdom of Earth)
+var tremor_t: float = 0.0
+var heavy: float = 0.0         # the Rock Sniper's shot: the paddle weighed down
+var _sand_t: float = 0.0
+var _rumbled: bool = false
+var bombs: Array = []          # {"p", "last"}: lava bombs falling
+var patches: Array = []        # {"x", "warn", "life", "hit"}: fire on the floor
+var eruptions: bool = false    # this map erupts (the Kingdom of Fire)
+var erupt_t: float = 0.0
+var _erupt_warned: bool = false
+var scorched: float = 0.0      # the Fire Sniper's shot: the paddle shorter
+var dark: bool = false         # this map is dark (the Kingdom of Dark)
+var lanterns: Array = []       # Vector2: the lanterns lit, each a light for good
+var voids: Array = []          # the void wells
+var night_t: float = 0.0
+var night_left: float = 0.0
+var _night_warned: bool = false
+var hexed: float = 0.0         # the Shade Sniper's shot: left and right swapped
+var light_stolen: float = 0.0  # the Wisp: the balls' light stolen
+var blackout: float = 0.0      # the Beholder's eclipse: only the balls give light
 var prisms: Array = []
 var keys_left: int = 0
 var rails: Array = []          # the lanes' iron rails (in bricks too, off the grid)
@@ -304,6 +461,21 @@ var _cleared_t: float = 0.0
 var _next_bonus: int = 0
 var _banner_t: float = 0.0
 var _popped: Array = []
+var ball_land: String = ""      # the Elemental Ball's land while it lasts
+var _next_land: int = 0
+# THE FRAME'S LIFE (the owner: "make the ui look even better like the area
+# outside like score and all the other stuff"): the score shown rolls up to
+# the score, gains pop off it, the coin bounces when gold comes in, a heart
+# cracks when a life is lost, the multiplier's badge pulses when it rises.
+var shown_score: float = 0.0
+var score_pops: Array = []     # {"n", "age"}
+var _score_was: int = 0
+var _gold_was: int = -1
+var _gold_bounce: float = 0.0
+var _lives_was: int = LIVES
+var _heart_crack: float = 0.0
+var _mult_was: float = 1.0
+var _mult_pop: float = 0.0
 var _font: Font
 var _bold: FontVariation
 
@@ -368,6 +540,29 @@ func launch() -> void:
 		for b in balls:
 			if b["v"] == Vector2.ZERO:
 				b["v"] = Vector2.from_angle(aim) * SPEED
+	elif state == State.PLAY:
+		for b in balls:
+			if b.has("stuck"):
+				_unstick(b)
+
+
+func element() -> String:
+	"""The Elemental Ball's land while it lasts, else ""."""
+	return ball_land if active.has("element") else ""
+
+
+func ball_r() -> float:
+	"""The ball's size: BIG_SIZE times while a Big Ball is on."""
+	return BALL_R * (BIG_SIZE if active.has("big") else 1.0)
+
+
+func _unstick(b: Dictionary) -> void:
+	"""A MAGNET lets go: off the paddle from where it sat, as a bounce."""
+	var off: float = clampf(float(b["stuck"]) / (paddle_w / 2.0), -1.0, 1.0)
+	b.erase("stuck")
+	b.erase("stick_t")
+	b["v"] = Vector2.from_angle(deg_to_rad(-90.0 + off * 58.0)) * SPEED
+	_burst(b["p"], COLOURS["dark"].lightened(0.3), 8, 140.0)
 
 
 func _load(index: int) -> void:
@@ -452,6 +647,52 @@ func _load(index: int) -> void:
 				"Q":
 					var clam := _add(col, row, "clam", "water", 1)
 					clam["phase"] = fmod((col * 2 + row) * 0.61, CLAM_CYCLE)
+				"F":
+					var coated := _add(col, row, "land", "ice", 1)
+					coated["frost"] = true
+				"P":
+					_add(col, row, "packed", "ice", 3)
+				"s":
+					_add(col, row, "drift", "ice", 2)
+				"V":
+					_add(col, row, "icicle", "ice", 1)
+				"A":
+					_add(col, row, "foot", "earth", 2)
+				"E":
+					_add(col, row, "column", "earth", 2)
+				"g":
+					_add(col, row, "ore", "earth", 3)
+				"n":
+					_add(col, row, "sand", "earth", 1)
+				"h":
+					_add(col, row, "wood", "fire", 2)
+				"z":
+					_add(col, row, "fuse", "fire", 1)
+				"J":
+					_add(col, row, "keg", "fire", 2)
+				"q":
+					_add(col, row, "obsidian", "fire", 4)
+				"r":
+					var lava := _add(col, row, "lava", "fire", 1)
+					lava["cool"] = LAVA_COOL
+				"t":
+					_add(col, row, "lantern", "light", 1)
+				"m":
+					_add(col, row, "shadow", "dark", 2)
+				"v":
+					voids.append(_add(col, row, "void", "dark", 3))
+				"b":
+					# A BOULDER is two cells: a b beside a one-cell boulder joins it
+					var left: Variant = cells.get(Vector2i(col - 1, row))
+					if left != null and left["kind"] == "boulder" and (left["cells"] as Array).size() == 1:
+						(left["cells"] as Array).append(Vector2i(col, row))
+						left["rect"] = (left["rect"] as Rect2).merge(r)
+						cells[Vector2i(col, row)] = left
+					else:
+						var rock := _brick(r, "boulder", "earth", 4)
+						rock["cells"] = [Vector2i(col, row)]
+						bricks.append(rock)
+						cells[Vector2i(col, row)] = rock
 				"p":
 					_add(col, row, "plague", "", 2)
 				"1", "2", "3", "4", "5", "6", "7":
@@ -482,6 +723,16 @@ func _load(index: int) -> void:
 		gusts.append({"y0": y0, "y1": y1, "way": signf(float(g[2]))})
 	tide_mark = int(data.get("tide", -1))
 	tide_t = 0.0
+	tremors = str(Maps.kingdom_of(index).get("land", "")) == "earth"
+	eruptions = str(Maps.kingdom_of(index).get("land", "")) == "fire"
+	dark = str(Maps.kingdom_of(index).get("land", "")) == "dark"
+	for band in data.get("slick", []):
+		slicks.append({"y0": MAP_TOP + int(band[0]) * (ch + gap) - gap, "y1": MAP_TOP + (int(band[1]) + 1) * (ch + gap)})
+	for band in data.get("frost", []):
+		for k in bricks:
+			if k.has("cell") and _breaks(k) and not ["heart", "guard", "key"].has(str(k["kind"])) \
+					and (k["cell"] as Vector2i).y >= int(band[0]) and (k["cell"] as Vector2i).y <= int(band[1]):
+				k["frost"] = true
 	for k in bricks:
 		if _breaks(k):
 			breakable += 1
@@ -521,6 +772,32 @@ func _clear_map() -> void:
 	gusts.clear()
 	buoys.clear()
 	bubbles.clear()
+	slicks.clear()
+	falling.clear()
+	hanging.clear()
+	rubble.clear()
+	tremors = false
+	tremor_t = 0.0
+	heavy = 0.0
+	_sand_t = 0.0
+	_rumbled = false
+	bombs.clear()
+	patches.clear()
+	eruptions = false
+	erupt_t = 0.0
+	_erupt_warned = false
+	scorched = 0.0
+	dark = false
+	lanterns.clear()
+	voids.clear()
+	night_t = 0.0
+	night_left = 0.0
+	_night_warned = false
+	hexed = 0.0
+	light_stolen = 0.0
+	blackout = 0.0
+	iced = 0.0
+	paddle_v = 0.0
 	gone_at.clear()
 	placed.clear()
 	tide_mark = -1
@@ -744,6 +1021,12 @@ func step(dt: float) -> void:
 	_shield_flash = maxf(0.0, _shield_flash - dt * 3.0)
 	stunned = maxf(0.0, stunned - dt)
 	tugged = maxf(0.0, tugged - dt)
+	iced = maxf(0.0, iced - dt)
+	heavy = maxf(0.0, heavy - dt)
+	scorched = maxf(0.0, scorched - dt)
+	hexed = maxf(0.0, hexed - dt)
+	light_stolen = maxf(0.0, light_stolen - dt)
+	blackout = maxf(0.0, blackout - dt)
 	_banner_t = maxf(0.0, _banner_t - dt)
 	_effects(dt)
 	if state == State.KINGDOMS or state == State.OVER:
@@ -753,11 +1036,24 @@ func step(dt: float) -> void:
 		active[key] -= dt
 		if active[key] <= 0.0:
 			active.erase(key)
-	paddle_w = move_toward(paddle_w, PADDLE_WIDE if active.has("wide") else PADDLE_W, 400.0 * dt)
+	paddle_w = move_toward(paddle_w, (PADDLE_WIDE if active.has("wide") else PADDLE_W) * (SCORCH_SHARE if scorched > 0.0 else 1.0),
+		400.0 * dt)
 	var half: float = paddle_w / 2.0
 	if stunned <= 0.0:
-		var want: float = clampf(target_x, ARENA.position.x + half, ARENA.end.x - half)
-		paddle_x = move_toward(paddle_x, want, PADDLE_SPEED * (0.3 if tugged > 0.0 else 1.0) * dt)
+		# HEXED: the paddle goes to the other side of the arena from where it
+		# is sent
+		var sent: float = (ARENA.position.x + ARENA.end.x) - target_x if hexed > 0.0 else target_x
+		var want: float = clampf(sent, ARENA.position.x + half, ARENA.end.x - half)
+		if iced > 0.0:
+			# ICED (the Ice Sniper's lance): the paddle slides, slow to start
+			# and slow to stop
+			var way: float = signf(want - paddle_x) if absf(want - paddle_x) > 6.0 else 0.0
+			paddle_v = move_toward(paddle_v, way * PADDLE_SPEED * 0.55, (900.0 if way != 0.0 else 260.0) * dt)
+			paddle_x += paddle_v * dt
+		else:
+			paddle_v = 0.0
+			paddle_x = move_toward(paddle_x, want, PADDLE_SPEED * (0.3 if tugged > 0.0 else 1.0)
+				* (HEAVY_SHARE if heavy > 0.0 else 1.0) * dt)
 	if tugged > 0.0:
 		paddle_x = move_toward(paddle_x, tug_x, 170.0 * dt)
 	paddle_x = clampf(paddle_x, ARENA.position.x + half, ARENA.end.x - half)
@@ -780,9 +1076,18 @@ func step(dt: float) -> void:
 		var speed: float = SPEED * (SLOW_SHARE if active.has("slow") else 1.0)
 		_pull(dt)
 		_gusts(dt)
+		_wind_ball(dt)
 		for b in balls:
+			if b.has("stuck"):
+				# held by the MAGNET, riding the paddle
+				b["p"] = Vector2(paddle_x + float(b["stuck"]), PADDLE_Y - 7.0 - ball_r())
+				b["stick_t"] = float(b["stick_t"]) - dt
+				if float(b["stick_t"]) <= 0.0:
+					_unstick(b)
+				continue
 			if b["v"] != Vector2.ZERO:
-				b["v"] = (b["v"] as Vector2).normalized() * move_toward((b["v"] as Vector2).length(), speed, 600.0 * dt)
+				var pace: float = speed * (SLICK_SPEED if on_slick(b["p"]) else 1.0)
+				b["v"] = (b["v"] as Vector2).normalized() * move_toward((b["v"] as Vector2).length(), pace, 600.0 * dt)
 			b["portal_t"] = maxf(0.0, float(b.get("portal_t", 0.0)) - dt)
 			b["boss_t"] = maxf(0.0, float(b.get("boss_t", 0.0)) - dt)
 			_move(b, dt)
@@ -865,7 +1170,7 @@ func _check_cleared() -> void:
 	_say(Vector2(640, 380), "%s - CLEARED" % map_name.to_upper(), GOLD, 34, CLEARED_SECONDS)
 	if pay > 0:
 		_say(Vector2(640, 424), "+%d gold" % pay, GOLD, 24, CLEARED_SECONDS)
-	_say(Vector2(640, 462), "The land heals.", Color(0.6, 0.95, 0.55), 20, CLEARED_SECONDS)
+	_say(Vector2(640, 462), "Every land is healed." if final_map() else "The land heals.", Color(0.6, 0.95, 0.55), 20, CLEARED_SECONDS)
 	map_cleared.emit(map_index)
 
 
@@ -883,29 +1188,37 @@ func _next_map() -> void:
 
 func _move(b: Dictionary, dt: float) -> void:
 	var steps: int = 6
+	var rad: float = ball_r()
 	for i in steps:
 		var prev: Vector2 = b["p"]
 		var p: Vector2 = prev + b["v"] * dt / steps
-		if p.x - BALL_R < ARENA.position.x or p.x + BALL_R > ARENA.end.x:
+		if p.x - rad < ARENA.position.x or p.x + rad > ARENA.end.x:
 			b["v"].x = -b["v"].x
-			p.x = clampf(p.x, ARENA.position.x + BALL_R, ARENA.end.x - BALL_R)
-		if p.y - BALL_R < ARENA.position.y:
+			p.x = clampf(p.x, ARENA.position.x + rad, ARENA.end.x - rad)
+		if p.y - rad < ARENA.position.y:
 			b["v"].y = absf(b["v"].y)
-			p.y = ARENA.position.y + BALL_R
-		if b["v"].y > 0.0 and p.y + BALL_R >= PADDLE_Y - 7.0 and p.y < PADDLE_Y + 8.0 \
-				and absf(p.x - paddle_x) <= paddle_w / 2.0 + BALL_R:
+			p.y = ARENA.position.y + rad
+		if b["v"].y > 0.0 and p.y + rad >= PADDLE_Y - 7.0 and p.y < PADDLE_Y + 8.0 \
+				and absf(p.x - paddle_x) <= paddle_w / 2.0 + rad:
 			var off: float = clampf((p.x - paddle_x) / (paddle_w / 2.0), -1.0, 1.0)
 			b["v"] = Vector2.from_angle(deg_to_rad(-90.0 + off * 58.0)) * b["v"].length()
-			p.y = PADDLE_Y - 7.0 - BALL_R
+			p.y = PADDLE_Y - 7.0 - rad
 			combo = 0
 			_burst(p, GOLD, 8, 140.0)
-		if active.has("shield") and b["v"].y > 0.0 and p.y + BALL_R >= SHIELD_Y:
+			if active.has("magnet"):
+				# THE MAGNET holds it where it landed
+				b["stuck"] = p.x - paddle_x
+				b["stick_t"] = MAGNET_HOLD
+				b["v"] = Vector2.ZERO
+				b["p"] = p
+				return
+		if active.has("shield") and b["v"].y > 0.0 and p.y + rad >= SHIELD_Y:
 			b["v"].y = -absf(b["v"].y)
-			p.y = SHIELD_Y - BALL_R
+			p.y = SHIELD_Y - rad
 			_shield_flash = 1.0
 			_burst(p, COLOURS["water"], 12, 200.0, 1.4)
 		if boss != null and boss.alive():
-			if boss.hittable() and boss.body_rect().grow(BALL_R).has_point(p):
+			if boss.hittable() and boss.body_rect().grow(rad).has_point(p):
 				# off the boss the way it came - up off its head, down off its
 				# feet - and one hit a touch: a ball pressed into it, or caught
 				# between it and the hall's roof, counts once a BOSS_HIT_GAP
@@ -913,24 +1226,24 @@ func _move(b: Dictionary, dt: float) -> void:
 				p.y = prev.y
 				if float(b.get("boss_t", 0.0)) <= 0.0:
 					b["boss_t"] = BOSS_HIT_GAP
-					_hit_boss(BALL_HIT)
-			var killed: int = boss.ball_touch(p, BALL_R)
+					_hit_boss(BALL_HIT * (2 if element() == "earth" else 1))
+			var killed: int = boss.ball_touch(p, rad)
 			if killed > 0:
 				score += 300 * killed
-			var ward: Vector2 = boss.ward_touch(p, BALL_R)
+			var ward: Vector2 = boss.ward_touch(p, rad)
 			if ward != Vector2.INF:
 				b["v"] = (p - ward).normalized() * (b["v"] as Vector2).length()
 				p = prev
 		for k in _bricks_near(p):
 			var r: Rect2 = k["rect"]
-			if (k["hp"] > 0 or not _breaks(k)) and r.grow(BALL_R).has_point(p):
+			if (k["hp"] > 0 or not _breaks(k)) and r.grow(rad).has_point(p):
 				if k["kind"] == "portal" and k.has("to"):
 					# A PORTAL: in one, out of its pair, the way it was going.
 					if float(b.get("portal_t", 0.0)) > 0.0:
 						continue
 					var out: Dictionary = k["to"]
 					var d: Vector2 = (b["v"] as Vector2).normalized()
-					p = (out["rect"] as Rect2).get_center() + d * (ch * 0.5 + BALL_R + 4.0)
+					p = (out["rect"] as Rect2).get_center() + d * (ch * 0.5 + rad + 4.0)
 					b["portal_t"] = PORTAL_WAIT
 					k["flash"] = 1.0
 					out["flash"] = 1.0
@@ -957,13 +1270,16 @@ func _move(b: Dictionary, dt: float) -> void:
 					break
 				var through: bool = active.has("fire") and _breaks(k) and not _shut(k)
 				if not through:
-					var was_out_x: bool = prev.x < r.position.x - BALL_R + 0.5 or prev.x > r.end.x + BALL_R - 0.5
+					var was_out_x: bool = prev.x < r.position.x - rad + 0.5 or prev.x > r.end.x + rad - 0.5
 					if was_out_x:
 						b["v"].x = -b["v"].x
 						p.x = prev.x
 					else:
 						b["v"].y = -b["v"].y
 						p.y = prev.y
+				if k["kind"] == "drift":
+					# A SNOWDRIFT soaks up the ball's speed a moment
+					b["v"] = (b["v"] as Vector2) * DRIFT_KEEP
 				if k["kind"] == "mirror":
 					# A MIRROR BENDS THE BALL it throws back: a fixed turn,
 					# one way on even cells and the other on odd, so a mirror
@@ -974,7 +1290,13 @@ func _move(b: Dictionary, dt: float) -> void:
 					k["flash"] = 1.0
 					_burst(p, COLOURS["light"], 6, 200.0, 0.0)
 				else:
-					_damage(k, 99 if through else 1, b)
+					_damage(k, 99 if through else (2 if element() == "earth" else 1), b)
+					if active.has("big"):
+						# A BIG BALL: the bricks round what it strikes take a hit
+						var home: Vector2i = k["cell"] if k.has("cell") else cell_at(r.get_center())
+						for o in _bricks_in(home, 1, 1):
+							if o != k:
+								_damage(o, 1, null)
 				break
 		b["v"] = steady(b["v"])
 		b["p"] = p
@@ -988,20 +1310,38 @@ func _move(b: Dictionary, dt: float) -> void:
 func _damage(k: Dictionary, n: int, b) -> void:
 	var mid: Vector2 = (k["rect"] as Rect2).get_center()
 	k["flash"] = 1.0
-	if not _breaks(k) or _shut(k):
+	var light_ball: bool = b is Dictionary and element() == "light"
+	if not _breaks(k) or (_shut(k) and not light_ball):
 		# iron, a mirror, a lock - or a rune while it is dark, a clam while it
 		# is shut: nothing
 		_burst(mid, Color(0.85, 0.88, 0.95), 6, 160.0)
 		return
 	if k["hp"] <= 0:
 		return
-	if _guarded(k):
+	if _guarded(k) and not light_ball:
 		# A GUARD STANDS BESIDE IT: the blow glances off its shield
 		k["warded"] = 1.0
 		_burst(mid, GUARD_GLOW, 5, 120.0, 0.0)
 		return
+	if k["kind"] == "fuse" and n < 99 and k["burn"] < 0.0:
+		# A FUSE IS LIT, not broken: the spark runs from here
+		k["burn"] = FUSE_STEP
+		return
+	if k["kind"] == "wood" and k["burn"] < 0.0 and b is Dictionary and (active.has("fire") or element() == "fire"):
+		# WOOD CATCHES from a Fireball or a fire ball, and burns
+		k["burn"] = WOOD_BURN
+		return
 	if bool(k.get("frozen", false)):
 		n = 99
+	if k.has("frost"):
+		# FROST: the coat takes a blow of its own (fire and a touch to the
+		# frozen go straight through it)
+		k.erase("frost")
+		_burst(mid, Color(0.88, 0.97, 1.0), 10, 170.0, 0.4)
+		if n < 99:
+			n -= 1
+			if n <= 0:
+				return
 	if k["kind"] == "shell" and k["hp"] - n <= 0:
 		# A SHELL HARDENS: the blow that would break it turns it to stone.
 		k["kind"] = "stone"
@@ -1014,6 +1354,9 @@ func _damage(k: Dictionary, n: int, b) -> void:
 	var c: Color = _colour_of(k)
 	if k["hp"] > 0:
 		_burst(mid, c, 7, 150.0)
+		if b is Dictionary and element() == "ice":
+			# AN ICE BALL freezes what it hits: the next touch breaks it
+			k["frozen"] = true
 		return
 	k["hp"] = 0
 	if k.has("cell"):
@@ -1036,6 +1379,12 @@ func _damage(k: Dictionary, n: int, b) -> void:
 		_shatter_round(k)
 	if k.has("cell"):
 		_tell_mimics(k)
+	if b is Dictionary:
+		_ball_breaks(b, k, mid)
+	if k.has("cell"):
+		var under: Variant = cells.get((k["cell"] as Vector2i) + Vector2i(0, 1))
+		if under != null and under["kind"] == "icicle" and under["hp"] > 0:
+			drop_icicle(under)
 	match k["kind"]:
 		"tnt":
 			_explode(mid)
@@ -1092,6 +1441,42 @@ func _damage(k: Dictionary, n: int, b) -> void:
 		"buoy":
 			_burst(mid, Color(0.95, 0.35, 0.3), 12, 180.0, 1.0)
 			_burst(mid, COLOURS["water"], 8, 140.0, 1.2)
+		"icicle":
+			_burst(mid, Color(0.85, 0.97, 1.0), 12, 200.0, 0.8)
+		"drift":
+			_burst(mid, Color(0.95, 0.97, 1.0), 20, 160.0, 0.6)
+		"foot":
+			# A PILLAR'S FOOT GIVES WAY: all above it falls
+			_burst(mid, COLOURS["earth"], 18, 220.0, 1.0)
+			topple(k)
+		"column", "sand":
+			_burst(mid, COLOURS["earth"].lightened(0.2 if k["kind"] == "sand" else 0.0), 14, 180.0, 1.2)
+		"boulder":
+			_burst(mid, Color(0.55, 0.47, 0.38), 30, 260.0, 1.2)
+			_say(mid + Vector2(0, -12), "+%d" % int(SCORE["boulder"]), COLOURS["earth"].lightened(0.35), 16, 0.7)
+		"keg":
+			# A POWDER KEG: a blast twice a TNT's
+			_explode(mid, KEG_BLAST)
+		"wood", "fuse":
+			_burst(mid, Color(0.55, 0.35, 0.18), 14, 180.0, 1.0)
+		"lava":
+			# LAVA broken while it is hot: what can burn beside it catches
+			_burst(mid, COLOURS["fire"], 18, 220.0, 0.6)
+			_catch_round(k)
+		"obsidian", "basalt":
+			_burst(mid, Color(0.25, 0.2, 0.3) if k["kind"] == "obsidian" else Color(0.4, 0.38, 0.38), 20, 240.0, 1.0)
+		"lantern":
+			# A LANTERN BROKEN: its light stays, for good
+			light_lantern(mid)
+		"shadow":
+			_burst(mid, COLOURS["dark"].lightened(0.2), 16, 180.0, -0.4)
+		"void":
+			_burst(mid, COLOURS["dark"], 26, 260.0, 0.0)
+			rings.append({"p": mid, "age": 0.0, "most": 0.5, "c": COLOURS["dark"].lightened(0.4), "r": VOID_REACH})
+		"ore":
+			_burst(mid, GOLD, 26, 260.0, 1.2)
+			_burst(mid, COLOURS["earth"], 10, 180.0, 1.0)
+			_say(mid + Vector2(0, -12), "+%d ORE" % int(SCORE["ore"]), GOLD, 17, 0.8)
 		_:
 			# a land brick or a prism (breaking as the land it shows)
 			_land_breaks(k, mid, b)
@@ -1099,6 +1484,59 @@ func _damage(k: Dictionary, n: int, b) -> void:
 				_charge(b, str(k["land"]), k, mid)
 	if broken % BONUS_EVERY == 0 and caps.size() < CAPS_MOST:
 		_drop(mid)
+
+
+func _ball_breaks(b: Dictionary, k: Dictionary, mid: Vector2) -> void:
+	"""What a ball does as it breaks a brick, by the bonuses on: SPLIT in two;
+	an Elemental Ball's fire sets the bricks beside burning, its water
+	splashes them."""
+	if active.has("split") and balls.size() + _new_balls.size() < MOST_BALLS:
+		var v: Vector2 = b["v"]
+		if v != Vector2.ZERO:
+			var twin := _ball(b["p"], v.rotated(deg_to_rad(SPLIT_TURN)))
+			twin["el"] = b.get("el", "")
+			b["v"] = v.rotated(deg_to_rad(-SPLIT_TURN))
+			_new_balls.append(twin)
+			_burst(mid, COLOURS["wind"], 8, 180.0, 0.0)
+	var home: Vector2i = k["cell"] if k.has("cell") else cell_at(mid)
+	match element():
+		"fire":
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var o: Variant = cells.get(home + d)
+				if o != null and o["hp"] > 0 and _breaks(o) and o["burn"] < 0.0:
+					o["burn"] = 0.3
+		"water":
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var o: Variant = cells.get(home + d)
+				if o != null and o["hp"] > 0 and _breaks(o):
+					_damage(o, 1, null)
+			_burst(mid, COLOURS["water"].lightened(0.3), 12, 200.0, 1.2)
+
+
+func _wind_ball(dt: float) -> void:
+	"""A WIND BALL curves toward the nearest brick it could break, WIND_TURN
+	degrees a second; its target is looked for every few tenths."""
+	if element() != "wind":
+		return
+	for b in balls:
+		var v: Vector2 = b["v"]
+		if v == Vector2.ZERO:
+			continue
+		b["seek_t"] = float(b.get("seek_t", 0.0)) - dt
+		if float(b["seek_t"]) <= 0.0:
+			b["seek_t"] = 0.3
+			var best: Vector2 = Vector2.INF
+			for k in bricks:
+				if k["hp"] > 0 and _breaks(k) and not _guarded(k):
+					var at: Vector2 = (k["rect"] as Rect2).get_center()
+					if best == Vector2.INF or at.distance_squared_to(b["p"]) < best.distance_squared_to(b["p"]):
+						best = at
+			b["seek"] = best
+		var to: Vector2 = b.get("seek", Vector2.INF)
+		if to == Vector2.INF:
+			continue
+		var want: float = v.angle_to(to - (b["p"] as Vector2))
+		b["v"] = steady(v.rotated(clampf(want, -deg_to_rad(WIND_TURN) * dt, deg_to_rad(WIND_TURN) * dt)))
 
 
 func _land_breaks(k: Dictionary, mid: Vector2, b) -> void:
@@ -1127,20 +1565,29 @@ func _land_breaks(k: Dictionary, mid: Vector2, b) -> void:
 			_burst(mid, c, 16, 220.0, 0.3)
 
 
-func _explode(at: Vector2) -> void:
-	rings.append({"p": at, "age": 0.0, "most": 0.45, "c": COLOURS["fire"], "r": 80.0})
-	_burst(at, COLOURS["fire"], 40, 380.0)
+func _explode(at: Vector2, reach: float = 78.0) -> void:
+	"""A BLAST (TNT, a powder keg): the TNT and kegs in `reach` are set off,
+	the wood catches, everything else takes two hits (a fuse is lit)."""
+	rings.append({"p": at, "age": 0.0, "most": 0.45, "c": COLOURS["fire"], "r": reach + 2.0})
+	_burst(at, COLOURS["fire"], 40 if reach < 100.0 else 70, 380.0)
 	_shake = 1.0
 	for o in bricks:
-		if o["hp"] > 0 and _breaks(o) and (o["rect"] as Rect2).get_center().distance_to(at) < 78.0:
-			if o["kind"] == "tnt":
+		if o["hp"] > 0 and _breaks(o) and (o["rect"] as Rect2).get_center().distance_to(at) < reach:
+			if o["kind"] == "tnt" or o["kind"] == "keg":
 				o["burn"] = 0.12
+			elif o["kind"] == "wood":
+				if o["burn"] < 0.0:
+					o["burn"] = WOOD_BURN
 			else:
 				_damage(o, 2, null)
 
 
 func _burns(dt: float) -> void:
-	for k in bricks:
+	# Only what was burning as the tick began: what catches in it burns from
+	# the next, so a chain of wood goes a link at a time whatever the order of
+	# the bricks.
+	var lit: Array = bricks.filter(func(k: Dictionary) -> bool: return k["burn"] >= 0.0 and k["hp"] > 0)
+	for k in lit:
 		if k["burn"] >= 0.0 and k["hp"] > 0:
 			k["burn"] -= dt
 			if rng.randf() < 0.7:
@@ -1149,6 +1596,9 @@ func _burns(dt: float) -> void:
 					"v": Vector2(rng.randf_range(-20, 20), rng.randf_range(-90, -40)), "life": 0.45, "most": 0.45,
 					"c": COLOURS["fire"], "s": 2.2, "g": -0.3})
 			if k["burn"] < 0.0:
+				if k["kind"] == "wood" or k["kind"] == "fuse":
+					# burnt out: the fire goes on to what touches it
+					_catch_round(k)
 				_damage(k, 99, null)
 
 
@@ -1357,9 +1807,12 @@ func _charge(b: Dictionary, land: String, k: Dictionary, at: Vector2) -> void:
 	"""THE BALL CARRIES WHAT IT BREAKS: a land brick broken while it carries
 	another land sets the two off, and it carries the new one on."""
 	var had: String = str(b.get("el", ""))
+	if element() != "":
+		# AN ELEMENTAL BALL keeps its land: every other land sets it off
+		had = element()
 	if had != "" and had != land:
 		_react(reaction_of(had, land), k, at)
-	b["el"] = land
+	b["el"] = element() if element() != "" else land
 
 
 func _react(kind: String, k: Dictionary, at: Vector2) -> void:
@@ -1522,6 +1975,11 @@ func _bricks_move(dt: float) -> void:
 	lava falls, frozen bricks shatter, buoys float, bubbles rise, bolts and
 	the eclipse fade."""
 	_waters(dt)
+	_icicles(dt)
+	_earth(dt)
+	_fire(dt)
+	_dark(dt)
+	_voids(dt)
 	for k in movers:
 		if k["hp"] > 0:
 			# a Rect2 is a value: set a copy, then put it back
@@ -1600,7 +2058,13 @@ func _pull(dt: float) -> void:
 func _drop(at: Vector2) -> void:
 	var kind: String = BONUS_ORDER[_next_bonus % BONUS_ORDER.size()]
 	_next_bonus += 1
-	caps.append({"p": at, "kind": kind})
+	if _next_bonus % LIFE_EVERY == 0:
+		kind = "life"
+	var cap := {"p": at, "kind": kind}
+	if kind == "element":
+		cap["land"] = ELEMENTS[_next_land % ELEMENTS.size()]
+		_next_land += 1
+	caps.append(cap)
 
 
 func _capsules(dt: float) -> void:
@@ -1608,14 +2072,37 @@ func _capsules(dt: float) -> void:
 		c["p"].y += CAPSULE_FALL * dt
 		if absf(c["p"].x - paddle_x) < paddle_w / 2.0 + 20.0 and absf(c["p"].y - PADDLE_Y) < 14.0:
 			c["taken"] = true
+			if c["kind"] == "element":
+				ball_land = str(c.get("land", "fire"))
 			_take(c["kind"])
 	caps = caps.filter(func(c): return not c.get("taken", false) and c["p"].y < VIEW.y + 30.0)
 
 
+func bonus_name(kind: String) -> String:
+	"""A bonus's name - the Elemental Ball's by its land."""
+	if kind == "element":
+		return "%s Orb" % ball_land.capitalize() if ball_land != "" else "Elemental"
+	return str(BONUS[kind]["name"])
+
+
+func bonus_colour(kind: String) -> Color:
+	if kind == "element" and ball_land != "":
+		return COLOURS[ball_land]
+	if kind == "life":
+		return HEART_RED
+	return COLOURS[BONUS[kind]["land"]]
+
+
 func _take(kind: String) -> void:
 	var info: Dictionary = BONUS[kind]
-	_say(Vector2(paddle_x, PADDLE_Y - 46.0), str(info["name"]).to_upper() + "!", COLOURS[info["land"]], 26, 1.1)
-	_burst(Vector2(paddle_x, PADDLE_Y - 8.0), COLOURS[info["land"]], 24, 260.0)
+	_say(Vector2(paddle_x, PADDLE_Y - 46.0), bonus_name(kind).to_upper() + "!", bonus_colour(kind), 26, 1.1)
+	_burst(Vector2(paddle_x, PADDLE_Y - 8.0), bonus_colour(kind), 24, 260.0)
+	if kind == "life":
+		lives = mini(lives + 1, LIVES_MOST)
+		return
+	if kind == "element":
+		for b in balls:
+			b["el"] = ball_land
 	if kind == "multi":
 		var more: Array = []
 		for b in balls:
@@ -1657,7 +2144,8 @@ func _lasers(dt: float) -> void:
 
 
 func _multiplier() -> float:
-	return minf(4.0, 1.0 + floorf(combo / 5.0) * 0.5)
+	"""The combo's multiplier (x4 at most), doubled by a Dark Ball."""
+	return minf(4.0, 1.0 + floorf(combo / 5.0) * 0.5) * (2.0 if element() == "dark" else 1.0)
 
 
 # ---------------------------------------------------------------- the boss --
@@ -1686,6 +2174,662 @@ func stun_paddle(seconds: float, at: Vector2, land: String) -> void:
 	stunned = seconds
 	_burst(at, COLOURS.get(land, Color.WHITE), 20, 240.0)
 	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "STUNNED", Color(1.0, 0.5, 0.45), 22, 0.9)
+
+
+func on_slick(at: Vector2) -> bool:
+	for band in slicks:
+		if at.y >= float(band["y0"]) and at.y <= float(band["y1"]):
+			return true
+	return false
+
+
+func drop_icicle(k: Dictionary) -> void:
+	"""AN ICICLE LETS GO: off the grid, falling."""
+	if k["hp"] <= 0:
+		return
+	k["hp"] = 0
+	if k.has("cell"):
+		cells.erase(k["cell"])
+		gone_at[k["cell"]] = t
+	broken += 1
+	score += int(SCORE["icicle"])
+	falling.append({"p": (k["rect"] as Rect2).get_center(), "last": k.get("cell", cell_at((k["rect"] as Rect2).get_center()))})
+	_burst((k["rect"] as Rect2).get_center(), Color(0.85, 0.97, 1.0), 6, 90.0, 0.5)
+
+
+func _icicles(dt: float) -> void:
+	"""The Snow Sprite's icicles fall in their time; falling icicles break
+	the first brick they meet, ICICLE_HIT, or stun the paddle."""
+	for k in hanging:
+		if k["hp"] > 0:
+			k["hang"] = float(k["hang"]) - dt
+			if float(k["hang"]) <= 0.0:
+				drop_icicle(k)
+	hanging = hanging.filter(func(k: Dictionary) -> bool: return k["hp"] > 0)
+	for f in falling:
+		f["p"].y += ICICLE_SPEED * dt
+		var c: Vector2i = cell_at(f["p"])
+		if c != f["last"]:
+			f["last"] = c
+			var o: Variant = cells.get(c)
+			if o != null and (o["hp"] > 0 or not _breaks(o)):
+				_damage(o, ICICLE_HIT, null)
+				f["dead"] = true
+				_burst(f["p"], Color(0.85, 0.97, 1.0), 14, 220.0, 0.8)
+				continue
+		if (f["p"] as Vector2).y >= PADDLE_Y - 8.0 and (f["p"] as Vector2).y <= PADDLE_Y + 8.0 \
+				and absf((f["p"] as Vector2).x - paddle_x) < paddle_w / 2.0 + 4.0:
+			stun_paddle(ICICLE_STUN, f["p"], "ice")
+			f["dead"] = true
+		if (f["p"] as Vector2).y > VIEW.y:
+			f["dead"] = true
+	falling = falling.filter(func(f: Dictionary) -> bool: return not f.get("dead", false))
+
+
+func frost_at(at: Vector2) -> bool:
+	"""THE FROST KING'S YOUNG: a frost coat on the brick where one lands.
+	Whether it took."""
+	var o: Variant = cells.get(cell_at(at))
+	if o == null or o["hp"] <= 0 or not _breaks(o) or o.has("frost") or ["heart", "guard"].has(str(o["kind"])):
+		return false
+	o["frost"] = true
+	o["flash"] = 1.0
+	_burst((o["rect"] as Rect2).get_center(), Color(0.88, 0.97, 1.0), 10, 120.0, 0.3)
+	return true
+
+
+func chill_from(at: Vector2, reach: float, keep: float) -> void:
+	"""THE FROST KING'S BREATH: every ball within `reach` slowed to `keep`
+	of its speed (it gathers pace again)."""
+	for b in balls:
+		if b["v"] != Vector2.ZERO and (b["p"] as Vector2).distance_to(at) <= reach:
+			b["v"] = (b["v"] as Vector2) * keep
+			_burst(b["p"], COLOURS["ice"].lightened(0.3), 6, 120.0, 0.2)
+
+
+func ice_paddle(seconds: float, at: Vector2) -> void:
+	"""THE ICE SNIPER'S LANCE: the paddle slides for `seconds`."""
+	iced = seconds
+	paddle_v = 0.0
+	_burst(at, COLOURS["ice"].lightened(0.3), 20, 220.0)
+	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "ICED!", COLOURS["ice"].lightened(0.3), 22, 0.9)
+
+
+func hang_icicle(x: float) -> bool:
+	"""THE SNOW SPRITE: an icicle under the lowest standing brick of a column
+	near `x`, in the empty cell below it, to fall in ICICLE_HANG."""
+	var col: int = int(floor((x - FIELD_X) / cw))
+	for d in [0, 1, -1, 2, -2, 3, -3]:
+		var c: int = col + d
+		if c < 0 or c >= cols:
+			continue
+		for row in range(rows_count - 2, -1, -1):
+			var above: Variant = cells.get(Vector2i(c, row))
+			if above == null:
+				continue
+			var spot := Vector2i(c, row + 1)
+			if cells.has(spot) or (hall.size != Vector2.ZERO and hall.grow(2.0).intersects(_cell(spot.x, spot.y))) \
+					or _ball_near(_cell(spot.x, spot.y)):
+				continue
+			var k := _add(spot.x, spot.y, "icicle", "ice", 1)
+			k["hang"] = ICICLE_HANG
+			k["flash"] = 1.0
+			hanging.append(k)
+			footprint[spot] = true
+			breakable += 1
+			return true
+	return false
+
+
+func ice_wall(row: int, c0: int, c1: int, most: int) -> int:
+	"""THE FROST MAGE'S WALL: packed ice, two hits, in the empty cells of
+	`row` from `c0` to `c1`, `most` at most, none by a ball. How many."""
+	var made: int = 0
+	for c in range(maxi(0, c0), mini(cols - 1, c1) + 1):
+		var spot := Vector2i(c, row)
+		if made >= most or row < 0 or row >= rows_count or cells.has(spot) or _ball_near(_cell(c, row)):
+			continue
+		var k := _add(c, row, "packed", "ice", 2)
+		k["flash"] = 1.0
+		footprint[spot] = true
+		gone_at.erase(spot)
+		breakable += 1
+		made += 1
+	if made > 0:
+		_burst(_cell(int((c0 + c1) / 2.0), row).get_center(), COLOURS["ice"].lightened(0.3), 24, 200.0, 0.4)
+	return made
+
+
+func avalanche(c0: int, c1: int, below: float, most: int) -> int:
+	"""THE GLACIER LORD'S AVALANCHE: snow pours down the columns from `c0` to
+	`c1`, filling the empty cells the map once held under `below` with
+	snowdrifts, the highest first, `most` at most, none by a ball. How many."""
+	var spots: Array = []
+	for c in range(maxi(0, c0), mini(cols - 1, c1) + 1):
+		for row in rows_count:
+			var spot := Vector2i(c, row)
+			if footprint.has(spot) and not cells.has(spot) and _cell(c, row).position.y > below and not _ball_near(_cell(c, row)):
+				spots.append(spot)
+	spots.sort_custom(func(a: Vector2i, b2: Vector2i) -> bool: return a.y < b2.y)
+	var made: int = 0
+	for spot in spots.slice(0, most):
+		var k := _add(spot.x, spot.y, "drift", "ice", 2)
+		k["flash"] = 1.0
+		gone_at.erase(spot)
+		breakable += 1
+		made += 1
+	return made
+
+
+func topple(foot: Dictionary) -> int:
+	"""A PILLAR FALLS: every brick stacked on `foot`'s cell, up to the first
+	gap (or a core, a key, a lock, a Guard, iron), lets go as rubble. How
+	many."""
+	if not foot.has("cell"):
+		return 0
+	var home: Vector2i = foot["cell"]
+	var n: int = 0
+	var row: int = home.y - 1
+	while row >= 0:
+		var o: Variant = cells.get(Vector2i(home.x, row))
+		if o == null or not o.has("cell") or o["hp"] <= 0 or not _breaks(o) or TOPPLE_KEEP.has(str(o["kind"])):
+			break
+		_let_go(o)
+		n += 1
+		row -= 1
+	if n > 0:
+		score += int(round(TOPPLE_SCORE * n * _multiplier()))
+		_say((foot["rect"] as Rect2).get_center() + Vector2(0, -16), "TOPPLED!", COLOURS["earth"].lightened(0.4), 18, 0.8)
+		_shake = minf(1.0, _shake + 0.3)
+	return n
+
+
+func _let_go(k: Dictionary) -> void:
+	"""A brick of a falling pillar: off the grid, rubble now."""
+	var mid: Vector2 = (k["rect"] as Rect2).get_center()
+	k["hp"] = 0
+	cells.erase(k["cell"])
+	gone_at[k["cell"]] = t
+	broken += 1
+	score += int(round(int(SCORE.get(k["kind"], 50)) * _multiplier()))
+	rubble.append({"p": mid, "last": k["cell"], "c": _colour_of(k)})
+	_burst(mid, _colour_of(k), 4, 80.0, 1.0)
+
+
+func _earth(dt: float) -> void:
+	"""The earth's own motion: rubble falling, sand settling, the tremor."""
+	for f in rubble:
+		f["p"].y += RUBBLE_SPEED * dt
+		var c: Vector2i = cell_at(f["p"])
+		if c != f["last"]:
+			f["last"] = c
+			var o: Variant = cells.get(c)
+			if o != null and (o["hp"] > 0 or not _breaks(o)):
+				_damage(o, RUBBLE_HIT, null)
+				f["dead"] = true
+				_burst(f["p"], f["c"], 10, 200.0, 1.2)
+				continue
+		if (f["p"] as Vector2).y > field_bottom() + ch:
+			f["dead"] = true
+			_burst(f["p"], f["c"], 6, 120.0, 1.0)
+	rubble = rubble.filter(func(f: Dictionary) -> bool: return not f.get("dead", false))
+	_sand_t -= dt
+	if _sand_t <= 0.0:
+		_sand_t = SAND_STEP
+		_settle()
+	if tremors and state == State.PLAY:
+		tremor_t += dt
+		if tremor_t >= TREMOR_EVERY:
+			tremor_t = 0.0
+			_rumbled = false
+			tremor_now(false)
+		elif tremor_t >= TREMOR_EVERY - TREMOR_WARN:
+			# THE RUMBLE before it: the arena trembles, and says so once
+			_shake = maxf(_shake, 0.25)
+			if not _rumbled:
+				_rumbled = true
+				_say(Vector2(640, 420), "THE GROUND RUMBLES...", COLOURS["earth"].lightened(0.35), 20, TREMOR_WARN)
+
+
+func _settle() -> void:
+	"""SAND SETTLES: each sand brick with an empty cell under it (on the map's
+	rows, not the hall, no ball there) drops into it - the lowest first."""
+	var sands: Array = []
+	for k in bricks:
+		if k["kind"] == "sand" and k["hp"] > 0 and k.has("cell"):
+			sands.append(k)
+	sands.sort_custom(func(a: Dictionary, b2: Dictionary) -> bool: return (a["cell"] as Vector2i).y > (b2["cell"] as Vector2i).y)
+	for k in sands:
+		var at: Vector2i = k["cell"]
+		var below := at + Vector2i(0, 1)
+		if below.y >= rows_count or cells.has(below):
+			continue
+		var r: Rect2 = _cell(below.x, below.y)
+		if (hall.size != Vector2.ZERO and hall.grow(2.0).intersects(r)) or _ball_near(r):
+			continue
+		cells.erase(at)
+		gone_at[at] = t
+		k["cell"] = below
+		k["rect"] = r
+		cells[below] = k
+		gone_at.erase(below)
+
+
+func tremor_now(all: bool) -> int:
+	"""THE GROUND SHAKES (an earth map's tremor, the Stone King's stomp, the
+	Mountain Lord's quake): every pillar on a cracked foot falls - with `all`,
+	every pillar - and every ball is jolted. How many feet gave way."""
+	_shake = 1.0
+	var feet: Array = []
+	for k in bricks:
+		if k["kind"] == "foot" and k["hp"] > 0 and (all or k["hp"] < k["most"]):
+			feet.append(k)
+	for k in feet:
+		_damage(k, 99, null)
+	for b in balls:
+		if b["v"] != Vector2.ZERO:
+			b["v"] = steady((b["v"] as Vector2).rotated(deg_to_rad(rng.randf_range(-TREMOR_TURN, TREMOR_TURN))))
+	_burst(Vector2(640, field_bottom()), COLOURS["earth"], 30, 260.0, 1.4)
+	_say(Vector2(640, 400), "QUAKE!" if all else "TREMOR!", COLOURS["earth"].lightened(0.35), 26, 0.9)
+	return feet.filter(func(k: Dictionary) -> bool: return k["hp"] <= 0).size()
+
+
+func weigh_paddle(seconds: float, at: Vector2) -> void:
+	"""THE ROCK SNIPER'S SHOT: the paddle weighed down for `seconds`."""
+	heavy = seconds
+	_burst(at, COLOURS["earth"], 20, 220.0, 1.2)
+	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "HEAVY!", COLOURS["earth"].lightened(0.35), 22, 0.9)
+
+
+func pile_sand(at: Vector2) -> bool:
+	"""THE STONE KING'S YOUNG: sand where one lands, when the cell is empty,
+	on the map's grid and not the hall. Whether it took."""
+	var c: Vector2i = cell_at(at)
+	if c.x < 0 or c.x >= cols or c.y < 0 or c.y >= maxi(rows_count, 1) or cells.has(c):
+		return false
+	if hall.size != Vector2.ZERO and hall.grow(2.0).intersects(_cell(c.x, c.y)):
+		return false
+	var k := _add(c.x, c.y, "sand", "earth", 1)
+	k["flash"] = 1.0
+	footprint[c] = true
+	breakable += 1
+	_burst(_cell(c.x, c.y).get_center(), COLOURS["earth"].lightened(0.2), 12, 140.0, 0.6)
+	return true
+
+
+func raise_pillar(x: float, tall: int) -> int:
+	"""THE EARTH MAGE'S PILLAR: in the column at `x`, on the lowest empty cell
+	with something under it (or the map's last row), a foot and up to
+	`tall` - 1 stones above it, in empty cells below the hall, none by a
+	ball. How many bricks."""
+	var col: int = int(floor((x - FIELD_X) / cw))
+	if col < 0 or col >= cols:
+		return 0
+	var top: int = cell_at(Vector2(x, hall.end.y)).y + 2 if hall.size != Vector2.ZERO else 0
+	var base: int = -1
+	for row in range(rows_count - 1, top - 1, -1):
+		if not cells.has(Vector2i(col, row)):
+			base = row
+			break
+	if base < 0:
+		return 0
+	var made: int = 0
+	for row in range(base, maxi(top, base - tall + 1) - 1, -1):
+		var spot := Vector2i(col, row)
+		if cells.has(spot) or _ball_near(_cell(col, row)):
+			break
+		var k := _add(col, row, "foot" if made == 0 else "column", "earth", 2)
+		k["flash"] = 1.0
+		footprint[spot] = true
+		gone_at.erase(spot)
+		breakable += 1
+		made += 1
+	if made > 0:
+		_burst(_cell(col, base).get_center(), COLOURS["earth"], 20, 200.0, 1.0)
+	return made
+
+
+func rockfall(c0: int, c1: int, below: float, most: int) -> int:
+	"""THE MOUNTAIN LORD'S ROCKFALL: boulders (three hits) dropped into the
+	empty pairs of cells the map once held under `below`, from `c0` to `c1`,
+	the highest first, `most` at most, none by a ball. How many."""
+	var made: int = 0
+	for row in rows_count:
+		var c: int = maxi(0, c0)
+		while c < mini(cols - 1, c1) and made < most:
+			var a := Vector2i(c, row)
+			var b2 := Vector2i(c + 1, row)
+			var ra: Rect2 = _cell(a.x, a.y)
+			var rb: Rect2 = _cell(b2.x, b2.y)
+			if footprint.has(a) and footprint.has(b2) and not cells.has(a) and not cells.has(b2) \
+					and ra.position.y > below and not _ball_near(ra) and not _ball_near(rb):
+				var rock := _brick(ra.merge(rb), "boulder", "earth", 3)
+				rock["cells"] = [a, b2]
+				rock["flash"] = 1.0
+				bricks.append(rock)
+				cells[a] = rock
+				cells[b2] = rock
+				gone_at.erase(a)
+				gone_at.erase(b2)
+				breakable += 1
+				made += 1
+				c += 2
+			else:
+				c += 1
+	return made
+
+
+func _catch_round(k: Dictionary) -> void:
+	"""FIRE SPREADS from a brick burnt out (wood, a fuse) or from lava broken:
+	the wood, fuse, TNT and kegs touching it catch."""
+	var spots: Array = k.get("cells", [k["cell"]] if k.has("cell") else [])
+	for home in spots:
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var o: Variant = cells.get((home as Vector2i) + d)
+			if o == null or o == k or o["hp"] <= 0 or o["burn"] >= 0.0 or not CATCHES.has(str(o["kind"])):
+				continue
+			o["burn"] = WOOD_BURN if o["kind"] == "wood" else (FUSE_STEP if o["kind"] == "fuse" else 0.12)
+
+
+func _fire(dt: float) -> void:
+	"""Fire's own motion: lava cooling, lava bombs falling, fire on the floor,
+	the eruption."""
+	var playing_now: bool = state == State.PLAY
+	if playing_now:
+		for k in bricks:
+			if k["kind"] == "lava" and k["hp"] > 0:
+				k["cool"] = float(k.get("cool", LAVA_COOL)) - dt
+				if float(k["cool"]) <= 0.0:
+					# LAVA LEFT TOO LONG cools into basalt
+					k["kind"] = "basalt"
+					k["hp"] = 3
+					k["most"] = 3
+					k["flash"] = 1.0
+					_burst((k["rect"] as Rect2).get_center(), Color(0.55, 0.5, 0.5), 10, 90.0, -0.6)
+	for f in bombs:
+		f["p"].y += BOMB_SPEED * dt
+		var c: Vector2i = cell_at(f["p"])
+		if c != f["last"]:
+			var before: Vector2i = f["last"]
+			f["last"] = c
+			if cells.has(c):
+				# a bomb on what stands sets as lava over it
+				_set_lava(before)
+				f["dead"] = true
+				_burst(f["p"], COLOURS["fire"], 12, 200.0, 0.8)
+				continue
+		var at: Vector2 = f["p"]
+		if at.y >= PADDLE_Y - 8.0 and at.y <= PADDLE_Y + 8.0 and absf(at.x - paddle_x) < paddle_w / 2.0 + 6.0:
+			stun_paddle(BOMB_STUN, at, "fire")
+			f["dead"] = true
+		if at.y > VIEW.y:
+			f["dead"] = true
+	bombs = bombs.filter(func(f: Dictionary) -> bool: return not f.get("dead", false))
+	for f in patches:
+		if float(f["warn"]) > 0.0:
+			f["warn"] = float(f["warn"]) - dt
+			continue
+		f["life"] = float(f["life"]) - dt
+		if playing_now and not bool(f["hit"]) and absf(paddle_x - float(f["x"])) < (paddle_w + PATCH_W) / 2.0:
+			f["hit"] = true
+			stun_paddle(STUN_SECONDS, Vector2(paddle_x, PADDLE_Y), "fire")
+	patches = patches.filter(func(f: Dictionary) -> bool: return float(f["life"]) > 0.0)
+	if eruptions and playing_now:
+		erupt_t += dt
+		if erupt_t >= ERUPT_EVERY:
+			erupt_t = 0.0
+			_erupt_warned = false
+			erupt_now(ERUPT_BOMBS)
+		elif erupt_t >= ERUPT_EVERY - ERUPT_WARN:
+			_shake = maxf(_shake, 0.25)
+			if not _erupt_warned:
+				_erupt_warned = true
+				_say(Vector2(640, 420), "THE VOLCANO RUMBLES...", COLOURS["fire"], 20, ERUPT_WARN)
+
+
+func _set_lava(spot: Vector2i) -> bool:
+	"""Lava in `spot` when it is empty, on the map's grid, not the hall, and no
+	ball is there. Whether it took."""
+	if spot.x < 0 or spot.x >= cols or spot.y < 0 or spot.y >= maxi(rows_count, 1) or cells.has(spot):
+		return false
+	var r: Rect2 = _cell(spot.x, spot.y)
+	if (hall.size != Vector2.ZERO and hall.grow(2.0).intersects(r)) or _ball_near(r):
+		return false
+	var k := _add(spot.x, spot.y, "lava", "fire", 1)
+	k["cool"] = LAVA_COOL
+	k["flash"] = 1.0
+	footprint[spot] = true
+	gone_at.erase(spot)
+	breakable += 1
+	return true
+
+
+func lava_bomb(x: float, from_y: float) -> void:
+	"""A LAVA BOMB (an eruption, the Fire Mage's meteor) falling from `from_y`."""
+	bombs.append({"p": Vector2(x, from_y), "last": cell_at(Vector2(x, from_y))})
+
+
+func erupt_now(n: int) -> void:
+	"""THE VOLCANO ERUPTS (a fire map's eruption, the Fire King's call, the
+	Inferno's): `n` lava bombs from the top of the arena, spread across the
+	field."""
+	for i in n:
+		lava_bomb(FIELD_X + (i + rng.randf_range(0.15, 0.85)) * FIELD_W / n, ARENA.position.y + 4.0)
+	_shake = 1.0
+	_say(Vector2(640, 400), "ERUPTION!", COLOURS["fire"], 26, 0.9)
+
+
+func fire_patch(x: float) -> void:
+	"""THE FLAME SPRITE: fire on the floor at `x`, embers first."""
+	patches.append({"x": clampf(x, ARENA.position.x + PATCH_W / 2.0, ARENA.end.x - PATCH_W / 2.0),
+		"warn": PATCH_WARN, "life": PATCH_LIFE, "hit": false})
+
+
+func scorch_paddle(seconds: float, at: Vector2) -> void:
+	"""THE FIRE SNIPER'S SHOT: the paddle scorched short for `seconds`."""
+	scorched = seconds
+	_burst(at, COLOURS["fire"], 24, 240.0, -0.3)
+	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "SCORCHED!", COLOURS["fire"], 22, 0.9)
+
+
+func lava_at(at: Vector2) -> bool:
+	"""THE FIRE KING'S YOUNG: lava where one lands on nothing (whether it took),
+	and wood or a fuse where it lands set alight."""
+	var c: Vector2i = cell_at(at)
+	var o: Variant = cells.get(c)
+	if o != null:
+		if o["hp"] > 0 and o["burn"] < 0.0 and (o["kind"] == "wood" or o["kind"] == "fuse"):
+			o["burn"] = WOOD_BURN if o["kind"] == "wood" else FUSE_STEP
+		return false
+	if _set_lava(c):
+		_burst(_cell(c.x, c.y).get_center(), COLOURS["fire"], 12, 140.0, -0.3)
+		return true
+	return false
+
+
+func light_sources() -> Array:
+	"""THE LIGHT ON A DARK MAP, as [where, how far]: each ball's (less while
+	the Wisp has stolen it, more for a light Elemental Ball) and the paddle's
+	(none in the Beholder's eclipse) - all less at nightfall. Lanterns are
+	kept on the bricks (`lamp`)."""
+	var share: float = NIGHT_SHARE if night_left > 0.0 else 1.0
+	var reach: float = LIGHT_BALL * share * (DIM_SHARE if light_stolen > 0.0 else 1.0) * (1.6 if element() == "light" else 1.0)
+	var out: Array = []
+	for b in balls:
+		out.append([b["p"], reach])
+	if blackout <= 0.0:
+		out.append([Vector2(paddle_x, PADDLE_Y), LIGHT_PADDLE * share])
+	return out
+
+
+func lamp_reach() -> float:
+	"""How far a lantern lights now: none in the eclipse, less at nightfall."""
+	if blackout > 0.0:
+		return 0.0
+	return LANTERN_R * (NIGHT_SHARE if night_left > 0.0 else 1.0)
+
+
+func is_lit(k: Dictionary, lights: Array) -> bool:
+	"""Whether light falls on brick `k` now."""
+	var mid: Vector2 = (k["rect"] as Rect2).get_center()
+	if not k.has("lamp"):
+		var near: float = INF
+		for at in lanterns:
+			near = minf(near, mid.distance_to(at))
+		k["lamp"] = near
+	if float(k["lamp"]) <= lamp_reach():
+		return true
+	for light in lights:
+		if mid.distance_to(light[0]) <= float(light[1]):
+			return true
+	return false
+
+
+func _dark(dt: float) -> void:
+	"""A dark map's own motion: what the light finds shows and the rest fades,
+	shadow bricks heal in the dark, and the night falls."""
+	if not dark:
+		return
+	var lights: Array = light_sources()
+	var playing_now: bool = state == State.PLAY
+	for k in bricks:
+		if k["hp"] <= 0 and _breaks(k):
+			continue
+		var on: bool = is_lit(k, lights)
+		k["seen"] = move_toward(float(k.get("seen", 0.0)), 1.0 if on else 0.0, dt * (8.0 if on else 1.0 / SEEN_FADE))
+		if k["kind"] == "shadow" and playing_now and k["hp"] < k["most"]:
+			# A SHADOW BRICK HEALS in the dark
+			if float(k["seen"]) < 0.2:
+				k["heal"] = float(k.get("heal", 0.0)) + dt
+				if float(k["heal"]) >= SHADOW_HEAL:
+					k["heal"] = 0.0
+					k["hp"] += 1
+			else:
+				k["heal"] = 0.0
+	if not playing_now:
+		return
+	night_left = maxf(0.0, night_left - dt)
+	night_t += dt
+	if night_t >= NIGHT_EVERY:
+		night_t = 0.0
+		_night_warned = false
+		night_left = NIGHT_SECONDS
+		_say(Vector2(640, 400), "NIGHTFALL", COLOURS["dark"].lightened(0.45), 26, 0.9)
+	elif night_t >= NIGHT_EVERY - NIGHT_WARN and not _night_warned:
+		_night_warned = true
+		_say(Vector2(640, 420), "THE DARK DEEPENS...", COLOURS["dark"].lightened(0.45), 20, NIGHT_WARN)
+
+
+func _voids(dt: float) -> void:
+	"""VOID WELLS draw the balls near them in."""
+	voids = voids.filter(func(k: Dictionary) -> bool: return k["hp"] > 0)
+	if voids.is_empty() or state != State.PLAY:
+		return
+	for b in balls:
+		var v: Vector2 = b["v"]
+		if v == Vector2.ZERO:
+			continue
+		for w in voids:
+			var to: Vector2 = (w["rect"] as Rect2).get_center() - (b["p"] as Vector2)
+			if to.length() <= VOID_REACH:
+				var turn: float = clampf(v.angle_to(to), -deg_to_rad(VOID_TURN) * dt, deg_to_rad(VOID_TURN) * dt)
+				b["v"] = steady(v.rotated(turn))
+				break
+
+
+func light_lantern(at: Vector2) -> void:
+	"""A LANTERN LIT (broken): its light for good."""
+	lanterns.append(at)
+	_relamp()
+	_burst(at, Color(1.0, 0.9, 0.55), 30, 240.0, -0.3)
+	rings.append({"p": at, "age": 0.0, "most": 0.6, "c": Color(1.0, 0.9, 0.55), "r": LANTERN_R})
+	_say(at + Vector2(0, -14), "LIGHT!", Color(1.0, 0.92, 0.6), 18, 0.8)
+
+
+func _relamp() -> void:
+	"""The lanterns changed: every brick works out again how near one is."""
+	for k in bricks:
+		k.erase("lamp")
+
+
+func snuff() -> bool:
+	"""THE SHADOW KING SNUFFS the last lantern lit. Whether there was one."""
+	if lanterns.is_empty():
+		return false
+	var at: Vector2 = lanterns.pop_back()
+	_relamp()
+	_burst(at, COLOURS["dark"], 24, 200.0, -0.3)
+	_say(at + Vector2(0, -14), "SNUFFED", COLOURS["dark"].lightened(0.4), 18, 0.8)
+	return true
+
+
+func shade_at(at: Vector2) -> bool:
+	"""THE SHADOW KING'S YOUNG: the brick where one lands turns to shadow (two
+	hits, healing in the dark) - not a core, a Guard, a key, a lock, a lantern
+	or a void. Whether it did."""
+	var o: Variant = cells.get(cell_at(at))
+	if o == null or not o.has("cell") or o["hp"] <= 0 or not _breaks(o) or DARK_KEEP.has(str(o["kind"])):
+		return false
+	o["kind"] = "shadow"
+	o["land"] = "dark"
+	o["hp"] = 2
+	o["most"] = 2
+	o.erase("frost")
+	o.erase("frozen")
+	o["flash"] = 1.0
+	_burst((o["rect"] as Rect2).get_center(), COLOURS["dark"], 10, 120.0, -0.3)
+	return true
+
+
+func open_void(around: Rect2) -> bool:
+	"""THE VOID MAGE OPENS A WELL in the empty cell the map once held nearest
+	the field below his hall, no ball by it. Whether he did."""
+	var toward := Vector2(around.get_center().x, around.end.y + 150.0)
+	var best := Vector2i(-1, -1)
+	for c in footprint.keys():
+		var spot: Vector2i = c
+		var r: Rect2 = _cell(spot.x, spot.y)
+		if cells.has(spot) or r.position.y <= around.end.y or _ball_near(r):
+			continue
+		if best.x < 0 or r.get_center().distance_to(toward) < _cell(best.x, best.y).get_center().distance_to(toward):
+			best = spot
+	if best.x < 0:
+		return false
+	var k := _add(best.x, best.y, "void", "dark", 3)
+	k["flash"] = 1.0
+	gone_at.erase(best)
+	breakable += 1
+	voids.append(k)
+	rings.append({"p": (k["rect"] as Rect2).get_center(), "age": 0.0, "most": 0.6, "c": COLOURS["dark"].lightened(0.4), "r": VOID_REACH})
+	return true
+
+
+func hex_paddle(seconds: float, at: Vector2) -> void:
+	"""THE SHADE SNIPER'S SHOT: left and right swapped for `seconds`."""
+	hexed = seconds
+	_burst(at, COLOURS["dark"].lightened(0.3), 22, 220.0, -0.2)
+	_say(Vector2(paddle_x, PADDLE_Y - 40.0), "HEXED!", COLOURS["dark"].lightened(0.45), 22, 0.9)
+
+
+func dim_balls(seconds: float) -> void:
+	"""THE WISP STEALS THE LIGHT: the balls' light at DIM_SHARE for `seconds`."""
+	light_stolen = seconds
+	for b in balls:
+		_burst(b["p"], COLOURS["dark"].lightened(0.3), 10, 140.0, -0.2)
+	_say(Vector2(640, 420), "YOUR LIGHT IS STOLEN", COLOURS["dark"].lightened(0.45), 20, 0.9)
+
+
+func eclipse_now(seconds: float) -> void:
+	"""THE BEHOLDER'S ECLIPSE: only the balls give light for `seconds`."""
+	blackout = seconds
+	_say(Vector2(640, 400), "ECLIPSE!", COLOURS["dark"].lightened(0.45), 28, 1.0)
+
+
+func final_map() -> bool:
+	"""Whether this is the last map of all - the seventh crown - with every
+	kingdom made."""
+	return map_index == Maps.MAPS.size() - 1 and Maps.made_count() == Maps.MAPS.size() \
+		and Maps.made_count() == Maps.KINGDOMS.size() * Maps.MAPS_A_KINGDOM
 
 
 func tug_paddle(seconds: float, to_x: float, land: String) -> void:
@@ -1759,7 +2903,8 @@ func burst_at(at: Vector2, land: String, n: int) -> void:
 func rebuild_near(n: int, around: Rect2, kind: String = "stone") -> void:
 	"""THE BUSH MAGE REBUILDS: the `n` broken cells nearest its hall (cells the
 	map once held, empty now) come back as stone, two hits - or, the Tide
-	Mage's, as bubble bricks."""
+	Mage's, as bubble bricks; the Frost Mage's, frost-coated ice; the Dust
+	Sprite's, sand; the Fire Mage's, obsidian; the Void Mage's, shadow."""
 	var spots: Array = []
 	for c in footprint.keys():
 		if not cells.has(c):
@@ -1775,6 +2920,16 @@ func rebuild_near(n: int, around: Rect2, kind: String = "stone") -> void:
 		var k: Dictionary
 		if kind == "bubble":
 			k = _add(c.x, c.y, "bubble", "water", 1)
+		elif kind == "frost":
+			k = _add(c.x, c.y, "land", "ice", 1)
+			k["frost"] = true
+		elif kind == "sand":
+			k = _add(c.x, c.y, "sand", "earth", 1)
+		elif kind == "obsidian":
+			k = _add(c.x, c.y, "obsidian", "fire", 3)
+			k["most"] = 4
+		elif kind == "shadow":
+			k = _add(c.x, c.y, "shadow", "dark", 2)
 		else:
 			k = _add(c.x, c.y, "stone", "", 2)
 			k["most"] = 3
@@ -1840,7 +2995,10 @@ func _hit_boss(n: int) -> void:
 	# The moment is the boss's: what was on screen goes, so the cleared
 	# lines always stand under it.
 	words.clear()
-	if boss.crowned:
+	if boss.crowned and final_map():
+		# THE SEVENTH CROWN: the end of Crownfall
+		_say(Vector2(640, 330), "THE LAST CROWN FALLS!", GOLD, 40, CLEARED_SECONDS)
+	elif boss.crowned:
 		_say(Vector2(640, 330), "THE CROWN FALLS!", GOLD, 38, CLEARED_SECONDS)
 	else:
 		_say(Vector2(640, 330), "%s IS DEFEATED!" % str(boss.title).to_upper(), GOLD, 34, CLEARED_SECONDS)
@@ -1851,6 +3009,7 @@ func _hit_boss(n: int) -> void:
 # ---------------------------------------------------------------- effects --
 
 func _effects(dt: float) -> void:
+	_frame_life(dt)
 	for k in bricks:
 		k["flash"] = maxf(0.0, k["flash"] - dt * 5.0)
 	for p in parts:
@@ -1867,6 +3026,39 @@ func _effects(dt: float) -> void:
 	for r in rings:
 		r["age"] += dt
 	rings = rings.filter(func(r): return r["age"] < r["most"])
+
+
+func _frame_life(dt: float) -> void:
+	"""The frame's own motion: the rolling score and its pops, the coin, the
+	hearts, the multiplier's badge."""
+	if score != _score_was:
+		if score > _score_was:
+			if not score_pops.is_empty() and float(score_pops[-1]["age"]) < 0.25:
+				score_pops[-1]["n"] = int(score_pops[-1]["n"]) + score - _score_was
+			else:
+				score_pops = [{"n": score - _score_was, "age": 0.0}]
+		else:
+			shown_score = float(score)
+			score_pops.clear()
+		_score_was = score
+	shown_score = move_toward(shown_score, float(score), maxf(400.0, absf(float(score) - shown_score) * 6.0) * dt)
+	for pop in score_pops:
+		pop["age"] = float(pop["age"]) + dt
+	score_pops = score_pops.filter(func(pop: Dictionary) -> bool: return float(pop["age"]) < 0.9)
+	var g: int = gold_now()
+	if _gold_was >= 0 and g > _gold_was:
+		_gold_bounce = 1.0
+	_gold_was = g
+	_gold_bounce = maxf(0.0, _gold_bounce - dt * 2.5)
+	if lives < _lives_was:
+		_heart_crack = 1.0
+	_lives_was = lives
+	_heart_crack = maxf(0.0, _heart_crack - dt * 1.6)
+	var m: float = _multiplier()
+	if m > _mult_was:
+		_mult_pop = 1.0
+	_mult_was = m
+	_mult_pop = maxf(0.0, _mult_pop - dt * 3.0)
 
 
 func _burst(at: Vector2, c: Color, n: int, speed: float, gravity: float = 1.0) -> void:
@@ -1944,6 +3136,38 @@ func _colour_of(k: Dictionary) -> Color:
 			return COLOURS[MIX_LANDS.get(str(k.get("mix", "clash")), ["light"])[0]]
 		"rune":
 			return Color(0.95, 0.8, 0.4)
+		"packed":
+			return Color(0.45, 0.72, 0.95)
+		"drift":
+			return Color(0.92, 0.95, 1.0)
+		"foot":
+			return Color(0.78, 0.36, 0.16)
+		"column":
+			return Color(0.7, 0.58, 0.42)
+		"boulder":
+			return Color(0.66, 0.56, 0.46)
+		"ore":
+			return Color(0.42, 0.38, 0.36)
+		"sand":
+			return Color(0.93, 0.8, 0.52)
+		"wood":
+			return Color(0.72, 0.48, 0.26)
+		"fuse":
+			return Color(0.62, 0.5, 0.34)
+		"keg":
+			return Color(0.6, 0.36, 0.2)
+		"obsidian":
+			return Color(0.22, 0.18, 0.3)
+		"lava":
+			return Color(1.0, 0.45, 0.1)
+		"basalt":
+			return Color(0.36, 0.34, 0.35)
+		"lantern":
+			return Color(0.95, 0.8, 0.42)
+		"shadow":
+			return Color(0.34, 0.3, 0.42)
+		"void":
+			return Color(0.14, 0.06, 0.24)
 		"bumper":
 			return Color(1.0, 0.6, 0.85)
 		"portal":
@@ -1951,6 +3175,66 @@ func _colour_of(k: Dictionary) -> Color:
 		"lock":
 			return Color(0.42, 0.45, 0.52)
 	return COLOURS.get(k["land"], Color.WHITE)
+
+
+func _draw_frost_coat(r: Rect2) -> void:
+	"""A FROST COAT: a pale sheet over the brick, rime along its top."""
+	draw_rect(r, Color(0.86, 0.95, 1.0, 0.42))
+	draw_rect(Rect2(r.position, Vector2(r.size.x, maxf(2.0, r.size.y * 0.25))), Color(1, 1, 1, 0.55))
+	var step: float = maxf(4.0, r.size.x / 5.0)
+	var x: float = r.position.x + step * 0.5
+	while x < r.end.x - 1.0:
+		draw_line(Vector2(x, r.position.y), Vector2(x, r.position.y + r.size.y * 0.45), Color(1, 1, 1, 0.65), 1.0)
+		x += step
+	draw_rect(r, Color(0.9, 0.98, 1.0, 0.85), false, 1.0)
+
+
+func _draw_patch(f: Dictionary) -> void:
+	"""FIRE ON THE FLOOR: embers on the paddle's line while it warns, then
+	flames licking up."""
+	var x0: float = float(f["x"]) - PATCH_W / 2.0
+	var y: float = PADDLE_Y + 9.0
+	if float(f["warn"]) > 0.0:
+		var blink: float = 0.4 + 0.6 * absf(sin(t * 14.0))
+		for i in 7:
+			draw_circle(Vector2(x0 + 4.0 + i * (PATCH_W - 8.0) / 6.0, y), 2.0, Color(1.0, 0.45, 0.15, blink))
+		return
+	var fade: float = clampf(float(f["life"]) / 0.5, 0.0, 1.0)
+	draw_rect(Rect2(x0, y - 4.0, PATCH_W, 6.0), Color(1.0, 0.35, 0.1, 0.35 * fade))
+	for i in 6:
+		var fx: float = x0 + 5.0 + i * (PATCH_W - 10.0) / 5.0
+		var h: float = 14.0 + 8.0 * absf(sin(t * 9.0 + i * 1.7))
+		draw_colored_polygon(PackedVector2Array([Vector2(fx - 5, y), Vector2(fx, y - h), Vector2(fx + 5, y)]), Color(1.0, 0.5, 0.12, 0.85 * fade))
+		draw_colored_polygon(PackedVector2Array([Vector2(fx - 2.5, y), Vector2(fx, y - h * 0.55), Vector2(fx + 2.5, y)]), Color(1.0, 0.9, 0.5, 0.9 * fade))
+
+
+func _draw_dark() -> void:
+	"""THE DARK: the arena dimmed, a glow round every light - the balls',
+	the paddle's, each lantern lit."""
+	draw_rect(ARENA, Color(0.01, 0.008, 0.03, 0.66 if blackout <= 0.0 else 0.82))
+	for light in light_sources():
+		var at: Vector2 = light[0]
+		var reach: float = light[1]
+		for i in 4:
+			draw_circle(at, reach * (1.0 - i * 0.22), Color(0.75, 0.8, 1.0, 0.025))
+	var lamp: float = lamp_reach()
+	if lamp > 0.0:
+		for at in lanterns:
+			for i in 4:
+				draw_circle(at, lamp * (1.0 - i * 0.22), Color(1.0, 0.85, 0.5, 0.03))
+
+
+func _draw_slicks() -> void:
+	"""SLICK ICE: a pale band, glints running across it."""
+	for band in slicks:
+		var y0: float = band["y0"]
+		var y1: float = band["y1"]
+		draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["ice"], 0.06))
+		for i in 6:
+			var x: float = ARENA.position.x + fposmod(t * 220.0 + i * 167.0, ARENA.size.x - 40.0)
+			draw_line(Vector2(x, y1 - 2.0), Vector2(x + 26.0, y0 + 2.0), Color(1, 1, 1, 0.12), 2.0)
+		for x in [ARENA.position.x + 3.0, ARENA.end.x - 3.0]:
+			draw_line(Vector2(x, y0), Vector2(x, y1), Color(COLOURS["ice"], 0.5), 2.0)
 
 
 func _draw_frozen(r: Rect2) -> void:
@@ -1974,8 +3258,11 @@ func _draw() -> void:
 	_draw_arena()
 	_draw_building()
 	_draw_tide_body()
+	_draw_slicks()
 	_draw_gusts()
 	_draw_rails()
+	if dark:
+		_draw_dark()
 	for k in bricks:
 		if (k["hp"] > 0 or not _breaks(k)) and not k.has("rail"):
 			var r: Rect2 = k["rect"]
@@ -1987,9 +3274,17 @@ func _draw() -> void:
 				draw_rect((k["rect"] as Rect2).grow(1.5), Color(GUARD_GLOW, float(k["warded"])), false, 2.0)
 			if bool(k.get("frozen", false)) and k["hp"] > 0:
 				_draw_frozen(k["rect"])
+			if k.has("frost") and k["hp"] > 0:
+				_draw_frost_coat(k["rect"])
 			if pulling and k["hp"] > 0 and _breaks(k) and not _guarded(k):
 				var glow: float = 0.5 + 0.5 * sin(t * 6.0)
 				draw_rect((k["rect"] as Rect2).grow(3.0 + glow * 3.0), Color(GOLD, 0.35 + 0.35 * glow), false, 2.0)
+			if dark:
+				# UNSEEN: the dark over it, a ghost of it left
+				var shown: float = GHOST + (1.0 - GHOST) * float(k.get("seen", 0.0))
+				if shown < 1.0:
+					draw_rect(Rect2((k["rect"] as Rect2).position - Vector2(1, 1), (k["rect"] as Rect2).size + Vector2(4, 5)),
+						Color(0.015, 0.012, 0.04, 1.0 - shown))
 	_draw_guards()
 	_draw_tide_top()
 	for bu in bubbles:
@@ -1997,6 +3292,27 @@ func _draw() -> void:
 		draw_circle(at, 6.0, Color(COLOURS["water"], 0.25))
 		draw_arc(at, 5.0, 0, TAU, 16, Color(0.8, 0.92, 1.0, 0.9), 1.4)
 		draw_circle(at + Vector2(-1.8, -1.8), 1.3, Color(1, 1, 1, 0.9))
+	for f in falling:
+		var at: Vector2 = f["p"]
+		draw_colored_polygon(PackedVector2Array([at + Vector2(-5, -10), at + Vector2(5, -10), at + Vector2(0, 10)]), Color(0.86, 0.97, 1.0))
+		draw_line(at + Vector2(-1, -9), at + Vector2(0, 6), Color(1, 1, 1, 0.9), 1.2)
+	for f in rubble:
+		# A TOPPLED PILLAR'S RUBBLE: a tumbling chunk of its stone
+		var spin: float = t * 9.0 + (f["p"] as Vector2).x * 0.3
+		var half_w: float = maxf(4.0, cw * 0.32)
+		var chunk := PackedVector2Array()
+		for i in 5:
+			chunk.append((f["p"] as Vector2) + Vector2.from_angle(spin + i * TAU / 5.0) * half_w * (0.8 + 0.2 * (i % 2)))
+		draw_colored_polygon(chunk, (f["c"] as Color).darkened(0.1))
+		draw_circle((f["p"] as Vector2) + Vector2(-1.5, -1.5), half_w * 0.3, Color(1, 1, 1, 0.25))
+	for f in bombs:
+		# A LAVA BOMB: a glowing blob, a smoky tail
+		var at: Vector2 = f["p"]
+		for i in 4:
+			draw_circle(at - Vector2(0, 8.0 + i * 7.0), 4.0 - i * 0.8, Color(0.35, 0.3, 0.3, 0.35 - i * 0.07))
+		draw_circle(at, 9.0, Color(COLOURS["fire"], 0.3))
+		draw_circle(at, 5.5, Color(1.0, 0.5, 0.12))
+		draw_circle(at + Vector2(-1.5, -1.5), 2.2, Color(1.0, 0.92, 0.6))
 	for d in drips:
 		draw_circle(d["p"], 9.0, Color(COLOURS["fire"], 0.3))
 		draw_circle(d["p"], 5.0, Color(1.0, 0.55, 0.15))
@@ -2023,6 +3339,9 @@ func _draw() -> void:
 	for b in balls:
 		_draw_ball(b)
 	_draw_paddle()
+	for f in patches:
+		# fire on the floor licks up over the paddle
+		_draw_patch(f)
 	for r in rings:
 		var u: float = r["age"] / r["most"]
 		draw_arc(r["p"], r["r"] * u, 0, TAU, 48, Color(r["c"], 1.0 - u), 6.0 * (1.0 - u) + 1.0)
@@ -2086,6 +3405,7 @@ func _draw_arena() -> void:
 		draw_line(Vector2(gx, ARENA.position.y), Vector2(gx, ARENA.end.y), Color(1, 1, 1, 0.022), 1.0)
 	for gy in range(int(ARENA.position.y) + 40, int(ARENA.end.y), 40):
 		draw_line(Vector2(ARENA.position.x, gy), Vector2(ARENA.end.x, gy), Color(1, 1, 1, 0.016), 1.0)
+	_draw_air()
 	# THE PLAGUE'S HAZE, thinning as the map is broken
 	if sick > 0.0:
 		for i in 7:
@@ -2106,6 +3426,32 @@ func _draw_arena() -> void:
 			corner + Vector2(-11, 0)]), GOLD)
 		draw_colored_polygon(PackedVector2Array([corner + Vector2(0, -5), corner + Vector2(5, 0), corner + Vector2(0, 5),
 			corner + Vector2(-5, 0)]), Color(0.3, 0.2, 0.05))
+
+
+func _draw_air() -> void:
+	"""THE KINGDOM'S AIR, behind everything in the arena: motes rising in
+	Light, streaks blowing across in Wind, small bubbles rising in Water -
+	faint and small, so none is taken for a ball."""
+	var land: String = str(Maps.kingdom_of(map_index).get("land", "light"))
+	var c: Color = COLOURS.get(land, GOLD)
+	var w: float = ARENA.size.x
+	var h: float = ARENA.size.y
+	match land:
+		"wind":
+			for i in 16:
+				var y: float = ARENA.position.y + fmod(i * 97.0 + 23.0, h)
+				var x: float = ARENA.position.x + fposmod(t * (70.0 + (i % 4) * 20.0) + i * 211.0, w - 36.0)
+				draw_line(Vector2(x, y), Vector2(x + 34.0, y), Color(c, 0.07), 1.5)
+		"water":
+			for i in 26:
+				var x: float = clampf(ARENA.position.x + fmod(i * 137.5, w) + sin(t * 1.3 + i) * 5.0, ARENA.position.x + 4.0, ARENA.end.x - 4.0)
+				var y: float = ARENA.end.y - 4.0 - fposmod(t * (18.0 + (i % 5) * 6.0) + i * 53.0, h - 8.0)
+				draw_arc(Vector2(x, y), 1.4 + (i % 3) * 0.6, 0, TAU, 8, Color(c.lightened(0.4), 0.16), 1.0)
+		_:
+			for i in 28:
+				var x: float = clampf(ARENA.position.x + fmod(i * 137.5, w) + sin(t * 0.8 + i * 1.7) * 8.0, ARENA.position.x + 4.0, ARENA.end.x - 4.0)
+				var y: float = ARENA.end.y - 4.0 - fposmod(t * (10.0 + (i % 4) * 4.0) + i * 61.0, h - 8.0)
+				draw_circle(Vector2(x, y), 1.0 + (i % 3) * 0.5, Color(c, 0.12 + 0.06 * sin(t * 2.0 + i)))
 
 
 func _draw_building() -> void:
@@ -2237,8 +3583,10 @@ func _draw_guards() -> void:
 		if k["kind"] == "guard" and k["hp"] > 0 and k.has("cell"):
 			var c: Vector2i = k["cell"]
 			var box: Rect2 = _cell(c.x - 1, c.y - 1).merge(_cell(c.x + 1, c.y + 1)).grow(2.0)
-			draw_rect(box, Color(GUARD_GLOW, 0.05 + 0.04 * pulse))
-			draw_rect(box, Color(GUARD_GLOW, 0.4 + 0.25 * pulse), false, 1.5)
+			# in the dark, only as much as the Guard itself is seen
+			var shown: float = GHOST + (1.0 - GHOST) * float(k.get("seen", 0.0)) if dark else 1.0
+			draw_rect(box, Color(GUARD_GLOW, (0.05 + 0.04 * pulse) * shown))
+			draw_rect(box, Color(GUARD_GLOW, (0.4 + 0.25 * pulse) * shown), false, 1.5)
 
 
 func _draw_brick(k: Dictionary) -> void:
@@ -2246,7 +3594,7 @@ func _draw_brick(k: Dictionary) -> void:
 	CH) is drawn scaled down into its rect."""
 	var r: Rect2 = k["rect"]
 	var standard := Vector2(CW - 2.0, CH)
-	if r.size.is_equal_approx(standard) or k["kind"] == "heart":
+	if r.size.is_equal_approx(standard) or k["kind"] == "heart" or k["kind"] == "boulder":
 		_draw_brick_in(k, r)
 		return
 	draw_set_transform(_jolt + r.position, 0.0, r.size / standard)
@@ -2352,6 +3700,26 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 			draw_line(mid + Vector2(-3, 3), mid + Vector2(3, -3), Color(1, 1, 1, spark), 1.4)
 			draw_rect(r, Color(1, 1, 1, 0.35), false, 1.0)
 			return
+		"drift":
+			# A SNOWDRIFT: soft white, heaped along its top
+			var snow := Color(0.9, 0.94, 1.0).lerp(Color.WHITE, flash * 0.5)
+			draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.35), Vector2(r.size.x, r.size.y * 0.65)), snow.darkened(0.08))
+			for i in 4:
+				draw_circle(Vector2(r.position.x + r.size.x * (0.14 + i * 0.24), r.position.y + r.size.y * 0.45), r.size.y * 0.36, snow)
+			draw_rect(Rect2(r.position.x, r.end.y - 2.0, r.size.x, 2.0), Color(0.6, 0.7, 0.85, 0.6))
+			if k["hp"] <= 1:
+				draw_line(r.position + Vector2(r.size.x * 0.3, r.size.y * 0.3), r.get_center() + Vector2(3, 3), Color(0.55, 0.65, 0.8), 1.2)
+			return
+		"icicle":
+			# AN ICICLE: hanging from the brick above; a Snow Sprite's blinks
+			# as its time runs out
+			var ice := Color(0.82, 0.95, 1.0)
+			if k.has("hang") and float(k["hang"]) < 1.5:
+				ice = ice.lerp(Color.WHITE, 0.5 + 0.5 * sin(t * 18.0))
+			draw_colored_polygon(PackedVector2Array([r.position + Vector2(r.size.x * 0.2, 0), Vector2(r.end.x - r.size.x * 0.2, r.position.y),
+				Vector2(mid.x, r.end.y + r.size.y * 0.25)]), ice.lerp(Color.WHITE, flash * 0.5))
+			draw_line(Vector2(mid.x - 1.5, r.position.y + 1.0), Vector2(mid.x, r.end.y), Color(1, 1, 1, 0.9), 1.2)
+			return
 		"clam":
 			# A CLAM: its lid lifts when it opens, the pearl shining inside
 			var o: float = clam_open(k)
@@ -2364,6 +3732,47 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 			_draw_half_shell(hinge, r.size.x * 0.4, r.size.y * 0.42, false, shell.darkened(0.15))
 			_draw_half_shell(hinge + Vector2(0, -1.0 - 4.5 * o), r.size.x * 0.4, r.size.y * 0.5, true, shell)
 			draw_rect(r, Color(0.85, 0.75, 0.95, 0.4 + 0.5 * o), false, 1.2)
+			return
+		"boulder":
+			# A BOULDER: a round-shouldered rock two cells wide, at its own size,
+			# cracking with every hit
+			var rock: Color = c.lerp(Color.WHITE, flash * 0.5)
+			draw_rect(r.grow(1.0), Color(0.15, 0.1, 0.06, 0.8), false, 1.0)
+			var inset: float = minf(r.size.y * 0.3, 4.0)
+			draw_rect(Rect2(r.position + Vector2(inset, 0), Vector2(r.size.x - inset * 2.0, r.size.y)), rock.darkened(0.12))
+			draw_rect(Rect2(r.position + Vector2(0, inset), Vector2(r.size.x, r.size.y - inset * 2.0)), rock.darkened(0.12))
+			for cx in [r.position.x + inset, r.end.x - inset]:
+				for cy in [r.position.y + inset, r.end.y - inset]:
+					draw_circle(Vector2(cx, cy), inset, rock.darkened(0.12))
+			draw_rect(Rect2(r.position + Vector2(inset, 1), Vector2(r.size.x - inset * 2.0, r.size.y * 0.4)), rock.lightened(0.12))
+			for i in 3:
+				draw_circle(Vector2(r.position.x + r.size.x * (0.22 + i * 0.28), mid.y + (1.0 if i % 2 else -1.0) * r.size.y * 0.15),
+					maxf(1.0, r.size.y * 0.1), rock.darkened(0.45))
+			var crack := Color(0.12, 0.08, 0.05, 0.8)
+			var most_hp: int = int(k["most"])
+			if k["hp"] < most_hp:
+				draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.3, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.38, mid.y),
+					Vector2(r.position.x + r.size.x * 0.33, r.end.y - 1)]), crack, 1.2)
+			if k["hp"] < most_hp - 1:
+				draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.68, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.6, mid.y),
+					Vector2(r.position.x + r.size.x * 0.72, r.end.y - 1)]), crack, 1.2)
+			if k["hp"] <= 1:
+				draw_line(Vector2(r.position.x + 3, mid.y), Vector2(r.end.x - 3, mid.y + 1), crack, 1.2)
+			return
+		"lava":
+			# LAVA: molten under a dark crust, bubbling and glowing - it greys
+			# as it cools toward basalt
+			var cool: float = clampf(1.0 - float(k.get("cool", LAVA_COOL)) / LAVA_COOL, 0.0, 1.0)
+			var throb: float = 0.5 + 0.5 * sin(t * 4.0 + r.position.x * 0.05)
+			draw_rect(r, Color(0.4, 0.07, 0.02).lerp(Color(0.3, 0.27, 0.27), cool).lerp(Color.WHITE, flash * 0.5))
+			var molten := Color(1.0, 0.82, 0.25).lerp(Color(1.0, 0.45, 0.1), 0.4 * throb).lerp(Color(0.5, 0.33, 0.28), cool)
+			draw_rect(Rect2(r.position + Vector2(2, 2), r.size - Vector2(4, 4)), molten)
+			for i in 3:
+				var bx: float = r.position.x + 6.0 + i * 8.0
+				var rise: float = fmod(t * 1.3 + i * 0.37 + r.position.x * 0.01, 1.0)
+				draw_circle(Vector2(bx, r.end.y - 3.0 - rise * (r.size.y - 6.0)), 1.6 * (1.0 - rise) + 0.6,
+					Color(1.0, 1.0, 0.8, (1.0 - cool) * 0.9))
+			draw_rect(r.grow(1.0), Color(1.0, 0.55, 0.1, (0.35 + 0.4 * throb) * (1.0 - cool)), false, 1.5)
 			return
 		"heart":
 			var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
@@ -2446,6 +3855,118 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 				var w: float = r.size.x / ELEMENTS.size()
 				draw_rect(Rect2(r.position.x + i * w, r.end.y - 3, w, 3), COLOURS[ELEMENTS[i]])
 			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 3), mid + Vector2(-5, 3)]), Color(1, 1, 1, 0.75))
+		"packed":
+			# PACKED ICE: dense blue, a sheen across it, cracking as it is hit
+			draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.45, 3), Color(1, 1, 1, 0.35), 2.0)
+			if k["hp"] <= 2:
+				draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
+			if k["hp"] <= 1:
+				draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
+		"column":
+			# A PILLAR'S STONE: fluted, cracked once struck
+			for f in [0.3, 0.5, 0.7]:
+				draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 2), Vector2(r.position.x + r.size.x * f, r.end.y - 2),
+					Color(0.25, 0.18, 0.1, 0.45), 1.2)
+			if k["hp"] <= 1:
+				draw_polyline(PackedVector2Array([r.position + Vector2(5, 2), mid + Vector2(-2, 1), mid + Vector2(6, 4)]), Color(0, 0, 0, 0.7), 1.3)
+		"foot":
+			# A PILLAR'S FOOT: a plinth, wider at its base; cracked, it glows
+			# along the crack - the next blow or tremor brings the pillar down
+			draw_rect(Rect2(r.position.x, r.end.y - 4, r.size.x, 4), Color(0.22, 0.1, 0.04, 0.85))
+			draw_colored_polygon(PackedVector2Array([mid + Vector2(-7, 3), mid + Vector2(0, -5), mid + Vector2(7, 3)]), Color(0.3, 0.12, 0.04, 0.85))
+			draw_colored_polygon(PackedVector2Array([mid + Vector2(-4, 2), mid + Vector2(0, -2), mid + Vector2(4, 2)]), Color(1.0, 0.75, 0.4, 0.9))
+			if k["hp"] < k["most"]:
+				var glow: float = 0.55 + 0.45 * sin(t * 7.0 + r.position.x * 0.1)
+				var split := PackedVector2Array([r.position + Vector2(3, 3), mid + Vector2(-4, 2), mid + Vector2(3, -2), r.end - Vector2(4, 3)])
+				draw_polyline(split, Color(1.0, 0.72, 0.3, 0.6 * glow), 3.0)
+				draw_polyline(split, Color(0.1, 0.05, 0.0, 0.9), 1.3)
+		"ore":
+			# ORE: dark rock, gold glinting in it
+			for at in [Vector2(-8, -2), Vector2(-1, 3), Vector2(6, -3), Vector2(10, 3)]:
+				var fleck: Vector2 = mid + at
+				draw_colored_polygon(PackedVector2Array([fleck + Vector2(0, -3.5), fleck + Vector2(3.5, 0), fleck + Vector2(0, 3.5), fleck + Vector2(-3.5, 0)]),
+					GOLD.lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(t * 4.0 + at.x))))
+			if k["hp"] <= 2:
+				draw_polyline(PackedVector2Array([r.position + Vector2(5, 1), mid + Vector2(-4, 0), mid + Vector2(2, 6)]), Color(0, 0, 0, 0.7), 1.3)
+			if k["hp"] <= 1:
+				draw_polyline(PackedVector2Array([mid + Vector2(2, -6), mid + Vector2(5, 1), r.end - Vector2(4, 2)]), Color(0, 0, 0, 0.7), 1.3)
+		"lantern":
+			# A LANTERN: a lamp behind glass, its flame flickering
+			draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(1.0, 0.85, 0.45, 0.35))
+			draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(0.25, 0.2, 0.1), false, 1.2)
+			var flick: float = 0.8 + 0.2 * sin(t * 13.0 + r.position.x)
+			draw_colored_polygon(PackedVector2Array([mid + Vector2(-2.5, 3), mid + Vector2(0, -4.5 * flick), mid + Vector2(2.5, 3)]), Color(1.0, 0.95, 0.6))
+			draw_line(Vector2(mid.x - 7, r.position.y + 2), Vector2(mid.x + 7, r.position.y + 2), Color(0.25, 0.2, 0.1), 1.5)
+		"shadow":
+			# A SHADOW BRICK: smoke curling in it; it heals in the dark
+			for i in 3:
+				var sx: float = r.position.x + 6.0 + i * 8.0 + sin(t * 2.0 + i) * 2.0
+				draw_arc(Vector2(sx, mid.y), 3.0, t * 2.0 + i, t * 2.0 + i + PI * 1.3, 8, Color(0.75, 0.6, 1.0, 0.55), 1.2)
+			if k["hp"] <= 1:
+				draw_line(r.position + Vector2(5, 2), mid + Vector2(2, 4), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+		"void":
+			# A VOID WELL: a hole of night, its rim turning inward
+			draw_circle(mid, r.size.y * 0.42, Color(0.02, 0.0, 0.05))
+			for i in 3:
+				var a0: float = -t * 4.0 + i * TAU / 3.0
+				draw_arc(mid, r.size.y * 0.42 + 1.5, a0, a0 + 1.6, 8, Color(0.75, 0.55, 1.0, 0.85), 1.5)
+			if k["hp"] < k["most"]:
+				draw_line(r.position + Vector2(3, 2), r.position + Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+			if k["hp"] <= 1:
+				draw_line(r.end - Vector2(3, 2), r.end - Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+		"wood":
+			# WOOD: planks and grain; struck once, split
+			for f in [0.33, 0.66]:
+				draw_line(Vector2(r.position.x + 2, r.position.y + r.size.y * f), Vector2(r.end.x - 2, r.position.y + r.size.y * f),
+					Color(0.3, 0.16, 0.06, 0.6), 1.0)
+			for i in 3:
+				var gx: float = r.position.x + 5.0 + i * 8.0
+				draw_arc(Vector2(gx, mid.y), 2.0, 0, TAU, 8, Color(0.35, 0.2, 0.08, 0.6), 1.0)
+			if k["hp"] <= 1:
+				draw_line(r.position + Vector2(6, 1), mid + Vector2(3, 6), Color(0, 0, 0, 0.7), 1.3)
+		"fuse":
+			# A FUSE: a cord along a dark slot; lit, a spark runs on it
+			draw_rect(Rect2(r.position.x, mid.y - 3, r.size.x, 6), Color(0.15, 0.1, 0.06, 0.8))
+			for i in 4:
+				var fx: float = r.position.x + 3.0 + i * (r.size.x - 6.0) / 3.0
+				draw_line(Vector2(fx - 3, mid.y - 2), Vector2(fx + 3, mid.y + 2), Color(0.85, 0.75, 0.5), 1.4)
+			if k["burn"] >= 0.0:
+				draw_circle(mid, 4.0 + 1.5 * sin(t * 30.0), Color(1.0, 0.85, 0.3, 0.9))
+				draw_circle(mid, 2.0, Color(1, 1, 1))
+		"keg":
+			# A POWDER KEG: a barrel, iron bands, its mark
+			draw_rect(Rect2(r.position.x + 2, r.position.y + 1, r.size.x - 4, r.size.y - 2), Color(0.45, 0.25, 0.12, 0.6))
+			for f in [0.2, 0.8]:
+				draw_rect(Rect2(r.position.x + 1, r.position.y + r.size.y * f - 1, r.size.x - 2, 2), Color(0.25, 0.25, 0.28))
+			_text(mid + Vector2(0, 4), "!!", 10, Color(1.0, 0.85, 0.35), null, true, 1.0, 0)
+			if k["hp"] <= 1:
+				draw_line(r.position + Vector2(5, 2), mid + Vector2(-2, 3), Color(0, 0, 0, 0.7), 1.3)
+		"obsidian":
+			# OBSIDIAN: black glass, a violet sheen, cracking
+			draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.5, 2), Color(0.75, 0.6, 1.0, 0.45), 2.0)
+			if k["hp"] < k["most"]:
+				draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+			if k["hp"] <= 2:
+				draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+			if k["hp"] <= 1:
+				draw_line(Vector2(r.position.x + 3, mid.y + 2), Vector2(r.end.x - 3, mid.y - 1), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+		"basalt":
+			# BASALT: cooled lava, dark columns
+			for f in [0.25, 0.5, 0.75]:
+				draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 1), Vector2(r.position.x + r.size.x * f, r.end.y - 1),
+					Color(0, 0, 0, 0.45), 1.0)
+			if k["hp"] <= 2:
+				draw_line(r.position + Vector2(4, 2), mid + Vector2(2, 2), Color(0, 0, 0, 0.7), 1.3)
+			if k["hp"] <= 1:
+				draw_line(mid + Vector2(2, 2), r.end - Vector2(4, 2), Color(0, 0, 0, 0.7), 1.3)
+		"sand":
+			# SAND: fine grains, a ripple along its top
+			for i in 6:
+				draw_circle(Vector2(r.position.x + 3.0 + i * (r.size.x - 6.0) / 5.0, mid.y + (2.0 if i % 2 else -1.0) + 1.5), 0.9,
+					Color(0.55, 0.42, 0.2, 0.8))
+			for i in 3:
+				draw_arc(Vector2(r.position.x + 5.0 + i * (r.size.x - 10.0) / 2.0, r.position.y + 4.0), 3.5, PI * 1.1, PI * 1.9, 6,
+					Color(1, 1, 1, 0.5), 1.0)
 		"buoy":
 			# A BUOY: a red float banded white, its lamp blinking
 			var float_r := Rect2(mid.x - r.size.x * 0.28, r.position.y + 2.5, r.size.x * 0.56, r.size.y - 5.0)
@@ -2502,8 +4023,10 @@ func _draw_boss() -> void:
 
 
 func _draw_capsule(c: Dictionary) -> void:
-	var info: Dictionary = BONUS[c["kind"]]
-	var col: Color = COLOURS[info["land"]]
+	"""A FALLING BONUS: a capsule in its own colour with its own mark - an
+	Elemental Ball's in its land's colour with its land's brick mark, so a
+	Light from a Dark reads in the air."""
+	var col: Color = COLOURS[str(c["land"])] if c.has("land") else bonus_colour(str(c["kind"]))
 	var p: Vector2 = c["p"]
 	p.x = clampf(p.x, ARENA.position.x + 42.0, ARENA.end.x - 42.0)
 	var r := Rect2(p - Vector2(30, 11), Vector2(60, 22))
@@ -2512,7 +4035,12 @@ func _draw_capsule(c: Dictionary) -> void:
 	draw_rect(Rect2(r.position, Vector2(r.size.x, 9)), col)
 	draw_circle(Vector2(r.position.x, p.y), 11.0, col.darkened(0.2))
 	draw_circle(Vector2(r.end.x, p.y), 11.0, col.darkened(0.2))
-	_draw_icon(c["kind"], p, Color(1, 1, 1), 1.0)
+	if c["kind"] == "element":
+		draw_circle(p, 9.5, col.darkened(0.5))
+		_draw_land_mark(str(c.get("land", "light")), p, Color(1, 1, 1), 1.5)
+		draw_arc(p, 9.5, 0, TAU, 18, Color(1, 1, 1, 0.7), 1.2)
+	else:
+		_draw_icon(c["kind"], p, Color(1, 1, 1), 1.0)
 
 
 func _draw_icon(kind: String, p: Vector2, ink: Color, s: float) -> void:
@@ -2537,6 +4065,50 @@ func _draw_icon(kind: String, p: Vector2, ink: Color, s: float) -> void:
 			for a in 3:
 				var d := Vector2.from_angle(a * PI / 3.0) * 8.0 * s
 				draw_line(p - d, p + d, ink, 2.0 * s)
+		"magnet":
+			draw_arc(p + Vector2(0, -1) * s, 7.0 * s, 0.0, PI, 12, ink, 3.0 * s)
+			for x in [-7.0, 7.0]:
+				draw_line(p + Vector2(x, -1) * s, p + Vector2(x, -8) * s, ink, 3.0 * s)
+				draw_line(p + Vector2(x, -6) * s, p + Vector2(x, -9) * s, Color(1.0, 0.45, 0.45), 3.0 * s)
+		"split":
+			draw_line(p + Vector2(0, 8) * s, p + Vector2(0, 1) * s, ink, 2.5 * s)
+			for x in [-7.0, 7.0]:
+				draw_line(p + Vector2(0, 1) * s, p + Vector2(x, -6) * s, ink, 2.5 * s)
+				draw_circle(p + Vector2(x, -7) * s, 2.6 * s, ink)
+		"big":
+			draw_arc(p, 8.0 * s, 0, TAU, 18, ink, 2.0 * s)
+			draw_circle(p, 4.0 * s, ink)
+		"life":
+			_heart(p + Vector2(0, -1) * s, 0.9 * s, ink)
+		"element":
+			for i in ELEMENTS.size():
+				var a0: float = i * TAU / ELEMENTS.size()
+				draw_arc(p, 7.5 * s, a0, a0 + TAU / ELEMENTS.size(), 4, COLOURS[ELEMENTS[i]].lightened(0.3), 3.0 * s)
+			draw_circle(p, 3.0 * s, ink)
+
+
+func _draw_land_mark(land: String, p: Vector2, ink: Color, s: float) -> void:
+	"""A land's mark, as its bricks wear it (fire a flame, ice a star...)."""
+	match land:
+		"fire":
+			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(3.5, 1.5) * s, p + Vector2(0, 5) * s,
+				p + Vector2(-3.5, 1.5) * s]), ink)
+		"ice":
+			for a in 3:
+				var d := Vector2.from_angle(a * PI / 3.0) * 4.5 * s
+				draw_line(p - d, p + d, ink, 1.3 * s)
+		"water":
+			draw_arc(p + Vector2(-3.5, 1) * s, 3.5 * s, PI, TAU, 8, ink, 1.2 * s)
+			draw_arc(p + Vector2(3.5, 1) * s, 3.5 * s, 0, PI, 8, ink, 1.2 * s)
+		"wind":
+			draw_line(p + Vector2(-6, -2) * s, p + Vector2(4, -2) * s, ink, 1.2 * s)
+			draw_line(p + Vector2(-4, 2.5) * s, p + Vector2(6, 2.5) * s, ink, 1.2 * s)
+		"earth":
+			draw_rect(Rect2(p - Vector2(3.5, 3.5) * s, Vector2(7, 7) * s), ink, false, 1.2 * s)
+		"light":
+			draw_circle(p, 2.5 * s, ink)
+		"dark":
+			draw_arc(p, 4.5 * s, 0, TAU, 14, ink, 1.2 * s)
 
 
 func _draw_ball(b: Dictionary) -> void:
@@ -2549,10 +4121,16 @@ func _draw_ball(b: Dictionary) -> void:
 		# CHARGED: the ball wears the land it carries
 		halo = COLOURS[el]
 		core = COLOURS[el].lerp(Color.WHITE, 0.55)
-	draw_circle(p, BALL_R * 2.8, Color(halo, 0.10))
-	draw_circle(p, BALL_R * 1.7, Color(halo, 0.24))
-	draw_circle(p, BALL_R, core)
-	draw_circle(p + Vector2(-2.3, -2.3), BALL_R * 0.35, Color(1, 1, 1))
+	var rad: float = ball_r()
+	draw_circle(p, rad * 2.8, Color(halo, 0.10))
+	draw_circle(p, rad * 1.7, Color(halo, 0.24))
+	draw_circle(p, rad, core)
+	if element() != "":
+		# AN ELEMENTAL BALL: its land's sparks circling it
+		for i in 3:
+			var a: float = t * 6.0 + i * TAU / 3.0
+			draw_circle(p + Vector2.from_angle(a) * rad * 1.9, 1.8, COLOURS[element()].lightened(0.4))
+	draw_circle(p + Vector2(-2.3, -2.3) * rad / BALL_R, rad * 0.35, Color(1, 1, 1))
 
 
 func _draw_paddle() -> void:
@@ -2571,6 +4149,38 @@ func _draw_paddle() -> void:
 	for x in [r.position.x, r.end.x]:
 		draw_circle(Vector2(x, PADDLE_Y), 4.0, glow)
 		draw_circle(Vector2(x, PADDLE_Y), 2.0, Color(1, 1, 1))
+	if iced > 0.0:
+		# ICED: frost over the paddle while it slides
+		draw_rect(r.grow(2.0), Color(0.85, 0.96, 1.0, 0.45))
+		for x in range(int(r.position.x) + 6, int(r.end.x) - 4, 12):
+			draw_line(Vector2(x, r.position.y - 2.0), Vector2(x + 4, r.position.y + 5.0), Color(1, 1, 1, 0.8), 1.0)
+	if hexed > 0.0:
+		# HEXED: a violet sheen, arrows crossed over it
+		draw_rect(r.grow(1.5), Color(COLOURS["dark"].lightened(0.2), 0.35 + 0.15 * sin(t * 10.0)))
+		for side in [-1.0, 1.0]:
+			var tip := Vector2(paddle_x + side * 16.0, PADDLE_Y - 14.0)
+			draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-side * 7.0, -4.0), tip + Vector2(-side * 7.0, 4.0)]),
+				COLOURS["dark"].lightened(0.5))
+	if scorched > 0.0:
+		# SCORCHED: charred, smouldering along its top
+		draw_rect(r.grow(1.0), Color(0.25, 0.08, 0.02, 0.45))
+		for x in range(int(r.position.x) + 5, int(r.end.x) - 3, 9):
+			var up: float = fmod(t * 40.0 + x * 3.0, 10.0)
+			draw_circle(Vector2(x, r.position.y - 1.0 - up), 1.5, Color(1.0, 0.6, 0.2, 1.0 - up / 10.0))
+	if heavy > 0.0:
+		# HEAVY: rocks piled on the paddle while it drags
+		draw_rect(r.grow(1.5), Color(0.3, 0.22, 0.12, 0.4))
+		var n: int = int(r.size.x / 22.0)
+		for i in n:
+			var at := Vector2(r.position.x + 11.0 + i * (r.size.x - 22.0) / maxf(1.0, n - 1.0), r.position.y - 3.0 - (i % 2) * 2.0)
+			draw_circle(at, 4.5, Color(0.45, 0.38, 0.3))
+			draw_circle(at + Vector2(-1.2, -1.4), 1.6, Color(0.7, 0.62, 0.52))
+	if active.has("magnet"):
+		# THE MAGNET: a purple field over the paddle, pulsing
+		var pulse: float = 0.5 + 0.5 * sin(t * 5.0)
+		draw_rect(Rect2(r.position.x, r.position.y - 6.0, r.size.x, 6.0), Color(COLOURS["dark"].lightened(0.3), 0.18 + 0.15 * pulse))
+		for x in [r.position.x + 10.0, r.end.x - 10.0]:
+			draw_arc(Vector2(x, PADDLE_Y - 2.0), 5.0, PI, TAU, 8, COLOURS["dark"].lightened(0.4), 2.0)
 	if active.has("laser"):
 		for side in [-1.0, 1.0]:
 			var cx: float = paddle_x + side * (half - 12.0)
@@ -2698,11 +4308,62 @@ func _draw_trail(b: Dictionary) -> void:
 
 # ---------------------------------------------------------------- the frame --
 
-func _panel(r: Rect2) -> void:
-	draw_rect(Rect2(r.position + Vector2(3, 4), r.size), Color(0, 0, 0, 0.4))
-	draw_rect(r, PANEL)
+func _panel(r: Rect2, tint: Color = GOLD) -> void:
+	"""A FRAME: a soft shadow, a body lit from above, a bronze edge, a fine
+	inner line in `tint`, and gold diamonds at its corners (the arena's)."""
+	draw_rect(Rect2(r.position + Vector2(3, 5), r.size), Color(0, 0, 0, 0.45))
+	var top := Color(0.085, 0.09, 0.14, 0.96)
+	var foot := Color(0.04, 0.042, 0.07, 0.96)
+	draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+		PackedColorArray([top, top, foot, foot]))
+	draw_rect(Rect2(r.position + Vector2(2, 2), Vector2(r.size.x - 4, 1.5)), Color(1, 1, 1, 0.08))
 	draw_rect(r, EDGE, false, 2.0)
-	draw_rect(r.grow(-4), Color(GOLD, 0.18), false, 1.0)
+	draw_rect(r.grow(-4), Color(tint, 0.22), false, 1.0)
+	for corner in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
+		_diamond(corner, 5.0, GOLD)
+
+
+func _diamond(at: Vector2, size: float, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size), at + Vector2(size, 0), at + Vector2(0, size),
+		at + Vector2(-size, 0)]), c)
+	draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size * 0.45), at + Vector2(size * 0.45, 0),
+		at + Vector2(0, size * 0.45), at + Vector2(-size * 0.45, 0)]), c.darkened(0.6))
+
+
+func _divider(y: float, x0: float, x1: float, c: Color) -> void:
+	"""A heading's rule: fading out both ways from a small gem."""
+	var mid: float = (x0 + x1) / 2.0
+	draw_polygon(PackedVector2Array([Vector2(x0, y - 0.5), Vector2(mid, y - 1.0), Vector2(x1, y - 0.5), Vector2(x1, y + 0.5),
+		Vector2(mid, y + 1.0), Vector2(x0, y + 0.5)]), PackedColorArray([Color(c, 0.0), Color(c, 0.6), Color(c, 0.0),
+		Color(c, 0.0), Color(c, 0.6), Color(c, 0.0)]))
+	_diamond(Vector2(mid, y), 3.5, c)
+
+
+func _heart(at: Vector2, size: float, c: Color) -> void:
+	draw_circle(at + Vector2(-4.2, -2.0) * size, 4.6 * size, c)
+	draw_circle(at + Vector2(4.2, -2.0) * size, 4.6 * size, c)
+	draw_colored_polygon(PackedVector2Array([at + Vector2(-8.6, -0.6) * size, at + Vector2(8.6, -0.6) * size,
+		at + Vector2(0, 9.0) * size]), c)
+
+
+func _half_heart(at: Vector2, side: float, c: Color) -> void:
+	"""One side of a heart (side -1 left, 1 right) - a heart cracking."""
+	draw_circle(at + Vector2(side * 4.2, -2.0), 4.6, c)
+	draw_colored_polygon(PackedVector2Array([at + Vector2(side * 8.6, -0.6), at + Vector2(0, -1.5), at + Vector2(0, 9.0)]), c)
+
+
+func _crest(p: Vector2, c: Color) -> void:
+	"""A kingdom's crest, small (the kingdom map's): its ring and castle."""
+	draw_circle(p, 26.0, Color(c, 0.12))
+	draw_circle(p, 22.0, c.darkened(0.55))
+	draw_arc(p, 22.0, 0, TAU, 32, c, 2.0)
+	var k: float = 0.62
+	var base: Vector2 = p + Vector2(0, 10)
+	var castle := PackedVector2Array()
+	for v in [Vector2(-20, 0), Vector2(-20, -22), Vector2(-14, -22), Vector2(-14, -16), Vector2(-6, -16), Vector2(-6, -30),
+			Vector2(6, -30), Vector2(6, -16), Vector2(14, -16), Vector2(14, -22), Vector2(20, -22), Vector2(20, 0)]:
+		castle.append(base + v * k)
+	draw_colored_polygon(castle, Color(c, 0.9))
 
 
 func _text(at: Vector2, s: String, size: int, c: Color, f: Font = null, centre: bool = false, alpha: float = 1.0,
@@ -2725,139 +4386,252 @@ static func thousands(n: int) -> String:
 
 
 func _draw_hud() -> void:
-	_panel(Rect2(10, 8, 1260, 64))
+	"""THE TOP BAR, in the kingdom's colour: its crest and the map; the score
+	rolling up with its gains popping off it; the gold, its coin bouncing as
+	gold comes in; the combo's flame meter and the multiplier's badge; the
+	lives as hearts."""
+	var bar := Rect2(10, 8, 1260, 64)
 	var kingdom: Dictionary = Maps.kingdom_of(map_index)
 	var colour: Color = COLOURS.get(kingdom.get("land", "light"), GOLD)
-	var n: int = Maps.in_kingdom(map_index) + 1
-	draw_rect(Rect2(24, 20, 74, 40), Color(colour, 0.16))
-	draw_rect(Rect2(24, 20, 74, 40), colour, false, 1.5)
-	_text(Vector2(61, 36), "MAP", 11, Color(colour, 0.85), null, true)
-	_text(Vector2(61, 56), "%d / %d" % [n, Maps.MAPS_A_KINGDOM], 17, colour, null, true)
-	_text(Vector2(112, 38), str(Maps.MAPS[map_index]["name"]), 20, INK)
-	_text(Vector2(112, 58), str(kingdom.get("name", "")), 12, Color(INK, 0.6), _font)
-	_text(Vector2(392, 36), "SCORE", 11, Color(INK, 0.6), _font)
-	_text(Vector2(392, 60), thousands(score), 22, INK)
-	var coin := Vector2(540, 40)
+	_panel(bar, colour)
+	draw_polygon(PackedVector2Array([bar.position + Vector2(4, 4), bar.position + Vector2(430, 4), bar.position + Vector2(430, 60),
+		bar.position + Vector2(4, 60)]), PackedColorArray([Color(colour, 0.22), Color(colour, 0.0), Color(colour, 0.0), Color(colour, 0.22)]))
+	_crest(Vector2(48, 40), colour)
+	var data: Dictionary = Maps.MAPS[map_index]
+	_text(Vector2(82, 38), str(data["name"]), 21, INK)
+	var sub: String = "Map %d of %d  ·  %s" % [Maps.in_kingdom(map_index) + 1, Maps.MAPS_A_KINGDOM, str(kingdom.get("name", ""))]
+	if data.get("boss") is Dictionary:
+		sub = ("The citadel" if bool(data["boss"].get("crown", false)) else "A guardian") + "  ·  " + sub
+	_text(Vector2(82, 58), sub, 12, Color(colour.lightened(0.35), 0.85), _font)
+	# the score
+	_text(Vector2(440, 31), "SCORE", 11, Color(INK, 0.55), _font)
+	_text(Vector2(440, 60), thousands(int(round(shown_score))), 26, GOLD.lerp(Color.WHITE, 0.3))
+	for pop in score_pops:
+		var u: float = float(pop["age"]) / 0.9
+		_text(Vector2(490, 31 - u * 12.0), "+" + thousands(int(pop["n"])), 13, Color(GOLD, 1.0 - u), null, false, 1.0 - u)
+	# the gold
+	var hop: float = sin(_gold_bounce * PI) * 7.0
+	var coin := Vector2(612, 41 - hop)
+	draw_circle(Vector2(612, 55), 9.0 - hop * 0.4, Color(0, 0, 0, 0.35))
 	draw_circle(coin, 13.0, Color(0.55, 0.38, 0.05))
 	draw_circle(coin, 11.0, GOLD)
-	draw_circle(coin + Vector2(-3, -3), 4.0, Color(1, 0.95, 0.75))
-	_text(Vector2(560, 50), thousands(gold_now()), 26, INK)
-	var m := Rect2(680, 28, 220, 12)
-	var fill: float = clampf(fmod(float(combo), 5.0) / 5.0, 0.0, 1.0) if combo > 0 else 0.0
-	draw_rect(m, Color(0, 0, 0, 0.5))
-	draw_rect(Rect2(m.position, Vector2(m.size.x * fill, m.size.y)), COLOURS["fire"].lerp(GOLD, fill))
-	draw_rect(m, Color(1, 1, 1, 0.25), false, 1.0)
-	for i in range(1, 5):
-		var x: float = m.position.x + m.size.x * i / 5.0
-		draw_line(Vector2(x, m.position.y), Vector2(x, m.end.y), Color(0, 0, 0, 0.5), 1.0)
-	_text(Vector2(680, 62), "COMBO %d" % combo, 13, Color(INK, 0.75))
+	draw_arc(coin, 7.0, 0, TAU, 20, Color(0.78, 0.56, 0.1), 1.5)
+	var glint: float = fmod(t * 0.7, 3.0)
+	draw_circle(coin + Vector2(-3.5, -3.5), 3.2 + (2.0 if glint < 0.25 else 0.0), Color(1, 0.97, 0.8, 0.95))
+	_text(Vector2(634, 31), "GOLD", 11, Color(INK, 0.55), _font)
+	_text(Vector2(634, 60), thousands(gold_now()), 24, INK.lerp(GOLD, _gold_bounce))
+	# the combo: five segments to the next step of the multiplier
 	var mult: float = _multiplier()
-	_text(Vector2(912, 46), "x%s" % (str(mult) if mult != floorf(mult) else str(int(mult))), 24,
-		COLOURS["fire"] if mult > 1.0 else Color(INK, 0.5))
-	_text(Vector2(1000, 36), "LIVES", 11, Color(INK, 0.6), _font)
-	for i in LIVES:
-		var lr := Rect2(1000 + i * 40, 46, 30, 7)
-		var on: bool = i < lives
-		draw_rect(lr.grow(2), Color(GOLD, 0.15 if on else 0.04))
-		draw_rect(lr, Color(0.2, 0.18, 0.25) if on else Color(0.1, 0.1, 0.12))
-		draw_rect(Rect2(lr.position, Vector2(lr.size.x, 3)), GOLD if on else Color(0.3, 0.3, 0.32))
+	var maxed: bool = mult >= 4.0
+	var lit: int = 5 if maxed else combo % 5
+	for i in 5:
+		var x0: float = 744.0 + i * 34.0
+		var seg := PackedVector2Array([Vector2(x0 + 6, 24), Vector2(x0 + 32, 24), Vector2(x0 + 26, 42), Vector2(x0, 42)])
+		var heat: Color = COLOURS["fire"].lerp(GOLD, i / 4.0)
+		if i < lit:
+			var glow := PackedVector2Array([Vector2(x0 + 3, 21), Vector2(x0 + 35, 21), Vector2(x0 + 29, 45), Vector2(x0 - 3, 45)])
+			draw_colored_polygon(glow, Color(heat, 0.25 + 0.1 * sin(t * 8.0 + i)))
+			draw_colored_polygon(seg, heat)
+			draw_line(Vector2(x0 + 7, 25.5), Vector2(x0 + 31, 25.5), Color(1, 1, 1, 0.5), 1.5)
+		else:
+			draw_colored_polygon(seg, Color(1, 1, 1, 0.06))
+		var edge := seg.duplicate()
+		edge.append(seg[0])
+		draw_polyline(edge, Color(1, 1, 1, 0.22 if i < lit else 0.12), 1.0)
+	if lit > 0 and combo > 0:
+		var tip: Vector2 = Vector2(744.0 + (lit - 1) * 34.0 + 19.0, 22.0)
+		var f: float = sin(t * 18.0) * 1.5
+		draw_colored_polygon(PackedVector2Array([tip + Vector2(-5, 0), tip + Vector2(0, -9 - f), tip + Vector2(5, 0)]), Color(1.0, 0.75, 0.3, 0.9))
+	_text(Vector2(744, 60), "COMBO %d" % combo, 13, Color(INK, 0.8))
+	# the multiplier's badge, pulsing when it rises
+	var badge := Vector2(942, 40)
+	var grow: float = 1.0 + 0.3 * _mult_pop
+	var hexa := PackedVector2Array()
+	for i in 6:
+		hexa.append(badge + Vector2.from_angle(PI / 6.0 + i * TAU / 6.0) * 21.0 * grow)
+	var hot: bool = mult > 1.0
+	draw_colored_polygon(hexa, COLOURS["fire"].darkened(0.45) if hot else Color(0.16, 0.16, 0.2))
+	hexa.append(hexa[0])
+	draw_polyline(hexa, COLOURS["fire"].lerp(GOLD, 0.4) if hot else Color(1, 1, 1, 0.2), 2.0)
+	if _mult_pop > 0.0:
+		draw_circle(badge, 26.0 * grow, Color(COLOURS["fire"], 0.25 * _mult_pop))
+	_text(badge + Vector2(0, 6), "x%s" % (str(mult) if mult != floorf(mult) else str(int(mult))), int(16 * grow),
+		Color.WHITE if hot else Color(INK, 0.5), null, true)
+	# the lives, as hearts
+	_text(Vector2(1006, 31), "LIVES", 11, Color(INK, 0.55), _font)
+	for i in mini(maxi(LIVES, lives), LIVES_MOST):
+		var at := Vector2(1018 + i * 30, 50)
+		if i < lives:
+			draw_circle(at + Vector2(0, 1), 13.0, Color(1.0, 0.3, 0.38, 0.12 + 0.05 * sin(t * 3.0 + i)))
+			_heart(at, 1.0, HEART_RED)
+			draw_circle(at + Vector2(-5, -4), 1.8, Color(1, 1, 1, 0.75))
+		elif i == lives and _heart_crack > 0.0:
+			var u: float = 1.0 - _heart_crack
+			_half_heart(at + Vector2(-6.0 * u, 4.0 * u), -1.0, Color(0.95, 0.28, 0.36, _heart_crack))
+			_half_heart(at + Vector2(6.0 * u, 4.0 * u), 1.0, Color(0.95, 0.28, 0.36, _heart_crack))
+		else:
+			_heart(at, 1.0, Color(0.2, 0.19, 0.24))
 
 
 func _draw_left_panel() -> void:
 	var r := Rect2(10, 86, 138, 620)
-	_panel(r)
+	_panel(r, COLOURS.get(Maps.kingdom_of(map_index).get("land", "light"), GOLD))
 	_text(Vector2(79, 112), "BONUSES", 14, GOLD, null, true)
-	draw_line(Vector2(24, 122), Vector2(134, 122), Color(GOLD, 0.3), 1.0)
-	var y: float = 140.0
+	_divider(122, 22, 136, GOLD)
+	var y: float = 134.0
 	if active.is_empty():
-		_text(Vector2(79, 156), "none on", 12, Color(INK, 0.4), _font, true)
-	for kind in BONUS_ORDER:
-		if not active.has(kind):
-			continue
+		_text(Vector2(79, 152), "none on", 12, Color(INK, 0.4), _font, true)
+	var on: Array = CAN_FALL.filter(func(kind: String) -> bool: return active.has(kind))
+	# a card each, smaller when many are on, so they always fit above the ball
+	var tall: float = minf(50.0, 262.0 / maxf(1.0, on.size()))
+	var big_card: bool = tall >= 46.0
+	for kind in on:
+		# each bonus on: its time a ring round its icon, blinking in its last
+		# two seconds
 		var info: Dictionary = BONUS[kind]
-		var col: Color = COLOURS[info["land"]]
-		var box := Rect2(20, y, 118, 46)
-		draw_rect(box, Color(col, 0.12))
-		draw_rect(box, Color(col, 0.6), false, 1.0)
-		draw_circle(Vector2(40, y + 23), 14.0, col.darkened(0.4))
-		_draw_icon(kind, Vector2(40, y + 23), Color(1, 1, 1), 0.8)
-		_text(Vector2(60, y + 21), info["name"], 13, INK)
+		var col: Color = bonus_colour(kind)
 		var left: float = clampf(active[kind] / float(info["secs"]), 0.0, 1.0)
-		draw_rect(Rect2(60, y + 30, 70, 5), Color(0, 0, 0, 0.5))
-		draw_rect(Rect2(60, y + 30, 70 * left, 5), col)
-		y += 54.0
-	# THE BALL'S CHARGE: what it carries, so a mix can be aimed
+		var blink: float = (0.5 + 0.5 * sin(t * 14.0)) if float(active[kind]) < 2.0 else 1.0
+		var box := Rect2(18, y, 122, tall - 6.0)
+		draw_rect(box, Color(col, 0.08 + 0.08 * blink))
+		draw_rect(box, Color(col, 0.3 + 0.45 * blink), false, 1.0)
+		var ring_r: float = 17.5 if big_card else (tall - 6.0) * 0.42
+		var at := Vector2(18 + 6 + ring_r, y + (tall - 6.0) / 2.0)
+		draw_circle(at, ring_r - 2.5, col.darkened(0.45))
+		draw_arc(at, ring_r, 0, TAU, 28, Color(0, 0, 0, 0.55), 3.0)
+		draw_arc(at, ring_r, -PI / 2.0, -PI / 2.0 + TAU * left, 28, col.lightened(0.25), 3.0)
+		var icon_s: float = 0.75 if big_card else ring_r / 23.0
+		if kind == "element":
+			_draw_land_mark(ball_land, at, Color(1, 1, 1), icon_s * 1.4)
+		else:
+			_draw_icon(kind, at, Color(1, 1, 1), icon_s)
+		var tx: float = at.x + ring_r + 6.0
+		if big_card:
+			_text(Vector2(tx, y + 20), bonus_name(kind), 13, INK)
+			_text(Vector2(tx, y + 36), "%ds" % ceili(float(active[kind])), 11, Color(col.lightened(0.3), 0.55 + 0.45 * blink), _font)
+		else:
+			_text(Vector2(tx, at.y + 4), bonus_name(kind), 11, INK)
+			var secs: String = "%ds" % ceili(float(active[kind]))
+			_text(Vector2(136 - _word_width(secs, 10), at.y + 4), secs, 10, Color(col.lightened(0.3), 0.55 + 0.45 * blink), _font)
+		y += tall
+	# THE BALL'S CHARGE: what it carries, and what it would set off next
 	var el: String = str(balls[0].get("el", "")) if not balls.is_empty() else ""
-	_text(Vector2(79, 432), "THE BALL", 11, Color(INK, 0.5), _font, true)
-	var chip := Rect2(24, 442, 110, 26)
-	draw_rect(chip, Color(COLOURS.get(el, Color(0.3, 0.3, 0.35)), 0.2 if el != "" else 0.08))
-	draw_rect(chip, Color(COLOURS.get(el, Color(0.5, 0.5, 0.55)), 0.8 if el != "" else 0.3), false, 1.0)
-	draw_circle(chip.position + Vector2(14, 13), 6.0, COLOURS.get(el, Color(0.6, 0.62, 0.7)))
-	_text(chip.position + Vector2(27, 18), el.to_upper() if el != "" else "plain", 12, INK if el != "" else Color(INK, 0.45),
-		null if el != "" else _font)
-	_text(Vector2(79, 486), "break a land to", 10, Color(INK, 0.4), _font, true)
-	_text(Vector2(79, 498), "carry it; mix two", 10, Color(INK, 0.4), _font, true)
-	_text(Vector2(79, 520), "CAN FALL", 11, Color(INK, 0.5), _font, true)
+	_text(Vector2(79, 414), "THE BALL", 13, GOLD, null, true)
+	_divider(424, 22, 136, GOLD)
+	var orb := Vector2(42, 452)
+	var ec: Color = COLOURS.get(el, Color(0.62, 0.64, 0.72))
+	if el != "":
+		draw_circle(orb, 20.0, Color(ec, 0.14 + 0.06 * sin(t * 3.0)))
+	draw_circle(orb, 14.0, ec.darkened(0.4) if el != "" else Color(0.22, 0.23, 0.28))
+	draw_circle(orb, 11.0, ec if el != "" else Color(0.42, 0.44, 0.52))
+	if el != "":
+		draw_arc(orb, 7.5, t * 3.0, t * 3.0 + 2.4, 12, Color(1, 1, 1, 0.55), 1.5)
+	draw_circle(orb + Vector2(-4, -4), 2.8, Color(1, 1, 1, 0.75))
+	_text(Vector2(64, 450), el.to_upper() if el != "" else "PLAIN", 13, ec.lightened(0.3) if el != "" else Color(INK, 0.5))
+	_text(Vector2(64, 465), "it carries" if el != "" else "carries nothing", 10, Color(INK, 0.45), _font)
+	var yy: float = 492.0
+	if el == "":
+		_text(Vector2(79, yy), "break a land brick", 10, Color(INK, 0.45), _font, true)
+		_text(Vector2(79, yy + 13), "to carry it", 10, Color(INK, 0.45), _font, true)
+	else:
+		for other in ELEMENTS:
+			var kind: String = reaction_of(el, other)
+			if other == el or kind == "clash":
+				continue
+			draw_circle(Vector2(27, yy - 4), 4.0, COLOURS[other])
+			_text(Vector2(35, yy), "+ " + other, 10, Color(INK, 0.7), _font)
+			var word: String = str(REACTION_WORDS[kind]).trim_suffix("!")
+			var lands: Array = MIX_LANDS[kind]
+			_text(Vector2(136 - _word_width(word, 10), yy), word, 10, COLOURS[lands[0]].lerp(COLOURS[lands[1]], 0.5).lightened(0.3))
+			yy += 15.0
+	# what can fall, each kind once
+	_text(Vector2(79, 556), "CAN FALL", 13, GOLD, null, true)
+	_divider(566, 22, 136, GOLD)
 	var i: int = 0
-	for kind in BONUS_ORDER:
-		var p := Vector2(38 + (i % 3) * 40, 548 + floorf(i / 3.0) * 40)
-		draw_circle(p, 15.0, COLOURS[BONUS[kind]["land"]].darkened(0.45))
-		draw_arc(p, 15.0, 0, TAU, 20, Color(COLOURS[BONUS[kind]["land"]], 0.8), 1.2)
-		_draw_icon(kind, p, Color(1, 1, 1, 0.9), 0.7)
+	for kind in CAN_FALL:
+		var p := Vector2(34 + (i % 4) * 30, 588 + floorf(i / 4.0) * 30)
+		var col: Color = HEART_RED if kind == "life" else COLOURS[BONUS[kind]["land"]]
+		draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), col.darkened(0.6))
+		draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), Color(col, 0.7), false, 1.0)
+		draw_rect(Rect2(p - Vector2(12, 12), Vector2(24, 2)), Color(1, 1, 1, 0.12))
+		_draw_icon(kind, p, Color(1, 1, 1, 0.9), 0.6)
 		i += 1
-	_text(Vector2(79, 650), "? bricks drop", 11, Color(INK, 0.5), _font, true)
-	_text(Vector2(79, 666), "one for sure", 11, Color(INK, 0.5), _font, true)
+	_text(Vector2(79, 680), "? bricks drop", 11, Color(INK, 0.5), _font, true)
+	_text(Vector2(79, 694), "one for sure", 11, Color(INK, 0.5), _font, true)
 
 
 func _draw_right_panel() -> void:
 	var r := Rect2(1132, 86, 138, 620)
-	_panel(r)
+	var kingdom: Dictionary = Maps.kingdom_of(map_index)
+	var colour: Color = COLOURS.get(kingdom.get("land", "light"), GOLD)
+	_panel(r, colour)
 	if boss != null:
 		_text(Vector2(1201, 112), "THE RULER" if boss.crowned else "THE GUARDIAN", 14, GOLD, null, true)
 	else:
 		_text(Vector2(1201, 112), "THE WALLS", 14, GOLD, null, true)
-	draw_line(Vector2(1146, 122), Vector2(1256, 122), Color(GOLD, 0.3), 1.0)
+	_divider(122, 1144, 1258, GOLD)
 	var done: float
 	if boss != null:
 		done = 1.0 - float(boss.hp) / float(boss.most)
 	else:
 		done = float(broken) / float(maxi(1, breakable))
-	var c := Vector2(1201, 190)
-	draw_arc(c, 44.0, 0, TAU, 48, Color(1, 1, 1, 0.1), 9.0)
-	draw_arc(c, 44.0, -PI / 2.0, -PI / 2.0 + TAU * done, 48, GOLD, 9.0)
-	_text(c + Vector2(0, 8), "%d%%" % int(round(done * 100.0)), 22, INK, null, true)
-	_text(Vector2(1201, 256), "%d left" % maxi(0, breakable - broken) if boss == null else "%d to go" % int(boss.hp),
-		12, Color(INK, 0.6), _font, true)
+	# THE RING: the walls broken in the kingdom's colour, a boss's health
+	# taken in red; ticks every tenth, a glow, and a bright head
+	var ring: Color = Color(1.0, 0.38, 0.32) if boss != null else colour.lightened(0.15)
+	var c := Vector2(1201, 186)
+	draw_circle(c, 54.0, Color(ring, 0.05))
+	draw_arc(c, 44.0, 0, TAU, 64, Color(0, 0, 0, 0.5), 11.0)
+	for k in 20:
+		var a: float = -PI / 2.0 + TAU * k / 20.0
+		draw_line(c + Vector2.from_angle(a) * 33.0, c + Vector2.from_angle(a) * (36.0 if k % 2 else 38.0), Color(1, 1, 1, 0.18), 1.0)
+	if done > 0.0:
+		var end_a: float = -PI / 2.0 + TAU * done
+		draw_arc(c, 44.0, -PI / 2.0, end_a, 64, Color(ring, 0.22), 17.0)
+		draw_arc(c, 44.0, -PI / 2.0, end_a, 64, ring, 9.0)
+		draw_circle(c + Vector2.from_angle(end_a) * 44.0, 5.5, ring.lightened(0.45))
+	_text(c + Vector2(0, 9), "%d%%" % int(round(done * 100.0)), 24, INK, null, true)
+	if boss != null:
+		_text(Vector2(1201, 254), str(boss.title), 12, ring.lightened(0.35), null, true)
+		_text(Vector2(1201, 270), "%d to go" % int(boss.hp), 11, Color(INK, 0.55), _font, true)
+	else:
+		_text(Vector2(1201, 258), "%d left" % maxi(0, breakable - broken), 12, Color(INK, 0.6), _font, true)
 	# THIS STRETCH: the five maps the one now is among, its boss last.
-	var kingdom: Dictionary = Maps.kingdom_of(map_index)
 	var at: int = Maps.in_kingdom(map_index)
 	var first: int = at - at % Maps.BOSS_EVERY
-	_text(Vector2(1201, 300), "MAPS %d - %d" % [first + 1, first + Maps.BOSS_EVERY], 13, GOLD, null, true)
-	draw_line(Vector2(1146, 310), Vector2(1256, 310), Color(GOLD, 0.3), 1.0)
+	_text(Vector2(1201, 302), "MAPS %d - %d" % [first + 1, first + Maps.BOSS_EVERY], 13, GOLD, null, true)
+	_divider(312, 1144, 1258, GOLD)
 	# ALL FIVE ALWAYS (the owner: "adding the 5th node ... will complete the
 	# tier ladder"): a map not built yet is a dim slot under its number, the
-	# stretch's boss under its name.
+	# stretch's boss under its name. The path between maps cleared is lit.
 	var mine: Array = Maps.maps_of(str(kingdom.get("id", "light")))
 	for j in Maps.BOSS_EVERY:
 		var slot: int = first + j
 		var made: bool = slot < mine.size()
 		var idx: int = int(mine[slot]) if made else -1
-		var p := Vector2(1162, 340 + j * 52)
+		var p := Vector2(1162, 342 + j * 52)
 		var boss_slot: bool = j == Maps.BOSS_EVERY - 1
 		if j < Maps.BOSS_EVERY - 1:
-			draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(1, 1, 1, 0.55 if made and idx < map_index else 0.2), 2.0)
+			var lit_path: bool = made and idx < map_index
+			if lit_path:
+				draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.25), 6.0)
+			draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.85) if lit_path else Color(1, 1, 1, 0.16), 2.0)
 		var here: bool = made and idx == map_index
 		var done_map: bool = made and (idx < map_index or (here and state == State.CLEARED))
 		var col: Color = GOLD if done_map else (COLOURS["fire"] if here else Color(1, 1, 1, 0.25 if made else 0.14))
 		var radius: float = 12.0 if boss_slot else 10.0
 		if here:
-			draw_circle(p, radius + 5.0 + 2.0 * sin(t * 4.0), Color(col, 0.2))
-		draw_circle(p, radius, col.darkened(0.3) if not here else col)
+			draw_circle(p, radius + 6.0 + 2.5 * sin(t * 4.0), Color(col, 0.18))
+			draw_arc(p, radius + 4.0 + 2.5 * sin(t * 4.0), 0, TAU, 24, Color(col, 0.5), 1.0)
+		draw_circle(p, radius, col.darkened(0.35) if not here else col)
 		draw_arc(p, radius, 0, TAU, 20, col, 1.5)
 		if boss_slot:
-			for side in [-1.0, 1.0]:
-				var top: Vector2 = p + Vector2(0, -radius - 1.0)
-				draw_colored_polygon(PackedVector2Array([top + Vector2(side * 3, 2), top + Vector2(side * 8, -5), top + Vector2(side * 8, 3)]), col)
+			var top: Vector2 = p + Vector2(0, -radius - 1.0)
+			if made and Maps.MAPS[idx].get("boss") is Dictionary and bool(Maps.MAPS[idx]["boss"].get("crown", false)):
+				draw_colored_polygon(PackedVector2Array([top + Vector2(-7, 2), top + Vector2(-7, -5), top + Vector2(-3, -1),
+					top + Vector2(0, -7), top + Vector2(3, -1), top + Vector2(7, -5), top + Vector2(7, 2)]), col)
+			else:
+				for side in [-1.0, 1.0]:
+					draw_colored_polygon(PackedVector2Array([top + Vector2(side * 3, 2), top + Vector2(side * 8, -5), top + Vector2(side * 8, 3)]), col)
 		if done_map:
 			draw_line(p + Vector2(-4, 0), p + Vector2(-1, 4), Color(1, 1, 1), 2.0)
 			draw_line(p + Vector2(-1, 4), p + Vector2(5, -4), Color(1, 1, 1), 2.0)
@@ -2871,8 +4645,12 @@ func _draw_right_panel() -> void:
 			slot_name = "Map %d" % (slot + 1)
 		_text(p + Vector2(16, 5), slot_name, 12, INK if made and idx <= map_index else Color(INK, 0.4 if made else 0.28),
 			_font if not here else null)
-	_text(Vector2(1201, 650), "Best combo", 11, Color(INK, 0.5), _font, true)
-	_text(Vector2(1201, 674), "%d" % best_combo, 18, INK, null, true)
+	# the run's best combo, in a box of its own
+	var box := Rect2(1146, 628, 110, 64)
+	draw_rect(box, Color(0, 0, 0, 0.3))
+	draw_rect(box, Color(GOLD, 0.25), false, 1.0)
+	_text(Vector2(1201, 650), "BEST COMBO", 10, Color(INK, 0.55), _font, true)
+	_text(Vector2(1201, 678), "%d" % best_combo, 22, GOLD.lerp(Color.WHITE, 0.3) if best_combo > 0 else Color(INK, 0.4), null, true)
 
 
 # ---------------------------------------------------------------- the kingdoms --

@@ -464,6 +464,9 @@ func _show_results() -> void:
 	var boss_info: Variant = Maps.MAPS[last].get("boss")
 	if int(run.get("lives")) <= 0:
 		result_line.text = "The walls of %s held" % str(Maps.MAPS[last]["name"])
+	elif boss_info is Dictionary and bool(boss_info.get("crown", false)) and bool(run.call("final_map")):
+		# THE SEVENTH CROWN: Crownfall's end
+		result_line.text = "The seventh crown is yours - every land is healed"
 	elif boss_info is Dictionary and bool(boss_info.get("crown", false)):
 		result_line.text = "%s's crown is yours" % str(boss_info.get("name", "The ruler"))
 	elif boss_info is Dictionary:
@@ -535,7 +538,8 @@ func _key(key: InputEventKey) -> void:
 			step_kingdom(-1)
 		elif key.is_action(&"move_right") or key.keycode == KEY_RIGHT:
 			step_kingdom(1)
-	elif go and state == RunScript.State.AIM:
+	elif go and (state == RunScript.State.AIM or state == RunScript.State.PLAY):
+		# a launch, or a ball the Magnet holds let go
 		run.call("launch")
 
 
@@ -553,7 +557,7 @@ func _press_at(at: Vector2, twice: bool) -> void:
 			begin()
 		else:
 			pick(index)
-	elif state == RunScript.State.AIM:
+	elif state == RunScript.State.AIM or state == RunScript.State.PLAY:
 		run.call("launch")
 
 

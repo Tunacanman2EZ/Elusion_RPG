@@ -1636,7 +1636,8 @@ func _test_crownfall_wind(run: Node2D, wind: Array) -> void:
 	# ---- the kingdom map's crests ----
 	run.show_kingdoms(int(wind[5]))
 	var crests: bool = run.kingdom_at(run.kingdom_spot(0)) == 0 and run.kingdom_at(run.kingdom_spot(1)) == 1 \
-		and run.kingdom_at(run.kingdom_spot(3)) == -1 and run.open_map_in(2) == -1 and run.open_map_in(0) == int(wind[0]) - 1 \
+		and run.kingdom_at(run.kingdom_spot(6)) == 6 and run.kingdom_at(Vector2(4, 4)) == -1 and run.open_map_in(2) == -1 and run.open_map_in(3) == -1 \
+		and run.open_map_in(0) == int(wind[0]) - 1 \
 		and run.open_map_in(1) == int(wind[5]) and run.kingdom_index(int(wind[3])) == 1
 	run.show_kingdoms(3)
 	crests = crests and run.open_map_in(1) == -1 and run.open_map_in(0) == 3
@@ -1919,11 +1920,1064 @@ func _test_crownfall_water(run: Node2D, water: Array) -> void:
 	run.step(1.0 / 60.0)
 	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
 		run.step(1.0 / 60.0)
-	lev_ok = lev_ok and run.state == Run.State.OVER
-	check("  WATER'S BOSSES: the Tempest's fall leads on into the Kingdom of Water; the Tide King's young turn to water where they land and he calls the tide; the Undine under the water cannot be hit and comes up in a splash that throws near balls away; the Harpooner marks the paddle, hooks it and his rope turns the ball (missing when it moved); the Tide Mage's bubble takes %d hits, forms again, and he raises bubble bricks; the Leviathan's wave warns, carries a ball its way and leaves at most %d bricks, he dives at half health, and his fall ends the run" % [Boss.BUBBLE_HITS, Boss.WAVE_BRICKS],
+	lev_ok = lev_ok and run.state == Run.State.AIM and str(Maps.kingdom_of(run.map_index)["id"]) == "ice"
+	check("  WATER'S BOSSES: the Tempest's fall leads on into the Kingdom of Water; the Tide King's young turn to water where they land and he calls the tide; the Undine under the water cannot be hit and comes up in a splash that throws near balls away; the Harpooner marks the paddle, hooks it and his rope turns the ball (missing when it moved); the Tide Mage's bubble takes %d hits, forms again, and he raises bubble bricks; the Leviathan's wave warns, carries a ball its way and leaves at most %d bricks, he dives at half health, and his fall leads on into Ice" % [Boss.BUBBLE_HITS, Boss.WAVE_BRICKS],
 		on_to_water and king_ok and splash_ok and hooked and roped and missed and mage_ok and lev_ok,
 		[on_to_water, king_ok, splash_ok, hooked, roped, missed, mage_ok, lev_ok, wake])
 	print("  crownfall water: done")
+
+
+func _test_crownfall_ice(run: Node2D, ice: Array) -> void:
+	"""The Kingdom of Ice (0.165.0): frost, packed ice, snowdrifts, icicles,
+	slick ice, the frost rows, and its five bosses."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	# ---- frost, packed ice, snowdrifts ----
+	_cf_bare(run)
+	var coated: Dictionary = run._add(5, 5, "land", "ice", 1)
+	coated["frost"] = true
+	run._damage(coated, 1, null)
+	var coat_first: bool = not coated.has("frost") and int(coated["hp"]) == 1
+	run._damage(coated, 1, null)
+	coat_first = coat_first and int(coated["hp"]) == 0
+	var burnt: Dictionary = run._add(6, 5, "land", "ice", 1)
+	burnt["frost"] = true
+	run._damage(burnt, 99, null)
+	var fire_through: bool = int(burnt["hp"]) == 0
+	var packed: Dictionary = run._add(8, 5, "packed", "ice", 3)
+	run._damage(packed, 1, null)
+	run._damage(packed, 1, null)
+	var three: bool = int(packed["hp"]) == 1
+	run._damage(packed, 1, null)
+	three = three and int(packed["hp"]) == 0
+	var drift: Dictionary = run._add(10, 6, "drift", "ice", 2)
+	var into: Dictionary = run._ball(run._cell(10, 6).get_center() + Vector2(0, 26), Vector2(0, -Run.SPEED))
+	run.balls = [into]
+	for i in 12:
+		run._move(into, 1.0 / 60.0)
+	var soaked: bool = int(drift["hp"]) == 1 and (into["v"] as Vector2).length() < Run.SPEED * 0.6
+	# ---- icicles ----
+	_cf_bare(run)
+	var holder: Dictionary = run._add(12, 3, "land", "light", 1)
+	var icicle: Dictionary = run._add(12, 4, "icicle", "ice", 1)
+	var below: Dictionary = run._add(12, 9, "stone", "", 3)
+	run._damage(holder, 1, null)
+	var fell: bool = int(icicle["hp"]) == 0 and run.falling.size() == 1
+	for i in 60:
+		run._icicles(1.0 / 60.0)
+	fell = fell and int(below["hp"]) == 3 - Run.ICICLE_HIT and run.falling.is_empty()
+	_cf_bare(run)
+	run.paddle_x = Run.FIELD_X + 20.5 * run.cw
+	var high: Dictionary = run._add(20, 2, "land", "light", 1)
+	run._add(20, 3, "icicle", "ice", 1)
+	run._damage(high, 1, null)
+	for i in 120:
+		run._icicles(1.0 / 60.0)
+	var stunned_by_it: bool = run.stunned > 0.0
+	# ---- slick ice, and a map's frost rows ----
+	_cf_bare(run)
+	run.slicks = [{"y0": 280.0, "y1": 340.0}]
+	var slid: Dictionary = run._ball(Vector2(640, 310), Vector2(0, -Run.SPEED))
+	var dry: Dictionary = run._ball(Vector2(640, 420), Vector2(0, -Run.SPEED))
+	run.balls = [slid, dry]
+	for i in 30:
+		run.step(1.0 / 60.0)
+		slid["p"] = Vector2(640, 310)
+		dry["p"] = Vector2(640, 420)
+	var slick_ok: bool = (slid["v"] as Vector2).length() > Run.SPEED * 1.2 and absf((dry["v"] as Vector2).length() - Run.SPEED) < 1.0
+	var frosted_map: int = -1
+	for i in ice:
+		if (Maps.MAPS[i] as Dictionary).has("frost"):
+			frosted_map = i
+			break
+	run.begin(frosted_map)
+	var band: Array = Maps.MAPS[frosted_map]["frost"][0]
+	var in_band: int = 0
+	var rows_frosted: bool = true
+	for k in run.bricks:
+		if k.has("cell") and run._breaks(k) and not ["heart", "guard", "key"].has(str(k["kind"])) \
+				and (k["cell"] as Vector2i).y >= int(band[0]) and (k["cell"] as Vector2i).y <= int(band[1]):
+			in_band += 1
+			rows_frosted = rows_frosted and k.has("frost")
+	rows_frosted = rows_frosted and in_band > 0
+	check("ICE: a frost coat takes a hit of its own before the brick (fire goes through it); packed ice takes three; a snowdrift two, and it soaks up the ball's speed; an icicle falls when its brick goes and strikes the first brick below for %d - or stuns the paddle; slick ice runs the ball %sx faster; a map's frost rows coat every brick in them" % [Run.ICICLE_HIT, str(Run.SLICK_SPEED)],
+		coat_first and fire_through and three and soaked and fell and stunned_by_it and slick_ok and rows_frosted,
+		[coat_first, fire_through, three, soaked, fell, stunned_by_it, slick_ok, rows_frosted])
+	# ---- the Frost King ----
+	run.begin(int(ice[4]))
+	var king = run.boss
+	run.state = Run.State.PLAY
+	var near: Dictionary = run._ball(king.p + Vector2(0, 150), Vector2(0, -Run.SPEED))
+	var far: Dictionary = run._ball(king.p + Vector2(0, Boss.BREATH_REACH + 60.0), Vector2(0, -Run.SPEED))
+	run.balls = [near, far]
+	king.breath_t = 0.001
+	king.step(0.01, true)
+	var breathed: bool = str(king.kind) == "frostking" and (near["v"] as Vector2).length() < Run.SPEED * 0.6 \
+		and absf((far["v"] as Vector2).length() - Run.SPEED) < 1.0 and king.breaths.size() == 1
+	run._hit_boss(Boss.SPLIT_EVERY)
+	var young: bool = king.minions.size() == 1
+	var landed: Dictionary = {}
+	for k in run.bricks:
+		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not k.has("frost") and not ["heart", "guard"].has(str(k["kind"])):
+			landed = k
+			break
+	young = young and bool(run.frost_at((landed["rect"] as Rect2).get_center())) and landed.has("frost")
+	# and his young do it where they land, as they hop
+	run._hit_boss(Boss.SPLIT_EVERY * 2)
+	var frosted_before: int = run.bricks.filter(func(k: Dictionary) -> bool: return k.has("frost") and int(k["hp"]) > 0).size()
+	for i in 60 * 20:
+		king._step_minions(1.0 / 60.0, true)
+	young = young and run.bricks.filter(func(k: Dictionary) -> bool: return k.has("frost") and int(k["hp"]) > 0).size() > frosted_before
+	# ---- the Snow Sprite ----
+	run.begin(int(ice[9]))
+	var sprite = run.boss
+	run.state = Run.State.PLAY
+	var before_hang: int = run.breakable
+	sprite.icicle_t = 0.001
+	sprite.step(0.01, true)
+	var hung: bool = run.breakable == before_hang + 1 and run.hanging.size() == 1
+	var made_icicle: Dictionary = run.hanging[0] if hung else {}
+	for i in roundi((Run.ICICLE_HANG + 0.1) * 60.0):
+		run._icicles(1.0 / 60.0)
+	hung = hung and int(made_icicle["hp"]) == 0
+	# ---- the Ice Sniper ----
+	run.begin(int(ice[14]))
+	var sniper = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 640.0
+	run.target_x = 640.0
+	sniper.snipe_t = 0.001
+	for i in roundi((Boss.AIM_SECONDS + 0.2) * 60.0):
+		sniper._snipe(1.0 / 60.0)
+	var iced_ok: bool = run.iced > 0.0 and run.stunned == 0.0
+	run.target_x = 900.0
+	for i in 30:
+		run.step(1.0 / 60.0)
+	run.target_x = run.paddle_x
+	var at_stop: float = run.paddle_x
+	run.step(1.0 / 60.0)
+	run.step(1.0 / 60.0)
+	iced_ok = iced_ok and run.paddle_x > at_stop + 1.0
+	# ---- the Frost Mage ----
+	run.begin(int(ice[19]))
+	var mage = run.boss
+	run.state = Run.State.PLAY
+	var walled_before: int = run.breakable
+	mage._ice_wall()
+	var walled: int = run.breakable - walled_before
+	# a row wider than the cap: the wall stops at ICE_WALL_MOST
+	var wide_row: int = int(run.rows_count) - 1
+	for c in run.cols:
+		var o: Variant = run.cells.get(Vector2i(c, wide_row))
+		if o != null and int(o["hp"]) > 0 and run._breaks(o):
+			run._damage(o, 99, null)
+	walled = walled if run.ice_wall(wide_row, 0, run.cols - 1, Boss.ICE_WALL_MOST) == Boss.ICE_WALL_MOST else -1
+	var gone: int = 0
+	for k in run.bricks:
+		if gone < Boss.REBUILD_COUNT and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and (k["rect"] as Rect2).position.y > mage.hall.end.y + 40.0:
+			run._damage(k, 99, null)
+			gone += 1
+	var frost_before: int = run.bricks.filter(func(k: Dictionary) -> bool: return k.has("frost") and int(k["hp"]) > 0).size()
+	mage.rebuild_t = 0.001
+	mage._ward_step(0.01)
+	var frost_after: int = run.bricks.filter(func(k: Dictionary) -> bool: return k.has("frost") and int(k["hp"]) > 0).size()
+	var mage_ok: bool = walled > 0 and walled <= Boss.ICE_WALL_MOST and frost_after == frost_before + Boss.REBUILD_COUNT \
+		and mage.wards.size() == Boss.WARDS
+	# ---- the Glacier Lord ----
+	run.begin(int(ice[24]))
+	var lord = run.boss
+	run.state = Run.State.PLAY
+	for k in run.bricks:
+		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) and (k["rect"] as Rect2).position.y > lord.hall.end.y:
+			run._damage(k, 99, null)
+	var before_snow: int = run.breakable
+	lord.avalanche_t = 0.001
+	lord.step(0.01, true)
+	var snowed: int = run.breakable - before_snow
+	var lord_ok: bool = lord.crowned and str(lord.title) == "The Glacier Lord" and snowed > 0 and snowed <= Boss.AVALANCHE_MOST \
+		and lord.slides.size() == 1
+	@warning_ignore("integer_division")
+	run._hit_boss(lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1)
+	lord_ok = lord_ok and lord.minions.size() > 0
+	check("  ICE'S BOSSES: the Frost King's breath slows near balls and his young coat bricks in frost; the Snow Sprite hangs an icicle that falls in its time; the Ice Sniper's lance ices the paddle and it slides on; the Frost Mage raises a wall of ice (%d at most) and rebuilds in frost; the Glacier Lord's avalanche pours snowdrifts (%d at most) and he splits" % [Boss.ICE_WALL_MOST, Boss.AVALANCHE_MOST],
+		breathed and young and hung and iced_ok and mage_ok and lord_ok,
+		[breathed, young, hung, iced_ok, mage_ok, lord_ok, walled, snowed])
+	print("  crownfall ice: done")
+
+
+func _test_crownfall_earth(run: Node2D, earth: Array) -> void:
+	"""The Kingdom of Earth (the same 0.165.0): pillars that topple, boulders,
+	ore, sand that settles, tremors, the heavy paddle, the way on from the
+	Glacier Lord, and its five bosses."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	var count_of := func(kind: String) -> int:
+		return run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == kind and int(k["hp"]) > 0).size()
+	# ---- a pillar topples ----
+	_cf_bare(run)
+	var foot: Dictionary = run._add(5, 10, "foot", "earth", 2)
+	var stack: Array = [run._add(5, 9, "column", "earth", 2), run._add(5, 8, "column", "earth", 2), run._add(5, 7, "land", "earth", 2)]
+	var apart: Dictionary = run._add(5, 5, "land", "light", 1)
+	var under: Dictionary = run._add(5, 13, "stone", "", 3)
+	run._damage(foot, 1, null)
+	var cracked: bool = int(foot["hp"]) == 1 and run.rubble.is_empty() and stack.all(func(k: Dictionary) -> bool: return int(k["hp"]) > 0)
+	var score_was: int = run.score
+	run._damage(foot, 1, null)
+	var toppled: bool = int(foot["hp"]) == 0 and run.rubble.size() == 3 and stack.all(func(k: Dictionary) -> bool: return int(k["hp"]) == 0) \
+		and int(apart["hp"]) == 1 and run.score >= score_was + Run.TOPPLE_SCORE * 3 and not run.cells.has(Vector2i(5, 8))
+	for i in 60:
+		run._earth(1.0 / 60.0)
+	toppled = toppled and int(under["hp"]) == 0 and run.rubble.is_empty()
+	# the topple pays TOPPLE_SCORE a block on top of the blocks' own score
+	_cf_bare(run)
+	var foot3: Dictionary = run._add(9, 10, "foot", "earth", 2)
+	run._add(9, 9, "column", "earth", 2)
+	run._add(9, 8, "column", "earth", 2)
+	var rate: float = run._multiplier()
+	score_was = run.score
+	toppled = toppled and run.topple(foot3) == 2 \
+		and run.score - score_was == int(round(int(Run.SCORE["column"]) * rate)) * 2 + int(round(Run.TOPPLE_SCORE * 2 * rate))
+	# a key in the way stops it
+	_cf_bare(run)
+	var foot2: Dictionary = run._add(8, 10, "foot", "earth", 2)
+	var low: Dictionary = run._add(8, 9, "column", "earth", 2)
+	var key: Dictionary = run._add(8, 8, "key", "light", 1)
+	var high: Dictionary = run._add(8, 7, "column", "earth", 2)
+	run._damage(foot2, 99, null)
+	var held: bool = int(low["hp"]) == 0 and int(key["hp"]) == 1 and int(high["hp"]) == 2 and run.rubble.size() == 1
+	# ---- ore and sand ----
+	_cf_bare(run)
+	var ore: Dictionary = run._add(12, 4, "ore", "earth", 3)
+	score_was = run.score
+	run._damage(ore, 1, null)
+	run._damage(ore, 1, null)
+	var three: bool = int(ore["hp"]) == 1
+	run._damage(ore, 1, null)
+	three = three and int(ore["hp"]) == 0 and run.score >= score_was + int(Run.SCORE["ore"])
+	var sand: Dictionary = run._add(14, 3, "sand", "earth", 1)
+	var prop: Dictionary = run._add(14, 4, "land", "light", 1)
+	run._add(14, 9, "stone", "", 3)
+	run._earth(Run.SAND_STEP + 0.01)
+	var stayed: bool = sand["cell"] == Vector2i(14, 3)
+	run._damage(prop, 1, null)
+	for i in 30:
+		run._earth(Run.SAND_STEP + 0.01)
+	var settled: bool = stayed and sand["cell"] == Vector2i(14, 8) and run.cells.get(Vector2i(14, 8)) == sand \
+		and not run.cells.has(Vector2i(14, 3)) and int(sand["hp"]) == 1
+	# a ball in the hole under it holds it up
+	var held_up: Dictionary = run._add(18, 3, "sand", "earth", 1)
+	run.balls = [run._ball(run._cell(18, 4).get_center(), Vector2.ZERO)]
+	run._earth(Run.SAND_STEP + 0.01)
+	settled = settled and held_up["cell"] == Vector2i(18, 3)
+	run.balls.clear()
+	# ---- the tremor ----
+	_cf_bare(run)
+	run.tremors = true
+	var shaky: Dictionary = run._add(3, 10, "foot", "earth", 1)
+	shaky["most"] = 2
+	var shaky_top: Dictionary = run._add(3, 9, "column", "earth", 2)
+	var sound: Dictionary = run._add(20, 10, "foot", "earth", 2)
+	var sound_top: Dictionary = run._add(20, 9, "column", "earth", 2)
+	var rolling: Dictionary = run._ball(Vector2(640, 500), Vector2(0, -Run.SPEED))
+	run.balls = [rolling]
+	run.tremor_t = Run.TREMOR_EVERY - Run.TREMOR_WARN + 0.01
+	run._earth(0.01)
+	var warned: bool = run.words.any(func(w: Dictionary) -> bool: return str(w["text"]).begins_with("THE GROUND RUMBLES")) \
+		and int(shaky["hp"]) == 1
+	run._earth(Run.TREMOR_WARN)
+	var shook: bool = warned and int(shaky["hp"]) == 0 and int(shaky_top["hp"]) == 0 and int(sound["hp"]) == 2 \
+		and int(sound_top["hp"]) == 2 and absf((rolling["v"] as Vector2).length() - Run.SPEED) < 1.0 \
+		and not (rolling["v"] as Vector2).is_equal_approx(Vector2(0, -Run.SPEED)) and run.tremor_t < 1.0
+	shook = shook and run.tremor_now(true) == 1 and int(sound_top["hp"]) == 0
+	# ---- the heavy paddle ----
+	_cf_bare(run)
+	run.lives = Run.LIVES
+	run.balls = [run._ball(Vector2(640, 300), Vector2(0, -Run.SPEED))]
+	run.paddle_x = 640.0
+	run.target_x = 900.0
+	run.step(1.0 / 60.0)
+	var free_step: float = run.paddle_x - 640.0
+	run.paddle_x = 640.0
+	run.weigh_paddle(2.0, Vector2(640, Run.PADDLE_Y))
+	run.step(1.0 / 60.0)
+	var heavy_ok: bool = run.heavy > 0.0 and absf(run.paddle_x - 640.0 - free_step * Run.HEAVY_SHARE) < 0.5 and free_step > 10.0
+	# ---- a map's letters ----
+	var lettered: bool = true
+	var boulder_ok: bool = false
+	for i in earth:
+		run.begin(i)
+		var want: Dictionary = {"A": 0, "E": 0, "g": 0, "n": 0, "b": 0}
+		for r in (Maps.MAPS[i]["rows"] as Array):
+			for ch in str(r):
+				if want.has(ch):
+					want[ch] = int(want[ch]) + 1
+		var rock_cells: int = 0
+		for k in run.bricks:
+			if str(k["kind"]) == "boulder":
+				rock_cells += (k["cells"] as Array).size()
+				if (k["cells"] as Array).size() == 2 and not boulder_ok:
+					var c0: Vector2i = k["cells"][0]
+					var c1: Vector2i = k["cells"][1]
+					boulder_ok = int(k["hp"]) == 4 and c1 == c0 + Vector2i(1, 0) and run.cells.get(c0) == k and run.cells.get(c1) == k \
+						and is_equal_approx((k["rect"] as Rect2).size.x, run.cw * 2.0 - 2.0)
+					if boulder_ok:
+						for n in 3:
+							run._damage(k, 1, null)
+						boulder_ok = int(k["hp"]) == 1 and run.cells.get(c1) == k
+						run._damage(k, 1, null)
+						boulder_ok = boulder_ok and int(k["hp"]) == 0 and not run.cells.has(c0) and not run.cells.has(c1)
+		var hits: Dictionary = {"foot": 2, "column": 2, "ore": 3, "sand": 1}
+		for k in run.bricks:
+			if hits.has(str(k["kind"])):
+				lettered = lettered and int(k["hp"]) == int(hits[str(k["kind"])]) and int(k["most"]) == int(hits[str(k["kind"])])
+		lettered = lettered and run.tremors and count_of.call("foot") == int(want["A"]) and count_of.call("column") == int(want["E"]) \
+			and count_of.call("ore") == int(want["g"]) and count_of.call("sand") == int(want["n"]) and rock_cells == int(want["b"])
+	check("EARTH: a pillar's foot cracks at the first hit and at the second the pillar falls - every brick on it up to the first gap (a key stops it), %d score a block - and its rubble smashes what is below; a boulder is two cells, four hits; ore three; sand settles into the hole under it; the tremor rumbles first, then brings down every pillar on a cracked foot and jolts the ball (a quake, every pillar); the Rock Sniper's weight slows the paddle to %s; every earth map's letters become its bricks, and it shakes" % [Run.TOPPLE_SCORE, str(Run.HEAVY_SHARE)],
+		cracked and toppled and held and three and settled and shook and heavy_ok and lettered and boulder_ok,
+		[cracked, toppled, held, three, settled, shook, heavy_ok, lettered, boulder_ok])
+	# ---- on from Ice ----
+	run.begin(int(earth[0]) - 1)
+	run.state = Run.State.PLAY
+	run._hit_boss(run.boss.hp)
+	run.step(1.0 / 60.0)
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	var on_to_earth: bool = run.state == Run.State.AIM and run.map_index == int(earth[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "earth"
+	# ---- the Stone King ----
+	run.begin(int(earth[4]))
+	var king = run.boss
+	run.state = Run.State.PLAY
+	var feet: Array = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "foot" and int(k["hp"]) > 0 and not run._guarded(k))
+	(feet[0] as Dictionary)["hp"] = 1
+	king.stomp_t = 0.001
+	king.step(0.01, true)
+	var stomped: bool = str(king.kind) == "stoneking" and int((feet[0] as Dictionary)["hp"]) == 0 and king.gales.size() == 1 \
+		and feet.slice(1).all(func(k: Dictionary) -> bool: return int(k["hp"]) == 2)
+	run._hit_boss(Boss.SPLIT_EVERY)
+	var young: bool = king.minions.size() == 1
+	var spot := Vector2i(-1, -1)
+	for row in run.rows_count:
+		for c in run.cols:
+			var r: Rect2 = run._cell(c, row)
+			if spot.x < 0 and not run.cells.has(Vector2i(c, row)) and not king.hall.grow(2.0).intersects(r):
+				spot = Vector2i(c, row)
+	var sand_before: int = count_of.call("sand")
+	young = young and bool(run.pile_sand(run._cell(spot.x, spot.y).get_center())) and count_of.call("sand") == sand_before + 1 \
+		and str(run.cells[spot]["kind"]) == "sand"
+	run._hit_boss(Boss.SPLIT_EVERY * 2)
+	sand_before = count_of.call("sand")
+	for i in 60 * 20:
+		king._step_minions(1.0 / 60.0, true)
+	young = young and count_of.call("sand") > sand_before
+	# ---- the Dust Sprite ----
+	run.begin(int(earth[9]))
+	var sprite = run.boss
+	run.state = Run.State.PLAY
+	var gone: int = 0
+	for k in run.bricks:
+		if gone < Boss.DUST_MOST + 2 and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and str(k["kind"]) == "land" and (k["rect"] as Rect2).position.y > sprite.hall.end.y:
+			run._damage(k, 99, null)
+			gone += 1
+	sand_before = count_of.call("sand")
+	sprite.dust_t = 0.001
+	sprite.step(0.01, true)
+	var dusted: bool = str(sprite.kind) == "dustsprite" and count_of.call("sand") == sand_before + Boss.DUST_MOST
+	# ---- the Rock Sniper ----
+	run.begin(int(earth[14]))
+	var sniper = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 640.0
+	run.target_x = 640.0
+	sniper.snipe_t = 0.001
+	for i in roundi((Boss.AIM_SECONDS + 0.2) * 60.0):
+		sniper._snipe(1.0 / 60.0)
+	var weighed: bool = run.heavy > 0.0 and run.stunned == 0.0 and run.iced == 0.0
+	# ---- the Earth Mage ----
+	run.begin(int(earth[19]))
+	var mage = run.boss
+	run.state = Run.State.PLAY
+	var col: int = -1
+	for c in range(run.cell_at(Vector2(mage.hall.position.x + 2.0, 0)).x, run.cell_at(Vector2(mage.hall.end.x - 2.0, 0)).x):
+		if col < 0 and not run.cells.has(Vector2i(c, run.rows_count - 6)) and not run.cells.has(Vector2i(c, run.rows_count - 5)):
+			col = c
+	var feet_before: int = count_of.call("foot")
+	var before_pillar: int = run.breakable
+	var raised: int = run.raise_pillar(run._cell(col, 0).get_center().x, Boss.PILLAR_TALL)
+	var made_ok: bool = raised >= 2 and raised <= Boss.PILLAR_TALL and run.breakable == before_pillar + raised \
+		and count_of.call("foot") == feet_before + 1
+	var base_row: int = -1
+	for row in run.rows_count:
+		var o: Variant = run.cells.get(Vector2i(col, row))
+		if o != null and str(o["kind"]) == "foot" and o.has("flash") and float(o["flash"]) > 0.0:
+			base_row = row
+	made_ok = made_ok and base_row >= 0 and str(run.cells[Vector2i(col, base_row - 1)]["kind"]) == "column"
+	before_pillar = run.breakable
+	mage.pillar_t = 0.001
+	mage.step(0.01, true)
+	made_ok = made_ok and run.breakable >= before_pillar and mage.wards.size() == Boss.WARDS
+	gone = 0
+	for k in run.bricks:
+		if gone < Boss.REBUILD_COUNT and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and str(k["kind"]) == "land" and (k["rect"] as Rect2).position.y > mage.hall.end.y + 40.0:
+			run._damage(k, 99, null)
+			gone += 1
+	var stone_before: int = count_of.call("stone")
+	mage.rebuild_t = 0.001
+	mage._ward_step(0.01)
+	made_ok = made_ok and count_of.call("stone") == stone_before + Boss.REBUILD_COUNT
+	# ---- the Mountain Lord ----
+	run.begin(int(earth[24]))
+	var lord = run.boss
+	run.state = Run.State.PLAY
+	for k in run.bricks:
+		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not ["foot", "column", "guard"].has(str(k["kind"])) \
+				and (k["rect"] as Rect2).position.y > lord.hall.end.y:
+			run._damage(k, 99, null)
+	var standing: Array = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "foot" and int(k["hp"]) > 0 and not run._guarded(k))
+	var rocks_before: int = count_of.call("boulder")
+	lord.quake_t = 0.001
+	lord.step(0.01, true)
+	var rocks: int = count_of.call("boulder") - rocks_before
+	var lord_ok: bool = lord.crowned and str(lord.title) == "The Mountain Lord" and standing.size() >= 2 \
+		and standing.all(func(k: Dictionary) -> bool: return int(k["hp"]) == 0) and rocks > 0 and rocks <= Boss.ROCKFALL_MOST \
+		and lord.slides.size() == 1 and bool(lord.slides[0].get("rock", false))
+	@warning_ignore("integer_division")
+	run._hit_boss(lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1)
+	lord_ok = lord_ok and lord.minions.size() > 0
+	check("  EARTH'S BOSSES: the Glacier Lord's fall leads on into the Kingdom of Earth; the Stone King's stomp brings down a pillar on a cracked foot and his young pile sand; the Dust Sprite kicks up %d sand; the Rock Sniper's shot weighs the paddle down; the Earth Mage raises a pillar (%d at most) on its foot and rebuilds in stone; the Mountain Lord's quake brings every pillar down and drops boulders (%d at most), and he splits" % [Boss.DUST_MOST, Boss.PILLAR_TALL, Boss.ROCKFALL_MOST],
+		on_to_earth and stomped and young and dusted and weighed and made_ok and lord_ok,
+		[on_to_earth, stomped, young, dusted, weighed, made_ok, lord_ok, raised, rocks, standing.size()])
+	print("  crownfall earth: done")
+
+
+func _test_crownfall_fire(run: Node2D, fire: Array) -> void:
+	"""The Kingdom of Fire (the same 0.165.0): wood that catches and spreads a
+	link at a time, fuses, powder kegs, obsidian, lava that cools, eruptions,
+	fire on the floor, the scorched paddle, the way on from the Mountain Lord,
+	and its five bosses."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	var count_of := func(kind: String) -> int:
+		return run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == kind and int(k["hp"]) > 0).size()
+	# ---- wood ----
+	_cf_bare(run)
+	var plain: Dictionary = run._add(3, 3, "wood", "fire", 2)
+	var striker: Dictionary = run._ball(Vector2(640, 500), Vector2(0, -Run.SPEED))
+	run._damage(plain, 1, striker)
+	var two_hits: bool = int(plain["hp"]) == 1 and float(plain["burn"]) < 0.0
+	run._damage(plain, 1, striker)
+	two_hits = two_hits and int(plain["hp"]) == 0
+	var logs: Array = [run._add(10, 5, "wood", "fire", 2), run._add(11, 5, "wood", "fire", 2), run._add(12, 5, "wood", "fire", 2)]
+	var stone: Dictionary = run._add(10, 6, "land", "light", 1)
+	run.active["fire"] = 6.0
+	run._damage(logs[0], 99, striker)
+	run.active.erase("fire")
+	var caught: bool = int(logs[0]["hp"]) == 2 and float(logs[0]["burn"]) >= 0.0
+	run._burns(Run.WOOD_BURN + 0.01)
+	var link_one: bool = int(logs[0]["hp"]) == 0 and float(logs[1]["burn"]) >= 0.0 and float(logs[2]["burn"]) < 0.0 \
+		and int(stone["hp"]) == 1 and float(stone["burn"]) < 0.0
+	run._burns(Run.WOOD_BURN + 0.01)
+	var link_two: bool = int(logs[1]["hp"]) == 0 and float(logs[2]["burn"]) >= 0.0 and int(logs[2]["hp"]) == 2
+	run._burns(Run.WOOD_BURN + 0.01)
+	var wood_ok: bool = two_hits and caught and link_one and link_two and int(logs[2]["hp"]) == 0
+	# ---- a fuse runs to its bomb ----
+	_cf_bare(run)
+	var fuses: Array = [run._add(4, 8, "fuse", "fire", 1), run._add(5, 8, "fuse", "fire", 1), run._add(6, 8, "fuse", "fire", 1)]
+	var bomb: Dictionary = run._add(7, 8, "tnt", "fire", 1)
+	var by_bomb: Dictionary = run._add(7, 9, "stone", "", 3)
+	run._damage(fuses[0], 1, striker)
+	var lit: bool = int(fuses[0]["hp"]) == 1 and float(fuses[0]["burn"]) >= 0.0 and float(fuses[1]["burn"]) < 0.0
+	for i in 12:
+		run._burns(Run.FUSE_STEP + 0.01)
+	var fuse_ok: bool = lit and fuses.all(func(k: Dictionary) -> bool: return int(k["hp"]) == 0) and int(bomb["hp"]) == 0 \
+		and int(by_bomb["hp"]) == 1
+	# ---- a powder keg ----
+	_cf_bare(run)
+	var keg: Dictionary = run._add(10, 5, "keg", "fire", 2)
+	var far_tnt: Dictionary = run._add(14, 5, "tnt", "fire", 1)
+	var near_land: Dictionary = run._add(10, 12, "land", "light", 1)
+	var out_land: Dictionary = run._add(17, 5, "land", "light", 1)
+	var near_wood: Dictionary = run._add(10, 3, "wood", "fire", 2)
+	var next_keg: Dictionary = run._add(7, 5, "keg", "fire", 2)
+	run._damage(keg, 1, striker)
+	var keg_ok: bool = int(keg["hp"]) == 1 and float(far_tnt["burn"]) < 0.0
+	run._damage(keg, 1, striker)
+	keg_ok = keg_ok and int(keg["hp"]) == 0 and float(far_tnt["burn"]) >= 0.0 and int(near_land["hp"]) == 0 \
+		and int(out_land["hp"]) == 1 and float(near_wood["burn"]) >= 0.0 and int(near_wood["hp"]) == 2 \
+		and float(next_keg["burn"]) >= 0.0 and int(next_keg["hp"]) == 2
+	# ---- obsidian, lava ----
+	_cf_bare(run)
+	var glass: Dictionary = run._add(3, 3, "obsidian", "fire", 4)
+	for i in 3:
+		run._damage(glass, 1, striker)
+	var four: bool = int(glass["hp"]) == 1
+	run._damage(glass, 1, striker)
+	four = four and int(glass["hp"]) == 0
+	var lava: Dictionary = run._add(8, 3, "lava", "fire", 1)
+	lava["cool"] = Run.LAVA_COOL
+	run.state = Run.State.AIM
+	run._fire(Run.LAVA_COOL + 1.0)
+	var waits: bool = str(lava["kind"]) == "lava"
+	run.state = Run.State.PLAY
+	run._fire(Run.LAVA_COOL + 1.0)
+	var cooled: bool = waits and str(lava["kind"]) == "basalt" and int(lava["hp"]) == 3 and int(lava["most"]) == 3
+	var hot: Dictionary = run._add(14, 3, "lava", "fire", 1)
+	hot["cool"] = Run.LAVA_COOL
+	var kindling: Dictionary = run._add(15, 3, "wood", "fire", 2)
+	run._damage(hot, 1, striker)
+	cooled = cooled and int(hot["hp"]) == 0 and float(kindling["burn"]) >= 0.0
+	# ---- eruptions and lava bombs ----
+	_cf_bare(run)
+	run.eruptions = true
+	run.erupt_t = Run.ERUPT_EVERY - Run.ERUPT_WARN + 0.01
+	run._fire(0.01)
+	var rumbled: bool = run.words.any(func(w: Dictionary) -> bool: return str(w["text"]).begins_with("THE VOLCANO RUMBLES")) and run.bombs.is_empty()
+	run._fire(Run.ERUPT_WARN)
+	var erupted: bool = rumbled and run.bombs.size() == Run.ERUPT_BOMBS and run.erupt_t < 1.0
+	_cf_bare(run)
+	var floor_stone: Dictionary = run._add(10, 8, "stone", "", 3)
+	run.lava_bomb(run._cell(10, 0).get_center().x, Run.ARENA.position.y + 4.0)
+	run.paddle_x = run._cell(20, 0).get_center().x
+	run.lava_bomb(run.paddle_x, Run.ARENA.position.y + 4.0)
+	for i in 120:
+		run._fire(1.0 / 60.0)
+	var landed: Variant = run.cells.get(Vector2i(10, 7))
+	var bombs_ok: bool = erupted and landed != null and str(landed["kind"]) == "lava" and int(floor_stone["hp"]) == 3 \
+		and run.stunned > 0.0 and run.bombs.is_empty()
+	# ---- fire on the floor; the scorched paddle ----
+	_cf_bare(run)
+	run.paddle_x = 640.0
+	run.fire_patch(640.0)
+	run._fire(Run.PATCH_WARN * 0.5)
+	var patch_ok: bool = run.stunned == 0.0
+	run._fire(Run.PATCH_WARN)
+	run._fire(0.01)
+	patch_ok = patch_ok and run.stunned > 0.0
+	run.stunned = 0.0
+	run._fire(0.5)
+	patch_ok = patch_ok and run.stunned == 0.0
+	run._fire(Run.PATCH_LIFE)
+	patch_ok = patch_ok and run.patches.is_empty()
+	run.fire_patch(200.0)
+	run.paddle_x = 900.0
+	run._fire(Run.PATCH_WARN + 0.5)
+	patch_ok = patch_ok and run.stunned == 0.0
+	_cf_bare(run)
+	run.lives = Run.LIVES
+	run.balls = [run._ball(Vector2(640, 300), Vector2(0, -Run.SPEED))]
+	run.scorch_paddle(3.0, Vector2(640, Run.PADDLE_Y))
+	for i in 30:
+		run.step(1.0 / 60.0)
+		run.balls[0]["p"] = Vector2(640, 300)
+	var scorched: bool = run.scorched > 0.0 and absf(run.paddle_w - Run.PADDLE_W * Run.SCORCH_SHARE) < 1.0
+	# ---- a map's letters ----
+	var lettered: bool = true
+	for i in fire:
+		run.begin(i)
+		var want: Dictionary = {"h": 0, "z": 0, "J": 0, "q": 0, "r": 0}
+		for r in (Maps.MAPS[i]["rows"] as Array):
+			for ch in str(r):
+				if want.has(ch):
+					want[ch] = int(want[ch]) + 1
+		var hits: Dictionary = {"wood": 2, "fuse": 1, "keg": 2, "obsidian": 4, "lava": 1}
+		for k in run.bricks:
+			if hits.has(str(k["kind"])):
+				lettered = lettered and int(k["hp"]) == int(hits[str(k["kind"])])
+		lettered = lettered and run.eruptions and not run.tremors and count_of.call("wood") == int(want["h"]) \
+			and count_of.call("fuse") == int(want["z"]) and count_of.call("keg") == int(want["J"]) \
+			and count_of.call("obsidian") == int(want["q"]) and count_of.call("lava") == int(want["r"])
+	check("FIRE: wood takes two hits from a ball, but a Fireball sets it alight and it spreads to the wood touching it a link at a time; a blow lights a fuse and the spark runs to its TNT; a powder keg blows %d wide, setting off TNT and kegs and lighting wood; obsidian takes four hits; lava cools into basalt after %d s of play (not before) and lights wood beside it when broken; the volcano rumbles, then %d lava bombs fall - setting as lava on what stands, stunning the paddle under one; fire on the floor warns, then stuns the paddle once; the scorched paddle is %s of its width; every fire map's letters become its bricks, and it erupts" % [Run.KEG_BLAST, Run.LAVA_COOL, Run.ERUPT_BOMBS, str(Run.SCORCH_SHARE)],
+		wood_ok and fuse_ok and keg_ok and four and cooled and bombs_ok and patch_ok and scorched and lettered,
+		[wood_ok, fuse_ok, keg_ok, four, cooled, bombs_ok, patch_ok, scorched, lettered])
+	# ---- on from Earth ----
+	run.begin(int(fire[0]) - 1)
+	run.state = Run.State.PLAY
+	run._hit_boss(run.boss.hp)
+	run.step(1.0 / 60.0)
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	var on_to_fire: bool = run.state == Run.State.AIM and run.map_index == int(fire[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "fire"
+	# ---- the Fire King ----
+	run.begin(int(fire[4]))
+	var king = run.boss
+	run.state = Run.State.PLAY
+	var tinted: bool = str(king.kind) == "fireking" and king.tint == Element.Type.FIRE
+	if king.sprite != null:
+		var mat: ShaderMaterial = king.sprite.material as ShaderMaterial
+		tinted = tinted and mat != null and is_equal_approx(float(mat.get_shader_parameter("element_hue")), Element.hue_for(Element.Type.FIRE))
+	var bombs_before: int = run.bombs.size()
+	king.erupt_call_t = 0.001
+	king.step(0.01, true)
+	var called: bool = run.bombs.size() == bombs_before + Boss.ERUPT_CALL_BOMBS
+	run._hit_boss(Boss.SPLIT_EVERY)
+	var young: bool = king.minions.size() == 1
+	var spot := Vector2i(-1, -1)
+	for row in run.rows_count:
+		for c in run.cols:
+			var r: Rect2 = run._cell(c, row)
+			if spot.x < 0 and not run.cells.has(Vector2i(c, row)) and not king.hall.grow(2.0).intersects(r) and not run._ball_near(r):
+				spot = Vector2i(c, row)
+	var lava_before: int = count_of.call("lava")
+	young = young and bool(run.lava_at(run._cell(spot.x, spot.y).get_center())) and count_of.call("lava") == lava_before + 1
+	var a_log: Dictionary = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "wood" and int(k["hp"]) > 0)[0]
+	young = young and not bool(run.lava_at((a_log["rect"] as Rect2).get_center())) and float(a_log["burn"]) >= 0.0
+	run._hit_boss(Boss.SPLIT_EVERY * 2)
+	lava_before = count_of.call("lava")
+	for i in 60 * 20:
+		king._step_minions(1.0 / 60.0, true)
+	young = young and count_of.call("lava") > lava_before
+	# ---- the Flame Sprite ----
+	run.begin(int(fire[9]))
+	var sprite = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 500.0
+	sprite.patch_t = 0.001
+	sprite.step(0.01, true)
+	var patched: bool = str(sprite.kind) == "flamesprite" and run.patches.size() == 1 and is_equal_approx(float(run.patches[0]["x"]), 500.0)
+	# ---- the Fire Sniper ----
+	run.begin(int(fire[14]))
+	var sniper = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 640.0
+	run.target_x = 640.0
+	sniper.snipe_t = 0.001
+	for i in roundi((Boss.AIM_SECONDS + 0.2) * 60.0):
+		sniper._snipe(1.0 / 60.0)
+	var scorch_ok: bool = run.scorched > 0.0 and run.stunned == 0.0 and run.heavy == 0.0 and sniper.tint == Element.Type.FIRE
+	# ---- the Fire Mage ----
+	run.begin(int(fire[19]))
+	var mage = run.boss
+	run.state = Run.State.PLAY
+	bombs_before = run.bombs.size()
+	mage.meteor_t = 0.001
+	mage.step(0.01, true)
+	var mage_ok: bool = run.bombs.size() == bombs_before + Boss.METEORS and mage.wards.size() == Boss.WARDS
+	for f in run.bombs:
+		mage_ok = mage_ok and absf((f["p"] as Vector2).y - (mage.hall.end.y + 4.0)) < 1.0
+	var gone: int = 0
+	for k in run.bricks:
+		if gone < Boss.REBUILD_COUNT and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and str(k["kind"]) == "land" and (k["rect"] as Rect2).position.y > mage.hall.end.y + 40.0:
+			run._damage(k, 99, null)
+			gone += 1
+	var glass_before: int = count_of.call("obsidian")
+	mage.rebuild_t = 0.001
+	mage._ward_step(0.01)
+	mage_ok = mage_ok and count_of.call("obsidian") == glass_before + Boss.REBUILD_COUNT
+	# ---- the Inferno ----
+	run.begin(int(fire[24]))
+	var lord = run.boss
+	run.state = Run.State.PLAY
+	bombs_before = run.bombs.size()
+	lord.inferno_t = 0.001
+	lord.step(0.01, true)
+	var lord_ok: bool = lord.crowned and str(lord.title) == "The Inferno" and run.bombs.size() == bombs_before + Boss.INFERNO_BOMBS
+	@warning_ignore("integer_division")
+	run._hit_boss(lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1)
+	lord_ok = lord_ok and lord.minions.size() > 0
+	check("  FIRE'S BOSSES: the Mountain Lord's fall leads on into the Kingdom of Fire; the Fire King wears the slime's art in fire's colour, calls an eruption (%d bombs), and his young leave lava or set wood alight; the Flame Sprite sets fire on the floor where the paddle is; the Fire Sniper's shot scorches the paddle; the Fire Mage throws %d meteors and rebuilds in obsidian; the Inferno's eruption is %d bombs, and he splits" % [Boss.ERUPT_CALL_BOMBS, Boss.METEORS, Boss.INFERNO_BOMBS],
+		on_to_fire and tinted and called and young and patched and scorch_ok and mage_ok and lord_ok,
+		[on_to_fire, tinted, called, young, patched, scorch_ok, mage_ok, lord_ok])
+	print("  crownfall fire: done")
+
+
+func _test_crownfall_dark(run: Node2D, dark_maps: Array) -> void:
+	"""The Kingdom of Dark (the same 0.165.0), the last: the light, lanterns,
+	shadow bricks that heal, void wells, nightfall, the hex, the way on from
+	the Inferno, its five bosses, and the end of Crownfall."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	var count_of := func(kind: String) -> int:
+		return run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == kind and int(k["hp"]) > 0).size()
+	# ---- the light ----
+	_cf_bare(run)
+	run.dark = true
+	run.paddle_x = 640.0
+	var seen_far: Dictionary = run._add(3, 2, "land", "dark", 1)
+	var seen_near: Dictionary = run._add(16, 4, "land", "dark", 1)
+	var near_at: Vector2 = (seen_near["rect"] as Rect2).get_center()
+	run.balls = [run._ball(near_at + Vector2(0, 100), Vector2.ZERO)]
+	run._dark(0.2)
+	var light_ok: bool = float(seen_near["seen"]) == 1.0 and float(seen_far["seen"]) == 0.0
+	run.balls[0]["p"] = near_at + Vector2(0, 400)
+	run._dark(0.5)
+	light_ok = light_ok and float(seen_near["seen"]) < 1.0 and float(seen_near["seen"]) > 0.0
+	run._dark(Run.SEEN_FADE)
+	light_ok = light_ok and float(seen_near["seen"]) == 0.0
+	run.balls[0]["p"] = near_at + Vector2(0, 100)
+	run.night_left = 1.0
+	run._dark(0.2)
+	light_ok = light_ok and float(seen_near["seen"]) == 0.0
+	run.night_left = 0.0
+	run.light_stolen = 1.0
+	run._dark(0.2)
+	light_ok = light_ok and float(seen_near["seen"]) == 0.0
+	run.light_stolen = 0.0
+	light_ok = light_ok and run.light_sources().size() == run.balls.size() + 1
+	run.blackout = 1.0
+	light_ok = light_ok and run.light_sources().size() == run.balls.size()
+	run.blackout = 0.0
+	run.active["element"] = 12.0
+	run.ball_land = "light"
+	light_ok = light_ok and is_equal_approx(float(run.light_sources()[0][1]), Run.LIGHT_BALL * 1.6)
+	run.active.erase("element")
+	run.ball_land = ""
+	# ---- lanterns ----
+	_cf_bare(run)
+	run.dark = true
+	run.paddle_x = 640.0
+	var lamp: Dictionary = run._add(10, 3, "lantern", "light", 1)
+	var by_lamp: Dictionary = run._add(12, 4, "land", "dark", 1)
+	var off_lamp: Dictionary = run._add(28, 4, "land", "dark", 1)
+	run._damage(lamp, 1, null)
+	run._dark(0.2)
+	var lamp_ok: bool = run.lanterns.size() == 1 and float(by_lamp["seen"]) == 1.0 and float(off_lamp["seen"]) == 0.0
+	run.blackout = 5.0
+	run._dark(Run.SEEN_FADE + 0.1)
+	lamp_ok = lamp_ok and float(by_lamp["seen"]) == 0.0
+	run.blackout = 0.0
+	# ---- shadow bricks, void wells ----
+	_cf_bare(run)
+	run.dark = true
+	run.paddle_x = 640.0
+	var shade: Dictionary = run._add(6, 3, "shadow", "dark", 2)
+	run._damage(shade, 1, null)
+	run._dark(Run.SHADOW_HEAL + 0.1)
+	var healed: bool = int(shade["hp"]) == 2
+	run._damage(shade, 1, null)
+	run.balls = [run._ball((shade["rect"] as Rect2).get_center() + Vector2(0, 60), Vector2.ZERO)]
+	run._dark(Run.SHADOW_HEAL + 0.1)
+	healed = healed and int(shade["hp"]) == 1
+	var well: Dictionary = run._add(20, 6, "void", "dark", 3)
+	run.voids = [well]
+	var well_at: Vector2 = (well["rect"] as Rect2).get_center()
+	var drawn: Dictionary = run._ball(well_at + Vector2(60, 40), Vector2(0, -Run.SPEED))
+	var free: Dictionary = run._ball(well_at + Vector2(300, 40), Vector2(0, -Run.SPEED))
+	run.balls = [drawn, free]
+	run._voids(0.1)
+	var pulled: bool = (drawn["v"] as Vector2).x < -1.0 and (free["v"] as Vector2).is_equal_approx(Vector2(0, -Run.SPEED)) \
+		and absf((drawn["v"] as Vector2).length() - Run.SPEED) < 1.0
+	for i in 2:
+		run._damage(well, 1, null)
+	pulled = pulled and int(well["hp"]) == 1
+	run._damage(well, 1, null)
+	run._voids(0.1)
+	pulled = pulled and int(well["hp"]) == 0 and run.voids.is_empty()
+	# ---- nightfall; the hex ----
+	_cf_bare(run)
+	run.dark = true
+	run.night_t = Run.NIGHT_EVERY - Run.NIGHT_WARN + 0.01
+	run._dark(0.01)
+	var night_ok: bool = run.words.any(func(w: Dictionary) -> bool: return str(w["text"]).begins_with("THE DARK DEEPENS")) and run.night_left == 0.0
+	run._dark(Run.NIGHT_WARN)
+	night_ok = night_ok and is_equal_approx(run.night_left, Run.NIGHT_SECONDS) and run.night_t < 1.0
+	run.balls = [run._ball(Vector2(640, 300), Vector2.ZERO)]
+	night_ok = night_ok and is_equal_approx(float(run.light_sources()[0][1]), Run.LIGHT_BALL * Run.NIGHT_SHARE)
+	_cf_bare(run)
+	run.lives = Run.LIVES
+	run.balls = [run._ball(Vector2(640, 300), Vector2(0, -Run.SPEED))]
+	run.paddle_x = 640.0
+	run.target_x = 900.0
+	run.hex_paddle(1.0, Vector2(640, Run.PADDLE_Y))
+	run.step(1.0 / 60.0)
+	var hex_ok: bool = run.paddle_x < 640.0
+	for i in 70:
+		run.step(1.0 / 60.0)
+		run.balls[0]["p"] = Vector2(640, 300)
+	var at_end: float = run.paddle_x
+	run.step(1.0 / 60.0)
+	hex_ok = hex_ok and run.hexed == 0.0 and run.paddle_x > at_end
+	# ---- a map's letters ----
+	var lettered: bool = true
+	for i in dark_maps:
+		run.begin(i)
+		var want: Dictionary = {"t": 0, "m": 0, "v": 0}
+		for r in (Maps.MAPS[i]["rows"] as Array):
+			for ch in str(r):
+				if want.has(ch):
+					want[ch] = int(want[ch]) + 1
+		var hits: Dictionary = {"lantern": 1, "shadow": 2, "void": 3}
+		for k in run.bricks:
+			if hits.has(str(k["kind"])):
+				lettered = lettered and int(k["hp"]) == int(hits[str(k["kind"])])
+		lettered = lettered and run.dark and not run.eruptions and count_of.call("lantern") == int(want["t"]) \
+			and count_of.call("shadow") == int(want["m"]) and count_of.call("void") == int(want["v"]) and run.voids.size() == int(want["v"])
+	run.begin(int(dark_maps[0]) - 1)
+	lettered = lettered and not run.dark
+	check("DARK: a brick shows only in the light - a ball's (less at nightfall, less while the Wisp has it, more for a light ball) - and fades back over %s s; a lantern broken lights its corner for good (not in the eclipse); a shadow brick heals in the dark, not in the light; a void well draws a near ball in, its speed kept, and takes three hits; the dark deepens before nightfall halves every light; the hex swaps left and right, and wears off; every dark map's letters become its bricks, and it is dark" % str(Run.SEEN_FADE),
+		light_ok and lamp_ok and healed and pulled and night_ok and hex_ok and lettered,
+		[light_ok, lamp_ok, healed, pulled, night_ok, hex_ok, lettered])
+	# ---- on from Fire ----
+	run.begin(int(dark_maps[0]) - 1)
+	run.state = Run.State.PLAY
+	run._hit_boss(run.boss.hp)
+	run.step(1.0 / 60.0)
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	var on_to_dark: bool = run.state == Run.State.AIM and run.map_index == int(dark_maps[0]) and str(Maps.kingdom_of(run.map_index)["id"]) == "dark"
+	# ---- the Shadow King ----
+	run.begin(int(dark_maps[4]))
+	var king = run.boss
+	run.state = Run.State.PLAY
+	run.light_lantern(Vector2(400, 200))
+	king.snuff_t = 0.001
+	king.step(0.01, true)
+	var snuffed: bool = str(king.kind) == "shadowking" and run.lanterns.is_empty()
+	run._hit_boss(Boss.SPLIT_EVERY)
+	var young: bool = king.minions.size() == 1
+	var plain: Dictionary = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "land" and int(k["hp"]) > 0 and k.has("cell"))[0]
+	var lamp_brick: Dictionary = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "lantern" and int(k["hp"]) > 0)[0]
+	young = young and bool(run.shade_at((plain["rect"] as Rect2).get_center())) and str(plain["kind"]) == "shadow" and int(plain["hp"]) == 2 \
+		and not bool(run.shade_at((lamp_brick["rect"] as Rect2).get_center())) and str(lamp_brick["kind"]) == "lantern"
+	run._hit_boss(Boss.SPLIT_EVERY * 2)
+	var shades_before: int = count_of.call("shadow")
+	for i in 60 * 20:
+		king._step_minions(1.0 / 60.0, true)
+	young = young and count_of.call("shadow") > shades_before
+	# ---- the Wisp ----
+	run.begin(int(dark_maps[9]))
+	var wisp = run.boss
+	run.state = Run.State.PLAY
+	wisp.dim_t = 0.001
+	wisp.step(0.01, true)
+	var stolen: bool = str(wisp.kind) == "wisp" and run.light_stolen > 0.0
+	# ---- the Shade Sniper ----
+	run.begin(int(dark_maps[14]))
+	var sniper = run.boss
+	run.state = Run.State.PLAY
+	run.paddle_x = 640.0
+	run.target_x = 640.0
+	sniper.snipe_t = 0.001
+	for i in roundi((Boss.AIM_SECONDS + 0.2) * 60.0):
+		sniper._snipe(1.0 / 60.0)
+	var hexed_ok: bool = run.hexed > 0.0 and run.stunned == 0.0 and run.scorched == 0.0
+	# ---- the Void Mage ----
+	run.begin(int(dark_maps[19]))
+	var mage = run.boss
+	run.state = Run.State.PLAY
+	var gone: int = 0
+	for k in run.bricks:
+		if gone < Boss.REBUILD_COUNT and k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) \
+				and str(k["kind"]) == "land" and (k["rect"] as Rect2).position.y > mage.hall.end.y + 40.0:
+			run._damage(k, 99, null)
+			gone += 1
+	var shade_count: int = count_of.call("shadow")
+	mage.rebuild_t = 0.001
+	mage._ward_step(0.01)
+	var mage_ok: bool = count_of.call("shadow") == shade_count + Boss.REBUILD_COUNT and mage.wards.size() == Boss.WARDS
+	for k in run.bricks:
+		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) and str(k["kind"]) == "land" \
+				and (k["rect"] as Rect2).position.y > mage.hall.end.y + 40.0:
+			run._damage(k, 99, null)
+			break
+	var wells: int = run.voids.size()
+	mage.void_t = 0.001
+	mage.step(0.01, true)
+	mage_ok = mage_ok and run.voids.size() == wells + 1 and (run.voids[-1]["rect"] as Rect2).position.y > mage.hall.end.y
+	# ---- the Crowned Beholder, and the end ----
+	run.begin(int(dark_maps[24]))
+	var lord = run.boss
+	run.state = Run.State.PLAY
+	var last_ok: bool = lord.crowned and str(lord.title) == "The Crowned Beholder" and run.final_map()
+	run.paddle_x = lord.p.x - 380.0
+	run.target_x = run.paddle_x
+	lord.gaze_t = 0.001
+	lord._gaze(0.01)
+	var gazing: bool = lord.gaze_warn > 0.0 and lord.gaze_left == 0.0
+	lord._gaze(Boss.GAZE_WARN + 0.01)
+	gazing = gazing and lord.gaze_left > 0.0 and run.stunned == 0.0
+	var from_x: float = lord.gaze_x
+	lord._gaze(0.5)
+	gazing = gazing and absf(absf(lord.gaze_x - from_x) - Boss.GAZE_SPEED * 0.5) < 1.0 and run.stunned == 0.0
+	for i in 60:
+		lord._gaze(1.0 / 60.0)
+	gazing = gazing and run.stunned > 0.0
+	run.stunned = 0.0
+	for i in 30:
+		lord._gaze(1.0 / 60.0)
+	gazing = gazing and run.stunned == 0.0
+	@warning_ignore("integer_division")
+	run._hit_boss(lord.hp - lord.most / 3 + 1)
+	lord.eclipse_t = 0.001
+	lord.step(0.01, true)
+	last_ok = last_ok and run.blackout > 0.0 and lord.minions.size() > 0
+	run._hit_boss(lord.hp)
+	run.step(1.0 / 60.0)
+	last_ok = last_ok and run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "THE LAST CROWN FALLS!") \
+		and run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "Every land is healed.")
+	for i in roundi(Run.CLEARED_SECONDS * 60.0) + 2:
+		run.step(1.0 / 60.0)
+	last_ok = last_ok and run.state == Run.State.OVER
+	run.begin(int(dark_maps[0]) - 1)
+	last_ok = last_ok and not run.final_map()
+	# the screen says so at the end
+	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
+	var screen: CanvasLayer = Screen.new()
+	screen.set("pays", {"maps": []})
+	screen.set("progress", Maps.made_count() - 1)
+	screen.set("run_id", 0)
+	screen.set("on_touch", func() -> bool: return false)
+	add_child(screen)
+	var srun: Node2D = screen.get("run")
+	var finale: String = ""
+	if srun != null:
+		srun.set("running_by_clock", false)
+		srun.begin(int(dark_maps[24]))
+		srun.state = Run.State.PLAY
+		srun._hit_boss(srun.boss.hp)
+		for i in roundi(Run.CLEARED_SECONDS * 60.0) + 3:
+			srun.step(1.0 / 60.0)
+		screen.call("paint")
+		finale = (screen.get("result_line") as Label).text
+	screen.queue_free()
+	last_ok = last_ok and finale == "The seventh crown is yours - every land is healed"
+	check("  DARK'S BOSSES: the Inferno's fall leads on into the Kingdom of Dark; the Shadow King snuffs the last lantern and his young turn bricks to shadow (never a lantern); the Wisp steals the light; the Shade Sniper's shot hexes the paddle; the Void Mage rebuilds in shadow and opens a void well; the Crowned Beholder's gaze warns, then follows the paddle at %d px a second and stuns it once, his eclipse leaves only the balls' light, he splits - and his fall is THE LAST CROWN, every land healed, the end of the run, and the screen says the seventh crown is yours" % int(Boss.GAZE_SPEED),
+		on_to_dark and snuffed and young and stolen and hexed_ok and mage_ok and gazing and last_ok,
+		[on_to_dark, snuffed, young, stolen, hexed_ok, mage_ok, gazing, last_ok])
+	print("  crownfall dark: done")
+
+
+func _test_crownfall_powerups(run: Node2D) -> void:
+	"""The five bonuses of 0.165.0: Magnet, Split, Big Ball, Extra Life and
+	the Elemental Ball in each of its lands."""
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	# ---- the Magnet ----
+	_cf_bare(run)
+	run.paddle_x = 640.0
+	run.target_x = 640.0
+	run.active = {"magnet": Run.BONUS["magnet"]["secs"]}
+	var held: Dictionary = run._ball(Vector2(670, Run.PADDLE_Y - 30.0), Vector2(0, Run.SPEED))
+	run.balls = [held]
+	for i in 6:
+		run._move(held, 1.0 / 60.0)
+	var stuck: bool = held.has("stuck") and (held["v"] as Vector2) == Vector2.ZERO
+	run.target_x = 600.0
+	for i in 20:
+		run.step(1.0 / 60.0)
+	var rode: bool = stuck and absf((held["p"] as Vector2).x - (run.paddle_x + float(held["stuck"]))) < 0.5
+	run.launch()
+	var let_go: bool = not held.has("stuck") and (held["v"] as Vector2).y < 0.0 and (held["v"] as Vector2).x > 0.0
+	held["stuck"] = 0.0
+	held["stick_t"] = Run.MAGNET_HOLD
+	held["v"] = Vector2.ZERO
+	for i in roundi((Run.MAGNET_HOLD + 0.1) * 60.0):
+		run.step(1.0 / 60.0)
+	var by_itself: bool = not held.has("stuck") and (held["v"] as Vector2).length() > 0.0
+	# ---- Split ----
+	_cf_bare(run)
+	run.active = {"split": 10.0}
+	var splitter: Dictionary = run._ball(Vector2(640, 400), Vector2(0, -Run.SPEED))
+	run.balls = [splitter]
+	run._damage(run._add(10, 6, "land", "light", 1), 1, splitter)
+	var split_ok: bool = run._new_balls.size() == 1
+	run.balls = []
+	for i in Run.MOST_BALLS:
+		run.balls.append(run._ball(Vector2(640, 400), Vector2(0, -Run.SPEED)))
+	run._new_balls.clear()
+	run._damage(run._add(12, 6, "land", "light", 1), 1, run.balls[0])
+	split_ok = split_ok and run._new_balls.is_empty()
+	# ---- the Big Ball ----
+	_cf_bare(run)
+	run.active = {"big": 8.0}
+	var round_it: Array = []
+	for r in [5, 6, 7]:
+		for c in [9, 10, 11]:
+			round_it.append(run._add(c, r, "land", "light", 1))
+	var big_ball: Dictionary = run._ball(run._cell(10, 7).get_center() + Vector2(0, 30), Vector2(0, -Run.SPEED))
+	run.balls = [big_ball]
+	for i in 12:
+		run._move(big_ball, 1.0 / 60.0)
+	var big_ok: bool = run.ball_r() == Run.BALL_R * Run.BIG_SIZE \
+		and round_it.filter(func(k: Dictionary) -> bool: return int(k["hp"]) == 0).size() >= 6
+	# ---- the Extra Life ----
+	_cf_bare(run)
+	run.lives = 3
+	run._next_bonus = Run.LIFE_EVERY - 1
+	run._drop(Vector2(640, 300))
+	var life_ok: bool = str(run.caps[-1]["kind"]) == "life"
+	run._take("life")
+	life_ok = life_ok and run.lives == 4
+	run.lives = Run.LIVES_MOST
+	run._take("life")
+	life_ok = life_ok and run.lives == Run.LIVES_MOST
+	check("CROWNFALL'S NEW BONUSES: the Magnet holds a ball where it lands, carries it with the paddle and lets it go at a launch - or by itself after %ss; Split breaks a ball in two at each brick, %d balls at most; the Big Ball strikes the bricks round what it hits; every %dth bonus is an Extra Life, %d lives at most" % [str(Run.MAGNET_HOLD), Run.MOST_BALLS, Run.LIFE_EVERY, Run.LIVES_MOST],
+		stuck and rode and let_go and by_itself and split_ok and big_ok and life_ok,
+		[stuck, rode, let_go, by_itself, split_ok, big_ok, life_ok])
+	# ---- the Elemental Ball ----
+	_cf_bare(run)
+	run._next_bonus = 2
+	run._drop(Vector2(640, 300))
+	var cap: Dictionary = run.caps[-1]
+	var dropped: bool = str(cap["kind"]) == "element" and Run.ELEMENTS.has(str(cap.get("land", "")))
+	var orb: Dictionary = run._ball(Vector2(640, 400), Vector2(0, -Run.SPEED))
+	run.balls = [orb]
+	cap["p"] = Vector2(run.paddle_x, Run.PADDLE_Y)
+	run._capsules(0.0)
+	var took: bool = run.element() == str(cap["land"]) and str(orb["el"]) == str(cap["land"])
+	var by_land := func(land: String) -> Dictionary:
+		_cf_bare(run)
+		run.active = {"element": 12.0}
+		run.ball_land = land
+		var ball: Dictionary = run._ball(Vector2(640, 400), Vector2(0, -Run.SPEED))
+		ball["el"] = land
+		run.balls = [ball]
+		return ball
+	# a ball fresh from x3 Balls carries nothing: the land is still the Orb's
+	var b: Dictionary = by_land.call("fire")
+	b["el"] = ""
+	var ice_brick: Dictionary = run._add(10, 6, "land", "ice", 1)
+	run.words.clear()
+	run._react_said = -1.0
+	run._damage(ice_brick, 1, b)
+	var kept: bool = str(b["el"]) == "fire" and run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "STEAM!")
+	b = by_land.call("fire")
+	var beside: Dictionary = run._add(11, 6, "land", "light", 1)
+	run._damage(run._add(10, 6, "land", "fire", 1), 1, b)
+	var burnt: bool = float(beside["burn"]) >= 0.0
+	b = by_land.call("water")
+	var splashed: Dictionary = run._add(11, 6, "land", "light", 1)
+	run._damage(run._add(10, 6, "land", "water", 1), 1, b)
+	var wet: bool = int(splashed["hp"]) == 0
+	b = by_land.call("ice")
+	var cold: Dictionary = run._add(10, 6, "stone", "", 3)
+	run._damage(cold, 1, b)
+	var froze: bool = bool(cold.get("frozen", false)) and int(cold["hp"]) == 2
+	b = by_land.call("earth")
+	var rock: Dictionary = run._add(10, 6, "stone", "", 3)
+	b["p"] = run._cell(10, 6).get_center() + Vector2(0, 26)
+	for i in 12:
+		run._move(b, 1.0 / 60.0)
+	var heavy: bool = int(rock["hp"]) == 1
+	b = by_land.call("light")
+	run._add(10, 5, "guard", "light", 2)
+	var guarded: Dictionary = run._add(11, 5, "land", "light", 1)
+	var clam: Dictionary = run._add(14, 5, "clam", "water", 1)
+	clam["phase"] = 0.0
+	run.t = Run.CLAM_OPEN + 0.5
+	run._damage(guarded, 1, b)
+	run._damage(clam, 1, b)
+	var bright: bool = int(guarded["hp"]) == 0 and int(clam["hp"]) == 0
+	b = by_land.call("dark")
+	run.combo = 0
+	var doubled: bool = run._multiplier() == 2.0
+	b = by_land.call("wind")
+	run._add(20, 6, "land", "light", 1)
+	b["p"] = Vector2(Run.FIELD_X + 10.0 * run.cw, 420.0)
+	for i in 30:
+		run._wind_ball(1.0 / 60.0)
+	var curved: bool = (b["v"] as Vector2).x > 20.0
+	check("  the Elemental Ball falls in a land of its own and the ball takes it; it keeps it, so each other land sets off their reaction; fire sets what is beside burning, water splashes it, ice freezes what it hits, earth hits twice as hard, light goes through a Guard's shield and finds a clam open, dark doubles the score, wind curves toward a brick",
+		dropped and took and kept and burnt and wet and froze and heavy and bright and doubled and curved,
+		[dropped, took, kept, burnt, wet, froze, heavy, bright, doubled, curved])
+	run.active.clear()
+	run.ball_land = ""
+	print("  crownfall bonuses: done")
 
 
 func _cf_bare(run: Node2D) -> void:
@@ -1947,7 +3001,7 @@ func _test_crownfall() -> void:
 	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
 	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
 	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
-	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<DWkuoQ"
+	const LETTERS := ".lawiefdSIMT?BHR1234567CUOKLGNZXYp<DWkuoQFPsVAEbgnhzJqrtmv"
 	var bad_rows: Array = []
 	for m in Maps.MAPS:
 		var rows: Array = m["rows"]
@@ -1978,17 +3032,34 @@ func _test_crownfall() -> void:
 	var water_maps: Array = Maps.maps_of("water")
 	var big_of := func(of: Array) -> int:
 		return of.filter(func(i: int) -> bool: return str(Maps.MAPS[i]["rows"][0]).length() == Maps.BIG_COLS).size()
+	var ice_maps: Array = Maps.maps_of("ice")
+	var earth_maps: Array = Maps.maps_of("earth")
+	var fire_maps: Array = Maps.maps_of("fire")
+	var dark_maps: Array = Maps.maps_of("dark")
 	var big_wind: int = big_of.call(wind_maps)
 	var big_water: int = big_of.call(water_maps)
-	check("the maps: Light's %d, Wind's %d (%d of them big) and Water's %d (%d big), every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms, three made; a boss on every %dth map (%s) in each kingdom's own order, the last crowned, each with a hall; the story told in %d lines" % [
-		light.size(), wind_maps.size(), big_wind, water_maps.size(), big_water, Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
-		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 3 and str(made[0]["id"]) == "light"
-		and str(made[1]["id"]) == "wind" and str(made[2]["id"]) == "water" and light.size() == Maps.MAPS_A_KINGDOM
-		and wind_maps.size() == Maps.MAPS_A_KINGDOM and water_maps.size() == Maps.MAPS_A_KINGDOM
-		and light.size() + wind_maps.size() + water_maps.size() == Maps.made_count() and big_wind >= 10 and big_water >= 10
+	var big_ice: int = big_of.call(ice_maps)
+	var big_earth: int = big_of.call(earth_maps)
+	var big_fire: int = big_of.call(fire_maps)
+	var big_dark: int = big_of.call(dark_maps)
+	check("the maps: Light's %d, Wind's %d (%d of them big), Water's %d (%d big), Ice's %d (%d big, every one), Earth's %d (%d big, every one), Fire's %d (%d big, every one) and Dark's %d (%d big, every one), every row %d letters of the legend (%d on a big map), at most %d rows (%d); seven kingdoms, all seven made; a boss on every %dth map (%s) in each kingdom's own order, the last crowned, each with a hall; the story told in %d lines" % [
+		light.size(), wind_maps.size(), big_wind, water_maps.size(), big_water, ice_maps.size(), big_ice, earth_maps.size(), big_earth,
+		fire_maps.size(), big_fire, dark_maps.size(), big_dark,
+		Maps.COLS, Maps.BIG_COLS, Maps.ROWS_MOST, Maps.BIG_ROWS_MOST, Maps.BOSS_EVERY, bosses, Maps.STORY.size()],
+		bad_rows.is_empty() and Maps.KINGDOMS.size() == 7 and made.size() == 7 and str(made[0]["id"]) == "light"
+		and str(made[1]["id"]) == "wind" and str(made[2]["id"]) == "water" and str(made[3]["id"]) == "ice" and str(made[4]["id"]) == "earth"
+		and str(made[5]["id"]) == "fire" and fire_maps.size() == Maps.MAPS_A_KINGDOM and big_fire == Maps.MAPS_A_KINGDOM
+		and int(fire_maps[0]) == int(earth_maps[0]) + earth_maps.size()
+		and str(made[6]["id"]) == "dark" and dark_maps.size() == Maps.MAPS_A_KINGDOM and big_dark == Maps.MAPS_A_KINGDOM
+		and int(dark_maps[0]) == int(fire_maps[0]) + fire_maps.size() and Maps.made_count() == Maps.MAPS.size()
+		and light.size() == Maps.MAPS_A_KINGDOM and wind_maps.size() == Maps.MAPS_A_KINGDOM and water_maps.size() == Maps.MAPS_A_KINGDOM
+		and ice_maps.size() == Maps.MAPS_A_KINGDOM and earth_maps.size() == Maps.MAPS_A_KINGDOM
+		and light.size() + wind_maps.size() + water_maps.size() + ice_maps.size() + earth_maps.size() + fire_maps.size() + dark_maps.size() == Maps.made_count()
+		and big_wind >= 10 and big_water >= 10 and big_ice == Maps.MAPS_A_KINGDOM and big_earth == Maps.MAPS_A_KINGDOM
 		and int(wind_maps[0]) == light.size() and int(water_maps[0]) == light.size() + wind_maps.size()
+		and int(ice_maps[0]) == int(water_maps[0]) + water_maps.size() and int(earth_maps[0]) == int(ice_maps[0]) + ice_maps.size()
 		and Maps.MAPS_A_KINGDOM == Maps.BOSS_EVERY * Maps.STRETCHES
-		and bosses.size() == 3 * Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
+		and bosses.size() == 7 * Maps.STRETCHES and bosses.all(func(i: int) -> bool: return (i + 1) % Maps.BOSS_EVERY == 0)
 		and boss_kinds and Maps.STORY.size() == 5 and Maps.BOSS_SLOTS.size() == Maps.STRETCHES,
 		[bad_rows, bosses, boss_kinds])
 	var run: Node2D = Run.new()
@@ -2579,6 +3650,11 @@ func _test_crownfall() -> void:
 		[crowned_now, none_yet, one_split, three_split, ruler_aimed, crown_words, crown_won, run.state, run.map_index])
 	await _test_crownfall_wind(run, wind_maps)
 	await _test_crownfall_water(run, water_maps)
+	_test_crownfall_ice(run, ice_maps)
+	_test_crownfall_earth(run, earth_maps)
+	_test_crownfall_fire(run, fire_maps)
+	_test_crownfall_dark(run, dark_maps)
+	_test_crownfall_powerups(run)
 	# ---- words never land on words ----
 	run.begin(0)
 	run.words.clear()

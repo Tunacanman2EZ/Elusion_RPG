@@ -15250,6 +15250,295 @@ bot (the tide brought in early) before the rest. Water is `made`, maps
   passed at first (its cap was full of older cells), so a second tide is
   checked too.
 
+### Crownfall's frame, made over (0.165.0)
+
+The owner: "can you make the ui look even better like the area outside like
+score and all the other stuff", then "yes it looks great" to the before and
+after pictures (sandbox zz/crownui). Drawing only - nothing about play:
+
+- **Every panel** (`_panel(r, tint)`): a shadow, a body lit from above, the
+  bronze edge, a fine inner line in the kingdom's colour and gold diamonds at
+  its corners like the arena's; headings sit on a fading rule with a gem
+  (`_divider()`).
+- **The top bar** (`_draw_hud()`): the kingdom's crest (`_crest()`) and its
+  colour washing along the bar; the map's name, and "A guardian / The
+  citadel  ·  Map n of 25  ·  kingdom" under it; the score in gold, rolling up
+  to the real one (`shown_score`) with the last gain popping off it
+  (`score_pops`, one at a time); the coin bouncing when the run's gold rises
+  (`_gold_bounce`); the combo as five flame segments to the next step of the
+  multiplier, a flicker over the last lit; the multiplier in a hexagon badge
+  that pulses as it rises (`_mult_pop`); the lives as hearts, one cracking in
+  two when lost (`_heart_crack`). All of it is moved by `_frame_life()`, from
+  `_effects()`.
+- **The left panel**: each bonus on is a card with its time a ring round its
+  icon and the seconds under its name, blinking in its last two; THE BALL is
+  an orb in the land it carries and lists what it would set off next (+ wind
+  STORM, + ice GLACIER - `reaction_of()`, so the list is the reactions' own);
+  CAN FALL as tiles.
+- **The right panel**: the ring in the kingdom's colour (red with the boss's
+  name and health on a boss's map), ticks, a glow and a bright head; the
+  ladder's path lit gold between maps cleared, the one now pulsing, the
+  citadel's node crowned; the best combo in a box of its own.
+- **The kingdom's air** (`_draw_air()`, behind the bricks): motes rising in
+  Light, streaks in Wind, small bubbles in Water - faint and small, so none
+  is taken for a ball.
+
+### Crownfall: five more bonuses (the same 0.165.0)
+
+The owner: "we also need more kinds of power ups magnet was always a good
+one split balls elemental balls", and of the plan, on the Elemental
+capsules: "giving each capsule a crisp elemental icon + color tint (matching
+your THE BALL orb colors and brick runes)". In `BONUS` and the turn
+(`BONUS_ORDER`, the Elemental Ball twice in it); `CAN_FALL` is each kind once
+for the panel (a grid four wide now).
+
+- **Magnet** (12 s): a ball landing on the paddle sticks where it landed
+  (`stuck`, its offset), rides the paddle and goes at a click or Space - the
+  screen now calls `launch()` in PLAY too, which lets held balls go
+  (`_unstick()`) - or by itself after `MAGNET_HOLD`, off that spot as a
+  bounce would. A purple field shows on the paddle.
+- **Split** (10 s): every brick a ball breaks splits it in two,
+  `SPLIT_TURN` apart, `MOST_BALLS` at most (`_ball_breaks()`).
+- **Big Ball** (8 s): `ball_r()` is `BIG_SIZE` times `BALL_R` - `_move()`
+  and the drawing read it - and the bricks round what it strikes take a hit.
+- **Extra Life**: every `LIFE_EVERY`-th bonus in place of the turn's, up to
+  `LIVES_MOST`; the bar draws a heart for each.
+- **Elemental Ball** (12 s): the capsule falls in one land (`land`, the
+  seven in turn), in that land's colour with that land's brick mark
+  (`_draw_land_mark()`) - "Fire Orb", "Ice Orb"... once taken
+  (`bonus_name()`), so it is never confused with the Fireball. While it
+  lasts the ball keeps its land (`element()`, `ball_land`; `_charge()`), so
+  every other land's brick sets off their reaction, and the land's own
+  way: fire sets the bricks beside what it breaks burning, water splashes
+  them, ice freezes what it hits (the next touch breaks it), wind curves
+  the ball toward the nearest brick (`_wind_ball()`, `WIND_TURN`), earth
+  hits twice as hard (bosses too), light goes through Guards' shields and
+  finds runes lit and clams open, dark doubles the score (`_multiplier()`).
+- The bonus cards shrink when many are on, so they always fit above THE
+  BALL.
+- `_test_crownfall_powerups()` (testrunner_12): each of them, each land.
+  Fifteen sabotages caught - two only after the checks were sharpened
+  (a fire burn hidden by the steam's own blast; a fresh ball from x3
+  Balls, carrying nothing, still taking the Orb's land).
+
+### Crownfall: the Kingdom of Ice (the same 0.165.0)
+
+The owner: "looks good lets do then build the new maps make them bigger and
+have bricks that take more then 1 hit". Ice is `made`, maps 76-100; the run
+carries on into it from the Leviathan's deep.
+
+- **25 maps, every one big** (48 x 28), most bricks more than one hit: a
+  snowflake, igloos, a frozen lake, pines, the Frost King's hollow, a
+  mammoth, penguins, a snow globe, crystal spires, an icefall, the aurora, a
+  polar bear, a sled run, a narwhal, a ridge, a snowman, a glacier, ice
+  fishing, an owl, a sanctum, a snow fort, a yeti, a peak, an ice palace and
+  the Glacier Throne (sandbox maps7.py).
+- **Frost** (`F`, a map's `"frost"` rows, the Frost King's young, the Frost
+  Mage): a coat on a brick (`frost`) that one hit knocks off before the brick
+  can be hurt (`_damage()`); a blow of 99 (fire, a frozen brick's touch) goes
+  through it.
+- **Packed ice** (`P`): three hits, cracking. **Snowdrifts** (`s`): two hits,
+  and a ball that strikes one keeps `DRIFT_KEEP` of its speed a moment.
+- **Icicles** (`V`): hung under a brick; when that brick breaks
+  (`drop_icicle()`) they fall at `ICICLE_SPEED` and strike the first brick
+  below for `ICICLE_HIT`, or stun the paddle (`_icicles()`).
+- **Slick ice** (a map's `"slick"` rows): a ball in them runs `SLICK_SPEED`
+  times as fast (`on_slick()`).
+- **Ice's bosses**: the **Frost King** (260; splits, his young frost-coat
+  the bricks they land on - `frost_at()` - and his breath every
+  `BREATH_EVERY` slows the balls near him, `chill_from()`), the **Snow
+  Sprite** (240; darts, and every `ICICLE_EVERY` hangs an icicle under a
+  brick near it - `hang_icicle()`, the lowest brick with room under it -
+  which falls after `ICICLE_HANG`), the **Ice Sniper** (280; marks the
+  paddle like the Sniper, and his lance ices it - `ice_paddle()`: it slides,
+  slow to start and slow to stop), the **Frost Mage** (300; wards, rebuilds
+  in frost - `rebuild_near(..., "frost")` - and raises packed ice under his
+  gate every `ICE_WALL_EVERY`, `ice_wall()`), and the **Glacier Lord** (460,
+  crowned; an avalanche every `AVALANCHE_EVERY` pours snowdrifts down a band
+  of columns - `avalanche()` - and he splits under two thirds).
+- The bar draws at most `LIVES_MOST` hearts (a picture scene's 99 lives drew
+  99).
+- **Gold**: Ice a quarter more again, 35,060 - a whole run from the first map
+  is past the day's allowance now (the API's CLAUDE.md, "Crownfall").
+- `_test_crownfall_ice()` (testrunner_12). Seventeen sabotages caught -
+  four only after the checks were sharpened (a fire blow 99 to 98 broke the
+  brick all the same; a wall on a row narrower than its cap; the breath
+  aimed at the wrong file; the young's frost checked through the hook, not
+  their landing).
+
+### Crownfall: the Kingdom of Earth (the same 0.165.0)
+
+The owner: "next area", then "sounds good" to the plan. Earth is `made`,
+maps 101-125; the run carries on into it from the Glacier Throne. Its
+trick: "Break a pillar's foot and all above it falls."
+
+- **25 maps, every one big** (48 x 28): a canyon of hoodoos, a quarry,
+  Stonehenge, a mine, the Stone King's hollow, hoodoos, dunes, cliff
+  dwellings, a geode, the badlands, terraces, a pyramid, a colossus, a
+  sinkhole, a mesa, a fossil bed, temple ruins, mole tunnels, a boulder
+  field, a grotto, an aqueduct, a great wall, a gold seam, a mountain pass
+  and the Mountain Throne (sandbox maps8.py). The map writer keeps `A`, `E`
+  and `b` out of the Guards (`KEEP`): a Guard in a pillar or half a boulder
+  would break the shape.
+- **Pillars**: a **foot** (`A`, two hits, red clay with a mark; the first hit
+  cracks it and the crack glows) under **pillar stone** (`E`, two hits).
+  Break the foot (`_damage()` -> `topple()`) and every brick stacked on it
+  up to the first gap lets go (`_let_go()`): off the grid, counted broken,
+  `TOPPLE_SCORE` a block, and falling as **rubble** at `RUBBLE_SPEED` that
+  strikes the first brick below for `RUBBLE_HIT` (`_earth()`). A core, a
+  key, a lock or a Guard stops the topple (`TOPPLE_KEEP`), as iron does.
+- **Boulders** (`b`): two `b` side by side are one brick over both cells
+  (`cells`, its rect the two merged), four hits, cracking; drawn at its own
+  size, not scaled from the standard brick. A lone `b` is a one-cell boulder.
+- **Ore** (`g`): three hits, `SCORE["ore"]` (500) and a shower of gold - score,
+  not gold: the run's gold is the server's table, a map at a time.
+- **Sand** (`n`): one hit; every `SAND_STEP` a sand brick with an empty cell
+  under it (on the map's rows, not the hall, no ball there) drops into it,
+  the lowest first (`_settle()`). It does not mark the footprint as it falls
+  (a trail of backdrop down the column was what that drew).
+- **Tremors**: on an earth map (`tremors`, from the kingdom's land) every
+  `TREMOR_EVERY` (30 s, playing) the ground rumbles for `TREMOR_WARN` (the
+  arena shakes, "THE GROUND RUMBLES..."), then `tremor_now(false)`: every
+  pillar on a cracked foot falls and every ball is turned up to
+  `TREMOR_TURN` degrees, its speed kept.
+- **Earth's bosses**: the **Stone King** (280; splits, his young pile sand
+  where they land on nothing - `pile_sand()` - and every `STOMP_EVERY` he
+  stomps: `tremor_now(false)`), the **Dust Sprite** (260; darts, and every
+  `DUST_EVERY` kicks up `DUST_MOST` sand into the broken cells nearest it -
+  `rebuild_near(..., "sand")`), the **Rock Sniper** (300; marks the paddle
+  like the Sniper, and his shot weighs it down - `weigh_paddle()`: `heavy`,
+  the paddle at `HEAVY_SHARE` of its pace, rocks drawn on it), the **Earth
+  Mage** (the bush mage's own art - there is no earth bush mage; 325; wards,
+  rebuilds in stone, and every `PILLAR_EVERY` raises a pillar in a column
+  under his hall - `raise_pillar()`: a foot on the lowest empty cell with
+  something under it, stones above, `PILLAR_TALL` at most), and the
+  **Mountain Lord** (500, crowned; every `QUAKE_EVERY` a quake -
+  `tremor_now(true)`, every pillar down - and boulders, three hits, dropped
+  into the empty pairs of cells the map held in a band of `ROCKFALL_WIDE`
+  columns, `rockfall()`, `ROCKFALL_MOST` at most; he splits under two
+  thirds, quakes faster under one).
+- **Gold**: Earth a quarter more again, 43,885; a whole run from the first
+  map is 147,430, past the day's allowance (the API's CLAUDE.md,
+  "Crownfall").
+- `_test_crownfall_earth()` (testrunner_12). Twenty-five sabotages caught -
+  one only after the check was sharpened (the topple's own score taken out
+  was hidden by the blocks' scores; it is now pinned to the point).
+
+### Crownfall: the Kingdom of Fire (the same 0.165.0)
+
+The owner: "awesome onto the next area", then "sounds good" to the plan.
+Fire is `made`, maps 126-150; the run carries on into it from the Mountain
+Throne. Its trick: "TNT that chains, and fire that spreads."
+
+- **25 maps, every one big**: an ember gate, a forge, kilns, a powder mill,
+  the Fire King's hearth, a lava lake, a burning wood, a phoenix, a dragon's
+  hoard, a brazier, a volcano, a fire temple, fireworks, a magma hall, the
+  crags, a bonfire, a salamander, lava falls, ash wastes, a crucible, siege
+  works, a fire dragon, an obsidian spire, a caldera and the Inferno Throne
+  (sandbox maps9.py; `z` and `J` kept out of the Guards too). Pools are
+  mostly fire bricks with lava in streaks (`lava_pool()`'s `molten`): a lake
+  all of lava would cool into a wall of basalt.
+- **Wood** (`h`): two hits from a ball. Fire catches it - a blast
+  (`_explode()`), a Fireball or a fire Elemental Ball (`_damage()`), wood or
+  a fuse burnt out beside it, lava broken beside it - and it burns
+  `WOOD_BURN`, then breaks and lights what touches it (`_catch_round()`:
+  wood, fuses, TNT, kegs - `CATCHES`).
+- **`_burns()` takes only what was burning as the tick began**: what
+  catches in a tick burns from the next, so a chain goes a link at a time
+  whatever the order of `bricks` (it could run a whole frame of wood at once
+  before).
+- **Fuses** (`z`): a blow under 99 lights one rather than breaks it
+  (`FUSE_STEP`); burnt out, it lights what touches it - the spark runs down
+  the line to the TNT or keg at its end.
+- **Powder kegs** (`J`): two hits; `_explode(mid, KEG_BLAST)` - 150 px, the
+  TNT and kegs in it set off, wood caught, the rest two hits.
+- **Obsidian** (`q`): four hits. **Lava** (`r`): one hit while hot; while
+  playing its `cool` runs down `LAVA_COOL` (20 s) and it turns to **basalt**
+  (three hits). Drawn molten under a crust, greying as it cools.
+- **Eruptions**: on a fire map (`eruptions`) every `ERUPT_EVERY` (30 s,
+  playing) "THE VOLCANO RUMBLES..." for `ERUPT_WARN`, then `erupt_now()`:
+  `ERUPT_BOMBS` lava bombs across the field from the arena's top
+  (`lava_bomb()`). A bomb that meets a brick sets as lava in the cell it
+  came from (`_set_lava()`: empty, on the grid, not the hall, no ball);
+  past the bricks, one on the paddle stuns it `BOMB_STUN`.
+- **Fire's bosses**: the **Fire King** (300; the earth slime's art in
+  fire's colour - `tint`, through `sprite_of(..., recolour_to)`, the element
+  recolour every monster variant wears: the game has no fire slime or fire
+  bush sniper; splits, his young leave lava where they land on nothing and
+  set wood and fuses alight - `lava_at()` - and every `ERUPT_CALL_EVERY` he
+  calls an eruption of `ERUPT_CALL_BOMBS`), the **Flame Sprite** (280; darts,
+  and every `PATCH_EVERY` sets fire on the floor where the paddle is -
+  `fire_patch()`: embers `PATCH_WARN`, then flames `PATCH_LIFE` that stun the
+  paddle in them once; drawn over the paddle), the **Fire Sniper** (320, the
+  earth sniper in fire's colour; his shot scorches the paddle -
+  `scorch_paddle()`: `SCORCH_SHARE` of its width, charred), the **Fire
+  Mage** (350; wards, rebuilds in obsidian, and every `METEOR_EVERY` throws
+  `METEORS` lava bombs from under his hall), and the **Inferno** (540,
+  crowned; an eruption of `INFERNO_BOMBS` every `INFERNO_EVERY`, splits
+  under two thirds, faster under one).
+- **Gold**: Fire a quarter more again, 54,840; a whole run from the first map
+  is 202,270, past the day's allowance (the API's CLAUDE.md, "Crownfall").
+- `_test_crownfall_fire()` (testrunner_12). Thirty sabotages caught - one
+  only after the check was sharpened (a blast that no longer set off kegs:
+  nothing checked a keg set off by another's blast).
+
+### Crownfall: the Kingdom of Dark, the last (the same 0.165.0)
+
+The owner: "awesome next area", then "sounds good" to the plan. Dark is
+`made`, maps 151-175; the run carries on into it from the Inferno Throne,
+and with it all seven kingdoms are made. Its trick: "Bricks unseen until
+your light finds them."
+
+- **25 maps, every one big**: the dark gate, a graveyard, a manor, a bat
+  cave, the Shadow King's crypt, a black wood, the night sky, a spider's
+  web, the abyss, the Wisp's marsh, a raven, an eclipse, a labyrinth, a
+  witch's hut, a bell tower, a ghost ship, a black cat, a mirror hall, a
+  chapel, the Void Mage's rift, a nightmare, starfall, a portal ring, the
+  black road and the Beholder's citadel (sandbox maps10.py; `t` and `v`
+  kept out of the Guards).
+- **The dark** (`dark`, from the kingdom's land): `_dark()` gives every
+  brick a `seen` (0..1): up quickly where light falls on it, down over
+  `SEEN_FADE` where none does. The light is `light_sources()` - each ball
+  `LIGHT_BALL` (x`DIM_SHARE` while the Wisp has it, x1.6 for a light
+  Elemental Ball) and the paddle `LIGHT_PADDLE` (none in the Beholder's
+  eclipse), all x`NIGHT_SHARE` at nightfall - and the lanterns, kept on each
+  brick as `lamp` (the distance to the nearest one lit, worked out once and
+  forgotten when a lantern is lit or snuffed - `_relamp()`), within
+  `lamp_reach()`. Drawn: the arena dimmed (`_draw_dark()`), a glow round each
+  light, and over each brick a shroud for what is not seen, leaving a
+  `GHOST` of it; a Guard's glow shows only as much as its Guard.
+- **Lanterns** (`t`): one hit; broken, `light_lantern()` - its light for good
+  (`lanterns`). **Shadow bricks** (`m`): two hits; one hurt heals a hit every
+  `SHADOW_HEAL` it is unseen (playing). **Void wells** (`v`): three hits; a
+  ball within `VOID_REACH` turns toward one, `VOID_TURN` degrees a second, its
+  speed kept (`_voids()`, the `voids` list).
+- **Nightfall**: on a dark map every `NIGHT_EVERY` (playing) "THE DARK
+  DEEPENS..." for `NIGHT_WARN`, then every light at `NIGHT_SHARE` for
+  `NIGHT_SECONDS`.
+- **Dark's bosses**: the **Shadow King** (320; splits, his young turn the
+  bricks they land on to shadow - `shade_at()`, never a core, Guard, key,
+  lock, lantern or void, `DARK_KEEP` - and every `SNUFF_EVERY` he snuffs the
+  last lantern lit, `snuff()`), the **Wisp** (300; darts, and every
+  `DIM_EVERY` steals the balls' light, `dim_balls()` -> `light_stolen`), the
+  **Shade Sniper** (340; his shot hexes the paddle - `hex_paddle()`: it goes
+  to the other side of the arena from where it is sent), the **Void Mage**
+  (375; wards, rebuilds in shadow, and every `VOID_EVERY` opens a void well
+  in the broken cell nearest the field below his hall, `open_void()`), and
+  the **Crowned Beholder** (640, the "boss" art, the seventh crown; his
+  **gaze** every `GAZE_EVERY` - a line `GAZE_WARN` from where he stands,
+  then a beam that follows the paddle at `GAZE_SPEED` for `GAZE_SECONDS`,
+  stunning it once; under two thirds he splits, under one an **eclipse**
+  every `ECLIPSE_EVERY`, `eclipse_now()` -> `blackout`: only the balls give
+  light).
+- **The end**: `final_map()` - the last map of all with every kingdom made.
+  His fall says "THE LAST CROWN FALLS!" and "Every land is healed.", the run
+  is over, and the screen's result reads "The seventh crown is yours - every
+  land is healed" (crownfallscreen.gd `_show_results()`).
+- **Gold**: Dark a quarter more again, 68,540; a whole run from the first map
+  is 270,810, past the day's allowance (the API's CLAUDE.md, "Crownfall").
+- `_test_crownfall_dark()` (testrunner_12). Twenty-nine sabotages caught,
+  every one the first time.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

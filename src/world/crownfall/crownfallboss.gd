@@ -55,6 +55,73 @@
 #            in its wake at most; under two thirds he splits (his young turn
 #            to water like the Tide King's), at half health he dives once,
 #            and under a third the waves come faster.
+# THE KINGDOM OF ICE (0.165.0) has its own five:
+#   map 5    the Frost King (its large slime) - splits; his young frost-coat
+#            the bricks they land on; every BREATH_EVERY his breath slows
+#            every ball within BREATH_REACH to BREATH_KEEP of its speed.
+#   map 10   the Snow Sprite (its sprite) - darts and blinks; every
+#            ICICLE_EVERY it hangs an icicle under a brick near it, which
+#            falls in the run's ICICLE_HANG.
+#   map 15   the Ice Sniper (its bush sniper) - marks the paddle's column
+#            like the Sniper; his lance ices the paddle, which slides.
+#   map 20   the Frost Mage (its bush mage) - wards, rebuilds as
+#            frost-coated ice, and every ICE_WALL_EVERY raises a wall of
+#            packed ice under his gate.
+#   map 25   the Glacier Lord (the ice's boss, the crown) - throws; every
+#            AVALANCHE_EVERY an avalanche pours snowdrifts down a band of
+#            columns; under two thirds he splits (his young frost-coat), under
+#            a third the avalanches come faster.
+# THE KINGDOM OF EARTH (the same 0.165.0) has its own five:
+#   map 5    the Stone King (its large slime) - splits; his young pile sand
+#            where they land on nothing; every STOMP_EVERY he stomps, a
+#            tremor: every pillar on a cracked foot falls, every ball jolted.
+#   map 10   the Dust Sprite (its sprite) - darts and blinks; every
+#            DUST_EVERY it kicks up sand into the broken cells nearest it
+#            (DUST_MOST).
+#   map 15   the Rock Sniper (its bush sniper) - marks the paddle's column
+#            like the Sniper; his shot weighs the paddle down (SHOT_HEAVY).
+#   map 20   the Earth Mage (the bush mage) - wards and rebuilds in stone,
+#            and every PILLAR_EVERY raises a pillar (PILLAR_TALL) in a column
+#            under his hall.
+#   map 25   the Mountain Lord (the earth's boss, the crown) - throws; every
+#            QUAKE_EVERY a QUAKE topples every pillar standing and drops
+#            boulders into the broken cells of a band of ROCKFALL_WIDE
+#            columns; under two thirds he splits (his young pile sand), under
+#            a third the quakes come faster.
+# THE KINGDOM OF FIRE (the same 0.165.0) has its own five. The game has no
+# fire slime and no fire bush sniper, so the Fire King and the Fire Sniper
+# wear the earth slime's and the earth sniper's art in the fire's colour
+# (`tint`, the element recolour every monster's element variant wears):
+#   map 5    the Fire King (a large slime) - splits; his young leave lava
+#            where they land on nothing and set wood and fuses alight; every
+#            ERUPT_CALL_EVERY he calls an eruption.
+#   map 10   the Flame Sprite (its fire sprite) - darts and blinks; every
+#            PATCH_EVERY it sets fire on the floor where the paddle is.
+#   map 15   the Fire Sniper (a bush sniper) - marks the paddle's column like
+#            the Sniper; his shot scorches it short (SCORCH_SECONDS).
+#   map 20   the Fire Mage (its bush mage) - wards and rebuilds in obsidian,
+#            and every METEOR_EVERY throws METEORS lava bombs over the field.
+#   map 25   the Inferno (the fire's boss, the crown) - throws; every
+#            INFERNO_EVERY an eruption twice the size; under two thirds he
+#            splits (his young leave lava), under a third the eruptions come
+#            faster.
+# THE KINGDOM OF DARK (the same 0.165.0), the last, has its own five:
+#   map 5    the Shadow King (its large slime) - splits; his young turn the
+#            bricks they land on to shadow; every SNUFF_EVERY he snuffs the
+#            last lantern lit.
+#   map 10   the Wisp (its sprite) - darts and blinks; every DIM_EVERY it
+#            steals the balls' light (DIM_SECONDS).
+#   map 15   the Shade Sniper (its bush sniper) - marks the paddle's column
+#            like the Sniper; his shot hexes it (HEX_SECONDS: left and right
+#            swapped).
+#   map 20   the Void Mage (its bush mage) - wards and rebuilds in shadow,
+#            and every VOID_EVERY opens a void well below his hall.
+#   map 25   the Crowned Beholder (the dark's boss, the seventh crown) -
+#            throws; every GAZE_EVERY his GAZE follows the paddle down the
+#            field (GAZE_WARN, then GAZE_SECONDS at GAZE_SPEED - it stuns the
+#            paddle it finds, once); under two thirds he splits (his young
+#            shade bricks), under a third an ECLIPSE every ECLIPSE_EVERY:
+#            only the balls give light (ECLIPSE_SECONDS).
 # Every one walks its hall (the map's R cells), takes the ball's and the
 # lasers' hits, and - but the Sniper - throws at the paddle (a hit stuns it).
 # It is down at no health: the run says so, and its walls crumble.
@@ -66,27 +133,51 @@ extends RefCounted
 
 const KINDS := ["slimeking", "sprite", "sniper", "mage", "ruler",
 	"galeking", "whirlwind", "gustsniper", "stormmage", "tempest",
-	"tideking", "undine", "harpooner", "tidemage", "leviathan"]
+	"tideking", "undine", "harpooner", "tidemage", "leviathan",
+	"frostking", "snowsprite", "icesniper", "frostmage", "glacierlord",
+	"stoneking", "dustsprite", "rocksniper", "earthmage", "mountainlord",
+	"fireking", "flamesprite", "firesniper", "firemage", "inferno",
+	"shadowking", "wisp", "shadesniper", "voidmage", "beholder"]
 # Each kingdom's five, in the order of its stretches.
 const KINDS_OF := {"light": ["slimeking", "sprite", "sniper", "mage", "ruler"],
 	"wind": ["galeking", "whirlwind", "gustsniper", "stormmage", "tempest"],
-	"water": ["tideking", "undine", "harpooner", "tidemage", "leviathan"]}
+	"water": ["tideking", "undine", "harpooner", "tidemage", "leviathan"],
+	"ice": ["frostking", "snowsprite", "icesniper", "frostmage", "glacierlord"],
+	"earth": ["stoneking", "dustsprite", "rocksniper", "earthmage", "mountainlord"],
+	"fire": ["fireking", "flamesprite", "firesniper", "firemage", "inferno"],
+	"dark": ["shadowking", "wisp", "shadesniper", "voidmage", "beholder"]}
 # TOUGH (the owner: "bosses die too fast we really need to buff up bosses",
 # and "hitting with a ball does a bit more damage"): a ball's hit is the run's
 # BALL_HIT (3), a laser's 1, and a fight is about twice the ball hits it was.
 const HP := {"slimeking": 180, "sprite": 160, "sniper": 190, "mage": 200, "ruler": 300,
 	"galeking": 220, "whirlwind": 200, "gustsniper": 240, "stormmage": 250, "tempest": 380,
-	"tideking": 240, "undine": 220, "harpooner": 260, "tidemage": 275, "leviathan": 420}
+	"tideking": 240, "undine": 220, "harpooner": 260, "tidemage": 275, "leviathan": 420,
+	"frostking": 260, "snowsprite": 240, "icesniper": 280, "frostmage": 300, "glacierlord": 460,
+	"stoneking": 280, "dustsprite": 260, "rocksniper": 300, "earthmage": 325, "mountainlord": 500,
+	"fireking": 300, "flamesprite": 280, "firesniper": 320, "firemage": 350, "inferno": 540,
+	"shadowking": 320, "wisp": 300, "shadesniper": 340, "voidmage": 375, "beholder": 640}
 # How big each is drawn (their frames differ: a slime 48 px, a mage 150).
 const SCALE := {"slimeking": 3.0, "sprite": 1.7, "sniper": 2.3, "mage": 1.3, "ruler": 2.2, "minion": 1.25,
 	"galeking": 3.0, "whirlwind": 1.7, "gustsniper": 2.3, "stormmage": 1.3, "tempest": 2.2,
-	"tideking": 3.0, "undine": 1.7, "harpooner": 2.3, "tidemage": 1.3, "leviathan": 2.2}
+	"tideking": 3.0, "undine": 1.7, "harpooner": 2.3, "tidemage": 1.3, "leviathan": 2.2,
+	"frostking": 3.0, "snowsprite": 1.7, "icesniper": 2.3, "frostmage": 1.3, "glacierlord": 2.2,
+	"stoneking": 3.0, "dustsprite": 1.7, "rocksniper": 2.3, "earthmage": 1.3, "mountainlord": 2.2,
+	"fireking": 3.0, "flamesprite": 1.7, "firesniper": 2.3, "firemage": 1.3, "inferno": 2.2,
+	"shadowking": 3.0, "wisp": 1.7, "shadesniper": 2.3, "voidmage": 1.3, "beholder": 2.2}
 const BODY := {"slimeking": Vector2(66, 46), "sprite": Vector2(40, 40), "sniper": Vector2(44, 52),
 	"mage": Vector2(56, 64), "ruler": Vector2(70, 70),
 	"galeking": Vector2(66, 46), "whirlwind": Vector2(40, 40), "gustsniper": Vector2(44, 52),
 	"stormmage": Vector2(56, 64), "tempest": Vector2(70, 70),
 	"tideking": Vector2(66, 46), "undine": Vector2(40, 40), "harpooner": Vector2(44, 52),
-	"tidemage": Vector2(56, 64), "leviathan": Vector2(70, 70)}
+	"tidemage": Vector2(56, 64), "leviathan": Vector2(70, 70),
+	"frostking": Vector2(66, 46), "snowsprite": Vector2(40, 40), "icesniper": Vector2(44, 52),
+	"frostmage": Vector2(56, 64), "glacierlord": Vector2(70, 70),
+	"stoneking": Vector2(66, 46), "dustsprite": Vector2(40, 40), "rocksniper": Vector2(44, 52),
+	"earthmage": Vector2(56, 64), "mountainlord": Vector2(70, 70),
+	"fireking": Vector2(66, 46), "flamesprite": Vector2(40, 40), "firesniper": Vector2(44, 52),
+	"firemage": Vector2(56, 64), "inferno": Vector2(70, 70),
+	"shadowking": Vector2(66, 46), "wisp": Vector2(40, 40), "shadesniper": Vector2(44, 52),
+	"voidmage": Vector2(56, 64), "beholder": Vector2(70, 70)}
 const WALK_SPEED := 110.0
 const THROW_EVERY := 2.3
 const SHOT_SPEED := 250.0
@@ -160,6 +251,67 @@ const WAVE_SPEED := 460.0
 const WAVE_WARN := 0.8
 const WAVE_W := 46.0
 const WAVE_BRICKS := 8
+# THE FROST KING
+const BREATH_EVERY := 5.0
+const BREATH_REACH := 300.0
+const BREATH_KEEP := 0.5
+const BREATH_SHOWN := 0.6
+# THE SNOW SPRITE
+const ICICLE_EVERY := 3.0
+# THE ICE SNIPER
+const LANCE_ICED := 2.5
+# THE FROST MAGE
+const ICE_WALL_EVERY := 7.0
+const ICE_WALL_MOST := 10
+# THE GLACIER LORD
+const AVALANCHE_EVERY := 10.0
+const AVALANCHE_WIDE := 4
+const AVALANCHE_MOST := 14
+const AVALANCHE_SHOWN := 0.9
+# THE STONE KING
+const STOMP_EVERY := 7.0
+# THE DUST SPRITE
+const DUST_EVERY := 4.0
+const DUST_MOST := 3
+# THE ROCK SNIPER
+const SHOT_HEAVY := 2.5
+# THE EARTH MAGE
+const PILLAR_EVERY := 8.0
+const PILLAR_TALL := 5
+# THE MOUNTAIN LORD
+const QUAKE_EVERY := 10.0
+const ROCKFALL_WIDE := 8
+const ROCKFALL_MOST := 6
+# THE FIRE KING
+const ERUPT_CALL_EVERY := 12.0
+const ERUPT_CALL_BOMBS := 6
+# THE FLAME SPRITE
+const PATCH_EVERY := 3.5
+# THE FIRE SNIPER
+const SCORCH_SECONDS := 3.0
+# THE FIRE MAGE
+const METEOR_EVERY := 6.0
+const METEORS := 2
+# THE INFERNO
+const INFERNO_EVERY := 10.0
+const INFERNO_BOMBS := 12
+# THE SHADOW KING
+const SNUFF_EVERY := 10.0
+# THE WISP
+const DIM_EVERY := 5.0
+const DIM_SECONDS := 3.0
+# THE SHADE SNIPER
+const HEX_SECONDS := 3.0
+# THE VOID MAGE
+const VOID_EVERY := 9.0
+# THE CROWNED BEHOLDER
+const GAZE_EVERY := 8.0
+const GAZE_WARN := 0.8
+const GAZE_SECONDS := 3.0
+const GAZE_SPEED := 240.0
+const GAZE_HALF := 12.0
+const ECLIPSE_EVERY := 12.0
+const ECLIPSE_SECONDS := 5.0
 
 var run: Node2D = null
 # The run's arena, its paddle's line and the foot of its view, handed in.
@@ -217,6 +369,31 @@ var bubble_down: float = 0.0
 # The Leviathan's wave: {"x", "way", "warn", "made"}; null between.
 var wave = null
 var wave_t: float = WAVE_EVERY
+var breath_t: float = BREATH_EVERY
+var breaths: Array = []          # {"p", "age"}, drawn
+var icicle_t: float = ICICLE_EVERY
+var icewall_t: float = ICE_WALL_EVERY
+var avalanche_t: float = AVALANCHE_EVERY
+var slides: Array = []           # {"x0", "x1", "age"}: avalanches, drawn
+var stomp_t: float = STOMP_EVERY
+var dust_t: float = DUST_EVERY
+var pillar_t: float = PILLAR_EVERY
+var quake_t: float = QUAKE_EVERY
+var erupt_call_t: float = ERUPT_CALL_EVERY
+var patch_t: float = PATCH_EVERY
+var meteor_t: float = METEOR_EVERY
+var inferno_t: float = INFERNO_EVERY
+var snuff_t: float = SNUFF_EVERY
+var dim_t: float = DIM_EVERY
+var void_t: float = VOID_EVERY
+var gaze_t: float = GAZE_EVERY
+var gaze_warn: float = 0.0       # the gaze showing, not yet burning
+var gaze_left: float = 0.0       # the gaze burning, following the paddle
+var gaze_x: float = 0.0
+var _gaze_hit: bool = false
+var eclipse_t: float = ECLIPSE_EVERY
+# The element its art and its young's are recoloured to (-1: their own).
+var tint: int = -1
 # Each minion: {p, from, to, t (into its hop), rest, sprite}.
 var minions: Array = []
 var sprite: AnimatedSprite2D = null
@@ -235,6 +412,7 @@ func setup(on_run: Node2D, info: Dictionary, land_id: String, the_hall: Rect2, t
 	enemy_id = str(info.get("enemy", ""))
 	minion_id = str(info.get("minion", ""))
 	crowned = bool(info.get("crown", false))
+	tint = Element.Type.FIRE if str(info.get("tint", "")) == "fire" else -1
 	land = land_id
 	hall = the_hall
 	most = int(HP.get(kind, 30))
@@ -243,11 +421,11 @@ func setup(on_run: Node2D, info: Dictionary, land_id: String, the_hall: Rect2, t
 	dest = p
 	if kind == "tempest":
 		vortices.append(_vortex(TORNADO_R, true))
-	if kind == "mage" or kind == "stormmage":
+	if ["mage", "stormmage", "frostmage", "earthmage", "firemage", "voidmage"].has(kind):
 		for i in WARDS:
 			wards.append({"back": 0.0})
 	if enemy_id != "":
-		sprite = sprite_of(enemy_id, float(SCALE.get(kind, 2.0)))
+		sprite = sprite_of(enemy_id, float(SCALE.get(kind, 2.0)), tint)
 		if sprite != null:
 			run.add_child(sprite)
 			sprite.position = p
@@ -341,6 +519,143 @@ func step(dt: float, playing: bool) -> void:
 					_walk(dt, 0.8)
 					_throw(dt, 0.8 if hp * 3 < most else 1.0)
 				_wave(dt)
+			"frostking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				breath_t -= dt
+				if breath_t <= 0.0:
+					breath_t = BREATH_EVERY * (0.75 if hp * 2 < most else 1.0)
+					breaths.append({"p": p, "age": 0.0})
+					run.call("chill_from", p, BREATH_REACH, BREATH_KEEP)
+					flash = 0.6
+			"snowsprite":
+				_dart(dt)
+				icicle_t -= dt
+				if icicle_t <= 0.0:
+					icicle_t = ICICLE_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("hang_icicle", p.x)
+			"icesniper":
+				_walk(dt, 0.55)
+				_snipe(dt)
+			"frostmage":
+				_walk(dt, 0.7)
+				_ward_step(dt)
+				_throw(dt, 1.3)
+				icewall_t -= dt
+				if icewall_t <= 0.0:
+					icewall_t = ICE_WALL_EVERY
+					_ice_wall()
+			"glacierlord":
+				_walk(dt, 0.8)
+				_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				avalanche_t -= dt
+				if avalanche_t <= 0.0:
+					avalanche_t = AVALANCHE_EVERY * (0.7 if hp * 3 < most else 1.0)
+					_avalanche()
+			"stoneking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				stomp_t -= dt
+				if stomp_t <= 0.0:
+					stomp_t = STOMP_EVERY * (0.75 if hp * 2 < most else 1.0)
+					gales.append({"p": p, "age": 0.0})
+					run.call("tremor_now", false)
+					flash = 0.6
+			"dustsprite":
+				_dart(dt)
+				dust_t -= dt
+				if dust_t <= 0.0:
+					dust_t = DUST_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("rebuild_near", DUST_MOST, Rect2(p - Vector2(20, 20), Vector2(40, 40)), "sand")
+			"rocksniper":
+				_walk(dt, 0.55)
+				_snipe(dt)
+			"earthmage":
+				_walk(dt, 0.7)
+				_ward_step(dt)
+				_throw(dt, 1.3)
+				pillar_t -= dt
+				if pillar_t <= 0.0:
+					pillar_t = PILLAR_EVERY
+					_raise_pillar()
+			"mountainlord":
+				_walk(dt, 0.8)
+				_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				quake_t -= dt
+				if quake_t <= 0.0:
+					quake_t = QUAKE_EVERY * (0.7 if hp * 3 < most else 1.0)
+					_quake()
+			"fireking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				erupt_call_t -= dt
+				if erupt_call_t <= 0.0:
+					erupt_call_t = ERUPT_CALL_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("erupt_now", ERUPT_CALL_BOMBS)
+					flash = 0.6
+			"flamesprite":
+				_dart(dt)
+				patch_t -= dt
+				if patch_t <= 0.0:
+					patch_t = PATCH_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("fire_patch", float(run.get("paddle_x")))
+					run.call("burst_at", p, land, 12)
+			"firesniper":
+				_walk(dt, 0.55)
+				_snipe(dt)
+			"firemage":
+				_walk(dt, 0.7)
+				_ward_step(dt)
+				_throw(dt, 1.3)
+				meteor_t -= dt
+				if meteor_t <= 0.0:
+					meteor_t = METEOR_EVERY
+					_meteors()
+			"inferno":
+				_walk(dt, 0.8)
+				_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				inferno_t -= dt
+				if inferno_t <= 0.0:
+					inferno_t = INFERNO_EVERY * (0.7 if hp * 3 < most else 1.0)
+					run.call("erupt_now", INFERNO_BOMBS)
+					flash = 0.6
+			"shadowking":
+				_walk(dt, 1.0)
+				_throw(dt, 1.0)
+				snuff_t -= dt
+				if snuff_t <= 0.0:
+					snuff_t = SNUFF_EVERY * (0.75 if hp * 2 < most else 1.0)
+					if bool(run.call("snuff")):
+						flash = 0.6
+			"wisp":
+				_dart(dt)
+				dim_t -= dt
+				if dim_t <= 0.0:
+					dim_t = DIM_EVERY * (0.75 if hp * 2 < most else 1.0)
+					run.call("dim_balls", DIM_SECONDS)
+					run.call("burst_at", p, land, 14)
+			"shadesniper":
+				_walk(dt, 0.55)
+				_snipe(dt)
+			"voidmage":
+				_walk(dt, 0.7)
+				_ward_step(dt)
+				_throw(dt, 1.3)
+				void_t -= dt
+				if void_t <= 0.0:
+					void_t = VOID_EVERY
+					if bool(run.call("open_void", hall)):
+						flash = 0.6
+			"beholder":
+				_walk(dt, 0.8)
+				_throw(dt, 0.8 if hp * 3 < most else 1.0)
+				_gaze(dt)
+				if hp * 3 < most:
+					eclipse_t -= dt
+					if eclipse_t <= 0.0:
+						eclipse_t = ECLIPSE_EVERY
+						run.call("eclipse_now", ECLIPSE_SECONDS)
+						flash = 0.8
 			"ruler":
 				_walk(dt, 0.8)
 				_throw(dt, 0.8 if hp * 3 < most else 1.0)
@@ -360,6 +675,12 @@ func step(dt: float, playing: bool) -> void:
 	for s in splashes:
 		s["age"] += dt
 	splashes = splashes.filter(func(s: Dictionary) -> bool: return float(s["age"]) < GALE_SHOWN)
+	for s in breaths:
+		s["age"] += dt
+	breaths = breaths.filter(func(s: Dictionary) -> bool: return float(s["age"]) < BREATH_SHOWN)
+	for s in slides:
+		s["age"] += dt
+	slides = slides.filter(func(s: Dictionary) -> bool: return float(s["age"]) < AVALANCHE_SHOWN)
 	rope_left = maxf(0.0, rope_left - dt)
 
 
@@ -421,7 +742,16 @@ func _snipe(dt: float) -> void:
 		var paddle_x: float = float(run.get("paddle_x"))
 		if absf(paddle_x - beam_x) < float(run.get("paddle_w")) / 2.0 + BEAM_HALF and not _beam_hit:
 			_beam_hit = true
-			run.call("stun_paddle", STUN_SECONDS, Vector2(beam_x, paddle_y), land)
+			if kind == "icesniper":
+				run.call("ice_paddle", LANCE_ICED, Vector2(beam_x, paddle_y))
+			elif kind == "rocksniper":
+				run.call("weigh_paddle", SHOT_HEAVY, Vector2(beam_x, paddle_y))
+			elif kind == "firesniper":
+				run.call("scorch_paddle", SCORCH_SECONDS, Vector2(beam_x, paddle_y))
+			elif kind == "shadesniper":
+				run.call("hex_paddle", HEX_SECONDS, Vector2(beam_x, paddle_y))
+			else:
+				run.call("stun_paddle", STUN_SECONDS, Vector2(beam_x, paddle_y), land)
 		return
 	if aim_left > 0.0:
 		aim_left -= dt
@@ -444,7 +774,7 @@ func _ward_step(dt: float) -> void:
 	rebuild_t -= dt
 	if rebuild_t <= 0.0:
 		rebuild_t = REBUILD_EVERY
-		run.call("rebuild_near", REBUILD_COUNT, hall)
+		run.call("rebuild_near", REBUILD_COUNT, hall, "frost" if kind == "frostmage" else ("obsidian" if kind == "firemage" else ("shadow" if kind == "voidmage" else "stone")))
 
 
 func ward_at(i: int) -> Vector2:
@@ -497,8 +827,10 @@ func hit(n: int) -> bool:
 		return false
 	hp = maxi(0, hp - n)
 	flash = 1.0
-	var kingly: bool = kind == "slimeking" or kind == "galeking" or kind == "tideking"
-	var splits: bool = kingly or ((kind == "ruler" or kind == "tempest" or kind == "leviathan") and hp * 3 < most * 2)
+	var kingly: bool = kind == "slimeking" or kind == "galeking" or kind == "tideking" or kind == "frostking" \
+		or kind == "stoneking" or kind == "fireking" or kind == "shadowking"
+	var splits: bool = kingly or (["ruler", "tempest", "leviathan", "glacierlord", "mountainlord", "inferno", "beholder"].has(kind)
+		and hp * 3 < most * 2)
 	if splits and hp > 0:
 		var every: int = SPLIT_EVERY if kingly else RULER_SPLIT_EVERY
 		hits_since_split += n
@@ -518,6 +850,10 @@ func hit(n: int) -> bool:
 		harpoon_u = -1.0
 		aim_left = 0.0
 		dive_left = 0.0
+		breaths.clear()
+		slides.clear()
+		gaze_warn = 0.0
+		gaze_left = 0.0
 		return true
 	return false
 
@@ -610,6 +946,82 @@ func _wave(dt: float) -> void:
 			wave["made"] = int(wave["made"]) + 1
 	if float(wave["x"]) < arena.position.x - WAVE_W or float(wave["x"]) > arena.end.x + WAVE_W:
 		wave = null
+
+
+func _ice_wall() -> void:
+	"""THE FROST MAGE'S WALL: packed ice across the row under his gate."""
+	var top: Vector2i = run.call("cell_at", Vector2(hall.get_center().x, hall.end.y))
+	var c0: Vector2i = run.call("cell_at", Vector2(hall.position.x + 1.0, hall.end.y))
+	var c1: Vector2i = run.call("cell_at", Vector2(hall.end.x - 1.0, hall.end.y))
+	if int(run.call("ice_wall", top.y + 2, c0.x - 1, c1.x + 1, ICE_WALL_MOST)) > 0:
+		flash = 0.6
+
+
+func _avalanche() -> void:
+	"""THE GLACIER LORD'S AVALANCHE: snow down AVALANCHE_WIDE columns."""
+	var rng: RandomNumberGenerator = run.get("rng")
+	var n: int = int(run.get("cols"))
+	var c0: int = rng.randi_range(0, maxi(0, n - AVALANCHE_WIDE))
+	run.call("avalanche", c0, c0 + AVALANCHE_WIDE - 1, hall.end.y, AVALANCHE_MOST)
+	var first: Rect2 = run.call("_cell", c0, 0)
+	var last: Rect2 = run.call("_cell", c0 + AVALANCHE_WIDE - 1, 0)
+	slides.append({"x0": first.position.x - 1.0, "x1": last.end.x + 1.0, "age": 0.0})
+	flash = 0.6
+
+
+func _raise_pillar() -> void:
+	"""THE EARTH MAGE'S PILLAR: in a column under his hall."""
+	var rng: RandomNumberGenerator = run.get("rng")
+	var x: float = rng.randf_range(hall.position.x + 10.0, hall.end.x - 10.0)
+	if int(run.call("raise_pillar", x, PILLAR_TALL)) > 0:
+		flash = 0.6
+
+
+func _gaze(dt: float) -> void:
+	"""THE BEHOLDER'S GAZE: shown GAZE_WARN where he stands, then for
+	GAZE_SECONDS it follows the paddle at GAZE_SPEED - the paddle it finds is
+	stunned, once a gaze. Outrun it."""
+	if gaze_left > 0.0:
+		gaze_left -= dt
+		var paddle_x: float = float(run.get("paddle_x"))
+		gaze_x = move_toward(gaze_x, paddle_x, GAZE_SPEED * dt)
+		if not _gaze_hit and absf(paddle_x - gaze_x) < float(run.get("paddle_w")) / 2.0 + GAZE_HALF:
+			_gaze_hit = true
+			run.call("stun_paddle", STUN_SECONDS, Vector2(gaze_x, paddle_y), land)
+		return
+	if gaze_warn > 0.0:
+		gaze_warn -= dt
+		if gaze_warn <= 0.0:
+			gaze_left = GAZE_SECONDS
+			_gaze_hit = false
+		return
+	gaze_t -= dt
+	if gaze_t <= 0.0:
+		gaze_t = GAZE_EVERY
+		gaze_warn = GAZE_WARN
+		gaze_x = p.x
+
+
+func _meteors() -> void:
+	"""THE FIRE MAGE'S METEORS: lava bombs from under his hall, over the field."""
+	var rng: RandomNumberGenerator = run.get("rng")
+	for i in METEORS:
+		run.call("lava_bomb", rng.randf_range(arena.position.x + 40.0, arena.end.x - 40.0), hall.end.y + 4.0)
+	flash = 0.6
+
+
+func _quake() -> void:
+	"""THE MOUNTAIN LORD'S QUAKE: every pillar down, and boulders into the
+	broken cells of ROCKFALL_WIDE columns."""
+	var rng: RandomNumberGenerator = run.get("rng")
+	var n: int = int(run.get("cols"))
+	var c0: int = rng.randi_range(0, maxi(0, n - ROCKFALL_WIDE))
+	run.call("tremor_now", true)
+	run.call("rockfall", c0, c0 + ROCKFALL_WIDE - 1, hall.end.y, ROCKFALL_MOST)
+	var first: Rect2 = run.call("_cell", c0, 0)
+	var last: Rect2 = run.call("_cell", c0 + ROCKFALL_WIDE - 1, 0)
+	slides.append({"x0": first.position.x - 1.0, "x1": last.end.x + 1.0, "age": 0.0, "rock": true})
+	flash = 0.6
 
 
 func wave_band() -> Rect2:
@@ -758,7 +1170,7 @@ func _split() -> void:
 		return
 	var m := {"p": p, "from": p, "to": _hop_target(p), "t": 0.0, "rest": 0.0, "sprite": null}
 	if minion_id != "":
-		var art: AnimatedSprite2D = sprite_of(minion_id, float(SCALE["minion"]))
+		var art: AnimatedSprite2D = sprite_of(minion_id, float(SCALE["minion"]), tint)
 		if art != null:
 			run.add_child(art)
 			art.position = p
@@ -798,6 +1210,23 @@ func _step_minions(dt: float, playing: bool) -> void:
 				# THE TIDE KING'S YOUNG turn to water where they land on nothing
 				if rng.randf() < PLANT_CHANCE and bool(run.call("plant_water", m["p"])):
 					m["gone"] = true
+			elif land == "ice":
+				# THE FROST KING'S YOUNG frost-coat the bricks they land on
+				if rng.randf() < PLANT_CHANCE:
+					run.call("frost_at", m["p"])
+			elif land == "earth":
+				# THE STONE KING'S YOUNG pile into sand where they land on nothing
+				if rng.randf() < PLANT_CHANCE and bool(run.call("pile_sand", m["p"])):
+					m["gone"] = true
+			elif land == "fire":
+				# THE FIRE KING'S YOUNG leave lava where they land on nothing, and
+				# set wood alight
+				if rng.randf() < PLANT_CHANCE and bool(run.call("lava_at", m["p"])):
+					m["gone"] = true
+			elif land == "dark":
+				# THE SHADOW KING'S YOUNG turn what they land on to shadow
+				if rng.randf() < PLANT_CHANCE:
+					run.call("shade_at", m["p"])
 			elif rng.randf() < PLANT_CHANCE:
 				run.call("plant_blight", m["p"])
 	for m in minions:
@@ -889,6 +1318,25 @@ func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
 			var y: float = w.position.y + fposmod(now * 60.0 + x, w.size.y)
 			c.draw_polyline(PackedVector2Array([Vector2(x - 6, y - 4), Vector2(x, y + 3), Vector2(x + 6, y - 4)]),
 				Color(colour.lightened(0.4), 0.8), 2.0)
+	for br in breaths:
+		var u: float = float(br["age"]) / BREATH_SHOWN
+		c.draw_arc(br["p"], BREATH_REACH * u, PI * 0.15, PI * 0.85, 32, Color(0.85, 0.96, 1.0, 0.7 * (1.0 - u)), 6.0 * (1.0 - u) + 1.0)
+		for i in 8:
+			var a: float = PI * (0.2 + i * 0.085)
+			c.draw_circle((br["p"] as Vector2) + Vector2.from_angle(a) * BREATH_REACH * u, 2.0, Color(1, 1, 1, 0.8 * (1.0 - u)))
+	for sl in slides:
+		var u: float = float(sl["age"]) / AVALANCHE_SHOWN
+		var foot: float = float(run.call("field_bottom"))
+		var r := Rect2(float(sl["x0"]), hall.end.y, float(sl["x1"]) - float(sl["x0"]), (foot - hall.end.y) * minf(1.0, u * 2.0))
+		var rocky: bool = bool(sl.get("rock", false))
+		c.draw_rect(r, Color(0.5, 0.4, 0.28, 0.3 * (1.0 - u)) if rocky else Color(0.92, 0.96, 1.0, 0.35 * (1.0 - u)))
+		for i in 10:
+			var x: float = r.position.x + fmod(i * 37.0, r.size.x)
+			var y: float = r.position.y + fmod(i * 53.0 + u * 400.0, maxf(1.0, r.size.y))
+			if rocky:
+				c.draw_circle(Vector2(x, y), 3.5, Color(0.45, 0.36, 0.26, 0.9 * (1.0 - u)))
+			else:
+				c.draw_circle(Vector2(x, y), 2.5, Color(1, 1, 1, 0.8 * (1.0 - u)))
 	for sp in splashes:
 		var u: float = float(sp["age"]) / GALE_SHOWN
 		c.draw_arc(sp["p"], SPLASH_REACH * u, 0, TAU, 48, Color(colour.lightened(0.4), 0.7 * (1.0 - u)), 5.0 * (1.0 - u) + 1.0)
@@ -942,6 +1390,15 @@ func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
 				y2 += 12.0
 			c.draw_arc(Vector2(front - float(wave["way"]) * 12.0, band.position.y + 10.0), 14.0,
 				PI if float(wave["way"]) > 0.0 else 0.0, PI * 2.0 if float(wave["way"]) > 0.0 else PI, 10, Color(1, 1, 1, 0.85), 3.0)
+	if hp > 0 and (gaze_warn > 0.0 or gaze_left > 0.0):
+		# THE BEHOLDER'S GAZE: a thin line while it gathers, then a beam
+		var foot := Vector2(gaze_x, paddle_y + 12.0)
+		if gaze_left > 0.0:
+			c.draw_line(p, foot, Color(colour.lightened(0.3), 0.35), GAZE_HALF * 2.0)
+			c.draw_line(p, foot, Color(1.0, 0.85, 1.0, 0.9), 3.0)
+			c.draw_circle(foot, GAZE_HALF + 2.0, Color(colour.lightened(0.4), 0.5))
+		else:
+			c.draw_line(p, foot, Color(colour.lightened(0.5), 0.3 + 0.5 * absf(sin(now * 16.0))), 1.5)
 	for i in wards.size():
 		if float(wards[i]["back"]) <= 0.0 and hp > 0:
 			var w: Vector2 = ward_at(i)
@@ -950,9 +1407,10 @@ func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
 			c.draw_arc(w, WARD_R, 0, TAU, 16, Color(1, 1, 1, 0.8), 1.5)
 
 
-static func sprite_of(id: String, scale: float) -> AnimatedSprite2D:
+static func sprite_of(id: String, scale: float, recolour_to: int = -1) -> AnimatedSprite2D:
 	"""A MONSTER FROM ITS OWN ART: its scene's frames, `scale` times, recoloured
-	by the same gates as EnemyPortraits._picture_of(). Null when this build has
+	by the same gates as EnemyPortraits._picture_of() - or to `recolour_to`, an
+	element, when one is given. Null when this build has
 	no art for it (a clone without art/pack) - the boss is drawn in code then."""
 	var path: String = EnemyPortraits.scene_path(id)
 	var packed: PackedScene = load(path) as PackedScene if ResourceLoader.exists(path) else null
@@ -985,6 +1443,11 @@ static func sprite_of(id: String, scale: float) -> AnimatedSprite2D:
 			if override is int and int(override) >= 0:
 				element = int(override)
 			var recolour: bool = (data != null and data.recolour_to_element) or (override is int and int(override) >= 0)
+			if recolour_to >= 0:
+				# A TINT: this monster in another element's colour (a boss
+				# whose land has no monster of its own of that kind)
+				element = recolour_to
+				recolour = true
 			if recolour and element != Element.Type.NONE:
 				out.material = BaseEnemy.element_material(data, element)
 			if data != null:
