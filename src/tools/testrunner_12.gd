@@ -3878,3 +3878,115 @@ func _test_crownfall_on_a_phone() -> void:
 	screen.queue_free()
 	await get_tree().process_frame
 	print("  crownfall on a phone: done")
+
+
+# =============================================================================
+# CROWNFALL DRAWS LESS (0.166.1)
+# =============================================================================
+# The owner: "fireball and multiball make the map lag", "the layer of effects
+# made it lag", "the last few bricks are hard to destroy", "had a brick travel
+# up all the steel wall". Every brick was drawn again every frame; now each is
+# a picture of its own, drawn again when its look changes (crownfallrun.gd,
+# THE BRICKS DRAW ONCE). Sparks are fewer, the last few glow and draw the
+# ball, and a buoy floats two cells at most.
+
+func _test_crownfall_draws_less() -> void:
+	section("Crownfall draws less (0.166.1): the bricks once, fewer sparks, the last few, the buoy")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	# ---- the bricks draw once ----
+	run.rng.seed = 7
+	run.begin(54)
+	run.sync_bricks()
+	var first: int = run.redrawn
+	var bricks_in: int = run.bricks.filter(func(k: Dictionary) -> bool: return not k.has("rail")).size()
+	run.sync_bricks()
+	var again: int = run.redrawn
+	run.sync_bricks()
+	again += run.redrawn
+	var lively: int = run.bricks.filter(func(k: Dictionary) -> bool: return int(k["hp"]) > 0 and not k.has("rail") \
+		and not Run.STILL_KINDS.has(k["kind"])).size()
+	check("THE BRICKS DRAW ONCE: a picture each, all drawn at first; then only what moves is drawn again - over two frames each once",
+		first == bricks_in and run.brick_layer.get_child_count() == bricks_in and again == lively,
+		[first, bricks_in, run.brick_layer.get_child_count(), again, lively])
+	var plain: Dictionary = {}
+	for k in run.bricks:
+		if k["kind"] == "land" and int(k["hp"]) > 0:
+			plain = k
+			break
+	plain["flash"] = 1.0
+	run.sync_bricks()
+	var struck: bool = int(plain["look"]) == -1 and run.redrawn >= 1
+	plain["flash"] = 0.0
+	run.sync_bricks()
+	run.sync_bricks()
+	struck = struck and int(plain["look"]) >= 0
+	plain["frozen"] = true
+	run.sync_bricks()
+	run.sync_bricks()
+	var coat: int = int(plain["look"])
+	plain.erase("frozen")
+	run.sync_bricks()
+	run.sync_bricks()
+	var thawed: bool = coat != int(plain["look"])
+	plain["hp"] = 0
+	run.sync_bricks()
+	var hidden: bool = not (plain["node"] as Node2D).visible
+	check("  a brick struck is drawn again at once and goes back to still; frozen and thawed it is drawn again; broken, hidden",
+		struck and thawed and hidden, [struck, thawed, hidden])
+	var src: String = _code_src("res://src/world/crownfall/crownfallrun.gd")
+	var own: String = _func_body(src, "func _draw() -> void:")
+	check("  the floor, then the bricks, both behind the run's own drawing - which draws no brick",
+		run.floor_layer.show_behind_parent and run.brick_layer.show_behind_parent
+		and run.floor_layer.get_index() < run.brick_layer.get_index()
+		and not own.contains("_draw_brick_in") and not own.contains("for k in bricks"))
+	run.begin(16)
+	run.sync_bricks()
+	await get_tree().process_frame
+	var new_in: int = run.bricks.filter(func(k: Dictionary) -> bool: return not k.has("rail")).size()
+	check("  a new map's bricks get pictures of their own and the old map's are let go",
+		run.brick_layer.get_child_count() == new_in, [run.brick_layer.get_child_count(), new_in])
+	# ---- sparks ----
+	run.parts.clear()
+	for i in 40:
+		run._burst(Vector2(640, 300), Color.WHITE, 40, 200.0)
+	var thrown: int = run.parts.size()
+	run._effects(0.001)
+	check("SPARKS: with the air half full a burst throws a third as many, and no more than %d stay" % Run.PARTS_MOST,
+		thrown < 40 * 40 / 2 and run.parts.size() <= Run.PARTS_MOST, [thrown, run.parts.size()])
+	# ---- the last few ----
+	_cf_bare(run)
+	run.breakable = 3
+	run.broken = 0
+	var far: Dictionary = run._add(28, 2, "land", "light", 1)
+	run._add(28, 3, "land", "light", 1)
+	run._add(28, 4, "land", "light", 1)
+	run.balls.append(run._ball(Vector2(200, 500), Vector2(0, -560)))
+	var was: float = (run.balls[0]["v"] as Vector2).angle()
+	for i in 30:
+		run._wind_ball(1.0 / 60.0)
+	var turned: float = (run.balls[0]["v"] as Vector2).angle() - was
+	check("THE LAST FEW: with %d or fewer left they glow and every ball bends toward the nearest" % Run.LAST_FEW,
+		run.last_few() and turned > 0.2 and run._brick_look(far, true) == -1, [run.last_few(), turned])
+	run.breakable = 50
+	var own_way: bool = not run.last_few() and not run.seeking()
+	run._since_break = Run.STUCK_SECONDS
+	var stuck: bool = run.seeking()
+	run._damage(far, 1, null)
+	check("  with many left the balls go their own way - until none has broken for %ds; a break starts the count again" % int(Run.STUCK_SECONDS),
+		own_way and stuck and not run.seeking(), [own_way, stuck, run.seeking()])
+	# ---- the buoy ----
+	_cf_bare(run)
+	for r in range(2, 9):
+		run.footprint[Vector2i(5, r)] = true
+	var buoy: Dictionary = run._add(5, 8, "buoy", "water", 1)
+	run.buoys.append(buoy)
+	for i in 240:
+		run._waters(1.0 / 60.0)
+	check("A BUOY floats %d cells at most, however many holes are above it (it climbed a whole iron column)" % Run.BUOY_MOST,
+		buoy["cell"] == Vector2i(5, 8 - Run.BUOY_MOST), buoy["cell"])
+	run.queue_free()
+	await get_tree().process_frame
+	print("  crownfall draws less: done")

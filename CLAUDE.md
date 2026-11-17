@@ -15570,6 +15570,57 @@ right to fast" and "the tracer is too fast also". Pictured before building.
 - `_test_crownfall_on_a_phone()` (testrunner_12). Fourteen sabotages
   caught, one (the launching tap firing too) after a check was added.
 
+### Crownfall draws less (0.166.1)
+
+The owner: "fireball and multiball make the map lag and the last few bricks
+are hard to destroy", "the layer of effects made it lag", and "had a brick
+travel up all the steel wall". Measured first (zz/crownlag.gd, every
+kingdom): every brick was drawn again every frame - 4 to 13 ms of a 16.7 ms
+frame in the container, the frost, ice and dark coats inside that loop; the
+floor's layers were 1 to 2 ms; a Fireball with six balls held the sparks at
+their 900 cap (about 4 ms to draw) and doubled the step.
+
+- **The bricks draw once** (crownfallrun.gd, THE BRICKS DRAW ONCE). Each
+  brick is a Node2D of its own in `brick_layer`, made by `sync_bricks()`
+  (every `_process()`), drawn by `_paint_brick()` and drawn again only when
+  `_brick_look()` - one number from its hp, most, land, frozen, frost, the
+  dark's `seen` - changes, or at once when struck (`flash`). -1 is "draw
+  every time it is looked at": burning, warded, glowing, and every kind not
+  in `STILL_KINDS` (their pictures move with `t`). Half the bricks are
+  looked at each frame (`half`), so the moving kinds draw at 30 a second;
+  drifters, kites and buoys are put in place every frame. Broken ones are
+  hidden; a new map's pictures replace the old.
+- **The floor is its own layer** (`floor_layer`, `_paint_floor()`, every
+  frame): the backdrop, the arena, the building, the tide, the ice, the
+  gusts, the rails, the dark. Both layers have `show_behind_parent`, floor
+  first, so the run's own `_draw()` is everything from the guards up, as
+  before. The helpers both draw with (the floor's, `_draw_brick_in()`,
+  `_draw_frozen()`, `_draw_frost_coat()`, `_draw_half_shell()`, `_text()`)
+  call `_cv.draw_*`: `_cv` is the picture being drawn, the run itself
+  otherwise. **A new helper used in those pictures draws on `_cv` too.**
+- **The shake** (`_jolt`) is worked out in `_process()` from its own
+  `_jolt_rng` (it took the game's `rng` in `_draw()`), and moves
+  `brick_layer` rather than redrawing it.
+- **Sparks**: `PARTS_MOST` (350) kept, the oldest let go once a frame in
+  `_effects()` (it was 900, cut on every burst); with the air half full a
+  burst throws a third as many.
+- **Measured after**, the whole drawing a frame (own + floor + bricks +
+  sync), container: map 17 (1,344 bricks) 18.6 -> 5.6 ms, water 55 13.1 ->
+  4.0, ice 95 19.4 -> 4.2, fire 145 11.8 -> 5.1, dark 155 21.1 -> 6.2; six
+  balls on fire 21.7 -> about 10 (step and drawing). Pictures of ten maps
+  before and after: the same, pixel for pixel (two pixels apart on one).
+- **The last few** (`last_few()`, `seeking()`): `LAST_FEW` (5) or fewer
+  left on a map (not a boss's), they glow gold and "THE LAST FEW" says so
+  once; every ball bends toward the nearest, `LAST_TURN` (50) degrees a
+  second, through the Wind orb's `_wind_ball()`. With none broken for
+  `STUCK_SECONDS` (12, `_since_break`) the balls bend too.
+- **A buoy floats `BUOY_MOST` (2) cells at most** (`risen`): one beside an
+  iron column climbed it all.
+- **Not changed**: the ball's speed (the owner was asked whether "faster"
+  meant the ball too; no answer yet).
+- `_test_crownfall_draws_less()` (testrunner_12); the brick look sabotaged
+  (always redraw) fails two checks.
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

@@ -64,6 +64,32 @@ const BALL_R := 6.0
 const SPEED := 560.0
 const SLOW_SHARE := 0.62
 const MOST_BALLS := 6
+# THE BRICKS DRAW ONCE (0.166.1, the owner: "fireball and multiball make the
+# map lag", "the layer of effects made it lag"). Every brick was drawn again
+# every frame - 4 to 13 ms of a 16.7 ms frame here, the frost, ice and dark
+# coats with them - though most look the same from one frame to the next.
+# Now each brick is a picture of its own (a Node2D in `brick_layer`), drawn
+# again only when its look changes (_brick_look()): struck, burning, warded,
+# glowing, frozen or coated, fading in the dark, or a kind that is always
+# moving (all but STILL_KINDS). The floor under them (the arena, the tide,
+# the ice, the gusts, the rails, the dark) is a layer of its own drawn every
+# frame (`floor_layer`); both sit behind the run's own drawing, which is
+# everything above the bricks as before. The helpers both share draw on
+# `_cv`, the picture being drawn.
+const STILL_KINDS := {"basalt": 1, "boulder": 1, "bumper": 1, "column": 1, "crystal": 1, "drift": 1, "guard": 1, "iron": 1,
+	"keg": 1, "key": 1, "land": 1, "lock": 1, "obsidian": 1, "packed": 1, "prism": 1, "sand": 1, "shell": 1, "stone": 1,
+	"wood": 1}
+const LAND_NO := {"light": 1, "wind": 2, "water": 3, "ice": 4, "earth": 5, "fire": 6, "dark": 7}
+# SPARKS: PARTS_MOST alive at most, the oldest let go once a frame; with the
+# air half full (a Fireball through a crowd) a burst throws a third as many.
+const PARTS_MOST := 350
+# THE LAST FEW (the same 0.166.1, the owner: "the last few bricks are hard
+# to destroy"): with LAST_FEW or fewer left to break, they glow and every
+# ball bends toward the nearest, LAST_TURN degrees a second (the Wind orb's
+# way, gentler); with none broken for STUCK_SECONDS the balls bend too.
+const LAST_FEW := 5
+const STUCK_SECONDS := 12.0
+const LAST_TURN := 50.0
 const LIVES := 3
 const CLEARED_SECONDS := 2.6
 const BLIGHT_EVERY := 9.0
@@ -208,6 +234,9 @@ const TIDE_WAIT := 20.0
 const TIDE_MOST := 12
 const TIDE_KEEP := ["heart", "guard", "key", "lock", "bonus"]
 const BUOY_RISE := 0.3
+# A buoy floats BUOY_MOST cells at most (0.166.1, the owner: "had a brick
+# travel up all the steel wall" - one beside an iron column climbed it all).
+const BUOY_MOST := 2
 const BUBBLE_SPEED := 300.0
 const CLAM_CYCLE := 5.0
 const CLAM_OPEN := 2.0
@@ -399,6 +428,15 @@ var cw: float = CW
 var ch: float = CH
 var gap: float = ROW_GAP
 var _jolt := Vector2.ZERO
+var _jolt_rng := RandomNumberGenerator.new()
+var _cv: CanvasItem = null
+var floor_layer: Node2D = null
+var brick_layer: Node2D = null
+var _glow_last: bool = false
+var _since_break: float = 0.0
+var _said_last: bool = false
+var redrawn: int = 0           # bricks drawn again in the last sync (the suite's)
+var _sync_n: int = 0
 # What the new bricks and the mixing leave going: lava falling down a column,
 # lightning and shards drawn a moment, the eclipse's dark, the drifters, the
 # prisms, and the keys still to break.
@@ -495,11 +533,27 @@ func _ready() -> void:
 	_bold.base_font = _font
 	_bold.variation_embolden = 0.9
 	rng.randomize()
+	_jolt_rng.randomize()
+	_cv = self
+	# the floor, then the bricks, both behind the run's own drawing
+	floor_layer = Node2D.new()
+	floor_layer.name = "floor_layer"
+	floor_layer.show_behind_parent = true
+	add_child(floor_layer)
+	floor_layer.draw.connect(_paint_floor)
+	brick_layer = Node2D.new()
+	brick_layer.name = "brick_layer"
+	brick_layer.show_behind_parent = true
+	add_child(brick_layer)
 
 
 func _process(delta: float) -> void:
 	if running_by_clock:
 		step(minf(delta, 0.05))
+	_jolt = Vector2(_jolt_rng.randf_range(-1, 1), _jolt_rng.randf_range(-1, 1)) * _shake * 4.0
+	sync_bricks()
+	if floor_layer != null:
+		floor_layer.queue_redraw()
 
 
 # ---------------------------------------------------------------- the run --
@@ -773,6 +827,8 @@ func _load(index: int) -> void:
 
 
 func _clear_map() -> void:
+	_since_break = 0.0
+	_said_last = false
 	bricks.clear()
 	cells.clear()
 	footprint.clear()
@@ -1093,6 +1149,7 @@ func step(dt: float) -> void:
 			b["p"] = Vector2(paddle_x, PADDLE_Y - BALL_R - 8.0)
 	else:
 		var speed: float = SPEED * (SLOW_SHARE if active.has("slow") else 1.0)
+		_since_break += dt
 		_pull(dt)
 		_gusts(dt)
 		_wind_ball(dt)
@@ -1385,6 +1442,7 @@ func _damage(k: Dictionary, n: int, b) -> void:
 		cells.erase(spot)
 		gone_at[spot] = t
 	broken += 1
+	_since_break = 0.0
 	combo += 1
 	_combo_t = 1.7
 	best_combo = maxi(best_combo, combo)
@@ -1532,11 +1590,31 @@ func _ball_breaks(b: Dictionary, k: Dictionary, mid: Vector2) -> void:
 			_burst(mid, COLOURS["water"].lightened(0.3), 12, 200.0, 1.2)
 
 
+func last_few() -> bool:
+	"""THE LAST FEW: LAST_FEW or fewer bricks left to break on a map (not a
+	boss's) - they glow, and the balls bend toward them."""
+	if boss != null or state != State.PLAY:
+		return false
+	var left: int = breakable - broken
+	return left > 0 and left <= LAST_FEW
+
+
+func seeking() -> bool:
+	"""The balls bend toward a brick: the last few, or none broken for
+	STUCK_SECONDS."""
+	return last_few() or (boss == null and state == State.PLAY and breakable - broken > 0 and _since_break >= STUCK_SECONDS)
+
+
 func _wind_ball(dt: float) -> void:
 	"""A WIND BALL curves toward the nearest brick it could break, WIND_TURN
-	degrees a second; its target is looked for every few tenths."""
-	if element() != "wind":
+	degrees a second; its target is looked for every few tenths. The last
+	few draw every ball the same way, LAST_TURN degrees a second."""
+	var turn: float = WIND_TURN if element() == "wind" else (LAST_TURN if seeking() else 0.0)
+	if turn <= 0.0:
 		return
+	if last_few() and not _said_last:
+		_said_last = true
+		_say(Vector2(640, 400), "THE LAST FEW", GOLD, 24, 1.2)
 	for b in balls:
 		var v: Vector2 = b["v"]
 		if v == Vector2.ZERO:
@@ -1555,7 +1633,7 @@ func _wind_ball(dt: float) -> void:
 		if to == Vector2.INF:
 			continue
 		var want: float = v.angle_to(to - (b["p"] as Vector2))
-		b["v"] = steady(v.rotated(clampf(want, -deg_to_rad(WIND_TURN) * dt, deg_to_rad(WIND_TURN) * dt)))
+		b["v"] = steady(v.rotated(clampf(want, -deg_to_rad(turn) * dt, deg_to_rad(turn) * dt)))
 
 
 func _land_breaks(k: Dictionary, mid: Vector2, b) -> void:
@@ -1792,7 +1870,8 @@ func _waters(dt: float) -> void:
 				k["rect"] = to
 			continue
 		var up: Vector2i = home + Vector2i(0, -1)
-		if footprint.has(up) and not cells.has(up) and not _ball_near(_cell(up.x, up.y)):
+		if footprint.has(up) and not cells.has(up) and not _ball_near(_cell(up.x, up.y)) and int(k.get("risen", 0)) < BUOY_MOST:
+			k["risen"] = int(k.get("risen", 0)) + 1
 			cells.erase(home)
 			gone_at[home] = t
 			cells[up] = k
@@ -3043,6 +3122,8 @@ func _effects(dt: float) -> void:
 		p["v"].y += 260.0 * dt * p.get("g", 1.0)
 		p["life"] -= dt
 	parts = parts.filter(func(p): return p["life"] > 0.0)
+	if parts.size() > PARTS_MOST:
+		parts = parts.slice(parts.size() - PARTS_MOST)
 	for w in words:
 		w["p"].y -= 30.0 * dt
 		w["life"] -= dt
@@ -3087,12 +3168,13 @@ func _frame_life(dt: float) -> void:
 
 
 func _burst(at: Vector2, c: Color, n: int, speed: float, gravity: float = 1.0) -> void:
+	if parts.size() > PARTS_MOST / 2:
+		# the air is full (a Fireball through a crowd): a third as many
+		n = ceili(n * 0.35)
 	for i in n:
 		var v := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.3, 1.0) * speed
 		var life: float = rng.randf_range(0.35, 0.8)
 		parts.append({"p": at, "v": v, "life": life, "most": life, "c": c, "s": rng.randf_range(1.5, 3.2), "g": gravity})
-	if parts.size() > 900:
-		parts = parts.slice(parts.size() - 900)
 
 
 func _say(at: Vector2, text: String, c: Color, size: int, life: float = 0.9) -> void:
@@ -3204,14 +3286,14 @@ func _colour_of(k: Dictionary) -> Color:
 
 func _draw_frost_coat(r: Rect2) -> void:
 	"""A FROST COAT: a pale sheet over the brick, rime along its top."""
-	draw_rect(r, Color(0.86, 0.95, 1.0, 0.42))
-	draw_rect(Rect2(r.position, Vector2(r.size.x, maxf(2.0, r.size.y * 0.25))), Color(1, 1, 1, 0.55))
+	_cv.draw_rect(r, Color(0.86, 0.95, 1.0, 0.42))
+	_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, maxf(2.0, r.size.y * 0.25))), Color(1, 1, 1, 0.55))
 	var step: float = maxf(4.0, r.size.x / 5.0)
 	var x: float = r.position.x + step * 0.5
 	while x < r.end.x - 1.0:
-		draw_line(Vector2(x, r.position.y), Vector2(x, r.position.y + r.size.y * 0.45), Color(1, 1, 1, 0.65), 1.0)
+		_cv.draw_line(Vector2(x, r.position.y), Vector2(x, r.position.y + r.size.y * 0.45), Color(1, 1, 1, 0.65), 1.0)
 		x += step
-	draw_rect(r, Color(0.9, 0.98, 1.0, 0.85), false, 1.0)
+	_cv.draw_rect(r, Color(0.9, 0.98, 1.0, 0.85), false, 1.0)
 
 
 func _draw_patch(f: Dictionary) -> void:
@@ -3236,17 +3318,17 @@ func _draw_patch(f: Dictionary) -> void:
 func _draw_dark() -> void:
 	"""THE DARK: the arena dimmed, a glow round every light - the balls',
 	the paddle's, each lantern lit."""
-	draw_rect(ARENA, Color(0.01, 0.008, 0.03, 0.66 if blackout <= 0.0 else 0.82))
+	_cv.draw_rect(ARENA, Color(0.01, 0.008, 0.03, 0.66 if blackout <= 0.0 else 0.82))
 	for light in light_sources():
 		var at: Vector2 = light[0]
 		var reach: float = light[1]
 		for i in 4:
-			draw_circle(at, reach * (1.0 - i * 0.22), Color(0.75, 0.8, 1.0, 0.025))
+			_cv.draw_circle(at, reach * (1.0 - i * 0.22), Color(0.75, 0.8, 1.0, 0.025))
 	var lamp: float = lamp_reach()
 	if lamp > 0.0:
 		for at in lanterns:
 			for i in 4:
-				draw_circle(at, lamp * (1.0 - i * 0.22), Color(1.0, 0.85, 0.5, 0.03))
+				_cv.draw_circle(at, lamp * (1.0 - i * 0.22), Color(1.0, 0.85, 0.5, 0.03))
 
 
 func _draw_slicks() -> void:
@@ -3254,62 +3336,32 @@ func _draw_slicks() -> void:
 	for band in slicks:
 		var y0: float = band["y0"]
 		var y1: float = band["y1"]
-		draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["ice"], 0.06))
+		_cv.draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["ice"], 0.06))
 		for i in 6:
 			var x: float = ARENA.position.x + fposmod(t * 220.0 + i * 167.0, ARENA.size.x - 40.0)
-			draw_line(Vector2(x, y1 - 2.0), Vector2(x + 26.0, y0 + 2.0), Color(1, 1, 1, 0.12), 2.0)
+			_cv.draw_line(Vector2(x, y1 - 2.0), Vector2(x + 26.0, y0 + 2.0), Color(1, 1, 1, 0.12), 2.0)
 		for x in [ARENA.position.x + 3.0, ARENA.end.x - 3.0]:
-			draw_line(Vector2(x, y0), Vector2(x, y1), Color(COLOURS["ice"], 0.5), 2.0)
+			_cv.draw_line(Vector2(x, y0), Vector2(x, y1), Color(COLOURS["ice"], 0.5), 2.0)
 
 
 func _draw_frozen(r: Rect2) -> void:
 	"""Ice over a frozen brick: one touch breaks it."""
-	draw_rect(r.grow(1.0), Color(0.75, 0.95, 1.0, 0.45))
-	draw_line(r.position + Vector2(3, 3), r.get_center() + Vector2(2, 1), Color(1, 1, 1, 0.8), 1.0)
-	draw_line(r.get_center() + Vector2(2, 1), r.end - Vector2(4, 3), Color(1, 1, 1, 0.8), 1.0)
-	draw_rect(r.grow(1.0), Color(0.9, 1.0, 1.0, 0.9), false, 1.0)
+	_cv.draw_rect(r.grow(1.0), Color(0.75, 0.95, 1.0, 0.45))
+	_cv.draw_line(r.position + Vector2(3, 3), r.get_center() + Vector2(2, 1), Color(1, 1, 1, 0.8), 1.0)
+	_cv.draw_line(r.get_center() + Vector2(2, 1), r.end - Vector2(4, 3), Color(1, 1, 1, 0.8), 1.0)
+	_cv.draw_rect(r.grow(1.0), Color(0.9, 1.0, 1.0, 0.9), false, 1.0)
 
 
 # ---------------------------------------------------------------- drawing --
 
 func _draw() -> void:
-	_draw_backdrop()
+	_cv = self
 	if state == State.KINGDOMS:
 		_draw_kingdoms()
 		return
-	var jolt := Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * _shake * 4.0
-	_jolt = jolt
-	draw_set_transform(jolt)
-	_draw_arena()
-	_draw_building()
-	_draw_tide_body()
-	_draw_slicks()
-	_draw_gusts()
-	_draw_rails()
-	if dark:
-		_draw_dark()
-	for k in bricks:
-		if (k["hp"] > 0 or not _breaks(k)) and not k.has("rail"):
-			var r: Rect2 = k["rect"]
-			draw_rect(Rect2(r.position + Vector2(2, 3), r.size), Color(0, 0, 0, 0.38))
-	for k in bricks:
-		if (k["hp"] > 0 or not _breaks(k)) and not k.has("rail"):
-			_draw_brick(k)
-			if k.has("warded") and k["hp"] > 0:
-				draw_rect((k["rect"] as Rect2).grow(1.5), Color(GUARD_GLOW, float(k["warded"])), false, 2.0)
-			if bool(k.get("frozen", false)) and k["hp"] > 0:
-				_draw_frozen(k["rect"])
-			if k.has("frost") and k["hp"] > 0:
-				_draw_frost_coat(k["rect"])
-			if pulling and k["hp"] > 0 and _breaks(k) and not _guarded(k):
-				var glow: float = 0.5 + 0.5 * sin(t * 6.0)
-				draw_rect((k["rect"] as Rect2).grow(3.0 + glow * 3.0), Color(GOLD, 0.35 + 0.35 * glow), false, 2.0)
-			if dark:
-				# UNSEEN: the dark over it, a ghost of it left
-				var shown: float = GHOST + (1.0 - GHOST) * float(k.get("seen", 0.0))
-				if shown < 1.0:
-					draw_rect(Rect2((k["rect"] as Rect2).position - Vector2(1, 1), (k["rect"] as Rect2).size + Vector2(4, 5)),
-						Color(0.015, 0.012, 0.04, 1.0 - shown))
+	# the floor and the bricks are layers of their own, behind this
+	# (_paint_floor(), _paint_brick()); from the guards up, as it always was
+	draw_set_transform(_jolt)
 	_draw_guards()
 	_draw_tide_top()
 	for bu in bubbles:
@@ -3409,11 +3461,11 @@ func _draw_banner() -> void:
 
 
 func _draw_backdrop() -> void:
-	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(VIEW.x, 0), VIEW, Vector2(0, VIEW.y)]),
+	_cv.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(VIEW.x, 0), VIEW, Vector2(0, VIEW.y)]),
 		PackedColorArray([Color(0.05, 0.05, 0.1), Color(0.05, 0.05, 0.1), Color(0.02, 0.02, 0.04), Color(0.02, 0.02, 0.04)]))
 	for i in 70:
 		var s := Vector2(fmod(i * 197.3, VIEW.x), fmod(i * 83.1 + 40.0, VIEW.y))
-		draw_circle(s, 0.9 + (i % 3) * 0.4, Color(1, 1, 1, 0.06 + 0.05 * sin(t * 1.3 + i)))
+		_cv.draw_circle(s, 0.9 + (i % 3) * 0.4, Color(1, 1, 1, 0.06 + 0.05 * sin(t * 1.3 + i)))
 
 
 func _draw_arena() -> void:
@@ -3424,32 +3476,32 @@ func _draw_arena() -> void:
 	if _healed > 0.0:
 		top = top.lerp(Color(0.08, 0.13, 0.1), _healed * 0.6)
 		low = low.lerp(Color(0.05, 0.09, 0.06), _healed * 0.6)
-	draw_polygon(PackedVector2Array([ARENA.position, Vector2(ARENA.end.x, ARENA.position.y), ARENA.end,
+	_cv.draw_polygon(PackedVector2Array([ARENA.position, Vector2(ARENA.end.x, ARENA.position.y), ARENA.end,
 		Vector2(ARENA.position.x, ARENA.end.y)]), PackedColorArray([top, top, low, low]))
 	for gx in range(int(ARENA.position.x) + 40, int(ARENA.end.x), 40):
-		draw_line(Vector2(gx, ARENA.position.y), Vector2(gx, ARENA.end.y), Color(1, 1, 1, 0.022), 1.0)
+		_cv.draw_line(Vector2(gx, ARENA.position.y), Vector2(gx, ARENA.end.y), Color(1, 1, 1, 0.022), 1.0)
 	for gy in range(int(ARENA.position.y) + 40, int(ARENA.end.y), 40):
-		draw_line(Vector2(ARENA.position.x, gy), Vector2(ARENA.end.x, gy), Color(1, 1, 1, 0.016), 1.0)
+		_cv.draw_line(Vector2(ARENA.position.x, gy), Vector2(ARENA.end.x, gy), Color(1, 1, 1, 0.016), 1.0)
 	_draw_air()
 	# THE PLAGUE'S HAZE, thinning as the map is broken
 	if sick > 0.0:
 		for i in 7:
 			var y: float = ARENA.end.y - 40.0 - i * 26.0 + sin(t * 0.7 + i) * 6.0
-			draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), Color(BLIGHT, 0.035 * sick), 22.0)
+			_cv.draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), Color(BLIGHT, 0.035 * sick), 22.0)
 	var jolt := Vector2.ZERO
-	draw_set_transform(Vector2(paddle_x, PADDLE_Y + 14.0) + jolt, 0.0, Vector2(1.0, 0.22))
+	_cv.draw_set_transform(Vector2(paddle_x, PADDLE_Y + 14.0) + jolt, 0.0, Vector2(1.0, 0.22))
 	for i in 5:
-		draw_circle(Vector2.ZERO, paddle_w * (0.7 + i * 0.22), Color(GOLD, 0.05))
-	draw_set_transform(_jolt)
+		_cv.draw_circle(Vector2.ZERO, paddle_w * (0.7 + i * 0.22), Color(GOLD, 0.05))
+	_cv.draw_set_transform(_jolt)
 	for i in 6:
-		draw_rect(ARENA.grow(-i * 5.0), Color(0, 0, 0, 0.09), false, 5.0)
-	draw_rect(ARENA.grow(7), EDGE, false, 10.0)
-	draw_rect(ARENA.grow(13), Color(0.14, 0.12, 0.11), false, 2.0)
-	draw_rect(ARENA.grow(2.5), Color(GOLD, 0.35), false, 1.5)
+		_cv.draw_rect(ARENA.grow(-i * 5.0), Color(0, 0, 0, 0.09), false, 5.0)
+	_cv.draw_rect(ARENA.grow(7), EDGE, false, 10.0)
+	_cv.draw_rect(ARENA.grow(13), Color(0.14, 0.12, 0.11), false, 2.0)
+	_cv.draw_rect(ARENA.grow(2.5), Color(GOLD, 0.35), false, 1.5)
 	for corner in [ARENA.position, Vector2(ARENA.end.x, ARENA.position.y), ARENA.end, Vector2(ARENA.position.x, ARENA.end.y)]:
-		draw_colored_polygon(PackedVector2Array([corner + Vector2(0, -11), corner + Vector2(11, 0), corner + Vector2(0, 11),
+		_cv.draw_colored_polygon(PackedVector2Array([corner + Vector2(0, -11), corner + Vector2(11, 0), corner + Vector2(0, 11),
 			corner + Vector2(-11, 0)]), GOLD)
-		draw_colored_polygon(PackedVector2Array([corner + Vector2(0, -5), corner + Vector2(5, 0), corner + Vector2(0, 5),
+		_cv.draw_colored_polygon(PackedVector2Array([corner + Vector2(0, -5), corner + Vector2(5, 0), corner + Vector2(0, 5),
 			corner + Vector2(-5, 0)]), Color(0.3, 0.2, 0.05))
 
 
@@ -3466,17 +3518,17 @@ func _draw_air() -> void:
 			for i in 16:
 				var y: float = ARENA.position.y + fmod(i * 97.0 + 23.0, h)
 				var x: float = ARENA.position.x + fposmod(t * (70.0 + (i % 4) * 20.0) + i * 211.0, w - 36.0)
-				draw_line(Vector2(x, y), Vector2(x + 34.0, y), Color(c, 0.07), 1.5)
+				_cv.draw_line(Vector2(x, y), Vector2(x + 34.0, y), Color(c, 0.07), 1.5)
 		"water":
 			for i in 26:
 				var x: float = clampf(ARENA.position.x + fmod(i * 137.5, w) + sin(t * 1.3 + i) * 5.0, ARENA.position.x + 4.0, ARENA.end.x - 4.0)
 				var y: float = ARENA.end.y - 4.0 - fposmod(t * (18.0 + (i % 5) * 6.0) + i * 53.0, h - 8.0)
-				draw_arc(Vector2(x, y), 1.4 + (i % 3) * 0.6, 0, TAU, 8, Color(c.lightened(0.4), 0.16), 1.0)
+				_cv.draw_arc(Vector2(x, y), 1.4 + (i % 3) * 0.6, 0, TAU, 8, Color(c.lightened(0.4), 0.16), 1.0)
 		_:
 			for i in 28:
 				var x: float = clampf(ARENA.position.x + fmod(i * 137.5, w) + sin(t * 0.8 + i * 1.7) * 8.0, ARENA.position.x + 4.0, ARENA.end.x - 4.0)
 				var y: float = ARENA.end.y - 4.0 - fposmod(t * (10.0 + (i % 4) * 4.0) + i * 61.0, h - 8.0)
-				draw_circle(Vector2(x, y), 1.0 + (i % 3) * 0.5, Color(c, 0.12 + 0.06 * sin(t * 2.0 + i)))
+				_cv.draw_circle(Vector2(x, y), 1.0 + (i % 3) * 0.5, Color(c, 0.12 + 0.06 * sin(t * 2.0 + i)))
 
 
 func _draw_building() -> void:
@@ -3484,7 +3536,7 @@ func _draw_building() -> void:
 	hole reads as a hole in a wall and not a gap in a row."""
 	for c in footprint.keys():
 		var r := _cell(c.x, c.y).grow(1.5)
-		draw_rect(r, Color(0.12, 0.115, 0.14))
+		_cv.draw_rect(r, Color(0.12, 0.115, 0.14))
 	for c in footprint.keys():
 		var r := _cell(c.x, c.y).grow(1.5)
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -3492,36 +3544,36 @@ func _draw_building() -> void:
 				continue
 			match d:
 				Vector2i(1, 0):
-					draw_line(Vector2(r.end.x, r.position.y), r.end, Color(0.33, 0.31, 0.29), 2.0)
+					_cv.draw_line(Vector2(r.end.x, r.position.y), r.end, Color(0.33, 0.31, 0.29), 2.0)
 				Vector2i(-1, 0):
-					draw_line(r.position, Vector2(r.position.x, r.end.y), Color(0.33, 0.31, 0.29), 2.0)
+					_cv.draw_line(r.position, Vector2(r.position.x, r.end.y), Color(0.33, 0.31, 0.29), 2.0)
 				Vector2i(0, 1):
-					draw_line(Vector2(r.position.x, r.end.y), r.end, Color(0.33, 0.31, 0.29), 2.0)
+					_cv.draw_line(Vector2(r.position.x, r.end.y), r.end, Color(0.33, 0.31, 0.29), 2.0)
 				Vector2i(0, -1):
-					draw_line(r.position, Vector2(r.end.x, r.position.y), Color(0.33, 0.31, 0.29), 2.0)
+					_cv.draw_line(r.position, Vector2(r.end.x, r.position.y), Color(0.33, 0.31, 0.29), 2.0)
 	if hall.size != Vector2.ZERO:
-		draw_rect(hall.grow(2.0), Color(0.09, 0.08, 0.1))
-		draw_rect(hall.grow(2.0), Color(GOLD, 0.25), false, 1.5)
+		_cv.draw_rect(hall.grow(2.0), Color(0.09, 0.08, 0.1))
+		_cv.draw_rect(hall.grow(2.0), Color(GOLD, 0.25), false, 1.5)
 		for i in 6:
 			var x: float = hall.position.x + (i + 0.5) * hall.size.x / 6.0
-			draw_line(Vector2(x, hall.position.y + 4), Vector2(x, hall.end.y - 4), Color(1, 1, 1, 0.04), 8.0)
+			_cv.draw_line(Vector2(x, hall.position.y + 4), Vector2(x, hall.end.y - 4), Color(1, 1, 1, 0.04), 8.0)
 
 
 func _draw_rails() -> void:
 	"""The lanes' floor a shade darker, and their iron rails: dark steel, a
 	lit edge, rivets, and a gold cap at each gate."""
 	for x in [ARENA.position.x, FIELD_X + FIELD_W + RAIL_W]:
-		draw_rect(Rect2(x, ARENA.position.y, SIDE_GAP - RAIL_W, field_bottom() - ARENA.position.y), Color(0, 0, 0, 0.18))
+		_cv.draw_rect(Rect2(x, ARENA.position.y, SIDE_GAP - RAIL_W, field_bottom() - ARENA.position.y), Color(0, 0, 0, 0.18))
 	for k in rails:
 		var r: Rect2 = k["rect"]
-		draw_rect(r.grow(1.0), Color(GOLD, 0.22))
-		draw_rect(r, Color(0.34, 0.37, 0.45).lerp(Color.WHITE, float(k["flash"]) * 0.5))
-		draw_rect(Rect2(r.position, Vector2(1.5, r.size.y)), Color(0.8, 0.84, 0.92))
+		_cv.draw_rect(r.grow(1.0), Color(GOLD, 0.22))
+		_cv.draw_rect(r, Color(0.34, 0.37, 0.45).lerp(Color.WHITE, float(k["flash"]) * 0.5))
+		_cv.draw_rect(Rect2(r.position, Vector2(1.5, r.size.y)), Color(0.8, 0.84, 0.92))
 		for y in range(int(r.position.y) + 10, int(r.end.y) - 4, 24):
-			draw_circle(Vector2(r.get_center().x, y), 1.2, Color(0.75, 0.78, 0.85))
+			_cv.draw_circle(Vector2(r.get_center().x, y), 1.2, Color(0.75, 0.78, 0.85))
 		for y in [r.position.y, r.end.y]:
 			if y > ARENA.position.y + 1.0:
-				draw_rect(Rect2(r.position.x - 1.5, y - 1.5, r.size.x + 3.0, 3.0), GOLD)
+				_cv.draw_rect(Rect2(r.position.x - 1.5, y - 1.5, r.size.x + 3.0, 3.0), GOLD)
 
 
 func _draw_gusts() -> void:
@@ -3531,17 +3583,17 @@ func _draw_gusts() -> void:
 		var y0: float = g["y0"]
 		var y1: float = g["y1"]
 		var way: float = g["way"]
-		draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["wind"], 0.05))
+		_cv.draw_rect(Rect2(ARENA.position.x, y0, ARENA.size.x, y1 - y0), Color(COLOURS["wind"], 0.05))
 		var lanes: int = maxi(2, int((y1 - y0) / 11.0))
 		for i in lanes:
 			var y: float = y0 + (i + 0.5) * (y1 - y0) / lanes
 			var run_x: float = fposmod(t * 260.0 * way + i * 137.0, ARENA.size.x + 120.0) - 60.0
 			for j in 3:
 				var x: float = ARENA.position.x + fposmod(run_x + j * (ARENA.size.x / 3.0), ARENA.size.x)
-				draw_line(Vector2(x, y), Vector2(x - way * 46.0, y), Color(COLOURS["wind"], 0.28), 2.0)
+				_cv.draw_line(Vector2(x, y), Vector2(x - way * 46.0, y), Color(COLOURS["wind"], 0.28), 2.0)
 		for edge in [ARENA.position.x + 12.0, ARENA.end.x - 12.0]:
 			var mid: float = (y0 + y1) / 2.0
-			draw_polyline(PackedVector2Array([Vector2(edge - way * 5.0, mid - 7.0), Vector2(edge + way * 5.0, mid),
+			_cv.draw_polyline(PackedVector2Array([Vector2(edge - way * 5.0, mid - 7.0), Vector2(edge + way * 5.0, mid),
 				Vector2(edge - way * 5.0, mid + 7.0)]), Color(COLOURS["wind"], 0.7), 2.0)
 
 
@@ -3554,22 +3606,22 @@ func _draw_tide_body() -> void:
 	var mark: float = tide_line()
 	var blue: Color = COLOURS["water"]
 	for x in range(int(FIELD_X) + 4, int(FIELD_X + FIELD_W) - 4, 14):
-		draw_line(Vector2(x, mark), Vector2(x + 6, mark), Color(blue, 0.18), 1.0)
+		_cv.draw_line(Vector2(x, mark), Vector2(x + 6, mark), Color(blue, 0.18), 1.0)
 	for x in [ARENA.position.x + 4.0, FIELD_X + FIELD_W + RAIL_W + 4.0]:
 		for i in 2:
 			var y: float = mark - 3.0 + i * 5.0
-			draw_polyline(PackedVector2Array([Vector2(x, y), Vector2(x + 5, y - 2.5), Vector2(x + 10, y), Vector2(x + 15, y - 2.5),
+			_cv.draw_polyline(PackedVector2Array([Vector2(x, y), Vector2(x + 5, y - 2.5), Vector2(x + 10, y), Vector2(x + 15, y - 2.5),
 				Vector2(x + 20, y)]), Color(blue.lightened(0.3), 0.75), 1.4)
 	var level: float = tide_level()
 	if level <= 0.0:
 		return
 	var top: float = tide_y()
 	var foot: float = field_bottom() + 6.0
-	draw_rect(Rect2(ARENA.position.x, top, ARENA.size.x, foot - top), Color(blue, 0.16 + 0.06 * level))
+	_cv.draw_rect(Rect2(ARENA.position.x, top, ARENA.size.x, foot - top), Color(blue, 0.16 + 0.06 * level))
 	for i in 3:
 		var y: float = top + 14.0 + i * 22.0
 		if y < foot - 4.0:
-			draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), Color(blue.lightened(0.2), 0.05), 6.0)
+			_cv.draw_line(Vector2(ARENA.position.x, y), Vector2(ARENA.end.x, y), Color(blue.lightened(0.2), 0.05), 6.0)
 
 
 func _draw_tide_top() -> void:
@@ -3596,9 +3648,9 @@ func _draw_half_shell(mid: Vector2, w: float, h: float, up: bool, c: Color) -> v
 		var a: float = PI * i / 12.0
 		pts.append(mid + Vector2(-cos(a) * w, sin(a) * h * (-1.0 if up else 1.0)))
 	pts.append(mid + Vector2(w, 0))
-	draw_colored_polygon(pts, c)
+	_cv.draw_colored_polygon(pts, c)
 	for i in [-1, 0, 1]:
-		draw_line(mid, mid + Vector2(i * w * 0.55, h * 0.8 * (-1.0 if up else 1.0)), Color(0, 0, 0, 0.25), 1.0)
+		_cv.draw_line(mid, mid + Vector2(i * w * 0.55, h * 0.8 * (-1.0 if up else 1.0)), Color(0, 0, 0, 0.25), 1.0)
 
 
 func _draw_guards() -> void:
@@ -3614,17 +3666,146 @@ func _draw_guards() -> void:
 			draw_rect(box, Color(GUARD_GLOW, (0.4 + 0.25 * pulse) * shown), false, 1.5)
 
 
-func _draw_brick(k: Dictionary) -> void:
-	"""A brick at its own size: on a big map the standard brick (CW - 2 by
-	CH) is drawn scaled down into its rect."""
+func _paint_floor() -> void:
+	"""THE FLOOR, behind the bricks, every frame: the backdrop, the arena and
+	what lies on it - the tide, the ice, the gusts, the rails, the dark."""
+	_cv = floor_layer
+	_draw_backdrop()
+	if state != State.KINGDOMS:
+		floor_layer.draw_set_transform(_jolt)
+		_draw_arena()
+		_draw_building()
+		_draw_tide_body()
+		_draw_slicks()
+		_draw_gusts()
+		_draw_rails()
+		if dark:
+			_draw_dark()
+	_cv = self
+
+
+func sync_bricks() -> void:
+	"""THE BRICKS DRAW ONCE: a picture each (made the first time it is
+	seen), hidden once broken, drawn again only when _brick_look() says its
+	look has changed. A brick struck is drawn again at once; the rest are
+	looked at half each frame, so a kind always moving is drawn every other
+	frame. What moves (drifters, kites, buoys) is put in place every frame.
+	Pictures whose bricks have gone (a new map, the blight's dead) are let
+	go."""
+	redrawn = 0
+	if brick_layer == null:
+		return
+	_sync_n += 1
+	brick_layer.position = _jolt
+	brick_layer.visible = state != State.KINGDOMS
+	_glow_last = last_few()
+	var glow: bool = pulling or _glow_last
+	var seen: int = 0
+	var half: int = _sync_n % 2
+	for k in bricks:
+		var node: Node2D = k.get("node")
+		if node == null:
+			if k.has("rail"):
+				continue
+			node = Node2D.new()
+			node.position = (k["rect"] as Rect2).position
+			brick_layer.add_child(node)
+			node.draw.connect(_paint_brick.bind(k, node))
+			k["node"] = node
+			k["look"] = -2
+			k["half"] = seen % 2
+			k["shown"] = true
+		seen += 1
+		if k["hp"] <= 0 and UNBREAKABLE.find(k["kind"]) < 0:
+			if k["shown"]:
+				k["shown"] = false
+				node.visible = false
+			continue
+		if not k["shown"]:
+			k["shown"] = true
+			node.visible = true
+		if k["flash"] > 0.0:
+			k["look"] = -1
+			node.queue_redraw()
+			redrawn += 1
+			continue
+		if k["half"] != half and k["look"] != -2:
+			continue
+		var at: Vector2 = (k["rect"] as Rect2).position
+		if node.position != at:
+			node.position = at
+		var look: int = _brick_look(k, glow)
+		if look == -1 or look != k["look"]:
+			k["look"] = look
+			node.queue_redraw()
+			redrawn += 1
+	for list in [movers, buoys]:
+		for k in list:
+			var node: Node2D = k.get("node")
+			if node != null and node.position != (k["rect"] as Rect2).position:
+				node.position = (k["rect"] as Rect2).position
+	if brick_layer.get_child_count() > seen:
+		var keep: Dictionary = {}
+		for k in bricks:
+			if k.has("node"):
+				keep[k["node"]] = true
+		for n in brick_layer.get_children():
+			if not keep.has(n) and not n.is_queued_for_deletion():
+				n.queue_free()
+
+
+func _brick_look(k: Dictionary, glow: bool = false) -> int:
+	"""What a brick looks like, as one number - or -1 for one drawn every
+	time it is looked at: struck, burning, warded, glowing, or a kind always
+	moving."""
+	var kind: String = k["kind"]
+	if not STILL_KINDS.has(kind) or k["flash"] > 0.0 or k["burn"] >= 0.0 or k.has("warded"):
+		return -1
+	var hp: int = k["hp"]
+	if glow and hp > 0 and UNBREAKABLE.find(kind) < 0 and not _guarded(k):
+		return -1
+	var look: int = ((hp * 64 + k["most"]) * 16 + LAND_NO.get(k["land"], 0)) * 4
+	if k.get("frozen", false):
+		look += 2
+	if k.has("frost"):
+		look += 1
+	if dark:
+		look = look * 32 + int(k.get("seen", 0.0) * 24.0)
+	return look
+
+
+func _paint_brick(k: Dictionary, node: Node2D) -> void:
+	"""ONE BRICK'S PICTURE where it stands (the layer is shaken with the run):
+	its shadow, the brick - on a big map the standard brick scaled into its
+	rect - and what lies on it."""
+	if not (k["hp"] > 0 or not _breaks(k)):
+		return
+	_cv = node
 	var r: Rect2 = k["rect"]
+	var here := Rect2(Vector2.ZERO, r.size)
+	node.draw_rect(Rect2(Vector2(2, 3), r.size), Color(0, 0, 0, 0.38))
 	var standard := Vector2(CW - 2.0, CH)
 	if r.size.is_equal_approx(standard) or k["kind"] == "heart" or k["kind"] == "boulder":
-		_draw_brick_in(k, r)
-		return
-	draw_set_transform(_jolt + r.position, 0.0, r.size / standard)
-	_draw_brick_in(k, Rect2(Vector2.ZERO, standard))
-	draw_set_transform(_jolt)
+		_draw_brick_in(k, here)
+	else:
+		node.draw_set_transform(Vector2.ZERO, 0.0, r.size / standard)
+		_draw_brick_in(k, Rect2(Vector2.ZERO, standard))
+		node.draw_set_transform(Vector2.ZERO)
+	if k.has("warded") and k["hp"] > 0:
+		node.draw_rect(here.grow(1.5), Color(GUARD_GLOW, float(k["warded"])), false, 2.0)
+	if bool(k.get("frozen", false)) and k["hp"] > 0:
+		_draw_frozen(here)
+	if k.has("frost") and k["hp"] > 0:
+		_draw_frost_coat(here)
+	if (pulling or _glow_last) and k["hp"] > 0 and _breaks(k) and not _guarded(k):
+		var glow: float = 0.5 + 0.5 * sin(t * 6.0)
+		node.draw_rect(here.grow(3.0 + glow * 3.0), Color(GOLD, 0.35 + 0.35 * glow), false, 2.0)
+	if dark:
+		# UNSEEN: the dark over it, a ghost of it left
+		var shown: float = GHOST + (1.0 - GHOST) * float(k.get("seen", 0.0))
+		if shown < 1.0:
+			node.draw_rect(Rect2(Vector2(-1, -1), r.size + Vector2(4, 5)), Color(0.015, 0.012, 0.04, 1.0 - shown))
+	_cv = self
 
 
 func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
@@ -3634,106 +3815,106 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 	var mid: Vector2 = r.get_center()
 	match k["kind"]:
 		"iron":
-			draw_rect(r, Color(0.2, 0.22, 0.27).lerp(Color.WHITE, flash * 0.5))
-			draw_rect(Rect2(r.position, Vector2(r.size.x, 3)), Color(0.62, 0.66, 0.75))
-			draw_rect(r, GOLD.darkened(0.3), false, 1.5)
+			_cv.draw_rect(r, Color(0.2, 0.22, 0.27).lerp(Color.WHITE, flash * 0.5))
+			_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, 3)), Color(0.62, 0.66, 0.75))
+			_cv.draw_rect(r, GOLD.darkened(0.3), false, 1.5)
 			for x in [r.position.x + 4, r.end.x - 4]:
 				for y in [r.position.y + 4, r.end.y - 4]:
-					draw_circle(Vector2(x, y), 1.4, Color(0.75, 0.78, 0.85))
+					_cv.draw_circle(Vector2(x, y), 1.4, Color(0.75, 0.78, 0.85))
 			return
 		"mirror":
 			# A DEEPER BLUE THAN ANY STONE (the owner: mirrors beside grey
 			# stone should "pop immediately as angled deflectors"), with a
 			# soft blue rim and the glint along its slant.
-			draw_rect(r.grow(1.5), Color(MIRROR_BLUE, 0.35 + 0.15 * sin(t * 2.0 + r.position.x * 0.05)), false, 2.0)
-			draw_rect(r, MIRROR_BLUE.darkened(0.25).lerp(Color.WHITE, flash * 0.7))
-			draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.5)), MIRROR_BLUE.lerp(Color.WHITE, 0.15 + flash * 0.6))
+			_cv.draw_rect(r.grow(1.5), Color(MIRROR_BLUE, 0.35 + 0.15 * sin(t * 2.0 + r.position.x * 0.05)), false, 2.0)
+			_cv.draw_rect(r, MIRROR_BLUE.darkened(0.25).lerp(Color.WHITE, flash * 0.7))
+			_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.5)), MIRROR_BLUE.lerp(Color.WHITE, 0.15 + flash * 0.6))
 			var shine: float = 0.5 + 0.5 * sin(t * 2.0 + r.position.x * 0.05)
-			draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x - 4, 3), Color(1, 1, 1, 0.55 + 0.4 * shine), 2.5)
-			draw_rect(r, Color(0.85, 0.93, 1.0, 0.8), false, 1.2)
+			_cv.draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x - 4, 3), Color(1, 1, 1, 0.55 + 0.4 * shine), 2.5)
+			_cv.draw_rect(r, Color(0.85, 0.93, 1.0, 0.8), false, 1.2)
 			return
 		"bumper":
 			# round, pink, and it lights when struck
 			var ring_r: float = r.size.y * 0.5 + 1.0
-			draw_circle(mid, ring_r + 3.0 + flash * 3.0, Color(1.0, 0.45, 0.8, 0.25 + flash * 0.3))
-			draw_circle(mid, ring_r, Color(0.55, 0.18, 0.45).lerp(Color.WHITE, flash * 0.5))
-			draw_circle(mid, ring_r - 3.0, Color(1.0, 0.55, 0.85).lerp(Color.WHITE, flash * 0.6))
-			draw_circle(mid + Vector2(-2, -2), 2.0, Color(1, 1, 1, 0.9))
+			_cv.draw_circle(mid, ring_r + 3.0 + flash * 3.0, Color(1.0, 0.45, 0.8, 0.25 + flash * 0.3))
+			_cv.draw_circle(mid, ring_r, Color(0.55, 0.18, 0.45).lerp(Color.WHITE, flash * 0.5))
+			_cv.draw_circle(mid, ring_r - 3.0, Color(1.0, 0.55, 0.85).lerp(Color.WHITE, flash * 0.6))
+			_cv.draw_circle(mid + Vector2(-2, -2), 2.0, Color(1, 1, 1, 0.9))
 			return
 		"portal":
 			# a swirl, its pair's colour
 			var hue: Color = PORTAL_HUES[int(k.get("pair", 0)) % PORTAL_HUES.size()] if k.has("to") else Color(0.4, 0.4, 0.45)
-			draw_rect(r, Color(0.06, 0.03, 0.1))
+			_cv.draw_rect(r, Color(0.06, 0.03, 0.1))
 			for i in 3:
 				var a0: float = t * 3.0 + i * TAU / 3.0
-				draw_arc(mid, 6.0 - i * 1.5, a0, a0 + PI * 1.2, 10, Color(hue.lerp(Color.WHITE, flash * 0.6), 0.9 - i * 0.2), 1.6)
-			draw_rect(r, Color(hue, 0.8), false, 1.2)
+				_cv.draw_arc(mid, 6.0 - i * 1.5, a0, a0 + PI * 1.2, 10, Color(hue.lerp(Color.WHITE, flash * 0.6), 0.9 - i * 0.2), 1.6)
+			_cv.draw_rect(r, Color(hue, 0.8), false, 1.2)
 			return
 		"whirl":
 			# A WHIRL: a pinwheel always turning, faster when struck
-			draw_rect(r, Color(0.08, 0.16, 0.14))
+			_cv.draw_rect(r, Color(0.08, 0.16, 0.14))
 			var spin: float = t * (5.0 + flash * 14.0) + float(k.get("phase", 0.0))
 			for i in 4:
 				var a: float = spin + i * TAU / 4.0
 				var tip: Vector2 = mid + Vector2.from_angle(a) * (r.size.y * 0.5 + 2.0)
 				var side: Vector2 = mid + Vector2.from_angle(a + 0.9) * (r.size.y * 0.32)
-				draw_colored_polygon(PackedVector2Array([mid, tip, side]), COLOURS["wind"].lerp(Color.WHITE, 0.15 + flash * 0.5))
-			draw_circle(mid, 2.0, Color(1, 1, 1, 0.9))
-			draw_rect(r, Color(COLOURS["wind"], 0.6), false, 1.2)
+				_cv.draw_colored_polygon(PackedVector2Array([mid, tip, side]), COLOURS["wind"].lerp(Color.WHITE, 0.15 + flash * 0.5))
+			_cv.draw_circle(mid, 2.0, Color(1, 1, 1, 0.9))
+			_cv.draw_rect(r, Color(COLOURS["wind"], 0.6), false, 1.2)
 			return
 		"guard":
 			# A GUARD: a steel plate, a gold shield on it (dimmed once struck)
-			draw_rect(r, Color(0.22, 0.3, 0.45).lerp(Color.WHITE, flash * 0.5))
-			draw_rect(Rect2(r.position, Vector2(r.size.x, 3)), Color(0.55, 0.68, 0.9))
+			_cv.draw_rect(r, Color(0.22, 0.3, 0.45).lerp(Color.WHITE, flash * 0.5))
+			_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, 3)), Color(0.55, 0.68, 0.9))
 			var crest := PackedVector2Array([mid + Vector2(-5, -5), mid + Vector2(5, -5), mid + Vector2(5, 0),
 				mid + Vector2(0, 6), mid + Vector2(-5, 0)])
-			draw_colored_polygon(crest, GOLD if k["hp"] >= 2 else GOLD.darkened(0.45))
+			_cv.draw_colored_polygon(crest, GOLD if k["hp"] >= 2 else GOLD.darkened(0.45))
 			crest.append(crest[0])
-			draw_polyline(crest, Color(0.3, 0.2, 0.05), 1.0)
-			draw_rect(r, GUARD_GLOW, false, 1.5)
+			_cv.draw_polyline(crest, Color(0.3, 0.2, 0.05), 1.0)
+			_cv.draw_rect(r, GUARD_GLOW, false, 1.5)
 			return
 		"lock":
-			draw_rect(r, Color(0.2, 0.22, 0.27).lerp(Color.WHITE, flash * 0.4))
-			draw_rect(r, GOLD.darkened(0.3), false, 1.5)
-			draw_arc(mid + Vector2(0, -1), 3.5, PI, TAU, 10, GOLD, 1.6)
-			draw_rect(Rect2(mid + Vector2(-4.5, -1), Vector2(9, 6)), GOLD)
-			draw_circle(mid + Vector2(0, 2), 1.2, Color(0.2, 0.15, 0.05))
+			_cv.draw_rect(r, Color(0.2, 0.22, 0.27).lerp(Color.WHITE, flash * 0.4))
+			_cv.draw_rect(r, GOLD.darkened(0.3), false, 1.5)
+			_cv.draw_arc(mid + Vector2(0, -1), 3.5, PI, TAU, 10, GOLD, 1.6)
+			_cv.draw_rect(Rect2(mid + Vector2(-4.5, -1), Vector2(9, 6)), GOLD)
+			_cv.draw_circle(mid + Vector2(0, 2), 1.2, Color(0.2, 0.15, 0.05))
 			return
 		"rune":
 			var on: float = 1.0 if _rune_lit(k) else 0.0
-			draw_rect(r, Color(0.12, 0.13, 0.2).lerp(Color(0.45, 0.35, 0.12), on * 0.6).lerp(Color.WHITE, flash * 0.4))
+			_cv.draw_rect(r, Color(0.12, 0.13, 0.2).lerp(Color(0.45, 0.35, 0.12), on * 0.6).lerp(Color.WHITE, flash * 0.4))
 			var glyph: Color = Color(1.0, 0.85, 0.35, 0.35 + on * 0.65)
-			draw_polyline(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 0), mid + Vector2(0, 5), mid + Vector2(-5, 0),
+			_cv.draw_polyline(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 0), mid + Vector2(0, 5), mid + Vector2(-5, 0),
 				mid + Vector2(0, -5)]), glyph, 1.4)
-			draw_line(mid + Vector2(0, -5), mid + Vector2(0, 5), glyph, 1.2)
+			_cv.draw_line(mid + Vector2(0, -5), mid + Vector2(0, 5), glyph, 1.2)
 			if on > 0.0:
-				draw_rect(r.grow(1.5), Color(1.0, 0.85, 0.35, 0.5), false, 1.5)
+				_cv.draw_rect(r.grow(1.5), Color(1.0, 0.85, 0.35, 0.5), false, 1.5)
 			else:
-				draw_rect(r, Color(0.4, 0.45, 0.6, 0.6), false, 1.0)
+				_cv.draw_rect(r, Color(0.4, 0.45, 0.6, 0.6), false, 1.0)
 			return
 		"mix":
 			# two lands, split on the diagonal
 			var lands: Array = MIX_LANDS.get(str(k.get("mix", "clash")), ["light", "light"])
 			var a_col: Color = COLOURS[lands[0]].lerp(Color.WHITE, flash * 0.5)
 			var b_col: Color = COLOURS[lands[1]].lerp(Color.WHITE, flash * 0.5)
-			draw_rect(r, a_col.darkened(0.15))
-			draw_colored_polygon(PackedVector2Array([Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+			_cv.draw_rect(r, a_col.darkened(0.15))
+			_cv.draw_colored_polygon(PackedVector2Array([Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
 				b_col.darkened(0.1))
-			draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.4))
+			_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.4))
 			var spark: float = 0.6 + 0.4 * sin(t * 6.0 + r.position.x)
-			draw_line(mid + Vector2(-3, -3), mid + Vector2(3, 3), Color(1, 1, 1, spark), 1.4)
-			draw_line(mid + Vector2(-3, 3), mid + Vector2(3, -3), Color(1, 1, 1, spark), 1.4)
-			draw_rect(r, Color(1, 1, 1, 0.35), false, 1.0)
+			_cv.draw_line(mid + Vector2(-3, -3), mid + Vector2(3, 3), Color(1, 1, 1, spark), 1.4)
+			_cv.draw_line(mid + Vector2(-3, 3), mid + Vector2(3, -3), Color(1, 1, 1, spark), 1.4)
+			_cv.draw_rect(r, Color(1, 1, 1, 0.35), false, 1.0)
 			return
 		"drift":
 			# A SNOWDRIFT: soft white, heaped along its top
 			var snow := Color(0.9, 0.94, 1.0).lerp(Color.WHITE, flash * 0.5)
-			draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.35), Vector2(r.size.x, r.size.y * 0.65)), snow.darkened(0.08))
+			_cv.draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.35), Vector2(r.size.x, r.size.y * 0.65)), snow.darkened(0.08))
 			for i in 4:
-				draw_circle(Vector2(r.position.x + r.size.x * (0.14 + i * 0.24), r.position.y + r.size.y * 0.45), r.size.y * 0.36, snow)
-			draw_rect(Rect2(r.position.x, r.end.y - 2.0, r.size.x, 2.0), Color(0.6, 0.7, 0.85, 0.6))
+				_cv.draw_circle(Vector2(r.position.x + r.size.x * (0.14 + i * 0.24), r.position.y + r.size.y * 0.45), r.size.y * 0.36, snow)
+			_cv.draw_rect(Rect2(r.position.x, r.end.y - 2.0, r.size.x, 2.0), Color(0.6, 0.7, 0.85, 0.6))
 			if k["hp"] <= 1:
-				draw_line(r.position + Vector2(r.size.x * 0.3, r.size.y * 0.3), r.get_center() + Vector2(3, 3), Color(0.55, 0.65, 0.8), 1.2)
+				_cv.draw_line(r.position + Vector2(r.size.x * 0.3, r.size.y * 0.3), r.get_center() + Vector2(3, 3), Color(0.55, 0.65, 0.8), 1.2)
 			return
 		"icicle":
 			# AN ICICLE: hanging from the brick above; a Snow Sprite's blinks
@@ -3741,297 +3922,297 @@ func _draw_brick_in(k: Dictionary, r: Rect2) -> void:
 			var ice := Color(0.82, 0.95, 1.0)
 			if k.has("hang") and float(k["hang"]) < 1.5:
 				ice = ice.lerp(Color.WHITE, 0.5 + 0.5 * sin(t * 18.0))
-			draw_colored_polygon(PackedVector2Array([r.position + Vector2(r.size.x * 0.2, 0), Vector2(r.end.x - r.size.x * 0.2, r.position.y),
+			_cv.draw_colored_polygon(PackedVector2Array([r.position + Vector2(r.size.x * 0.2, 0), Vector2(r.end.x - r.size.x * 0.2, r.position.y),
 				Vector2(mid.x, r.end.y + r.size.y * 0.25)]), ice.lerp(Color.WHITE, flash * 0.5))
-			draw_line(Vector2(mid.x - 1.5, r.position.y + 1.0), Vector2(mid.x, r.end.y), Color(1, 1, 1, 0.9), 1.2)
+			_cv.draw_line(Vector2(mid.x - 1.5, r.position.y + 1.0), Vector2(mid.x, r.end.y), Color(1, 1, 1, 0.9), 1.2)
 			return
 		"clam":
 			# A CLAM: its lid lifts when it opens, the pearl shining inside
 			var o: float = clam_open(k)
-			draw_rect(r, Color(0.08, 0.14, 0.24).lerp(Color.WHITE, flash * 0.4))
+			_cv.draw_rect(r, Color(0.08, 0.14, 0.24).lerp(Color.WHITE, flash * 0.4))
 			var shell := Color(0.72, 0.62, 0.78).lerp(Color.WHITE, flash * 0.5)
 			var hinge: Vector2 = mid + Vector2(0, 2.0)
 			if o > 0.0:
-				draw_circle(hinge + Vector2(0, -2.0 * o), 3.4, Color(1, 1, 1, 0.25 * o))
-				draw_circle(hinge + Vector2(0, -2.0 * o), 2.6, Color(0.96, 0.96, 1.0, o))
+				_cv.draw_circle(hinge + Vector2(0, -2.0 * o), 3.4, Color(1, 1, 1, 0.25 * o))
+				_cv.draw_circle(hinge + Vector2(0, -2.0 * o), 2.6, Color(0.96, 0.96, 1.0, o))
 			_draw_half_shell(hinge, r.size.x * 0.4, r.size.y * 0.42, false, shell.darkened(0.15))
 			_draw_half_shell(hinge + Vector2(0, -1.0 - 4.5 * o), r.size.x * 0.4, r.size.y * 0.5, true, shell)
-			draw_rect(r, Color(0.85, 0.75, 0.95, 0.4 + 0.5 * o), false, 1.2)
+			_cv.draw_rect(r, Color(0.85, 0.75, 0.95, 0.4 + 0.5 * o), false, 1.2)
 			return
 		"boulder":
 			# A BOULDER: a round-shouldered rock two cells wide, at its own size,
 			# cracking with every hit
 			var rock: Color = c.lerp(Color.WHITE, flash * 0.5)
-			draw_rect(r.grow(1.0), Color(0.15, 0.1, 0.06, 0.8), false, 1.0)
+			_cv.draw_rect(r.grow(1.0), Color(0.15, 0.1, 0.06, 0.8), false, 1.0)
 			var inset: float = minf(r.size.y * 0.3, 4.0)
-			draw_rect(Rect2(r.position + Vector2(inset, 0), Vector2(r.size.x - inset * 2.0, r.size.y)), rock.darkened(0.12))
-			draw_rect(Rect2(r.position + Vector2(0, inset), Vector2(r.size.x, r.size.y - inset * 2.0)), rock.darkened(0.12))
+			_cv.draw_rect(Rect2(r.position + Vector2(inset, 0), Vector2(r.size.x - inset * 2.0, r.size.y)), rock.darkened(0.12))
+			_cv.draw_rect(Rect2(r.position + Vector2(0, inset), Vector2(r.size.x, r.size.y - inset * 2.0)), rock.darkened(0.12))
 			for cx in [r.position.x + inset, r.end.x - inset]:
 				for cy in [r.position.y + inset, r.end.y - inset]:
-					draw_circle(Vector2(cx, cy), inset, rock.darkened(0.12))
-			draw_rect(Rect2(r.position + Vector2(inset, 1), Vector2(r.size.x - inset * 2.0, r.size.y * 0.4)), rock.lightened(0.12))
+					_cv.draw_circle(Vector2(cx, cy), inset, rock.darkened(0.12))
+			_cv.draw_rect(Rect2(r.position + Vector2(inset, 1), Vector2(r.size.x - inset * 2.0, r.size.y * 0.4)), rock.lightened(0.12))
 			for i in 3:
-				draw_circle(Vector2(r.position.x + r.size.x * (0.22 + i * 0.28), mid.y + (1.0 if i % 2 else -1.0) * r.size.y * 0.15),
+				_cv.draw_circle(Vector2(r.position.x + r.size.x * (0.22 + i * 0.28), mid.y + (1.0 if i % 2 else -1.0) * r.size.y * 0.15),
 					maxf(1.0, r.size.y * 0.1), rock.darkened(0.45))
 			var crack := Color(0.12, 0.08, 0.05, 0.8)
 			var most_hp: int = int(k["most"])
 			if k["hp"] < most_hp:
-				draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.3, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.38, mid.y),
+				_cv.draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.3, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.38, mid.y),
 					Vector2(r.position.x + r.size.x * 0.33, r.end.y - 1)]), crack, 1.2)
 			if k["hp"] < most_hp - 1:
-				draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.68, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.6, mid.y),
+				_cv.draw_polyline(PackedVector2Array([Vector2(r.position.x + r.size.x * 0.68, r.position.y + 1), Vector2(r.position.x + r.size.x * 0.6, mid.y),
 					Vector2(r.position.x + r.size.x * 0.72, r.end.y - 1)]), crack, 1.2)
 			if k["hp"] <= 1:
-				draw_line(Vector2(r.position.x + 3, mid.y), Vector2(r.end.x - 3, mid.y + 1), crack, 1.2)
+				_cv.draw_line(Vector2(r.position.x + 3, mid.y), Vector2(r.end.x - 3, mid.y + 1), crack, 1.2)
 			return
 		"lava":
 			# LAVA: molten under a dark crust, bubbling and glowing - it greys
 			# as it cools toward basalt
 			var cool: float = clampf(1.0 - float(k.get("cool", LAVA_COOL)) / LAVA_COOL, 0.0, 1.0)
 			var throb: float = 0.5 + 0.5 * sin(t * 4.0 + r.position.x * 0.05)
-			draw_rect(r, Color(0.4, 0.07, 0.02).lerp(Color(0.3, 0.27, 0.27), cool).lerp(Color.WHITE, flash * 0.5))
+			_cv.draw_rect(r, Color(0.4, 0.07, 0.02).lerp(Color(0.3, 0.27, 0.27), cool).lerp(Color.WHITE, flash * 0.5))
 			var molten := Color(1.0, 0.82, 0.25).lerp(Color(1.0, 0.45, 0.1), 0.4 * throb).lerp(Color(0.5, 0.33, 0.28), cool)
-			draw_rect(Rect2(r.position + Vector2(2, 2), r.size - Vector2(4, 4)), molten)
+			_cv.draw_rect(Rect2(r.position + Vector2(2, 2), r.size - Vector2(4, 4)), molten)
 			for i in 3:
 				var bx: float = r.position.x + 6.0 + i * 8.0
 				var rise: float = fmod(t * 1.3 + i * 0.37 + r.position.x * 0.01, 1.0)
-				draw_circle(Vector2(bx, r.end.y - 3.0 - rise * (r.size.y - 6.0)), 1.6 * (1.0 - rise) + 0.6,
+				_cv.draw_circle(Vector2(bx, r.end.y - 3.0 - rise * (r.size.y - 6.0)), 1.6 * (1.0 - rise) + 0.6,
 					Color(1.0, 1.0, 0.8, (1.0 - cool) * 0.9))
-			draw_rect(r.grow(1.0), Color(1.0, 0.55, 0.1, (0.35 + 0.4 * throb) * (1.0 - cool)), false, 1.5)
+			_cv.draw_rect(r.grow(1.0), Color(1.0, 0.55, 0.1, (0.35 + 0.4 * throb) * (1.0 - cool)), false, 1.5)
 			return
 		"heart":
 			var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
 			var hw: float = r.size.x * 0.46
 			var hh: float = r.size.y * 0.5 + 3.0
-			draw_circle(mid, hw + 6.0 + pulse * 5.0, Color(BLIGHT, 0.10 + 0.05 * pulse))
+			_cv.draw_circle(mid, hw + 6.0 + pulse * 5.0, Color(BLIGHT, 0.10 + 0.05 * pulse))
 			var gem := PackedVector2Array([mid + Vector2(0, -hh), mid + Vector2(hw, 0), mid + Vector2(0, hh), mid + Vector2(-hw, 0)])
-			draw_colored_polygon(gem, BLIGHT.darkened(0.3).lerp(COLOURS["light"], 0.25 + pulse * 0.2).lerp(Color.WHITE, flash * 0.6))
-			draw_colored_polygon(PackedVector2Array([gem[0], gem[1], mid]), Color(1, 1, 1, 0.25))
-			draw_polyline(PackedVector2Array([gem[0], gem[1], gem[2], gem[3], gem[0]]), COLOURS["light"], 2.0)
+			_cv.draw_colored_polygon(gem, BLIGHT.darkened(0.3).lerp(COLOURS["light"], 0.25 + pulse * 0.2).lerp(Color.WHITE, flash * 0.6))
+			_cv.draw_colored_polygon(PackedVector2Array([gem[0], gem[1], mid]), Color(1, 1, 1, 0.25))
+			_cv.draw_polyline(PackedVector2Array([gem[0], gem[1], gem[2], gem[3], gem[0]]), COLOURS["light"], 2.0)
 			for i in k["most"]:
-				draw_circle(mid + Vector2(-12.5 + i * 5.0, hh + 6.0), 2.0, COLOURS["light"] if i < k["hp"] else Color(1, 1, 1, 0.15))
+				_cv.draw_circle(mid + Vector2(-12.5 + i * 5.0, hh + 6.0), 2.0, COLOURS["light"] if i < k["hp"] else Color(1, 1, 1, 0.15))
 			return
 	var base: Color = c.darkened(0.38).lerp(COLOURS["fire"], lit * 0.6).lerp(Color.WHITE, flash * 0.55)
-	draw_rect(r, base)
-	draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.48)), c.lerp(Color.WHITE, 0.1).lerp(Color.WHITE, flash * 0.55))
-	draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.38))
-	draw_rect(Rect2(r.position.x, r.end.y - 2, r.size.x, 2), Color(0, 0, 0, 0.4))
+	_cv.draw_rect(r, base)
+	_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.48)), c.lerp(Color.WHITE, 0.1).lerp(Color.WHITE, flash * 0.55))
+	_cv.draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color(1, 1, 1, 0.38))
+	_cv.draw_rect(Rect2(r.position.x, r.end.y - 2, r.size.x, 2), Color(0, 0, 0, 0.4))
 	var ink := Color(1, 1, 1, 0.6)
 	if k.has("tide"):
 		# BROUGHT BACK BY THE TIDE: foam along its top
 		for i in 4:
-			draw_arc(Vector2(r.position.x + 3.5 + i * (r.size.x - 7.0) / 3.0, r.position.y + 2.0), 2.4, 0, PI, 6,
+			_cv.draw_arc(Vector2(r.position.x + 3.5 + i * (r.size.x - 7.0) / 3.0, r.position.y + 2.0), 2.4, 0, PI, 6,
 				Color(0.9, 0.97, 1.0, 0.8), 1.2)
 	if k.has("kite"):
 		# A KITE: a cross-spar, and a tail of bows fluttering under it
-		draw_line(Vector2(mid.x, r.position.y + 1), Vector2(mid.x, r.end.y - 1), Color(1, 1, 1, 0.45), 1.0)
+		_cv.draw_line(Vector2(mid.x, r.position.y + 1), Vector2(mid.x, r.end.y - 1), Color(1, 1, 1, 0.45), 1.0)
 		for i in 3:
 			var at: Vector2 = Vector2(mid.x + sin(t * 6.0 + i + r.position.y) * 3.0, r.end.y + 4.0 + i * 5.0)
-			draw_line(at + Vector2(-3, -2), at + Vector2(3, 2), Color(COLOURS["fire"], 0.85), 2.0)
-			draw_line(at + Vector2(-3, 2), at + Vector2(3, -2), Color(COLOURS["fire"], 0.85), 2.0)
+			_cv.draw_line(at + Vector2(-3, -2), at + Vector2(3, 2), Color(COLOURS["fire"], 0.85), 2.0)
+			_cv.draw_line(at + Vector2(-3, 2), at + Vector2(3, -2), Color(COLOURS["fire"], 0.85), 2.0)
 	match k["kind"]:
 		"stone":
-			draw_line(Vector2(r.position.x, mid.y), Vector2(r.end.x, mid.y), Color(0, 0, 0, 0.28), 1.0)
-			draw_line(Vector2(mid.x - 6, r.position.y), Vector2(mid.x - 6, mid.y), Color(0, 0, 0, 0.28), 1.0)
-			draw_line(Vector2(mid.x + 8, mid.y), Vector2(mid.x + 8, r.end.y), Color(0, 0, 0, 0.28), 1.0)
+			_cv.draw_line(Vector2(r.position.x, mid.y), Vector2(r.end.x, mid.y), Color(0, 0, 0, 0.28), 1.0)
+			_cv.draw_line(Vector2(mid.x - 6, r.position.y), Vector2(mid.x - 6, mid.y), Color(0, 0, 0, 0.28), 1.0)
+			_cv.draw_line(Vector2(mid.x + 8, mid.y), Vector2(mid.x + 8, r.end.y), Color(0, 0, 0, 0.28), 1.0)
 			if k["hp"] <= 2:
-				draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0, 0, 0, 0.7), 1.4)
+				_cv.draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0, 0, 0, 0.7), 1.4)
 			if k["hp"] <= 1:
-				draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0, 0, 0, 0.7), 1.4)
+				_cv.draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0, 0, 0, 0.7), 1.4)
 		"tnt":
-			draw_rect(Rect2(r.position.x + 4, mid.y - 2, r.size.x - 8, 4), Color(0.25, 0.08, 0.05))
-			draw_circle(mid + Vector2(11, -5), 1.8 + sin(t * 20.0), Color(1, 0.8, 0.3))
+			_cv.draw_rect(Rect2(r.position.x + 4, mid.y - 2, r.size.x - 8, 4), Color(0.25, 0.08, 0.05))
+			_cv.draw_circle(mid + Vector2(11, -5), 1.8 + sin(t * 20.0), Color(1, 0.8, 0.3))
 			_text(mid + Vector2(0, 4), "TNT", 9, Color(1, 0.95, 0.85), null, true, 1.0, 0)
 		"bonus":
 			var glow: float = 0.5 + 0.5 * sin(t * 5.0)
-			draw_rect(r.grow(2.0 + glow * 2.0), Color(GOLD, 0.25 * glow), false, 2.0)
+			_cv.draw_rect(r.grow(2.0 + glow * 2.0), Color(GOLD, 0.25 * glow), false, 2.0)
 			_text(mid + Vector2(0, 5), "?", 13, Color(0.35, 0.22, 0.02), null, true, 1.0, 0)
 		"blight", "plague":
 			for i in 3:
 				var at: Vector2 = mid + Vector2(-7 + i * 7, sin(t * 3.0 + i + r.position.x) * 1.5)
-				draw_circle(at, 1.8, Color(0.75, 0.95, 0.35, 0.8))
+				_cv.draw_circle(at, 1.8, Color(0.75, 0.95, 0.35, 0.8))
 			if k["kind"] == "plague":
-				draw_rect(r, Color(0.1, 0.16, 0.06, 0.8), false, 1.5)
+				_cv.draw_rect(r, Color(0.1, 0.16, 0.06, 0.8), false, 1.5)
 				if k["hp"] <= 1:
-					draw_line(r.position + Vector2(5, 2), mid + Vector2(2, 3), Color(0, 0, 0, 0.6), 1.2)
+					_cv.draw_line(r.position + Vector2(5, 2), mid + Vector2(2, 3), Color(0, 0, 0, 0.6), 1.2)
 		"crystal":
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -6), mid + Vector2(7, 0), mid + Vector2(0, 6), mid + Vector2(-7, 0)]),
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -6), mid + Vector2(7, 0), mid + Vector2(0, 6), mid + Vector2(-7, 0)]),
 				Color(1, 1, 1, 0.85))
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -6), mid + Vector2(7, 0), mid]), Color(0.6, 0.9, 1.0, 0.9))
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -6), mid + Vector2(7, 0), mid]), Color(0.6, 0.9, 1.0, 0.9))
 		"key":
-			draw_circle(mid + Vector2(-6, 0), 3.2, Color(0.4, 0.26, 0.04))
-			draw_line(mid + Vector2(-3, 0), mid + Vector2(8, 0), Color(0.4, 0.26, 0.04), 1.8)
-			draw_line(mid + Vector2(5, 0), mid + Vector2(5, 3), Color(0.4, 0.26, 0.04), 1.6)
-			draw_line(mid + Vector2(8, 0), mid + Vector2(8, 3), Color(0.4, 0.26, 0.04), 1.6)
+			_cv.draw_circle(mid + Vector2(-6, 0), 3.2, Color(0.4, 0.26, 0.04))
+			_cv.draw_line(mid + Vector2(-3, 0), mid + Vector2(8, 0), Color(0.4, 0.26, 0.04), 1.8)
+			_cv.draw_line(mid + Vector2(5, 0), mid + Vector2(5, 3), Color(0.4, 0.26, 0.04), 1.6)
+			_cv.draw_line(mid + Vector2(8, 0), mid + Vector2(8, 3), Color(0.4, 0.26, 0.04), 1.6)
 		"gold":
-			draw_circle(mid, 4.5, Color(1.0, 0.92, 0.5))
-			draw_arc(mid, 4.5, 0, TAU, 14, Color(0.55, 0.38, 0.05), 1.2)
+			_cv.draw_circle(mid, 4.5, Color(1.0, 0.92, 0.5))
+			_cv.draw_arc(mid, 4.5, 0, TAU, 14, Color(0.55, 0.38, 0.05), 1.2)
 			var sweep: float = fmod(t * 0.8 + r.position.x * 0.01, 1.6) - 0.3
 			if sweep >= 0.0 and sweep <= 1.0:
 				var x: float = r.position.x + r.size.x * sweep
-				draw_line(Vector2(x, r.position.y + 1), Vector2(x - 4, r.end.y - 1), Color(1, 1, 1, 0.6), 2.0)
+				_cv.draw_line(Vector2(x, r.position.y + 1), Vector2(x - 4, r.end.y - 1), Color(1, 1, 1, 0.6), 2.0)
 			if k["hp"] <= 1:
-				draw_line(r.position + Vector2(4, 1), mid + Vector2(-1, 2), Color(0, 0, 0, 0.5), 1.2)
+				_cv.draw_line(r.position + Vector2(4, 1), mid + Vector2(-1, 2), Color(0, 0, 0, 0.5), 1.2)
 		"shell":
 			for i in 3:
-				draw_arc(mid + Vector2(0, 6), 3.0 + i * 3.0, PI * 1.15, PI * 1.85, 10, Color(0.55, 0.35, 0.3, 0.8), 1.2)
+				_cv.draw_arc(mid + Vector2(0, 6), 3.0 + i * 3.0, PI * 1.15, PI * 1.85, 10, Color(0.55, 0.35, 0.3, 0.8), 1.2)
 		"prism":
 			for i in ELEMENTS.size():
 				var w: float = r.size.x / ELEMENTS.size()
-				draw_rect(Rect2(r.position.x + i * w, r.end.y - 3, w, 3), COLOURS[ELEMENTS[i]])
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 3), mid + Vector2(-5, 3)]), Color(1, 1, 1, 0.75))
+				_cv.draw_rect(Rect2(r.position.x + i * w, r.end.y - 3, w, 3), COLOURS[ELEMENTS[i]])
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(5, 3), mid + Vector2(-5, 3)]), Color(1, 1, 1, 0.75))
 		"packed":
 			# PACKED ICE: dense blue, a sheen across it, cracking as it is hit
-			draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.45, 3), Color(1, 1, 1, 0.35), 2.0)
+			_cv.draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.45, 3), Color(1, 1, 1, 0.35), 2.0)
 			if k["hp"] <= 2:
-				draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
+				_cv.draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
 			if k["hp"] <= 1:
-				draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
+				_cv.draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.1, 0.25, 0.4, 0.8), 1.4)
 		"column":
 			# A PILLAR'S STONE: fluted, cracked once struck
 			for f in [0.3, 0.5, 0.7]:
-				draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 2), Vector2(r.position.x + r.size.x * f, r.end.y - 2),
+				_cv.draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 2), Vector2(r.position.x + r.size.x * f, r.end.y - 2),
 					Color(0.25, 0.18, 0.1, 0.45), 1.2)
 			if k["hp"] <= 1:
-				draw_polyline(PackedVector2Array([r.position + Vector2(5, 2), mid + Vector2(-2, 1), mid + Vector2(6, 4)]), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_polyline(PackedVector2Array([r.position + Vector2(5, 2), mid + Vector2(-2, 1), mid + Vector2(6, 4)]), Color(0, 0, 0, 0.7), 1.3)
 		"foot":
 			# A PILLAR'S FOOT: a plinth, wider at its base; cracked, it glows
 			# along the crack - the next blow or tremor brings the pillar down
-			draw_rect(Rect2(r.position.x, r.end.y - 4, r.size.x, 4), Color(0.22, 0.1, 0.04, 0.85))
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(-7, 3), mid + Vector2(0, -5), mid + Vector2(7, 3)]), Color(0.3, 0.12, 0.04, 0.85))
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(-4, 2), mid + Vector2(0, -2), mid + Vector2(4, 2)]), Color(1.0, 0.75, 0.4, 0.9))
+			_cv.draw_rect(Rect2(r.position.x, r.end.y - 4, r.size.x, 4), Color(0.22, 0.1, 0.04, 0.85))
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(-7, 3), mid + Vector2(0, -5), mid + Vector2(7, 3)]), Color(0.3, 0.12, 0.04, 0.85))
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(-4, 2), mid + Vector2(0, -2), mid + Vector2(4, 2)]), Color(1.0, 0.75, 0.4, 0.9))
 			if k["hp"] < k["most"]:
 				var glow: float = 0.55 + 0.45 * sin(t * 7.0 + r.position.x * 0.1)
 				var split := PackedVector2Array([r.position + Vector2(3, 3), mid + Vector2(-4, 2), mid + Vector2(3, -2), r.end - Vector2(4, 3)])
-				draw_polyline(split, Color(1.0, 0.72, 0.3, 0.6 * glow), 3.0)
-				draw_polyline(split, Color(0.1, 0.05, 0.0, 0.9), 1.3)
+				_cv.draw_polyline(split, Color(1.0, 0.72, 0.3, 0.6 * glow), 3.0)
+				_cv.draw_polyline(split, Color(0.1, 0.05, 0.0, 0.9), 1.3)
 		"ore":
 			# ORE: dark rock, gold glinting in it
 			for at in [Vector2(-8, -2), Vector2(-1, 3), Vector2(6, -3), Vector2(10, 3)]:
 				var fleck: Vector2 = mid + at
-				draw_colored_polygon(PackedVector2Array([fleck + Vector2(0, -3.5), fleck + Vector2(3.5, 0), fleck + Vector2(0, 3.5), fleck + Vector2(-3.5, 0)]),
+				_cv.draw_colored_polygon(PackedVector2Array([fleck + Vector2(0, -3.5), fleck + Vector2(3.5, 0), fleck + Vector2(0, 3.5), fleck + Vector2(-3.5, 0)]),
 					GOLD.lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(t * 4.0 + at.x))))
 			if k["hp"] <= 2:
-				draw_polyline(PackedVector2Array([r.position + Vector2(5, 1), mid + Vector2(-4, 0), mid + Vector2(2, 6)]), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_polyline(PackedVector2Array([r.position + Vector2(5, 1), mid + Vector2(-4, 0), mid + Vector2(2, 6)]), Color(0, 0, 0, 0.7), 1.3)
 			if k["hp"] <= 1:
-				draw_polyline(PackedVector2Array([mid + Vector2(2, -6), mid + Vector2(5, 1), r.end - Vector2(4, 2)]), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_polyline(PackedVector2Array([mid + Vector2(2, -6), mid + Vector2(5, 1), r.end - Vector2(4, 2)]), Color(0, 0, 0, 0.7), 1.3)
 		"lantern":
 			# A LANTERN: a lamp behind glass, its flame flickering
-			draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(1.0, 0.85, 0.45, 0.35))
-			draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(0.25, 0.2, 0.1), false, 1.2)
+			_cv.draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(1.0, 0.85, 0.45, 0.35))
+			_cv.draw_rect(Rect2(mid.x - 5, r.position.y + 2, 10, r.size.y - 4), Color(0.25, 0.2, 0.1), false, 1.2)
 			var flick: float = 0.8 + 0.2 * sin(t * 13.0 + r.position.x)
-			draw_colored_polygon(PackedVector2Array([mid + Vector2(-2.5, 3), mid + Vector2(0, -4.5 * flick), mid + Vector2(2.5, 3)]), Color(1.0, 0.95, 0.6))
-			draw_line(Vector2(mid.x - 7, r.position.y + 2), Vector2(mid.x + 7, r.position.y + 2), Color(0.25, 0.2, 0.1), 1.5)
+			_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(-2.5, 3), mid + Vector2(0, -4.5 * flick), mid + Vector2(2.5, 3)]), Color(1.0, 0.95, 0.6))
+			_cv.draw_line(Vector2(mid.x - 7, r.position.y + 2), Vector2(mid.x + 7, r.position.y + 2), Color(0.25, 0.2, 0.1), 1.5)
 		"shadow":
 			# A SHADOW BRICK: smoke curling in it; it heals in the dark
 			for i in 3:
 				var sx: float = r.position.x + 6.0 + i * 8.0 + sin(t * 2.0 + i) * 2.0
-				draw_arc(Vector2(sx, mid.y), 3.0, t * 2.0 + i, t * 2.0 + i + PI * 1.3, 8, Color(0.75, 0.6, 1.0, 0.55), 1.2)
+				_cv.draw_arc(Vector2(sx, mid.y), 3.0, t * 2.0 + i, t * 2.0 + i + PI * 1.3, 8, Color(0.75, 0.6, 1.0, 0.55), 1.2)
 			if k["hp"] <= 1:
-				draw_line(r.position + Vector2(5, 2), mid + Vector2(2, 4), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+				_cv.draw_line(r.position + Vector2(5, 2), mid + Vector2(2, 4), Color(0.85, 0.75, 1.0, 0.7), 1.2)
 		"void":
 			# A VOID WELL: a hole of night, its rim turning inward
-			draw_circle(mid, r.size.y * 0.42, Color(0.02, 0.0, 0.05))
+			_cv.draw_circle(mid, r.size.y * 0.42, Color(0.02, 0.0, 0.05))
 			for i in 3:
 				var a0: float = -t * 4.0 + i * TAU / 3.0
-				draw_arc(mid, r.size.y * 0.42 + 1.5, a0, a0 + 1.6, 8, Color(0.75, 0.55, 1.0, 0.85), 1.5)
+				_cv.draw_arc(mid, r.size.y * 0.42 + 1.5, a0, a0 + 1.6, 8, Color(0.75, 0.55, 1.0, 0.85), 1.5)
 			if k["hp"] < k["most"]:
-				draw_line(r.position + Vector2(3, 2), r.position + Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+				_cv.draw_line(r.position + Vector2(3, 2), r.position + Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
 			if k["hp"] <= 1:
-				draw_line(r.end - Vector2(3, 2), r.end - Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
+				_cv.draw_line(r.end - Vector2(3, 2), r.end - Vector2(8, 6), Color(0.85, 0.75, 1.0, 0.7), 1.2)
 		"wood":
 			# WOOD: planks and grain; struck once, split
 			for f in [0.33, 0.66]:
-				draw_line(Vector2(r.position.x + 2, r.position.y + r.size.y * f), Vector2(r.end.x - 2, r.position.y + r.size.y * f),
+				_cv.draw_line(Vector2(r.position.x + 2, r.position.y + r.size.y * f), Vector2(r.end.x - 2, r.position.y + r.size.y * f),
 					Color(0.3, 0.16, 0.06, 0.6), 1.0)
 			for i in 3:
 				var gx: float = r.position.x + 5.0 + i * 8.0
-				draw_arc(Vector2(gx, mid.y), 2.0, 0, TAU, 8, Color(0.35, 0.2, 0.08, 0.6), 1.0)
+				_cv.draw_arc(Vector2(gx, mid.y), 2.0, 0, TAU, 8, Color(0.35, 0.2, 0.08, 0.6), 1.0)
 			if k["hp"] <= 1:
-				draw_line(r.position + Vector2(6, 1), mid + Vector2(3, 6), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_line(r.position + Vector2(6, 1), mid + Vector2(3, 6), Color(0, 0, 0, 0.7), 1.3)
 		"fuse":
 			# A FUSE: a cord along a dark slot; lit, a spark runs on it
-			draw_rect(Rect2(r.position.x, mid.y - 3, r.size.x, 6), Color(0.15, 0.1, 0.06, 0.8))
+			_cv.draw_rect(Rect2(r.position.x, mid.y - 3, r.size.x, 6), Color(0.15, 0.1, 0.06, 0.8))
 			for i in 4:
 				var fx: float = r.position.x + 3.0 + i * (r.size.x - 6.0) / 3.0
-				draw_line(Vector2(fx - 3, mid.y - 2), Vector2(fx + 3, mid.y + 2), Color(0.85, 0.75, 0.5), 1.4)
+				_cv.draw_line(Vector2(fx - 3, mid.y - 2), Vector2(fx + 3, mid.y + 2), Color(0.85, 0.75, 0.5), 1.4)
 			if k["burn"] >= 0.0:
-				draw_circle(mid, 4.0 + 1.5 * sin(t * 30.0), Color(1.0, 0.85, 0.3, 0.9))
-				draw_circle(mid, 2.0, Color(1, 1, 1))
+				_cv.draw_circle(mid, 4.0 + 1.5 * sin(t * 30.0), Color(1.0, 0.85, 0.3, 0.9))
+				_cv.draw_circle(mid, 2.0, Color(1, 1, 1))
 		"keg":
 			# A POWDER KEG: a barrel, iron bands, its mark
-			draw_rect(Rect2(r.position.x + 2, r.position.y + 1, r.size.x - 4, r.size.y - 2), Color(0.45, 0.25, 0.12, 0.6))
+			_cv.draw_rect(Rect2(r.position.x + 2, r.position.y + 1, r.size.x - 4, r.size.y - 2), Color(0.45, 0.25, 0.12, 0.6))
 			for f in [0.2, 0.8]:
-				draw_rect(Rect2(r.position.x + 1, r.position.y + r.size.y * f - 1, r.size.x - 2, 2), Color(0.25, 0.25, 0.28))
+				_cv.draw_rect(Rect2(r.position.x + 1, r.position.y + r.size.y * f - 1, r.size.x - 2, 2), Color(0.25, 0.25, 0.28))
 			_text(mid + Vector2(0, 4), "!!", 10, Color(1.0, 0.85, 0.35), null, true, 1.0, 0)
 			if k["hp"] <= 1:
-				draw_line(r.position + Vector2(5, 2), mid + Vector2(-2, 3), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_line(r.position + Vector2(5, 2), mid + Vector2(-2, 3), Color(0, 0, 0, 0.7), 1.3)
 		"obsidian":
 			# OBSIDIAN: black glass, a violet sheen, cracking
-			draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.5, 2), Color(0.75, 0.6, 1.0, 0.45), 2.0)
+			_cv.draw_line(r.position + Vector2(4, r.size.y - 3), r.position + Vector2(r.size.x * 0.5, 2), Color(0.75, 0.6, 1.0, 0.45), 2.0)
 			if k["hp"] < k["most"]:
-				draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+				_cv.draw_polyline(PackedVector2Array([r.position + Vector2(6, 2), mid + Vector2(-3, 1), mid + Vector2(5, -3)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
 			if k["hp"] <= 2:
-				draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+				_cv.draw_polyline(PackedVector2Array([mid + Vector2(-3, 1), mid + Vector2(2, 7), r.end - Vector2(5, 2)]), Color(0.8, 0.7, 1.0, 0.7), 1.2)
 			if k["hp"] <= 1:
-				draw_line(Vector2(r.position.x + 3, mid.y + 2), Vector2(r.end.x - 3, mid.y - 1), Color(0.8, 0.7, 1.0, 0.7), 1.2)
+				_cv.draw_line(Vector2(r.position.x + 3, mid.y + 2), Vector2(r.end.x - 3, mid.y - 1), Color(0.8, 0.7, 1.0, 0.7), 1.2)
 		"basalt":
 			# BASALT: cooled lava, dark columns
 			for f in [0.25, 0.5, 0.75]:
-				draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 1), Vector2(r.position.x + r.size.x * f, r.end.y - 1),
+				_cv.draw_line(Vector2(r.position.x + r.size.x * f, r.position.y + 1), Vector2(r.position.x + r.size.x * f, r.end.y - 1),
 					Color(0, 0, 0, 0.45), 1.0)
 			if k["hp"] <= 2:
-				draw_line(r.position + Vector2(4, 2), mid + Vector2(2, 2), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_line(r.position + Vector2(4, 2), mid + Vector2(2, 2), Color(0, 0, 0, 0.7), 1.3)
 			if k["hp"] <= 1:
-				draw_line(mid + Vector2(2, 2), r.end - Vector2(4, 2), Color(0, 0, 0, 0.7), 1.3)
+				_cv.draw_line(mid + Vector2(2, 2), r.end - Vector2(4, 2), Color(0, 0, 0, 0.7), 1.3)
 		"sand":
 			# SAND: fine grains, a ripple along its top
 			for i in 6:
-				draw_circle(Vector2(r.position.x + 3.0 + i * (r.size.x - 6.0) / 5.0, mid.y + (2.0 if i % 2 else -1.0) + 1.5), 0.9,
+				_cv.draw_circle(Vector2(r.position.x + 3.0 + i * (r.size.x - 6.0) / 5.0, mid.y + (2.0 if i % 2 else -1.0) + 1.5), 0.9,
 					Color(0.55, 0.42, 0.2, 0.8))
 			for i in 3:
-				draw_arc(Vector2(r.position.x + 5.0 + i * (r.size.x - 10.0) / 2.0, r.position.y + 4.0), 3.5, PI * 1.1, PI * 1.9, 6,
+				_cv.draw_arc(Vector2(r.position.x + 5.0 + i * (r.size.x - 10.0) / 2.0, r.position.y + 4.0), 3.5, PI * 1.1, PI * 1.9, 6,
 					Color(1, 1, 1, 0.5), 1.0)
 		"buoy":
 			# A BUOY: a red float banded white, its lamp blinking
 			var float_r := Rect2(mid.x - r.size.x * 0.28, r.position.y + 2.5, r.size.x * 0.56, r.size.y - 5.0)
-			draw_rect(float_r, Color(0.9, 0.24, 0.2).lerp(Color.WHITE, flash * 0.5))
-			draw_rect(Rect2(float_r.position.x, mid.y - 1.5, float_r.size.x, 3.0), Color(0.97, 0.95, 0.92))
-			draw_rect(Rect2(float_r.position, Vector2(float_r.size.x, 1.5)), Color(1, 1, 1, 0.45))
+			_cv.draw_rect(float_r, Color(0.9, 0.24, 0.2).lerp(Color.WHITE, flash * 0.5))
+			_cv.draw_rect(Rect2(float_r.position.x, mid.y - 1.5, float_r.size.x, 3.0), Color(0.97, 0.95, 0.92))
+			_cv.draw_rect(Rect2(float_r.position, Vector2(float_r.size.x, 1.5)), Color(1, 1, 1, 0.45))
 			var blink: float = 0.5 + 0.5 * sin(t * 5.0 + r.position.x * 0.07)
-			draw_circle(Vector2(mid.x, float_r.position.y + 0.5), 1.6, Color(1.0, 0.95, 0.55, 0.4 + 0.6 * blink))
-			draw_line(Vector2(r.position.x + 2, r.end.y - 2.5), Vector2(r.end.x - 2, r.end.y - 2.5), Color(0.8, 0.92, 1.0, 0.5), 1.0)
+			_cv.draw_circle(Vector2(mid.x, float_r.position.y + 0.5), 1.6, Color(1.0, 0.95, 0.55, 0.4 + 0.6 * blink))
+			_cv.draw_line(Vector2(r.position.x + 2, r.end.y - 2.5), Vector2(r.end.x - 2, r.end.y - 2.5), Color(0.8, 0.92, 1.0, 0.5), 1.0)
 		"bubble":
 			# A BUBBLE BRICK: bubbles caught in it, wobbling
 			for i in 3:
 				var at: Vector2 = mid + Vector2(-7 + i * 7, sin(t * 4.0 + i * 1.7 + r.position.x) * 2.0)
-				draw_arc(at, 2.2 + (i % 2) * 1.2, 0, TAU, 10, Color(0.85, 0.95, 1.0, 0.85), 1.1)
+				_cv.draw_arc(at, 2.2 + (i % 2) * 1.2, 0, TAU, 10, Color(0.85, 0.95, 1.0, 0.85), 1.1)
 		"mimic":
 			var shimmer: float = 0.5 + 0.5 * sin(t * 4.0 + r.position.x * 0.1)
-			draw_arc(mid, 4.0, t * 4.0, t * 4.0 + PI * 1.4, 10, Color(1, 1, 1, 0.5 + 0.4 * shimmer), 1.4)
-			draw_circle(mid + Vector2(5, 3), 1.2, Color(1, 1, 1, 0.7))
+			_cv.draw_arc(mid, 4.0, t * 4.0, t * 4.0 + PI * 1.4, 10, Color(1, 1, 1, 0.5 + 0.4 * shimmer), 1.4)
+			_cv.draw_circle(mid + Vector2(5, 3), 1.2, Color(1, 1, 1, 0.7))
 		"land":
 			match k["land"]:
 				"fire":
-					draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(3.5, 1.5), mid + Vector2(0, 5), mid + Vector2(-3.5, 1.5)]), ink)
+					_cv.draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -5), mid + Vector2(3.5, 1.5), mid + Vector2(0, 5), mid + Vector2(-3.5, 1.5)]), ink)
 				"ice":
 					for a in 3:
 						var d := Vector2.from_angle(a * PI / 3.0) * 4.5
-						draw_line(mid - d, mid + d, ink, 1.3)
+						_cv.draw_line(mid - d, mid + d, ink, 1.3)
 				"water":
-					draw_arc(mid + Vector2(-3.5, 1), 3.5, PI, TAU, 8, ink, 1.2)
-					draw_arc(mid + Vector2(3.5, 1), 3.5, 0, PI, 8, ink, 1.2)
+					_cv.draw_arc(mid + Vector2(-3.5, 1), 3.5, PI, TAU, 8, ink, 1.2)
+					_cv.draw_arc(mid + Vector2(3.5, 1), 3.5, 0, PI, 8, ink, 1.2)
 				"wind":
-					draw_line(mid + Vector2(-6, -2), mid + Vector2(4, -2), ink, 1.2)
-					draw_line(mid + Vector2(-4, 2.5), mid + Vector2(6, 2.5), ink, 1.2)
+					_cv.draw_line(mid + Vector2(-6, -2), mid + Vector2(4, -2), ink, 1.2)
+					_cv.draw_line(mid + Vector2(-4, 2.5), mid + Vector2(6, 2.5), ink, 1.2)
 				"earth":
-					draw_rect(Rect2(mid - Vector2(3.5, 3.5), Vector2(7, 7)), ink, false, 1.2)
+					_cv.draw_rect(Rect2(mid - Vector2(3.5, 3.5), Vector2(7, 7)), ink, false, 1.2)
 					if k["hp"] == 1:
-						draw_polyline(PackedVector2Array([r.position + Vector2(5, 0), mid + Vector2(-2, 2), r.end - Vector2(6, 0)]), Color(0, 0, 0, 0.6), 1.3)
+						_cv.draw_polyline(PackedVector2Array([r.position + Vector2(5, 0), mid + Vector2(-2, 2), r.end - Vector2(6, 0)]), Color(0, 0, 0, 0.6), 1.3)
 				"light":
-					draw_circle(mid, 2.5, ink)
+					_cv.draw_circle(mid, 2.5, ink)
 				"dark":
-					draw_arc(mid, 4.5, 0, TAU, 14, ink, 1.2)
+					_cv.draw_arc(mid, 4.5, 0, TAU, 14, ink, 1.2)
 
 
 func _draw_boss() -> void:
@@ -4397,8 +4578,8 @@ func _text(at: Vector2, s: String, size: int, c: Color, f: Font = null, centre: 
 	if centre:
 		at.x -= use.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x / 2.0
 	if outline > 0:
-		draw_string_outline(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0, 0, 0, 0.75 * alpha))
-	draw_string(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, c)
+		_cv.draw_string_outline(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0, 0, 0, 0.75 * alpha))
+	_cv.draw_string(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, c)
 
 
 static func thousands(n: int) -> String:
