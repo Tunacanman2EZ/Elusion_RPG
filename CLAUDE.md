@@ -16371,6 +16371,71 @@ a bit i need the ball to still have a chance to enter that area".
 LAUNCH bar, the left wall's in, the middle unmoved, eased not jumped;
 sabotaged red with no pan); the prong's check now reads 1.87.
 
+### Crownfall's map screen, neater (0.168.6)
+
+The owner, with a picture of the kingdom map: "we need to improve this
+screen"; he chose the whole plan over only fixing what was broken.
+
+- **What was wrong**: the map's words sat in small type under the panel and
+  the last line ("Enter / Space ...", at y 714) ran off the foot of the
+  screen; Start sat alone in the corner; the seven kingdoms all looked
+  alike - none showed which was shown, which were locked, or how far you
+  were; the next map to clear barely stood out; the sides were empty.
+- **Now** (crownfallrun.gd `_draw_kingdoms()`): the kingdom shown is lifted
+  (a wider glow, a ring that breathes); a kingdom not reached
+  (`kingdom_locked()`: its first map past the next to clear) is dim with a
+  padlock over its gate and "locked"; one in play says "8 / 25"
+  (`kingdom_cleared()`); names 18, the line under them 13. The panel
+  (`MAP_PANEL` 150, 368, 600 x 286) lost the rows' "1 - 5" and centred its
+  grid (`NODE_GAP` 100 x 47); each boss says BOSS (the citadel's CROWN) to
+  its right; the next map to clear (`furthest`) has a pulsing gold frame
+  and NEXT on its foot. **Each map is a picture of itself** (the owner, the
+  same day: "we need to add icons on them of the maps"): a `TILE` (64 x 36)
+  with the map drawn a pixel a brick in the bricks' own colours
+  (`map_picture()`, `_colour_of()`, kept in `_pictures`), its number - a
+  tick once cleared - in a badge at the corner, dimmed until it can be
+  played. The letters come from `THUMB_KIND` (what each letter makes, as
+  `_load()` reads them), not from `_load()` itself: loading a kingdom's 25
+  maps took 593 ms in the container. The suite fails on any letter a map
+  uses that `THUMB_KIND` does not know - add a new brick's letter there. A
+  tap anywhere on a tile picks it (`pick_at()`).
+- **Each crest shows its ruler** ("we need to add icons here now maybe of
+  the bosses"): the kingdom's crowned citadel boss (`ruler_of()`: the Dawn
+  Warden, the Tempest, the Leviathan, the Glacier Lord, the Mountain Lord,
+  the Inferno, the Crowned Beholder) from its own art -
+  `EnemyPortraits.picture()`, its element's recolour, the Inferno in fire
+  as in its fight - on a Sprite2D over the crest (`crest_art`; a recolour
+  is a material, and only a node carries one), at most `CREST_FIT` (50) px,
+  a whole multiple of the art where it fits. One looked up a frame
+  (`_dress_crests()`, an enemy's scene each). A kingdom not reached shows
+  its ruler as a black shadow, its recolour off (the shader paints over a
+  tint), under the padlock (`crest_top`, `_padlock()`); a crest with a
+  ruler is darker inside so a light one shows on a gold crest. Six of the
+  seven share one design, recoloured by land; the Crowned Beholder is its
+  own. A build without the art keeps the castle (`ruled_here()`).
+- **The picked map's card**: it has a card
+  (`MAP_CARD` 780, 368, 350 x 286; `_draw_map_card()`): MAP 9 OF 25 (and
+  BOSS), the name at 22, "Pays N gold", its line and the kingdom's trick
+  wrapped (`_wrapped()`), and the screen's Start at its foot
+  (crownfallscreen.gd `START_BOX` 800, 592, 310 x 48). A map that cannot be
+  started says "Clear map N first". The hint line is at y 688, size 14.
+- **Opens faster**: crownfallscreen.gd preloaded healerrunscreen.gd for one
+  line of words, as the pinball table did (0.168.2); `paid_line()` is its
+  own now. The screen's script loaded in 1.27-1.32 s in the container,
+  now 1.03-1.13 - the rest is Crownfall's own scripts (crownfallrun.gd,
+  its maps, field.gd for the story).
+
+`_test_the_crownfall_map_is_neater()` (testrunner_13: the panel and card on
+the screen and apart, Start in the card, every tile and its NEXT in the
+panel, the kingdoms' words above it; 8 cleared reads 8 of 25 and the Wind
+locked; a map's tile its picture, every letter known; a tap on a tile's
+corner; the rulers on the crests, the Wind's a shadow (needs the pack); no
+Healer's Run and the same paid line); sabotaged red (Start back in the
+corner, the preload back, a letter taken out, a locked ruler's recolour
+left on). The Crownfall suite (141 checks with the
+standard ones) passes unchanged: its taps go through `kingdom_spot()`,
+`map_spot()` and `slot_spot()`, never fixed numbers.
+
 ### Which file owns which number
 
 | question | lives in | example |

@@ -294,6 +294,7 @@ func _run_all() -> void:
 	await _test_crownfall_slider_never_sticks()
 	await _test_crownfall_final_fireball()
 	await _test_crownfall_boss_is_the_field()
+	_test_the_crownfall_map_is_neater()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

@@ -140,9 +140,49 @@ const TRACER_SPEED := 500.0
 const TRACER_SPACING := 170.0
 const WORD_TRIES := 8
 # The kingdom map's panel: the picked kingdom's maps, five stretches of five,
-# each stretch ending in its boss.
-const MAP_PANEL := Rect2(340, 352, 600, 288)
-const NODE_GAP := Vector2(100, 44)
+# each stretch ending in its boss. THE MAP SCREEN, NEATER (0.168.6): the
+# owner, "we need to improve this screen". The panel moved left and the
+# picked map's card (MAP_CARD) took the empty right, Start inside it (the
+# screen's START_BOX); the map's words had sat in small type under the
+# panel, the last line off the foot of the screen. The rows' "1 - 5" went,
+# each map is a picture of itself (TILE, below), the next map to clear says
+# NEXT and a boss says BOSS; each kingdom shows how far you are, a lock until
+# you reach it, and the one shown is lit.
+const MAP_PANEL := Rect2(150, 368, 600, 286)
+const MAP_CARD := Rect2(780, 368, 350, 286)
+const NODE_GAP := Vector2(100, 47)
+# THE MAPS' PICTURES (0.168.6, the same day): the owner, "we need to add
+# icons on them of the maps". Each map is a picture in bricks, so each node is
+# a TILE of the map itself - a pixel a brick, in the bricks' own colours
+# (_colour_of()), from THUMB_KIND: what each letter of a map makes (the
+# letters as _load() reads them; the suite fails on a letter missing here).
+# Drawn once a map and kept (map_picture()).
+const TILE := Vector2(64, 36)
+const THUMB_KIND := {"H": ["heart", "light"], "S": ["stone", ""], "I": ["iron", ""], "M": ["mirror", "light"],
+	"T": ["tnt", "fire"], "?": ["bonus", "light"], "B": ["blight", ""], "C": ["crystal", "ice"], "U": ["bumper", "light"],
+	"O": ["portal", "dark"], "K": ["key", "light"], "L": ["lock", ""], "G": ["gold", "light"], "N": ["rune", "light"],
+	"Z": ["shell", ""], "X": ["prism", "light"], "D": ["guard", "light"], "W": ["whirl", "wind"], "Y": ["mimic", ""],
+	"u": ["buoy", "water"], "o": ["bubble", "water"], "Q": ["clam", "water"], "F": ["land", "ice"], "P": ["packed", "ice"],
+	"s": ["drift", "ice"], "V": ["icicle", "ice"], "A": ["foot", "earth"], "E": ["column", "earth"], "g": ["ore", "earth"],
+	"n": ["sand", "earth"], "h": ["wood", "fire"], "z": ["fuse", "fire"], "J": ["keg", "fire"], "q": ["obsidian", "fire"],
+	"r": ["lava", "fire"], "t": ["lantern", "light"], "m": ["shadow", "dark"], "v": ["void", "dark"], "b": ["boulder", "earth"],
+	"p": ["plague", ""], "<": ["land", "light"], "k": ["land", "wind"]}
+static var _pictures: Dictionary = {}
+# THE RULERS ON THE CRESTS (the same 0.168.6): the owner, "we need to add
+# icons here now maybe of the bosses". Each kingdom's crest shows its crowned
+# ruler (the citadel's boss: ruler_of()) from the monster's own art
+# (EnemyPortraits.picture(), its element's recolour; the Inferno in fire, as
+# in its fight), at most CREST_FIT px - a whole multiple of the art where it
+# fits. A kingdom not reached shows its ruler as a shadow under the padlock.
+# Six of the seven share one design, recoloured by land; the Crowned
+# Beholder is its own. Looked up one a frame (an enemy's scene
+# each); a build without the art keeps the castle. Sprites, not drawing:
+# a recolour is a material, and only a node carries one.
+const CREST_FIT := 50.0
+var crest_art: Node2D = null
+var crest_top: Node2D = null
+var _crest_sprites: Array = []
+var _crests_tried: int = 0
 const CRUMBLE_SECONDS := 1.6
 const BANNER_SECONDS := 2.4
 const WORD_GAP := 6.0
@@ -676,6 +716,11 @@ func _process(delta: float) -> void:
 		step(minf(delta, 0.05))
 	_jolt = Vector2(_jolt_rng.randf_range(-1, 1), _jolt_rng.randf_range(-1, 1)) * _shake * 4.0
 	sync_bricks()
+	if state == State.KINGDOMS:
+		_dress_crests()
+	elif crest_art != null:
+		crest_art.visible = false
+		crest_top.visible = false
 	if floor_layer != null:
 		floor_layer.queue_redraw()
 		floor_top.queue_redraw()
@@ -5475,7 +5520,7 @@ func slot_spot(slot: int) -> Vector2:
 	"""Where the `slot`th map of a kingdom (from 0) sits, made or not."""
 	@warning_ignore("integer_division")
 	var stretch: int = slot / Maps.BOSS_EVERY
-	return MAP_PANEL.position + Vector2(150.0 + (slot % Maps.BOSS_EVERY) * NODE_GAP.x, 74.0 + stretch * NODE_GAP.y)
+	return MAP_PANEL.position + Vector2(100.0 + (slot % Maps.BOSS_EVERY) * NODE_GAP.x, 71.0 + stretch * NODE_GAP.y)
 
 
 func kingdom_at(point: Vector2) -> int:
@@ -5511,7 +5556,7 @@ func pick_at(point: Vector2) -> int:
 	the maps of the kingdom on show."""
 	var shown: String = str(Maps.kingdom_of(selected).get("id", ""))
 	for i in Maps.made_count():
-		if str(Maps.MAPS[i]["kingdom"]) == shown and map_spot(i).distance_to(point) <= 20.0:
+		if str(Maps.MAPS[i]["kingdom"]) == shown and Rect2(map_spot(i) - TILE / 2.0, TILE).grow(4.0).has_point(point):
 			return i
 	return -1
 
@@ -5524,6 +5569,7 @@ func _draw_kingdoms() -> void:
 	for i in 7:
 		road.append(kingdom_spot(i))
 	draw_polyline(road, Color(GOLD, 0.25), 3.0, true)
+	var shown: Dictionary = Maps.kingdom_of(selected)
 	for i in Maps.KINGDOMS.size():
 		var k: Dictionary = Maps.KINGDOMS[i]
 		var p: Vector2 = kingdom_spot(i)
@@ -5531,88 +5577,277 @@ func _draw_kingdoms() -> void:
 		var made: bool = bool(k["made"])
 		var theirs: Array = Maps.maps_of(k["id"])
 		var cleared_all: bool = made and not theirs.is_empty() and furthest > int(theirs[-1])
+		var locked: bool = kingdom_locked(i)
+		var lit: bool = made and not locked
+		var here: bool = str(k["id"]) == str(shown.get("id", ""))
+		# the one shown is lifted: a wider glow and a ring that breathes
+		if here:
+			draw_circle(p, 56.0, Color(c, 0.16))
+			draw_arc(p, 42.0 + 1.5 * sin(t * 3.0), 0, TAU, 48, Color(GOLD, 0.85), 2.5)
 		# EVERY CREST GLOWS ITS LAND (the owner: "giving Wind (teal), Water
 		# (blue), Ice (cyan), and Earth (amber/green) those same subtle inner
-		# glows"): a kingdom still to come is a dim crest with its colour
-		# inside; one that is made is the bright one.
-		draw_circle(p, 46.0, Color(c, 0.10 if made else 0.06))
-		if made:
-			draw_circle(p, 34.0, c.darkened(0.55))
+		# glows"): a kingdom still to come, or locked, is a dim crest with its
+		# colour inside; one you can play is the bright one.
+		draw_circle(p, 46.0, Color(c, 0.10 if lit else 0.06))
+		if lit:
+			# darker behind a ruler, so a light one stands out from a gold crest
+			draw_circle(p, 34.0, c.darkened(0.78 if ruled_here(i) else 0.55))
 		else:
 			draw_circle(p, 34.0, Color(0.1, 0.1, 0.12).lerp(c, 0.16))
 			draw_circle(p, 24.0, Color(c, 0.10))
 			draw_circle(p, 14.0, Color(c, 0.08))
-		draw_arc(p, 34.0, 0, TAU, 40, Color(c, 0.9 if made else 0.45), 2.5)
+		draw_arc(p, 34.0, 0, TAU, 40, Color(c, 0.9 if lit else 0.45), 2.5)
 		# a castle on each
 		var base: Vector2 = p + Vector2(0, 14)
 		var castle := PackedVector2Array([base + Vector2(-20, 0), base + Vector2(-20, -22), base + Vector2(-14, -22), base + Vector2(-14, -16),
 			base + Vector2(-6, -16), base + Vector2(-6, -30), base + Vector2(6, -30), base + Vector2(6, -16), base + Vector2(14, -16),
 			base + Vector2(14, -22), base + Vector2(20, -22), base + Vector2(20, 0)])
-		draw_colored_polygon(castle, Color(c, 0.85) if made else Color(0.3, 0.3, 0.33).lerp(c, 0.22))
+		if not ruled_here(i):
+			draw_colored_polygon(castle, Color(c, 0.85) if lit else Color(0.3, 0.3, 0.33).lerp(c, 0.22))
+			if locked:
+				_padlock(self, p + Vector2(0, 6))
 		# the crown over it, gold while its ruler wears it
 		var top: Vector2 = p + Vector2(0, -48)
 		var crown := PackedVector2Array([top + Vector2(-12, 5), top + Vector2(-12, -5), top + Vector2(-6, 0), top + Vector2(0, -8),
 			top + Vector2(6, 0), top + Vector2(12, -5), top + Vector2(12, 5)])
 		draw_colored_polygon(crown, Color(0.35, 0.35, 0.37) if cleared_all else GOLD)
-		_text(p + Vector2(0, 60), str(k["name"]).replace("The Kingdom of ", ""), 16, INK if made else Color(INK, 0.45), null, true)
+		_text(p + Vector2(0, 62), str(k["name"]).replace("The Kingdom of ", ""), 18, INK if lit else Color(INK, 0.45), null, true)
 		if not made:
-			_text(p + Vector2(0, 78), "coming", 12, Color(INK, 0.35), _font, true)
+			_text(p + Vector2(0, 80), "coming", 13, Color(INK, 0.35), _font, true)
 		elif cleared_all:
-			_text(p + Vector2(0, 78), "crown taken", 12, Color(0.6, 0.95, 0.55), _font, true)
+			_text(p + Vector2(0, 80), "crown taken", 13, Color(0.6, 0.95, 0.55), _font, true)
+		elif locked:
+			_text(p + Vector2(0, 80), "locked", 13, Color(INK, 0.4), _font, true)
+		else:
+			_text(p + Vector2(0, 80), "%d / %d" % [kingdom_cleared(i), Maps.MAPS_A_KINGDOM], 13, Color(GOLD, 0.9), _font, true)
 	# THE PICKED MAP'S KINGDOM: its maps in five stretches of five, every
 	# fifth a boss (horns over it; the citadel's a crown). A map not made yet
 	# is a dim slot.
-	var kingdom: Dictionary = Maps.kingdom_of(selected)
+	var kingdom: Dictionary = shown
 	var colour: Color = COLOURS.get(kingdom.get("land", "light"), GOLD)
 	_panel(MAP_PANEL)
-	_text(Vector2(MAP_PANEL.get_center().x, MAP_PANEL.position.y + 28), str(kingdom.get("name", "")).to_upper(), 15, GOLD, null, true)
+	_text(Vector2(MAP_PANEL.get_center().x, MAP_PANEL.position.y + 28), str(kingdom.get("name", "")).to_upper(), 16, GOLD, null, true)
 	draw_line(MAP_PANEL.position + Vector2(20, 38), Vector2(MAP_PANEL.end.x - 20, MAP_PANEL.position.y + 38), Color(GOLD, 0.3), 1.0)
 	var mine: Array = Maps.maps_of(str(kingdom.get("id", "")))
 	var each: Array = pays.get("maps", []) if pays.get("maps") is Array else []
 	for stretch in Maps.STRETCHES:
 		var left: Vector2 = slot_spot(stretch * Maps.BOSS_EVERY)
-		_text(Vector2(MAP_PANEL.position.x + 24, left.y + 5), "%d - %d" % [stretch * Maps.BOSS_EVERY + 1, (stretch + 1) * Maps.BOSS_EVERY],
-			12, Color(INK, 0.5), _font)
 		draw_line(left, slot_spot(stretch * Maps.BOSS_EVERY + Maps.BOSS_EVERY - 1), Color(GOLD, 0.18), 2.0)
 	for slot in Maps.MAPS_A_KINGDOM:
 		var p: Vector2 = slot_spot(slot)
 		var made: bool = slot < mine.size()
 		var i: int = int(mine[slot]) if made else -1
 		var big: bool = (slot + 1) % Maps.BOSS_EVERY == 0
-		var radius: float = 16.0 if big else 12.0
+		var tile := Rect2(p - TILE / 2.0, TILE)
 		if not made:
-			draw_circle(p, radius, Color(0.1, 0.1, 0.12).lerp(colour, 0.06))
-			draw_arc(p, radius, 0, TAU, 24, Color(colour, 0.18), 1.2)
-			_text(p + Vector2(0, 4), str(slot + 1), 11, Color(INK, 0.22), _font, true)
+			draw_rect(tile, Color(0.1, 0.1, 0.12).lerp(colour, 0.06))
+			draw_rect(tile, Color(colour, 0.18), false, 1.2)
+			_text(p + Vector2(0, 5), str(slot + 1), 13, Color(INK, 0.22), _font, true)
 			continue
 		var open: bool = can_start_at(i)
 		var done: bool = i < furthest
 		var col: Color = GOLD if done else (colour if open else Color(1, 1, 1, 0.25))
 		if i == selected:
-			draw_circle(p, radius + 6.0 + 2.0 * sin(t * 4.0), Color(col, 0.25))
+			draw_rect(tile.grow(5.0 + 1.5 * sin(t * 4.0)), Color(col, 0.22))
 		if big:
 			var crown: bool = Maps.MAPS[i].get("boss") is Dictionary and bool(Maps.MAPS[i]["boss"].get("crown", false))
-			var top: Vector2 = p + Vector2(0, -radius - 2.0)
+			var top: Vector2 = Vector2(p.x, tile.position.y - 1.0)
 			if crown:
 				draw_colored_polygon(PackedVector2Array([top + Vector2(-9, 3), top + Vector2(-9, -4), top + Vector2(-4, 0),
 					top + Vector2(0, -6), top + Vector2(4, 0), top + Vector2(9, -4), top + Vector2(9, 3)]), col)
 			else:
 				for side in [-1.0, 1.0]:
-					draw_colored_polygon(PackedVector2Array([top + Vector2(side * 4, 3), top + Vector2(side * 11, -7),
-						top + Vector2(side * 10, 4)]), col)
-		draw_circle(p, radius, col.darkened(0.35) if open else Color(0.15, 0.15, 0.17))
-		draw_arc(p, radius, 0, TAU, 28, col, 1.8)
+					draw_colored_polygon(PackedVector2Array([top + Vector2(side * 14, 2), top + Vector2(side * 21, -8),
+						top + Vector2(side * 20, 3)]), col)
+			_text(Vector2(tile.end.x + 7.0, p.y + 5.0), "CROWN" if crown else "BOSS", 11, Color(col, 0.75), _font)
+		# the map itself, dimmed until it can be played
+		draw_rect(tile, Color(0.04, 0.04, 0.06))
+		var pic: ImageTexture = map_picture(i)
+		var fit: float = minf((TILE.x - 4.0) / pic.get_width(), (TILE.y - 4.0) / pic.get_height())
+		var size: Vector2 = Vector2(pic.get_width(), pic.get_height()) * fit
+		draw_texture_rect(pic, Rect2(p - size / 2.0, size), false, Color(1, 1, 1) if open else Color(0.5, 0.5, 0.55, 0.55))
+		if not open:
+			draw_rect(tile, Color(0.05, 0.05, 0.08, 0.35))
+		draw_rect(tile, col, false, 2.0 if open else 1.2)
+		# the next map to clear: a frame that pulses, and NEXT on its foot
+		if i == furthest:
+			draw_rect(tile.grow(3.0 + 1.5 * sin(t * 5.0)), Color(GOLD, 0.9), false, 2.5)
+			var tag_w: float = _bold.get_string_size("NEXT", HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 10.0
+			draw_rect(Rect2(p.x - tag_w / 2.0, tile.end.y - 7.0, tag_w, 15.0), Color(GOLD, 0.95))
+			_text(Vector2(p.x, tile.end.y + 5.0), "NEXT", 11, Color(0.12, 0.09, 0.05), null, true, 1.0, 0)
+		# its number, or a tick once cleared, in the top left corner
+		var badge: Vector2 = tile.position + Vector2(2, 2)
+		draw_circle(badge, 9.0, GOLD if done else Color(0.1, 0.1, 0.13))
+		draw_arc(badge, 9.0, 0, TAU, 20, col, 1.4)
 		if done:
-			draw_line(p + Vector2(-5, 0), p + Vector2(-1, 5), Color(1, 1, 1), 2.2)
-			draw_line(p + Vector2(-1, 5), p + Vector2(6, -5), Color(1, 1, 1), 2.2)
+			draw_line(badge + Vector2(-4, 0), badge + Vector2(-1, 4), Color(0.12, 0.09, 0.05), 2.0)
+			draw_line(badge + Vector2(-1, 4), badge + Vector2(5, -4), Color(0.12, 0.09, 0.05), 2.0)
 		else:
-			_text(p + Vector2(0, 5), str(slot + 1), 13, INK if open else Color(INK, 0.4), null, true)
-	var pick: Dictionary = Maps.MAPS[selected]
-	var gold_words: String = ("   ·   %s gold" % thousands(int(each[selected]))) if selected < each.size() else ""
-	_text(Vector2(640, 658), "MAP %d   ·   %s%s" % [Maps.in_kingdom(selected) + 1, str(pick["name"]).to_upper(), gold_words],
-		16, INK, null, true)
-	_text(Vector2(640, 678), str(pick["line"]), 13, Color(INK, 0.7), _font, true)
-	_text(Vector2(640, 696), str(kingdom.get("trick", "")), 12, Color(COLOURS["light"], 0.8), _font, true)
+			_text(badge + Vector2(0, 4), str(slot + 1), 11, INK if open else Color(INK, 0.5), null, true, 1.0, 3)
+	_draw_map_card(kingdom, each)
 	if map_hint != "":
+		var pick: Dictionary = Maps.MAPS[selected]
 		var hint: String = map_hint % str(pick["name"]) if map_hint.contains("%s") else map_hint
-		_text(Vector2(640, 714), hint, 12, Color(INK, 0.45 + 0.15 * sin(t * 2.5)), _font, true)
+		_text(Vector2(640, 688), hint, 14, Color(INK, 0.45 + 0.15 * sin(t * 2.5)), _font, true)
+
+
+func map_picture(index: int) -> ImageTexture:
+	"""Map `index` as a picture, a pixel a brick (kept once drawn)."""
+	if _pictures.has(index):
+		return _pictures[index]
+	var rows: Array = Maps.MAPS[index]["rows"]
+	var wide: int = 1
+	for line in rows:
+		wide = maxi(wide, str(line).length())
+	var img := Image.create(wide, maxi(1, rows.size()), false, Image.FORMAT_RGBA8)
+	var hall_tint: Color = Color(COLOURS.get(str(Maps.kingdom_of(index).get("land", "light")), GOLD), 0.22)
+	for row in rows.size():
+		var line: String = rows[row]
+		for c in line.length():
+			var letter: String = line[c]
+			var paint := Color(0, 0, 0, 0)
+			if letter == "R":
+				paint = hall_tint
+			elif LAND_OF.has(letter):
+				paint = COLOURS[LAND_OF[letter]]
+			elif MIXED.has(letter):
+				paint = _colour_of({"kind": "mix", "land": "", "mix": MIXED[letter]})
+			elif THUMB_KIND.has(letter):
+				paint = _colour_of({"kind": THUMB_KIND[letter][0], "land": THUMB_KIND[letter][1]})
+			elif letter != ".":
+				paint = Color(0.6, 0.6, 0.6)
+			img.set_pixel(c, row, paint)
+	var tex := ImageTexture.create_from_image(img)
+	_pictures[index] = tex
+	return tex
+
+
+func ruled_here(i: int) -> bool:
+	"""Whether kingdom `i`'s crest shows its ruler (else its castle)."""
+	return i < _crest_sprites.size() and _crest_sprites[i] != null
+
+
+func ruler_of(i: int) -> Dictionary:
+	"""Kingdom `i`'s crowned ruler: its citadel boss's line, {} if none."""
+	for index in Maps.maps_of(str(Maps.KINGDOMS[i]["id"])):
+		var info: Variant = Maps.MAPS[index].get("boss")
+		if info is Dictionary and bool(info.get("crown", false)):
+			return info
+	return {}
+
+
+func _dress_crests() -> void:
+	"""The rulers over the crests: one more looked up each frame, and each
+	shaded for its kingdom - itself, a shadow while locked, grey once taken."""
+	if crest_art == null:
+		crest_art = Node2D.new()
+		crest_art.name = "crest_art"
+		add_child(crest_art)
+		crest_top = Node2D.new()
+		crest_top.name = "crest_top"
+		add_child(crest_top)
+		crest_top.draw.connect(_draw_crest_locks)
+		_crest_sprites.resize(Maps.KINGDOMS.size())
+	crest_art.visible = true
+	crest_top.visible = true
+	if _crests_tried < Maps.KINGDOMS.size():
+		var i: int = _crests_tried
+		_crests_tried += 1
+		var info: Dictionary = ruler_of(i)
+		var pic: Dictionary = EnemyPortraits.picture(str(info.get("enemy", ""))) if not info.is_empty() else {}
+		var tex: Texture2D = pic.get("texture") as Texture2D
+		if tex != null:
+			var art := Sprite2D.new()
+			art.name = "ruler_%d" % i
+			art.texture = tex
+			art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			art.material = pic.get("material") as Material
+			if str(info.get("tint", "")) == "fire":
+				art.material = BaseEnemy.element_material(EnemyPortraits.data_for(str(info["enemy"])), Element.Type.FIRE)
+			var most: float = maxf(tex.get_width(), tex.get_height())
+			var k: float = CREST_FIT / most
+			if k >= 1.0:
+				k = floorf(k)
+			art.scale = Vector2(k, k)
+			art.position = kingdom_spot(i) + Vector2(0, 2)
+			art.set_meta("body", pic.get("modulate", Color.WHITE))
+			art.set_meta("recolour", art.material)
+			crest_art.add_child(art)
+			_crest_sprites[i] = art
+	for i in _crest_sprites.size():
+		var art: Sprite2D = _crest_sprites[i]
+		if art == null:
+			continue
+		var theirs: Array = Maps.maps_of(str(Maps.KINGDOMS[i]["id"]))
+		var taken: bool = not theirs.is_empty() and furthest > int(theirs[-1])
+		var body: Color = art.get_meta("body", Color.WHITE)
+		# a recolour's shader paints over a tint, so a shadow goes without it;
+		# a ruler whose crown is taken keeps its colours (its crown above the
+		# crest goes grey, and "crown taken" under it)
+		var locked: bool = kingdom_locked(i)
+		art.material = null if locked else art.get_meta("recolour") as Material
+		art.modulate = Color(0.0, 0.0, 0.02, 0.9) if locked else body
+	crest_top.queue_redraw()
+
+
+func _draw_crest_locks() -> void:
+	for i in _crest_sprites.size():
+		if _crest_sprites[i] != null and kingdom_locked(i):
+			_padlock(crest_top, kingdom_spot(i) + Vector2(0, 14))
+
+
+func _padlock(on: CanvasItem, at: Vector2) -> void:
+	"""A padlock: its shackle, its body, its keyhole."""
+	on.draw_arc(at + Vector2(0, -8), 6.0, PI, TAU, 12, Color(0.85, 0.85, 0.9), 2.5)
+	on.draw_rect(Rect2(at + Vector2(-9, -8), Vector2(18, 14)), Color(0.75, 0.75, 0.8))
+	on.draw_circle(at + Vector2(0, -2), 2.0, Color(0.2, 0.2, 0.24))
+
+
+func kingdom_locked(i: int) -> bool:
+	"""A made kingdom not reached yet: its first map is past the next to clear."""
+	var theirs: Array = Maps.maps_of(Maps.KINGDOMS[i]["id"])
+	return bool(Maps.KINGDOMS[i]["made"]) and not theirs.is_empty() and int(theirs[0]) > furthest
+
+
+func kingdom_cleared(i: int) -> int:
+	"""How many of a kingdom's maps are cleared."""
+	return Maps.maps_of(Maps.KINGDOMS[i]["id"]).filter(func(m: int) -> bool: return m < furthest).size()
+
+
+func _draw_map_card(kingdom: Dictionary, each: Array) -> void:
+	"""The picked map, on a card of its own beside the panel: which it is,
+	its name, its gold, what it holds, the kingdom's trick; the screen's
+	Start sits at its foot (crownfallscreen.gd START_BOX)."""
+	var pick: Dictionary = Maps.MAPS[selected]
+	var colour: Color = COLOURS.get(kingdom.get("land", "light"), GOLD)
+	_panel(MAP_CARD)
+	var x: float = MAP_CARD.position.x + 20.0
+	var width: float = MAP_CARD.size.x - 40.0
+	var y: float = MAP_CARD.position.y + 30.0
+	var boss_map: bool = (Maps.in_kingdom(selected) + 1) % Maps.BOSS_EVERY == 0
+	_text(Vector2(x, y), "MAP %d OF %d%s" % [Maps.in_kingdom(selected) + 1, Maps.MAPS_A_KINGDOM, "   ·   BOSS" if boss_map else ""],
+		13, Color(INK, 0.6), _font)
+	y += 30.0
+	_text(Vector2(x, y), str(pick["name"]).to_upper(), 22, GOLD)
+	y += 26.0
+	if selected < each.size():
+		_text(Vector2(x, y), "Pays %s gold" % thousands(int(each[selected])), 15, INK, _font)
+		y += 12.0
+	y += 14.0
+	y += _wrapped(Vector2(x, y), str(pick["line"]), width, 14, Color(INK, 0.75), 3) + 8.0
+	_wrapped(Vector2(x, y), str(kingdom.get("trick", "")), width, 14, colour.lightened(0.35), 2)
+	if not can_start_at(selected):
+		_text(Vector2(MAP_CARD.get_center().x, MAP_CARD.end.y - 76.0), "Clear map %d first" % (Maps.in_kingdom(furthest) + 1)
+			if furthest < Maps.made_count() and str(Maps.kingdom_of(furthest).get("id", "")) == str(kingdom.get("id", ""))
+			else "Locked until you get here", 13, Color(INK, 0.5), _font, true)
+
+
+func _wrapped(at: Vector2, s: String, width: float, size: int, c: Color, lines: int) -> float:
+	"""Words wrapped to `width`, at most `lines` lines, from `at` (the first
+	line's baseline); how far down they went."""
+	if s == "":
+		return 0.0
+	_cv.draw_multiline_string_outline(_font, at, s, HORIZONTAL_ALIGNMENT_LEFT, width, size, lines, 3, Color(0, 0, 0, 0.6))
+	_cv.draw_multiline_string(_font, at, s, HORIZONTAL_ALIGNMENT_LEFT, width, size, lines, c)
+	var tall: float = _font.get_multiline_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, width, size, lines).y
+	return tall

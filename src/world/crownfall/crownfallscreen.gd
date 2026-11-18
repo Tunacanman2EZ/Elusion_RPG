@@ -76,8 +76,10 @@ extends CanvasLayer
 
 const RunScript := preload("res://src/world/crownfall/crownfallrun.gd")
 const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
-# A Leave in words, the day's allowance with it - the Healer's Run's, one rule.
-const HealerScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
+# OPENS FASTER (0.168.6): it preloaded healerrunscreen.gd for one line of
+# words, and with it the Healer's Run, its party and more - the pinball
+# table's 0.168.2 fix. The line is this screen's own now (paid_line(), the
+# suite holds it to the Healer's word for word).
 const Field := preload("res://src/world/field.gd")
 const LAYER := 90
 const GAME := "crownfall"
@@ -93,7 +95,9 @@ const PILL := Color(0.06, 0.05, 0.08, 0.86)
 # right of the picked map's line.
 const HUD_BASE := Vector2(1280, 720)
 const LEAVE_BOX := Rect2(1176, 22, 82, 38)
-const START_BOX := Rect2(1000, 640, 240, 50)
+# at the foot of the map's card (crownfallrun.gd MAP_CARD; 0.168.6 - it sat
+# alone in the corner)
+const START_BOX := Rect2(800, 592, 310, 48)
 const MOUSE_MOVED := 2.0
 # How far ahead of the paddle a held move key puts where it is going.
 const KEY_LEAD := 220.0
@@ -771,7 +775,7 @@ func leave() -> void:
 	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
 	if _gold_paid >= 0:
 		gold = _gold_paid
-	var said: String = HealerScreen.paid_line("Crownfall", gold, _held_back)
+	var said: String = paid_line("Crownfall", gold, _held_back)
 	if run_id != 0 and said != "" and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
 		hud.call("_push_message", said, GOLD, 0, true)
 	close()
@@ -873,3 +877,16 @@ func _exit_tree() -> void:
 	uncover()
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
+
+
+static func paid_line(game_name: String, paid: int, held: int) -> String:
+	"""A Leave in words: the gold into the purse and, past the day's
+	allowance, what the server held back. "" for nothing either way."""
+	if held > 0 and paid > 0:
+		return "%s: %s gold into your purse - %s held back, today's minigame gold is full." % [
+			game_name, RunScript.thousands(paid), RunScript.thousands(held)]
+	if held > 0:
+		return "%s: today's minigame gold is full - %s held back." % [game_name, RunScript.thousands(held)]
+	if paid > 0:
+		return "%s: %s gold, into your purse." % [game_name, RunScript.thousands(paid)]
+	return ""

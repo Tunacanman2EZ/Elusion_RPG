@@ -858,3 +858,72 @@ func _test_the_camera_leans_toward_a_wall() -> void:
 		% [one_frame, int(Run.PAN_RIGHT)], one_frame > 0.0 and one_frame < Run.PAN_RIGHT * 0.1, one_frame)
 	holder.queue_free()
 	print("  the camera leans toward a wall")
+
+
+func _test_the_crownfall_map_is_neater() -> void:
+	section("Crownfall's map screen: a card for the map, locks and progress, quicker to open (0.168.6)")
+	# The owner: "we need to improve this screen".
+	var Run = require_script("res://src/world/crownfall/crownfallrun.gd", "crownfallrun.gd")
+	var Screen = require_script("res://src/world/crownfall/crownfallscreen.gd", "crownfallscreen.gd")
+	var Healer = require_script("res://src/world/healerrun/healerrunscreen.gd", "healerrunscreen.gd")
+	if Run == null or Screen == null or Healer == null:
+		return
+	var view := Rect2(Vector2.ZERO, Vector2(1280, 720))
+	var slots_in: bool = true
+	var run = Run.new()
+	add_child(run)
+	run.call("show_kingdoms", 8)
+	for slot in 25:
+		var p: Vector2 = run.slot_spot(slot)
+		var boss: bool = (slot + 1) % 5 == 0
+		var half: Vector2 = Run.TILE / 2.0
+		var up: float = half.y + 9.0 if boss else half.y
+		if not Rect2(Run.MAP_PANEL.position + Vector2(0, 40), Run.MAP_PANEL.size - Vector2(0, 40)).grow(-1.0).encloses(
+				Rect2(p - Vector2(half.x, up), Vector2(half.x * 2.0, up + half.y + 8.0))):
+			slots_in = false
+	var labels_clear: bool = true
+	for i in 7:
+		if run.kingdom_spot(i).y + 84.0 > Run.MAP_PANEL.position.y:
+			labels_clear = false
+	check("the map's panel and its card side by side on the screen, Start inside the card, every map's dot inside the panel, the kingdoms' words above it",
+		view.encloses(Run.MAP_PANEL) and view.encloses(Run.MAP_CARD) and not Run.MAP_PANEL.intersects(Run.MAP_CARD)
+		and Run.MAP_CARD.encloses(Screen.START_BOX) and slots_in and labels_clear)
+	check("  eight cleared: the Light says 8 of 25 and is open, the Wind is locked",
+		run.kingdom_cleared(0) == 8 and not run.kingdom_locked(0) and run.kingdom_locked(1), [run.kingdom_cleared(0), run.kingdom_locked(1)])
+	# THE MAPS' PICTURES: every letter any map uses is known to the tiles
+	var unknown: Array = []
+	for m in Run.Maps.MAPS:
+		for line in m["rows"]:
+			for letter in str(line):
+				if letter != "." and letter != "R" and not Run.LAND_OF.has(letter) and not Run.MIXED.has(letter) \
+						and not Run.THUMB_KIND.has(letter) and not unknown.has(letter):
+					unknown.append(letter)
+	var pic: ImageTexture = run.map_picture(8)
+	var rows: Array = Run.Maps.MAPS[8]["rows"]
+	check("  each map's tile is a picture of it, a pixel a brick (map 9 is %dx%d), knowing every letter the maps use" % [pic.get_width(), pic.get_height()],
+		unknown.is_empty() and pic.get_height() == rows.size() and pic.get_width() == str(rows[0]).length()
+		and run.map_picture(8) == pic, unknown)
+	var corner: Vector2 = run.map_spot(8) + Run.TILE / 2.0 - Vector2(3, 3)
+	check("  a tap anywhere on a tile picks its map", run.pick_at(corner) == 8 and run.pick_at(run.map_spot(8)) == 8, run.pick_at(corner))
+	# THE RULERS ON THE CRESTS: one looked up a frame, then each shaded
+	for i in 9:
+		run._process(1.0 / 60.0)
+	var rulers: Array = []
+	for i in 7:
+		rulers.append(str(run.ruler_of(i).get("enemy", "")))
+	var light_art: Sprite2D = run._crest_sprites[0]
+	var wind_art: Sprite2D = run._crest_sprites[1]
+	check_needs_pack("  each crest shows its crowned ruler from its own art (%s): the Light's in its colours, the Wind's a shadow without its recolour"
+		% ", ".join(rulers),
+		not rulers.has("") and run._crest_sprites.all(func(a: Variant) -> bool: return a != null)
+		and light_art.position.distance_to(run.kingdom_spot(0)) < 4.0 and light_art.modulate.v > 0.5
+		and wind_art.material == null and wind_art.modulate.v < 0.1, [rulers, run._crest_sprites])
+	run.queue_free()
+	var src: String = FileAccess.get_file_as_string("res://src/world/crownfall/crownfallscreen.gd")
+	var same: bool = true
+	for c in [[1200, 0], [0, 500], [700, 300], [0, 0]]:
+		if Screen.paid_line("Crownfall", c[0], c[1]) != Healer.paid_line("Crownfall", c[0], c[1]):
+			same = false
+	check("it opens without loading the Healer's Run, saying the same paid line",
+		not src.contains("healerrunscreen.gd\")") and same)
+	print("  Crownfall's map screen: done")
