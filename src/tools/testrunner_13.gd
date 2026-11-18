@@ -90,14 +90,15 @@ func _test_the_beholders_table() -> void:
 	add_child(drawn)
 	var b0: Dictionary = drawn.balls[0]
 	b0["held"] = false
-	b0["p"] = Vector2(300, 3000)
+	b0["p"] = Vector2(400, 3000)
 	drawn._follow(true)
 	var x0: float = drawn.cam3.position.x
 	var y0: float = drawn.cam_y
-	b0["p"] = Vector2(1000, 3060)
+	b0["p"] = Vector2(800, 3060)
 	for i in 30:
 		drawn._follow(false)
-	check("the camera never slides sideways after the ball", is_equal_approx(drawn.cam3.position.x, x0), [x0, drawn.cam3.position.x])
+	# since 0.168.5 it leans a little toward a ball near a wall (its own test)
+	check("the camera does not slide sideways after a ball about the middle", is_equal_approx(drawn.cam3.position.x, x0), [x0, drawn.cam3.position.x])
 	check("  a ball inside its slack does not move it", is_equal_approx(drawn.cam_y, y0), [y0, drawn.cam_y])
 	b0["p"] = Vector2(600, 2500)
 	for i in 120:
@@ -813,3 +814,47 @@ func _test_the_ball_floats_on_the_tide() -> void:
 		dive.ball_no == 1 and absf(doff) < 12.0 and deepest > surface, [dball["p"], doff, deepest, dive.ball_no])
 	dive.queue_free()
 	print("  the ball floats on the tide")
+
+
+func _test_the_camera_leans_toward_a_wall() -> void:
+	section("The camera eases a little sideways toward a ball near a wall (0.168.5)")
+	# The owner: "viewpoint still needs to be a little wider i need to see the
+	# ball on the right side" - a ball on the plunger was drawn at x 1,080,
+	# under the panel.
+	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
+	if Run == null:
+		return
+	var holder := SubViewport.new()
+	holder.size = Vector2i(1280, 720)
+	add_child(holder)
+	var run = Run.new()
+	run.seed_now = 7
+	holder.add_child(run)
+	var ball: Dictionary = run.balls[0]
+	var screen_x := func(p: Vector2, held: bool) -> float:
+		ball["p"] = p
+		ball["held"] = held
+		ball["v"] = Vector2.ZERO
+		run._follow(true)
+		return run.cam3.unproject_position(run._w(p, run._ball_height(ball))).x
+	var plunger: float = screen_x.call(Vector2(1200, 3571), true)
+	var right_wall: float = run.cam3.unproject_position(run._w(Vector2(1240, 3400))).x
+	var middle_pan: float = 0.0
+	screen_x.call(Vector2(700, 3300), false)
+	middle_pan = run.cam_x - Run.CX
+	var left: float = screen_x.call(Vector2(60, 3300), false)
+	check("a ball on the plunger is in view, clear of the LAUNCH bar (x %d, the right wall %d, the bar at %d), at %d degrees"
+		% [int(plunger), int(right_wall), int(Run.LAUNCH_BOX.position.x), int(Run.CAM_FOV)],
+		plunger < Run.LAUNCH_BOX.position.x - 60.0 and right_wall < Run.LAUNCH_BOX.position.x and Run.CAM_FOV > 56.0,
+		[plunger, right_wall])
+	check("  one by the left wall too (x %d); a ball near the middle moves it not at all" % int(left),
+		left > 40.0 and is_zero_approx(middle_pan), [left, middle_pan])
+	ball["p"] = Vector2(1200, 3300)
+	ball["held"] = false
+	run.cam_x = Run.CX
+	run._follow(false, 1.0 / 60.0)
+	var one_frame: float = run.cam_x - Run.CX
+	check("  and it eases there (%.1f px of %d in a frame), never jumps - a camera chasing every move was \"a little wobbly\""
+		% [one_frame, int(Run.PAN_RIGHT)], one_frame > 0.0 and one_frame < Run.PAN_RIGHT * 0.1, one_frame)
+	holder.queue_free()
+	print("  the camera leans toward a wall")

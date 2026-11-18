@@ -16338,6 +16338,39 @@ layers under the screen hidden and shown again), the prongs in
 unnudged, comes down with the tide, a dive comes back up); all sabotaged
 red (the float with the old tide).
 
+### The camera leans toward a wall; shorter prongs (0.168.5)
+
+The owner: "viewpoint still needs to be a little wider i need to see the
+ball on the right side", and of the prong's post, "reduce the size of this
+a bit i need the ball to still have a chance to enter that area".
+
+- **Why widening alone could not do it**: the table's foot is the part
+  nearest the camera, so the widest on the screen - about 1,180 px of it
+  at 56 degrees, against the 818 clear of the LAUNCH bar and the panel. A
+  ball on the plunger was drawn at x 1,080, under the panel, and the left
+  wall at -132. Fitting it all would take a table about half as small
+  again.
+- **So** (pinballrun.gd `_follow()`): `CAM_FOV` 60 (56), and the camera
+  eases sideways toward a ball near a wall - `cam_x`, still within
+  `PAN_FREE` (250) of the middle, past it following the rest, at most
+  `PAN_RIGHT` (330) and `PAN_LEFT` (100; the left was nearly all in, and
+  150 left 104 px of stars), `PAN_EASE` (2.5) of the way a second. It
+  follows the middle of the balls on its floor, as the height does.
+  Measured: a ball on the plunger at x 702 and the right wall at 727-743
+  (the LAUNCH bar is at 818); one at the left wall at 112; a ball about the
+  middle moves it not at all. The old check "the camera never slides
+  sideways" became "not after a ball about the middle". The docstring's
+  "never sideways" was the owner's "a little wobbly" about a camera that
+  chased every move: this one has slack and eases.
+- **Shorter prongs**: `PRONG_TIP` (290, 377); it was (300, 378). The gap
+  beside the inlane post is 1.87 balls (1.45). The plain player at 290
+  (0.168.4's table, 24 seeds): 0.69 calm drains a minute, 31 outlane
+  drains (no prong 36; 300 22).
+
+`_test_the_camera_leans_toward_a_wall()` (the plunger's ball clear of the
+LAUNCH bar, the left wall's in, the middle unmoved, eased not jumped;
+sabotaged red with no pan); the prong's check now reads 1.87.
+
 ### Which file owns which number
 
 | question | lives in | example |

@@ -96,9 +96,11 @@ const LOW_KICK_AIM := Vector2(80.0, -1900.0)
 # height over the foot) - the owner: "we need to add prongs on both of these
 # corners its to easy for the ball to fall down". The mouth was 65 px from
 # that corner to the inlane's post (three balls wide); past the prong's tip
-# it is 35, room for one ball and a half. A plain player's drains fell by
-# about half with any prong tried (290, 297, 304) - see CLAUDE.md
-const PRONG_TIP := Vector2(300.0, 378.0)
+# it is 38, a little under two (shorter in 0.168.5 - it was 35: "reduce the
+# size of this a bit i need the ball to still have a chance to enter that
+# area"). A plain player's drains fell by about half with any prong tried
+# (290, 297, 304) - see CLAUDE.md
+const PRONG_TIP := Vector2(290.0, 377.0)
 const KICK_CREAM := Color(0.95, 0.9, 0.8)
 # the plunger's bar, beside the panel (its lane is under it)
 const LAUNCH_BOX := Rect2(818, 450, 26, 222)
@@ -109,8 +111,25 @@ const CAM_FOOT := 290.0
 # 1.55 to the side the right wall and the plunger's lane sat under the LAUNCH
 # bar; 56, moved over to 2.1, shows the right outlane, its KICK and the wall
 # clear of it, and the left side still in
-const CAM_FOV := 56.0
+const CAM_FOV := 60.0
 const CAM_SIDE := 2.1
+# A LITTLE SIDEWAYS (0.168.5): "viewpoint still needs to be a little wider i
+# need to see the ball on the right side". The table's foot is the nearest
+# part to the camera, so the widest on the screen: about 1,180 px of it at
+# 56 degrees against the 818 clear of the LAUNCH bar and the panel, and a
+# ball on the plunger was drawn at x 1,080, under the panel. Fitting it all
+# would take a table half as small again; so the view is a little wider
+# (60) and the camera eases sideways toward a ball near either wall: within
+# PAN_FREE of the middle it stays, past it follows the rest, at most
+# PAN_RIGHT (PAN_LEFT the other way: the left side was nearly all in, and a
+# full pan there showed 218 px of stars), PAN_EASE of the way a second - slow
+# and with slack, as the owner found a camera chasing every move "a little
+# wobbly". Measured: a ball on the plunger at x 702 (the LAUNCH bar is at
+# 818), the right wall at 743; one at the left wall at 112
+const PAN_FREE := 250.0
+const PAN_RIGHT := 330.0
+const PAN_LEFT := 100.0
+const PAN_EASE := 2.5
 # it looks CAM_LEAD seconds along the ball's way (no faster than LEAD_MOST
 # px/s), and never lets the ball more than CAM_DOWN below its line or CAM_UP
 # above (a still camera shows 240 below and 900 above)
@@ -359,6 +378,7 @@ var controls_hint: String = "Z / LEFT  ·  M / RIGHT  ·  HOLD SPACE"
 var purse_text: String = ""
 var purse_colour: Color = GOLD
 var cam_y: float = 3200.0
+var cam_x: float = CX
 var cam_h: float = 0.0
 var _acc: float = 0.0
 var _pressed: Dictionary = {}
@@ -3091,9 +3111,10 @@ func _ball_height(ball: Dictionary) -> float:
 
 
 func _follow(snap: bool, dt: float = 1.0 / 60.0) -> void:
-	"""THE CAMERA slides up and down the table only - never sideways - and
-	lets the ball move inside a window before it follows, easing there
-	(the sandbox's camera chased the ball's every move: "a little wobbly").
+	"""THE CAMERA slides up and down the table, and only a little sideways
+	toward a ball near a wall (0.168.5), and lets the ball move inside a
+	window before it follows, easing there (the sandbox's camera chased
+	the ball's every move: "a little wobbly").
 	With more than one ball on its floor it pulls back to hold them all."""
 	if cam3 == null or balls.is_empty():
 		return
@@ -3151,7 +3172,10 @@ func _follow(snap: bool, dt: float = 1.0 / 60.0) -> void:
 	cam_y = clampf(cam_y, p.y - CAM_DOWN, p.y + CAM_UP)
 	cam_y = minf(cam_y, float(FLOORS[fl]["yb"]) - CAM_FOOT)
 	cam_h = lerpf(cam_h, _ball_height(ball), k)
-	look = _w(Vector2(CX, cam_y - 150.0), cam_h)
+	var off: float = mid.x - CX
+	var want_x: float = CX + clampf(signf(off) * maxf(absf(off) - PAN_FREE, 0.0), -PAN_LEFT, PAN_RIGHT)
+	cam_x = want_x if snap else lerpf(cam_x, want_x, 1.0 - exp(-dt * PAN_EASE))
+	look = _w(Vector2(cam_x, cam_y - 150.0), cam_h)
 	cam3.position = look + Vector3(0, 6.6, 5.6) * pull_back
 	cam3.look_at(look, Vector3.UP)
 	if shake > 0.0:
