@@ -440,34 +440,44 @@ func _test_the_table_on_a_phone() -> void:
 	print("  the table on a phone: done")
 
 
-func _test_the_gale_is_fair() -> void:
-	section("The gale bends a shot, it never drains one (0.168.0)")
-	# The owner: "when wind is blowing its a instant loss" - the gale pushed at
-	# 620 px/s a second everywhere, flippers and outlanes too.
+func _test_the_wind_is_an_updraft() -> void:
+	section("The wind land is an updraft: the ball hangs, never pushed sideways (0.168.3)")
+	# The owner: "the wind i think need to change it keep blowing the ball
+	# into the gutter" - the gale (0.168.0, halved and stilled over the
+	# flippers) still sent 22 of 150 balls down the outlane on its side. He
+	# chose an updraft.
 	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
 	if Run == null:
 		return
-	var run = Run.new()
-	run.headless = true
-	run.seed_now = 7
-	add_child(run)
-	run.wind_dir = -1.0
-	run.effect = {"land": "wind", "warn": run.t - 3.0, "from": run.t - 2.0, "to": run.t + 6.0, "begun": true}
-	var ball: Dictionary = run.balls[0]
-	ball["held"] = false
-	var pushed := func(at: Vector2) -> float:
-		ball["p"] = at
-		ball["v"] = Vector2.ZERO
-		ball.erase("ride")
-		run.step_frames(6)
-		return (ball["v"] as Vector2).x
-	var high: float = pushed.call(Vector2(600, 2980))
-	var low: float = pushed.call(Vector2(600, 3330))
-	check("up the table the gale pushes the ball its way, at %d px/s a second (it was 620)" % int(Run.GALE_PUSH),
-		high < -10.0 and Run.GALE_PUSH <= 320.0, high)
-	check("  over the flippers and their lanes the air is still", absf(low) < 1.0, low)
-	run.queue_free()
-	print("  the gale is fair")
+	var fall := func(windy: bool, from_v: Vector2, frames: int) -> Vector2:
+		var run = Run.new()
+		run.headless = true
+		run.seed_now = 7
+		add_child(run)
+		run.next_effect = 1e9
+		if windy:
+			run.effect = {"land": "wind", "warn": run.t - 3.0, "from": run.t - 2.0, "to": run.t + 60.0, "begun": true}
+		var ball: Dictionary = run.balls[0]
+		ball["held"] = false
+		ball["p"] = Vector2(600, 2700)
+		ball["v"] = from_v
+		run.step_frames(frames)
+		var v: Vector2 = ball["v"]
+		run.queue_free()
+		return v
+	var still: Vector2 = fall.call(false, Vector2.ZERO, 20)
+	var up: Vector2 = fall.call(true, Vector2.ZERO, 20)
+	check("in the updraft a ball from rest falls slower than in still air (%.0f px/s against %.0f)" % [up.y, still.y],
+		up.y > 0.0 and up.y < still.y * (1.0 - Run.UPDRAFT_LIFT) + 20.0, [up, still])
+	check("  and is pushed no way sideways", absf(up.x) < 0.5, up)
+	var fast: Vector2 = fall.call(true, Vector2(0, 1800), 30)
+	var fast_still: Vector2 = fall.call(false, Vector2(0, 1800), 30)
+	check("  a fast fall is eased toward %d px/s" % int(Run.UPDRAFT_FALL),
+		fast.y < 1300.0 and fast.y < fast_still.y - 400.0, [fast, fast_still])
+	check("  its banner says UPDRAFT, and there is no gale left to push",
+		str(Run.EFFECT["wind"]) == "UPDRAFT" and str(Run.EFFECT_SUB["wind"]).ends_with("THE BALL HANGS")
+		and not (Run as GDScript).get_script_property_list().any(func(prop: Dictionary) -> bool: return prop["name"] == "wind_dir"))
+	print("  the wind is an updraft")
 
 
 func _test_the_minigames_grid() -> void:
@@ -542,7 +552,7 @@ func _test_the_minigames_grid() -> void:
 
 
 func _test_the_table_opens_and_bounces_back() -> void:
-	section("The table opens quicker, and its kickbacks moved up the side walls (0.168.2)")
+	section("The table opens quicker, and its kickbacks moved up the side walls (0.168.2, higher 0.168.3)")
 	# The owner: "it takes almost 6 seconds to launch the minigame", and
 	# "ball hits bumpers on right then just falls down to the lose a ball area
 	# the bounce backs are too low on the board".
@@ -558,34 +568,69 @@ func _test_the_table_opens_and_bounces_back() -> void:
 	check("the screen no longer loads the Healer's Run for its paid line, and says the same words",
 		not src.contains("healerrunscreen.gd\")") and same)
 	# the bounce-backs: a ball sliding down the right side wall is thrown back
-	# up while that side's KICK is lit, spending it; dark, it rolls in
+	# up while that side's KICK is lit, spending it; dark, it rolls in. Since
+	# 0.168.3 the catcher is the wall's whole lower part, so it is caught
+	# above the outlane's mouth (y 3215), and a gentle roll down it counts too
 	for lit in [true, false]:
 		var run = Run.new()
 		run.headless = true
 		run.seed_now = 7
 		add_child(run)
 		run.save_until = -100.0
+		run.next_effect = 1e9
 		run.kickbacks = [false, lit]
 		var ball: Dictionary = run.balls[0]
 		ball["held"] = false
 		ball["p"] = Vector2(1140, 3010)
 		ball["v"] = Vector2(-380, 300)
-		var highest_after := 99999.0
-		var low_point := 0.0
-		for i in 90:
+		var kicked_at := -1
+		var top_after := 99999.0
+		var lowest := 0.0
+		for i in 150:
 			run.step_frames(1)
 			var y: float = (ball["p"] as Vector2).y
-			low_point = maxf(low_point, y)
-			if low_point > 3150.0:
-				highest_after = minf(highest_after, y)
+			lowest = maxf(lowest, y)
+			if kicked_at < 0 and not bool(run.kickbacks[1]) and lit:
+				kicked_at = i
+			if kicked_at >= 0:
+				top_after = minf(top_after, y)
 		if lit:
-			check("  lit, a ball down the right side wall meets its bounce-back, goes back up the table and spends the KICK",
-				run.ball_no == 1 and highest_after < 3000.0 and run.kickbacks == [false, false] and int(run.stats["kickbacks"]) == 1,
-				[ball["p"], highest_after, run.ball_no, run.kickbacks])
+			check("  lit, a ball down the right side wall is caught above the outlane, thrown back up the table, the KICK spent",
+				run.ball_no == 1 and kicked_at >= 0 and lowest < 3215.0 and top_after < 2950.0
+				and run.kickbacks == [false, false] and int(run.stats["kickbacks"]) == 1,
+				[ball["p"], lowest, top_after, run.ball_no, run.kickbacks])
 		else:
-			check("  dark, the same ball rolls on into the outlane",
-				highest_after > 3150.0 and int(run.stats["kickbacks"]) == 0, [ball["p"], highest_after, run.ball_no])
+			check("  dark, the same ball rolls on into the outlane", lowest > 3300.0 and int(run.stats["kickbacks"]) == 0,
+				[ball["p"], lowest, run.ball_no])
 		run.queue_free()
+	var roll = Run.new()
+	roll.headless = true
+	roll.seed_now = 7
+	add_child(roll)
+	roll.save_until = -100.0
+	roll.next_effect = 1e9
+	roll.kickbacks = [false, true]
+	var catcher: Dictionary = {}
+	for sg in roll.segs:
+		if sg.get("bounce", false) and int(sg.get("kb", -1)) == 1:
+			catcher = sg
+	var along: Vector2 = ((catcher["b"] as Vector2) - (catcher["a"] as Vector2)).normalized()
+	if along.y < 0.0:
+		along = -along
+	var up: Vector2 = along.orthogonal()
+	if up.y > 0.0:
+		up = -up
+	var rolling: Dictionary = roll.balls[0]
+	rolling["held"] = false
+	rolling["p"] = ((catcher["a"] as Vector2) + (catcher["b"] as Vector2)) / 2.0 + up * (Run.BALL_R + float(catcher["r"]) - 0.5)
+	rolling["v"] = along * 60.0
+	var roll_top := 99999.0
+	for i in 90:
+		roll.step_frames(1)
+		roll_top = minf(roll_top, (rolling["p"] as Vector2).y)
+	check("  lit, a ball rolling gently down it is thrown back too (a slingshot needs a 110 px/s hit)",
+		roll.kickbacks == [false, false] and roll_top < 2950.0, [roll.kickbacks, roll_top, catcher.get("a"), catcher.get("b")])
+	roll.queue_free()
 	# the card says it is opening, drawn, before the table loads
 	var was_owner: bool = Api.is_owner
 	Api.is_owner = true
@@ -613,3 +658,50 @@ func _test_the_table_opens_and_bounces_back() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  opens and bounces back: done")
+
+
+func _test_the_table_loads_behind_a_cover() -> void:
+	section("The table opens on a loading cover, then 3, 2, 1, GO (0.168.3)")
+	# The owner, on his phone: "it still takes to long to start the game up
+	# if needed we can improvise with a loading screen or a countdown".
+	var Screen = require_script("res://src/world/pinball/pinballscreen.gd", "pinballscreen.gd")
+	if Screen == null:
+		return
+	var src: String = FileAccess.get_file_as_string("res://src/world/pinball/pinballscreen.gd")
+	check("the screen does not preload the table's script: the cover loads it",
+		not src.contains("preload(\"res://src/world/pinball/pinballrun.gd\")"))
+	var screen = Screen.new()
+	screen.set("on_touch", func() -> bool: return false)
+	add_child(screen)
+	var at_once: Array = [screen.loading.visible, screen.loading_now(), screen.run == null, screen.leave_button.visible,
+		screen.load_words.text]
+	screen._input(_pin_key(KEY_SPACE, true))
+	screen._input(_pin_key(KEY_ESCAPE, true))
+	check("Go opens the cover at once, before the table is built; keys wait (no Again, no Leave)",
+		at_once == [true, true, true, false, "Opening the table..."] and not screen.results.visible
+		and not screen.is_queued_for_deletion(), at_once)
+	var said: Array = []
+	for i in 40:
+		if screen.loading_now() and not said.has(str(screen.load_words.text)):
+			said.append(str(screen.load_words.text))
+		if not screen.loading_now():
+			break
+		await get_tree().process_frame
+	var r = screen.run
+	check("  a step a frame, each said, then the table built behind it and held",
+		said == ["Opening the table...", "Setting the table...", "Building the board...", "Lighting it..."]
+		and r != null and r.world != null and bool(r.paused) and screen.counting() and screen.leave_button.visible, said)
+	var three: String = screen.count_label.text
+	screen._process(Screen.COUNT_STEP * 3.0 + 0.01)
+	var go: String = screen.count_label.text
+	var moving: bool = not bool(r.paused)
+	screen._process(Screen.GO_SECONDS)
+	check("  then 3, 2, 1 over the table, GO!, and the ball is the player's",
+		three == "3" and go == "GO!" and moving and not screen.count_label.visible and not screen.counting()
+		and not screen.loading.visible, [three, go, moving])
+	await screen.again()
+	check("Again: a new table behind the cover the same way", screen.loading_now() and screen.load_words.text == "A new table..."
+		and screen.run == null, [screen.loading_now(), screen.load_words.text])
+	screen.close()
+	await get_tree().process_frame
+	print("  the table loads behind a cover: done")

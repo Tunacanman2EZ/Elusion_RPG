@@ -73,12 +73,15 @@ const PHONE_3D_SCALE := 0.75
 const PHONE_PAINT := 0.5
 const PHONE_AMBIENT := 0.95
 # each side wall's bounce-back: from BOUNCE_FROM (x, height over the foot)
-# to the outlane's outer wall at BOUNCE_TO_Y over the foot
-const BOUNCE_FROM := Vector2(190.0, 404.0)
+# to the outlane's outer wall at BOUNCE_TO_Y over the foot - from 0.168.3
+# the wall's whole lower part (it began at x 190, 404 over the foot)
+const BOUNCE_FROM := Vector2(100.0, 486.0)
 const BOUNCE_TO_Y := 385.0
-# how hard it throws the ball back (px/s), keeping this much of its slide
-const BOUNCE_KICK := 1150.0
-const BOUNCE_KEEP := 0.35
+# where a kick throws the ball (px/s; x toward the middle): the bounce-back,
+# and the low kickback in the outlane (it was straight up its lane, and a
+# ball came back down the same wall: 9 of 29 drained that side)
+const BOUNCE_AIM := Vector2(270.0, -1120.0)
+const LOW_KICK_AIM := Vector2(80.0, -1900.0)
 const KICK_CREAM := Color(0.95, 0.9, 0.8)
 # the plunger's bar, beside the panel (its lane is under it)
 const LAUNCH_BOX := Rect2(818, 450, 26, 222)
@@ -93,9 +96,12 @@ const CAM_DOWN := 170.0
 const CAM_UP := 650.0
 const CAM_FAST := 6.0
 const FALL_FAST := 1500.0
-# the gale's push (px/s a second) and the still air above each floor's foot
-const GALE_PUSH := 310.0
-const GALE_CALM := 380.0
+# THE UPDRAFT (0.168.3; the wind land's effect, a gale before): its lift, as
+# a share of gravity, and the fall speed (px/s) a ball is eased toward in it,
+# UPDRAFT_EASE of the way a second
+const UPDRAFT_LIFT := 0.45
+const UPDRAFT_FALL := 700.0
+const UPDRAFT_EASE := 3.0
 const S := 0.01
 const FLOORS := [
 	{"name": "THE TOWN SQUARE", "short": "TOWN", "y0": 2400.0, "yb": 3600.0, "h": 0.0, "opens": 0},
@@ -138,10 +144,10 @@ const WARN := 1.5
 # the order the lands come in when the ball carries none new (the demo's:
 # the blackout third, so it is seen in play)
 const EFFECT_ORDER := ["wind", "earth", "dark", "ice", "fire", "water", "light"]
-const EFFECT := {"fire": "LAVA VENTS", "water": "HIGH TIDE", "ice": "DEEP FROST", "wind": "GALE", "earth": "QUAKE",
+const EFFECT := {"fire": "LAVA VENTS", "water": "HIGH TIDE", "ice": "DEEP FROST", "wind": "UPDRAFT", "earth": "QUAKE",
 	"light": "DAZZLE", "dark": "BLACKOUT"}
 const EFFECT_SUB := {"fire": "THE FIRE LAND  ·  VENTS THROW THE BALL", "water": "THE WATER LAND  ·  THE BALL FLOATS",
-	"ice": "THE ICE LAND  ·  THE BALL SKATES", "wind": "THE WIND LAND  ·  IT PUSHES THE BALL",
+	"ice": "THE ICE LAND  ·  THE BALL SKATES", "wind": "THE WIND LAND  ·  THE BALL HANGS",
 	"earth": "THE EARTH LAND  ·  BREAK THE ROCKS", "light": "THE LIGHT LAND  ·  EVERY SCORE x2",
 	"dark": "THE DARK LAND  ·  MONSTERS x3"}
 const VENTS := [[Vector2(300, 2900), Vector2(600, 2800), Vector2(900, 2920)],
@@ -272,7 +278,6 @@ var rocks: Array = []
 var effect: Dictionary = {}
 var next_effect: float = EFFECT_FIRST
 var effects_shown: Array = []
-var wind_dir: float = -1.0
 var tower_ball: Dictionary = {}
 var to_add: Array = []
 var tries: Dictionary = {}
@@ -306,6 +311,10 @@ var attract: bool = false
 var light: bool = false
 static var pretend_phone: bool = false
 var paused: bool = false
+# BUILT WHEN ASKED (0.168.3): the screen's loading cover builds the 3D table
+# a step of its own (build_world_now()), so its bar moves and the first draw
+# - the slow part on a phone - happens behind it
+var build_later: bool = false
 var over: bool = false
 var extra_balls: int = 0
 var controls_hint: String = "Z / LEFT  ·  M / RIGHT  ·  HOLD SPACE"
@@ -336,8 +345,18 @@ func _ready() -> void:
 	quiet = headless
 	light = on_phone()
 	_reset(seed_now)
-	if not headless:
+	if not headless and not build_later:
 		_build_world()
+
+
+func build_world_now() -> void:
+	"""The 3D table, built and placed as the first frame will show it."""
+	if headless:
+		return
+	if world == null:
+		_build_world()
+	_follow(true)
+	_sync_world()
 
 
 static func on_phone() -> bool:
@@ -443,6 +462,11 @@ func _base(yb: float, fl: int, outlanes: bool, top: float) -> void:
 			# low in the outlane shares it); dark, it rolls in. Always on, it
 			# saved nearly everything: a plain player's games went from about
 			# 130 s to 400 s, his median score from 10M to 77M.
+			# HIGHER (0.168.3): "the gutter catchers are still to low to
+			# actually bounce the ball back into the game". It is the wall's
+			# whole lower part now, from BOUNCE_FROM; lit, any touch kicks (a
+			# roll down it pressed too lightly for a slingshot's 110 px/s), and
+			# the ball is thrown at BOUNCE_AIM, up and toward the middle.
 			_chain([Vector2(m.call(20.0), top), Vector2(m.call(BOUNCE_FROM.x), yb - BOUNCE_FROM.y)])
 			var bounce: Dictionary = _wall(Vector2(m.call(BOUNCE_FROM.x), yb - BOUNCE_FROM.y),
 				Vector2(m.call(270.0), yb - BOUNCE_TO_Y), "kick")
@@ -499,7 +523,6 @@ func _reset(s: int) -> void:
 		list.clear()
 	effect = {}
 	next_effect = EFFECT_FIRST
-	wind_dir = -1.0
 	tower_ball = {}
 	tries.clear()
 	makes.clear()
@@ -971,7 +994,8 @@ func _sensors(ball: Dictionary) -> void:
 			if inside and kickbacks[side]:
 				kickbacks[side] = false
 				stats["kickbacks"] += 1
-				ball["v"] = Vector2(rng.randf_range(-20.0, 20.0), -1900.0)
+				var inward: float = 1.0 if side == 0 else -1.0
+				ball["v"] = Vector2(inward * LOW_KICK_AIM.x + rng.randf_range(-20.0, 20.0), LOW_KICK_AIM.y)
 				_banner("KICKBACK", "", COLOURS["fire"])
 				_burst(p, COLOURS["fire"], 14)
 
@@ -1213,14 +1237,15 @@ func _hit_walls(ball: Dictionary) -> void:
 			v -= n * vn * (1.0 + WALL_BOUNCE)
 			v -= (v - n * v.dot(n)) * 0.004
 			var bounce_back: bool = s.get("bounce", false)
-			if kind == "kick" and -vn > 110.0 and t - float(s.get("kick_t", -9.0)) > 0.35 \
-					and (not bounce_back or kickbacks[int(s["kb"])]):
+			if kind == "kick" and t - float(s.get("kick_t", -9.0)) > 0.35 \
+					and (kickbacks[int(s["kb"])] if bounce_back else -vn > 110.0):
 				s["kick_t"] = t
 				if bounce_back:
-					# a bounce-back: most of the slide along it lost, thrown
-					# back up the table (a slingshot's kick only adds), and
-					# that side's kickback spent
-					v = (v - n * v.dot(n)) * BOUNCE_KEEP + n * BOUNCE_KICK
+					# a bounce-back, lit: any touch, a roll down it too, throws
+					# the ball back up the table toward the middle, and that
+					# side's kickback is spent
+					var inward: float = 1.0 if int(s["kb"]) == 0 else -1.0
+					v = Vector2(inward * BOUNCE_AIM.x + rng.randf_range(-30.0, 30.0), BOUNCE_AIM.y)
 					kickbacks[int(s["kb"])] = false
 					stats["kickbacks"] += 1
 					_banner("KICKBACK", "", COLOURS["fire"])
@@ -2150,8 +2175,6 @@ func _start_effect() -> void:
 	_banner(str(EFFECT[land]) + " COMING", "IN 1.5 SECONDS  ·  " + str(EFFECT_SUB[land]).get_slice("  ·  ", 1),
 		(COLOURS[land] as Color).lightened(0.25))
 	_cue("warn_" + land)
-	if land == "wind":
-		wind_dir = -wind_dir
 	if land == "earth":
 		_drop_rocks(floor_of((ball["p"] as Vector2).y))
 
@@ -2197,7 +2220,7 @@ func _hit_rocks(ball: Dictionary) -> void:
 
 func _feel(ball: Dictionary, dt: float) -> void:
 	"""THE BALL FEELS THE LAND: floats in the tide, skates on frost, is
-	pushed by the gale, thrown by a vent - once the warning is over."""
+	held up by the updraft, thrown by a vent - once the warning is over."""
 	if effect.is_empty() or t < float(effect["from"]):
 		return
 	var k: float = _fx_k()
@@ -2207,12 +2230,18 @@ func _feel(ball: Dictionary, dt: float) -> void:
 			if _in_tide(p):
 				ball["v"] = (ball["v"] as Vector2) * (1.0 - 1.1 * dt * k) + Vector2(0, -GRAVITY * 0.55 * dt * k)
 		"wind":
-			# THE GALE (0.168.0): the owner, "when wind is blowing its a instant
-			# loss" - at 620 it blew the ball down an outlane. Half that now, and
-			# still air over the flippers and their lanes (GALE_CALM above a
-			# floor's foot): it bends shots up the table, it never drains one.
-			if p.y < float(FLOORS[floor_of(p.y)]["yb"]) - GALE_CALM:
-				ball["v"] = (ball["v"] as Vector2) + Vector2(wind_dir * GALE_PUSH * dt * k, 0)
+			# THE UPDRAFT (0.168.3): the gale blew sideways, and halved and
+			# stilled over the flippers (0.168.0) it still blew the ball into
+			# the outlane on its side - 22 of 150 balls against 4 in still air.
+			# The owner: "keep blowing the ball into the gutter", and he chose
+			# an updraft over gusts that swing or a wind to the middle. It
+			# blows up the table: the ball hangs and falls slower, its fall
+			# eased toward UPDRAFT_FALL; never pushed sideways.
+			var v: Vector2 = ball["v"]
+			v.y -= GRAVITY * UPDRAFT_LIFT * dt * k
+			if v.y > UPDRAFT_FALL:
+				v.y = lerpf(v.y, UPDRAFT_FALL, minf(1.0, UPDRAFT_EASE * dt * k))
+			ball["v"] = v
 		"ice":
 			var v: Vector2 = ball["v"]
 			if v.length() < 1300.0:
@@ -3454,11 +3483,12 @@ func _paint_effect(fl: int) -> void:
 					cv.draw_circle(at, 72.0, Color(1.0, 0.55, 0.1, 0.3 * k))
 					cv.draw_arc(at, 60.0, 0, TAU, 32, Color(1.0, 0.85, 0.4, 0.9 * k), 4.0)
 		"wind":
+			# the updraft: streaks rising up the floor
 			for i in 50:
-				var y: float = lerpf(y0 + 80.0, yb - 40.0, r.randf())
-				var len: float = r.randf_range(90.0, 240.0)
-				var x: float = fposmod(r.randf() * 1500.0 + t * 950.0 * wind_dir * r.randf_range(0.8, 1.3), 1500.0) - 130.0
-				cv.draw_line(Vector2(x, y), Vector2(x - len * wind_dir, y), Color(0.85, 1.0, 0.95, 0.5 * k), 4.0)
+				var x: float = r.randf_range(40.0, 1200.0)
+				var len: float = r.randf_range(70.0, 180.0)
+				var y: float = yb - fposmod(r.randf() * (yb - y0) + t * 620.0 * r.randf_range(0.8, 1.3), yb - y0)
+				cv.draw_line(Vector2(x, y), Vector2(x, minf(yb, y + len)), Color(0.85, 1.0, 0.95, 0.5 * k), 4.0)
 				cv.draw_circle(Vector2(x, y), 3.0, Color(1, 1, 1, 0.6 * k))
 		"earth":
 			cv.draw_colored_polygon(shape, Color(0.3, 0.18, 0.05, 0.16 * k))
@@ -3491,7 +3521,7 @@ func _paint_effect(fl: int) -> void:
 
 func _paint_warning(fl: int) -> void:
 	"""THE WARNING: for WARN seconds the floor shows what is coming - the
-	gale's first streaks, frost creeping in from the edges, the rocks'
+	updraft's first streaks, frost creeping in from the edges, the rocks'
 	shadows, the line the tide will reach, the vents glowing under the
 	floor, the gold coming up, the lights failing."""
 	var land: String = effect["land"]
@@ -3505,9 +3535,9 @@ func _paint_warning(fl: int) -> void:
 	match land:
 		"wind":
 			for i in 26:
-				var y: float = lerpf(y0 + 80.0, yb - 40.0, r.randf())
-				var x: float = fposmod(r.randf() * 1500.0 + t * 500.0 * wind_dir, 1500.0) - 130.0
-				cv.draw_line(Vector2(x, y), Vector2(x - 90.0 * wind_dir, y), Color(0.85, 1.0, 0.95, 0.3 * kw), 3.0)
+				var x: float = r.randf_range(40.0, 1200.0)
+				var y: float = yb - fposmod(r.randf() * (yb - y0) + t * 320.0, yb - y0)
+				cv.draw_line(Vector2(x, y), Vector2(x, minf(yb, y + 90.0)), Color(0.85, 1.0, 0.95, 0.3 * kw), 3.0)
 		"ice":
 			var reach: float = 40.0 + 170.0 * kw
 			for band in [Rect2(0, y0, reach, yb - y0), Rect2(1240.0 - reach, y0, reach, yb - y0), Rect2(0, y0, 1240, reach)]:
@@ -4457,7 +4487,7 @@ func _start_siege() -> void:
 
 func _new_frame() -> void:
 	var k: float = 1.0 / FPS
-	# the spinner: it turns, slows (slower in the gale), counts half turns
+	# the spinner: it turns, slows (slower in the updraft), counts half turns
 	var w: float = spinner["w"]
 	var a: float = float(spinner["a"]) + w * k
 	spinner["w"] = w * exp(-(0.8 if _effect_is("wind") else 1.6) * k)

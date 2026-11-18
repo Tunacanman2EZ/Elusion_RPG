@@ -16214,6 +16214,66 @@ seconds to launch the minigame".
 a lit bounce-back (back up, the light spent) and a dark one (rolls in),
 and OPENING drawn before the table opens.
 
+### The table loads behind a cover; the catchers higher; the wind an updraft (0.168.3)
+
+The owner, on his phone after 0.168.2: "on phone it still takes to long to
+start the game up if needed we can improvise with a loading screen or a
+countdown also the wind i think need to change it keep blowing the ball
+into the gutter and the gutter catchers are still to low to actually bounce
+the ball back into the game".
+
+- **The loading cover** (pinballscreen.gd `_open_steps()`): the screen no
+  longer preloads pinballrun.gd (190 KB of script). `RunScript` is a static
+  var the cover loads (`RUN_PATH`), so the screen is up at once: the crowned
+  beholder's eye (art/pack; no picture in a clone without the pack), the
+  name, a bar and a line of words. Each step is a frame of its own
+  (`_shown()`: two process frames, so the cover is drawn as it stands): the
+  script, the run (`build_later` and paused, so `_ready()` builds no 3D),
+  its 3D board (`build_world_now()`, which also places the camera and the
+  world as the first frame shows them), then two draws behind the cover -
+  a phone readies its shaders on the first. Then 3, 2, 1 (`COUNT_STEP`)
+  over the table as the cover fades (`COVER_FADE`, its words gone at once),
+  GO! (`GO_SECONDS`) and the run unpaused. **The count runs by the wall
+  clock** (`_count_ms`): the engine cuts a slow frame's delta to 0.1 s (8
+  physics steps at 80 a second), which dragged it out threefold in the
+  container. Keys, touches and Leave wait while the cover builds (Leave is
+  hidden); Again builds a new table the same way ("A new table..."). The
+  suite's screens (`headless_run`) still open at once. Measured in the
+  container (software GL, about 330 ms a frame): the cover up 0.08 s after
+  Go, the board's build and first draw one 1.1 s frame behind it, the count
+  at 2.9 s, GO at 4.5 s. The card's "Opening the table..." stays.
+- **The catchers higher** (pinballrun.gd `_base()`): measured on 150 loose
+  balls, the low kickback threw straight up its own lane and 9 of 29 came
+  back down the same wall and drained. The bounce-back is the side wall's
+  whole lower part now (`BOUNCE_FROM` 100, 486 over the foot; it was 190,
+  404). While lit any touch kicks - a roll down it pressed too lightly for
+  a slingshot's 110 px/s - and every kick is aimed: the bounce-back at
+  `BOUNCE_AIM` (270 toward the middle, 1,120 up), the low kickback at
+  `LOW_KICK_AIM` (80 in, 1,900 up). On 300 loose balls: 205 caught high (84
+  of 150 before), 84% of them still in play 5 s on; the low one fired 24
+  times, 71% in play. 360 in was tried and was worse (81%).
+- **The wind is an updraft** (`_feel()`, `UPDRAFT_*`): the gale blew
+  sideways, and even halved and stilled over the flippers (0.168.0) a gale
+  toward a side sent 22 of 150 balls down that side's outlane, against 4 in
+  still air. He chose an updraft over gusts that swing or a wind to the
+  middle: lift of `UPDRAFT_LIFT` (0.45) of gravity, and a fall faster than
+  `UPDRAFT_FALL` (700 px/s) eased toward it, `UPDRAFT_EASE` (3) of the way a
+  second; never sideways. Its banner is "UPDRAFT - THE BALL HANGS", its
+  streaks rise up the floor, and `wind_dir` is gone.
+- **Difficulty**, the plain player (zz/pinhuman.gd) on the same 24 seeds:
+  0.168.1 135 s a game, 1.42 calm drains a minute, median 9.8M; 0.168.2
+  228 s, 0.89, 29M; 0.168.3 169 s, 1.25, 21M. In the wind 1.46, 1.03,
+  1.03 a minute, and in 0.168.3 none down an outlane on its own (six of the
+  seven down the middle). Higher, it catches more often, so its light is
+  spent sooner.
+
+`_test_the_table_loads_behind_a_cover()` (the cover at once, keys held, a
+step a frame, the board built and held, 3 2 1 GO, Again),
+`_test_the_wind_is_an_updraft()` (it was `_test_the_gale_is_fair()`), and
+`_test_the_table_opens_and_bounces_back()` now catches above the outlane's
+mouth and a gentle roll; the cover's checks and the gentle roll sabotaged
+red (built at once; the old 110 px/s rule).
+
 ### Which file owns which number
 
 | question | lives in | example |

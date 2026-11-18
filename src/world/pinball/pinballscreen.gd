@@ -37,7 +37,24 @@
 # Keys are kept from the rest of the game while it is up.
 extends CanvasLayer
 
-const RunScript := preload("res://src/world/pinball/pinballrun.gd")
+# THE LOADING COVER (0.168.3): the owner, on his phone, "it still takes to
+# long to start the game up if needed we can improvise with a loading screen
+# or a countdown". The table's script is loaded by the cover, not preloaded
+# here, so the screen itself is light and up at once: the Beholder's eye, the
+# name and a bar, each step a frame of its own (the script, the table, the 3D
+# board, then two draws behind the cover - a phone's first draw is the slow
+# part), then 3, 2, 1, GO over the table and the ball is yours. Again does
+# the same on a new table. The suite's tables (headless_run) open at once.
+const RUN_PATH := "res://src/world/pinball/pinballrun.gd"
+const EYE_PATH := "res://art/pack/materials/crownedbeholdereye.png"
+# each of 3, 2, 1 and GO, by the clock on the wall: a slow phone's frames
+# are cut to 0.1 s each by the engine, which would drag the count out
+const COUNT_STEP := 0.5
+const GO_SECONDS := 0.4
+const COVER_FADE := 0.3
+const OPEN_STEPS := ["Opening the table", "Setting the table", "Building the board", "Lighting it"]
+const AGAIN_STEPS := ["A new table", "Setting the table", "Building the board", "Lighting it"]
+static var RunScript: GDScript = null
 # OPENS FASTER (0.168.2): the owner, "it takes almost 6 seconds to launch the
 # minigame". This screen preloaded the Healer's Run's screen for one line of
 # words, and that pulled in the Healer's Run itself, its party and the field
@@ -109,6 +126,15 @@ var _gold_paid: int = -1
 var _held_back: int = 0
 var _new_best: bool = false
 var _purse_shown: String = "-"
+var loading: Control = null
+var load_bar: ColorRect = null
+var load_words: Label = null
+var count_label: Label = null
+# while the cover builds the table; the countdown's clock (-1 when not counting)
+var _loading: bool = false
+var _counting: float = -1.0
+var _count_ms: int = 0
+var _loads: int = 0
 
 
 static func open(tree: SceneTree, on_hud: Node = null, run_on_server: int = 0, what_it_pays: Dictionary = {},
@@ -148,6 +174,7 @@ func _ready() -> void:
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(picture)
 	_build_words()
+	_build_cover()
 	_hold_the_character()
 	cover(get_tree().current_scene)
 	start()
@@ -204,6 +231,60 @@ func _build_words() -> void:
 	again_button = _button("again", "Again", again)
 	row.add_child(again_button)
 	row.add_child(_button("out", "Leave", leave))
+
+
+func _build_cover() -> void:
+	"""The loading cover over the table, and the countdown's number."""
+	loading = ColorRect.new()
+	loading.name = "loading"
+	(loading as ColorRect).color = Color(0.03, 0.022, 0.05)
+	loading.set_anchors_preset(Control.PRESET_FULL_RECT)
+	loading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loading.visible = false
+	add_child(loading)
+	var eye_tex: Texture2D = load(EYE_PATH) as Texture2D if ResourceLoader.exists(EYE_PATH) else null
+	if eye_tex != null:
+		var eye := TextureRect.new()
+		eye.name = "eye"
+		eye.texture = eye_tex
+		eye.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		eye.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		eye.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		eye.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_place(eye, Rect2(576, 196, 128, 128))
+		loading.add_child(eye)
+	var title := _words(GAME_NAME.to_upper(), 40, GOLD)
+	title.name = "title"
+	_place(title, Rect2(240, 338, 800, 56))
+	loading.add_child(title)
+	var track := ColorRect.new()
+	track.name = "track"
+	track.color = Color(1.0, 1.0, 1.0, 0.08)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(track, Rect2(440, 420, 400, 10))
+	loading.add_child(track)
+	load_bar = ColorRect.new()
+	load_bar.name = "bar"
+	load_bar.color = GOLD
+	load_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	load_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	load_bar.anchor_right = 0.0
+	track.add_child(load_bar)
+	load_words = _words("", 20, HINT)
+	load_words.name = "step"
+	_place(load_words, Rect2(340, 444, 600, 36))
+	loading.add_child(load_words)
+	count_label = _words("", 120, CREAM)
+	count_label.name = "count"
+	count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	count_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.08))
+	count_label.add_theme_constant_override("outline_size", 18)
+	_place(count_label, Rect2(340, 230, 600, 200))
+	count_label.visible = false
+	add_child(count_label)
+	# the words and Leave over the cover and the number
+	move_child(leave_button, -1)
+	move_child(results, -1)
 
 
 func _hint(id: String, text: String, box: Rect2) -> Label:
@@ -295,13 +376,110 @@ func start() -> void:
 	_place(leave_button, TOUCH_LEAVE_BOX if touch else LEAVE_BOX)
 	leave_button.add_theme_font_size_override("font_size", 20 if touch else 15)
 	_hints_left = HINT_SECONDS if touch else 0.0
+	run = null
+	_counting = -1.0
+	count_label.visible = false
+	if headless_run:
+		_make_run(false)
+		return
+	_open_steps()
+
+
+func _make_run(later: bool) -> void:
+	"""The table's run: with `later`, paused and its 3D board not yet built."""
+	if RunScript == null:
+		RunScript = load(RUN_PATH)
 	run = RunScript.new()
 	run.name = "run"
 	run.set("headless", headless_run)
 	run.set("seed_now", next_seed)
 	run.set("controls_hint", TOUCH_HINT if bool(on_touch.call()) else KEYS_HINT)
+	run.set("build_later", later)
+	run.set("paused", later)
 	viewport.add_child(run)
 	run.connect("game_over", _on_game_over)
+
+
+func _open_steps() -> void:
+	"""The cover up, the table built a step a frame behind it, then the count."""
+	_loads += 1
+	var mine: int = _loads
+	var words: Array = OPEN_STEPS if _loads == 1 else AGAIN_STEPS
+	_loading = true
+	loading.visible = true
+	loading.modulate.a = 1.0
+	for part in loading.get_children():
+		(part as CanvasItem).visible = true
+	leave_button.visible = false
+	_cover_step(0, words)
+	if not await _shown(mine):
+		return
+	if RunScript == null:
+		RunScript = load(RUN_PATH)
+	_cover_step(1, words)
+	if not await _shown(mine):
+		return
+	_make_run(true)
+	_cover_step(2, words)
+	if not await _shown(mine):
+		return
+	run.call("build_world_now")
+	_cover_step(3, words)
+	# two draws of the table behind the cover: a phone readies its shaders
+	if not await _shown(mine) or not await _shown(mine):
+		return
+	load_bar.anchor_right = 1.0
+	_loading = false
+	leave_button.visible = true
+	for part in loading.get_children():
+		(part as CanvasItem).visible = false
+	_counting = 0.0
+	_count_ms = Time.get_ticks_msec()
+	_show_count()
+
+
+func _cover_step(i: int, words: Array) -> void:
+	load_words.text = str(words[i]) + "..."
+	load_bar.anchor_right = float(i + 1) / float(words.size() + 1)
+
+
+func _shown(mine: int) -> bool:
+	"""After the cover has been drawn as it is now: false if the screen went
+	or a newer table began meanwhile."""
+	await get_tree().process_frame
+	await get_tree().process_frame
+	return is_inside_tree() and mine == _loads
+
+
+func loading_now() -> bool:
+	return _loading
+
+
+func counting() -> bool:
+	return _counting >= 0.0
+
+
+func _show_count() -> void:
+	"""3, 2, 1 over the table as the cover fades, then GO - the ball's."""
+	var fade: float = clampf(1.0 - _counting / COVER_FADE, 0.0, 1.0)
+	loading.modulate.a = fade
+	loading.visible = fade > 0.0
+	var numbers: float = COUNT_STEP * 3.0
+	if _counting < numbers:
+		var step: int = int(_counting / COUNT_STEP)
+		count_label.text = str(3 - step)
+		count_label.modulate.a = 1.0 - 0.5 * fmod(_counting, COUNT_STEP) / COUNT_STEP
+		count_label.visible = true
+		return
+	if run != null and is_instance_valid(run) and bool(run.get("paused")) and not _paid:
+		run.set("paused", false)
+	if _counting < numbers + GO_SECONDS:
+		count_label.text = "GO!"
+		count_label.modulate.a = 1.0 - (_counting - numbers) / GO_SECONDS
+		count_label.visible = true
+		return
+	count_label.visible = false
+	_counting = -1.0
 
 
 func again() -> void:
@@ -356,21 +534,21 @@ func purse_words() -> String:
 	if run_id == 0:
 		return "PRACTICE"
 	var gold: int = gold_now()
-	return "%s GOLD%s" % [RunScript._thousands(gold), "  ·  MOST" if gold >= int(pays.get("most", 3000)) else ""]
+	return "%s GOLD%s" % [_thousands(gold), "  ·  MOST" if gold >= int(pays.get("most", 3000)) else ""]
 
 
 func _on_game_over() -> void:
 	var score: int = int(run.get("score"))
 	var first: bool = score > best
 	best = maxi(best, score)
-	result_line.text = "Score  %s" % RunScript._thousands(score)
+	result_line.text = "Score  %s" % _thousands(score)
 	if run_id == 0:
 		gold_line.text = ""
-		best_line.text = "A new best!" if first and score > 0 else "Best this sitting  %s" % RunScript._thousands(best)
+		best_line.text = "A new best!" if first and score > 0 else "Best this sitting  %s" % _thousands(best)
 		pay_line.text = "Practice: it pays nothing."
 		_show_results()
 		return
-	gold_line.text = "Paying %s gold..." % RunScript._thousands(gold_now())
+	gold_line.text = "Paying %s gold..." % _thousands(gold_now())
 	best_line.text = ""
 	pay_line.text = ""
 	_show_results()
@@ -378,16 +556,26 @@ func _on_game_over() -> void:
 		_paid_words()
 
 
+static func _thousands(n: int) -> String:
+	"""1234567 as "1,234,567" (pinballrun.gd's own, not loaded for it)."""
+	var digits: String = str(absi(n))
+	var out: String = ""
+	while digits.length() > 3:
+		out = "," + digits.substr(digits.length() - 3) + out
+		digits = digits.substr(0, digits.length() - 3)
+	return digits + out
+
+
 static func paid_line(game_name: String, paid: int, held: int) -> String:
 	"""The gold into the purse and, past the day's allowance, what the server
 	held back - the Healer's Run's words (healerrunscreen.gd paid_line())."""
 	if held > 0 and paid > 0:
 		return "%s: %s gold into your purse - %s held back, today's minigame gold is full." % [
-			game_name, RunScript._thousands(paid), RunScript._thousands(held)]
+			game_name, _thousands(paid), _thousands(held)]
 	if held > 0:
-		return "%s: today's minigame gold is full - %s held back." % [game_name, RunScript._thousands(held)]
+		return "%s: today's minigame gold is full - %s held back." % [game_name, _thousands(held)]
 	if paid > 0:
-		return "%s: %s gold, into your purse." % [game_name, RunScript._thousands(paid)]
+		return "%s: %s gold, into your purse." % [game_name, _thousands(paid)]
 	return ""
 
 
@@ -402,10 +590,10 @@ func _show_results() -> void:
 func _paid_words() -> void:
 	"""The results' lines once the server has paid."""
 	var paid: int = maxi(0, _gold_paid)
-	gold_line.text = "%s gold into your purse" % RunScript._thousands(paid)
+	gold_line.text = "%s gold into your purse" % _thousands(paid)
 	if _held_back > 0:
-		gold_line.text += "  (%s held back: the day's minigame gold is full)" % RunScript._thousands(_held_back)
-	best_line.text = ("A new best!  %s" if _new_best else "Your best  %s") % RunScript._thousands(server_best)
+		gold_line.text += "  (%s held back: the day's minigame gold is full)" % _thousands(_held_back)
+	best_line.text = ("A new best!  %s" if _new_best else "Your best  %s") % _thousands(server_best)
 	pay_line.text = ""
 	_show_results()
 
@@ -469,8 +657,11 @@ func _input(event: InputEvent) -> void:
 		return
 	var key := event as InputEventKey
 	if key != null:
-		_key(key)
+		if not _loading:
+			_key(key)
 		get_viewport().set_input_as_handled()
+		return
+	if _loading:
 		return
 	if event is InputEventScreenTouch:
 		_finger(event as InputEventScreenTouch)
@@ -530,7 +721,13 @@ func _finger(touch: InputEventScreenTouch) -> void:
 
 func _process(delta: float) -> void:
 	_leave_armed = maxf(0.0, _leave_armed - delta)
-	_hints_left = maxf(0.0, _hints_left - delta)
+	if _counting >= 0.0:
+		var now: int = Time.get_ticks_msec()
+		_counting += maxf(delta, (now - _count_ms) / 1000.0)
+		_count_ms = now
+		_show_count()
+	elif not _loading:
+		_hints_left = maxf(0.0, _hints_left - delta)
 	var touch: bool = bool(on_touch.call())
 	var fade: float = clampf(_hints_left, 0.0, 1.0)
 	for hint in [left_hint, right_hint]:

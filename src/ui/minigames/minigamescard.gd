@@ -1394,9 +1394,10 @@ func _on_pinball_go() -> void:
 
 
 func _open_table(run_id: int, what_it_pays: Dictionary, best_known: int) -> void:
-	"""SAID FIRST (0.168.2): the table's scripts load and it builds in one long
-	frame - seconds in a browser - so the tile says OPENING and is drawn
-	before it starts, and Go cannot be pressed twice meanwhile."""
+	"""SAID FIRST (0.168.2): the tile says OPENING and is drawn before the
+	table's screen is made, and Go cannot be pressed twice meanwhile. Since
+	0.168.3 the screen is light and opens at once on its own loading cover,
+	which builds the table a step a frame (pinballscreen.gd)."""
 	_pin_busy = true
 	_pin_said = OPENING
 	paint()
