@@ -16009,6 +16009,95 @@ sandbox (zz/pinball5..11, never in this repo) and moved in whole.
   (never sideways, slack, follows past it), the screen's keys, touches,
   mouse, focus-out and Leave twice.
 
+### Crownfall's tile has a picture (0.168.0)
+
+The owner: "we need a image for crownfall". Its tile on the Minigames card
+had always been empty, and so had the Testing Ground's: both point at
+inherited scenes (the large light slime on poisonslime.tscn, the skeleton
+elite on skeleton.tscn), and `portrait_of()` read the sprite only from the
+scene itself, never the one it inherits.
+
+- **`portrait_of()` follows `get_base_scene_state()`** until it finds a
+  sprite, so the Testing Ground shows its skeleton.
+- **Crownfall's is drawn in code** (he chose it from two pictures,
+  crownfall_tile_options.png): `bricks_picture()`, a 44 px wall of the
+  seven lands' bricks, light at the top and dark at the foot, three broken
+  out, the ball, its trail and the paddle. `PORTRAITS["crownfall"]` holds
+  `BRICKS`, which `portrait_of()` answers with it. The colours are
+  `LAND_COLOURS`, a copy of crownfallrun.gd's `COLOURS` (not preloaded:
+  the card is built when the HUD is), held equal by the suite. No art file.
+- `_test_every_minigame_has_a_picture()` (testrunner_13): every tile's
+  portrait draws something, Crownfall's is the bricks at the portrait's
+  size, its colours are Crownfall's, light at the top and dark at the
+  foot. Sabotaged: the base-scene step taken out (the Testing Ground goes
+  blank) and a land's colour changed, both red.
+
+### The Beholder's Table pays, and plays on a phone (0.168.0)
+
+The owner, 17 Nov: "resume pinball", then, to the plan (three games a day,
+a gold every 2,000 points, at most 3,000 a game), "make it mobile also";
+18 Nov, playing 0.167.0: "screen got stuck here" (a ball held in the
+Field's right orbit, under the panel - below) and the gale. The server's
+half is the API's CLAUDE.md, "The Beholder's Table" (MG-18): it ships
+first. 0.167.1 (Crownfall's tile, above) never shipped and went out in
+this one.
+
+- **Three paid games a day** (minigamescard.gd `_on_pinball_go()`): Go asks
+  POST /api/minigames/enter `{"game": "pinball", "slot": n}` and opens the
+  table on the run with its `pays` and the account's `best_score`. A 409,
+  or none left by the list (`pin_left`, `pin_wait`), opens it as practice
+  at once (run 0). The tile says "Ready - 2 of 3 games left today · best
+  1,234,567", or "Practice - paid games back in 13h 20m".
+- **The gold on the panel** (pinballscreen.gd `gold_now()`,
+  `purse_words()`; pinballrun.gd `purse_text`, drawn on the title row under
+  Leave): "617 GOLD", "3,000 GOLD · MOST", or "PRACTICE".
+- **Paid once** (`_pay()`): Game Over, Again or Leave sends POST
+  /api/minigames/finish `{"run": id, "score": n}` with the table still
+  (`paused`), the answer's gold, held back and best on the results ("617
+  gold into your purse", "A new best!  1,234,567"), the HUD's line
+  (`HealerScreen.paid_line()`) and the purse (`set_gold`). Not reached:
+  "Could not reach the server", and Again or Leave tries again - Leave
+  never closes on an unpaid game. Again asks for the day's next game, and
+  with none left plays practice.
+- **On a phone** (pinballrun.gd PHONES, `on_phone()`: web_android,
+  web_ios, android, ios; `pretend_phone` for the suite): no shadows, no
+  glow, the fill lights out (ambient `PHONE_AMBIENT` 0.95 for them), the
+  3D at `PHONE_3D_SCALE` (0.75, bilinear; the panel stays sharp), each
+  floor's moving layer and each eye painted at `PHONE_PAINT` (0.5). The
+  table plays the same. Measured in the container (software drawing, so
+  the ratio is the point): a frame 310 -> 145 ms.
+- **On a touch screen** (pinballscreen.gd): Leave at `TOUCH_LEAVE_BOX`
+  (120 x 54), each new game says "‹ HOLD: LEFT FLIPPERS" and "RIGHT
+  FLIPPERS: HOLD ›" for `HINT_SECONDS` (5, fading), and "HOLD ANYWHERE TO
+  PULL · LET GO TO LAUNCH" while a ball waits on the plunger.
+- **The camera stops at the floor's foot** (`CAM_FOOT` 290): a ball on the
+  plunger put half the view off the table, into the stars.
+- **The gale is fair** (the owner: "when wind is blowing its a instant
+  loss because ball travels here and thats it over", with a picture of
+  the Town's left side): it pushed at 620 px/s a second everywhere, the
+  flippers and outlanes too. Now `GALE_PUSH` 310, and still air below
+  `GALE_CALM` (380 px over each floor's foot): it bends shots up the
+  table, never a ball into an outlane. (A plain player in the sandbox -
+  0.1 s late, one flip in six missed, no aim - drained no more in the old
+  gale than in calm, so his ball may have been one already headed down
+  the left side: the far left funnels into the left outlane.)
+- **No ball kept for ever** - the table's own bot, 60 games of ten
+  minutes (zz/pinstall.gd), found three: the Field's right-orbit guide
+  ended 22 px from its gate (a ball needs 26) and held a ball between them
+  - it ends 40 px higher now; a ball slow on the level top of XL2 stopped
+  on its ride - a level stretch crawls at `RIDE_CRAWL` (90 px/s); and the
+  nudge read speed, so a ball rattling in a corner was never nudged, and a
+  ball cradled on a held flipper was. Now a ball within `STILL_REACH` (24
+  px) of one spot for `STILL_SECONDS` (1.5) is nudged, up to `NUDGE_UP`,
+  never one on a flipper held up (`_cradled()`). After: no stall in 60
+  games.
+- testrunner_13.gd: `_test_the_table_never_traps_a_ball()`,
+  `_test_the_table_pays()` (the panel's gold, the finish once, Again,
+  practice, Leave unreached and again, the card's Go, a 409 and practice
+  with no request), `_test_the_table_on_a_phone()`,
+  `_test_the_gale_is_fair()`, and the camera's foot in
+  `_test_the_beholders_table()`. Each sabotaged and watched go red.
+
 ### Which file owns which number
 
 | question | lives in | example |

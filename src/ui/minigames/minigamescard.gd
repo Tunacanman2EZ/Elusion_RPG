@@ -77,8 +77,10 @@
 #
 # THE BEHOLDER'S TABLE (0.167.0, pinball/) is the eighth, the owner's alone
 # while it is built (`shows_pinball`, TESTING): a pinball table in three
-# floors, played over the screen from town like Crownfall. Practice for now -
-# Go opens it at once; the server is not asked and it pays nothing.
+# floors, played over the screen from town like Crownfall. Since 0.168.0 Go
+# asks the server for one of the day's three paid games (game "pinball") and
+# opens on it with its gold's table and the account's best; with none left
+# it opens as practice at once, and the tile says when the next one is.
 #
 # A TILE A GAME (0.119.1). The owner, of the card grown to five games: "need
 # image 1 upgraded", and of the mock-up, "looks great". Each game is a tile
@@ -125,6 +127,22 @@ const CLOTH_BLURB := "Cut the old map away from the slimes, piece by piece."
 const CLOTH_GAME := "cloth"
 const CROWN_BLURB := "Break the plague-stone walls of the monster kingdoms."
 const CROWN_GAME := "crownfall"
+const PIN_GAME := "pinball"
+# CROWNFALL'S PICTURE IS DRAWN HERE (0.168.0): its tile pointed at the large
+# light slime, an inherited scene, and `portrait_of()` never looked in the
+# scene it inherits, so the tile stood empty (the Testing Ground's skeleton
+# elite too; it looks there now). For Crownfall the owner chose instead a
+# wall of the seven lands' bricks in Crownfall's own colours
+# (LAND_COLOURS, held to crownfallrun.gd's COLOURS by the suite), three
+# broken out, the ball and the paddle - `bricks_picture()`, asked for by
+# BRICKS in PORTRAITS. No art file: every pixel is set in code.
+const BRICKS := "drawn:crownfall"
+const LAND_ORDER := ["light", "wind", "water", "ice", "earth", "fire", "dark"]
+const LAND_COLOURS := {
+	"dark": Color(0.427, 0.157, 0.851), "fire": Color(1.0, 0.416, 0.122), "earth": Color(0.631, 0.384, 0.027),
+	"ice": Color(0.404, 0.91, 0.976), "water": Color(0.231, 0.51, 0.965), "wind": Color(0.655, 0.953, 0.816),
+	"light": Color(0.992, 0.902, 0.541),
+}
 # THE TILES (0.119.1): each game's portrait (a scene whose sprite is the
 # picture), its rim, and its tags - [words, colour, what it means].
 const PORTRAITS := {
@@ -134,7 +152,7 @@ const PORTRAITS := {
 	"descent": ["res://scene/characters/warrior.tscn", Color(0.95, 0.4, 0.35)],
 	"forge": ["res://scene/characters/tank.tscn", Color(1.0, 0.6, 0.25)],
 	"cloth": ["res://scene/projectiles/turretprojectile.tscn", Color(0.86, 0.77, 0.61)],
-	"crownfall": ["res://scene/enemy/lightslimelarge.tscn", Color(1.0, 0.82, 0.38)],
+	"crownfall": [BRICKS, Color(1.0, 0.82, 0.38)],
 	"testingground": ["res://scene/enemy/skeletonelite.tscn", Color(0.8, 0.35, 0.3)],
 	"pinball": ["res://scene/enemy/bossenemy.tscn", Color(0.65, 0.45, 1.0)],
 }
@@ -231,6 +249,14 @@ var _cloth_said: String = ""
 var crown_left: int = 3
 var crown_wait: int = 0
 var crown_progress: int = 0
+# The Beholder's Table's the same, and the account's best score.
+var pin_left: int = 3
+var pin_wait: int = 0
+var pin_best: int = 0
+var _pin_known: bool = false
+var _pin_said_msec: int = 0
+var _pin_busy: bool = false
+var _pin_said: String = ""
 var _crown_known: bool = false
 var _crown_said_msec: int = 0
 var _crown_busy: bool = false
@@ -454,10 +480,16 @@ static func portrait_of(scene_path: String) -> Texture2D:
 	healer's shot, Cut the Cloth's) gives its first animation's first frame."""
 	if _portraits.has(scene_path):
 		return _portraits[scene_path]
+	if scene_path == BRICKS:
+		_portraits[scene_path] = ImageTexture.create_from_image(bricks_picture())
+		return _portraits[scene_path]
 	var picture: Texture2D = null
 	var packed: PackedScene = load(scene_path) as PackedScene if scene_path != "" and ResourceLoader.exists(scene_path) else null
-	if packed != null:
-		var state: SceneState = packed.get_state()
+	# An inherited scene (the skeleton elite on the skeleton) keeps its sprite
+	# in the scene it inherits, so look there too (0.168.0: the Testing
+	# Ground's tile stood empty).
+	var state: SceneState = packed.get_state() if packed != null else null
+	while state != null and picture == null:
 		for n in state.get_node_count():
 			for p in state.get_node_property_count(n):
 				if state.get_node_property_name(n, p) != &"sprite_frames":
@@ -480,8 +512,51 @@ static func portrait_of(scene_path: String) -> Texture2D:
 					break
 			if picture != null:
 				break
+		state = state.get_base_scene_state()
 	_portraits[scene_path] = picture
 	return picture
+
+
+static func bricks_picture() -> Image:
+	"""Crownfall's tile: the seven lands' bricks, light at the top and dark
+	at the foot, every other row set off half a brick, three broken out
+	where the ball went through; the ball, its trail and the paddle. The
+	portrait's own size (PORTRAIT_SIZE less its rim), one pixel a pixel."""
+	var side: int = int(PORTRAIT_SIZE) - 4
+	var image := Image.create(side, side, false, Image.FORMAT_RGBA8)
+	var broken: Array = [Vector2i(3, 5), Vector2i(2, 6), Vector2i(3, 6)]
+	for row in LAND_ORDER.size():
+		var shift: int = 0 if row % 2 == 0 else -4
+		for col in 6:
+			if Vector2i(col, row) in broken:
+				continue
+			_pixel_brick(image, Rect2i(shift + col * 8, 1 + row * 4, 8, 3), LAND_COLOURS[LAND_ORDER[row]])
+	var gold := Color(1.0, 0.82, 0.38)
+	for step in 4:
+		var at := Vector2i(16 + step * 2, 42 - step * 2)
+		if Rect2i(Vector2i.ZERO, image.get_size()).has_point(at):
+			image.set_pixelv(at, image.get_pixelv(at).blend(Color(gold, 0.15 + 0.12 * step)))
+	_pixel_brick(image, Rect2i(23, 33, 3, 3), Color(1.0, 0.95, 0.75))
+	image.set_pixel(24, 32, Color.WHITE)
+	_pixel_brick(image, Rect2i(14, 39, 16, 3), Color(0.85, 0.82, 0.78))
+	return image
+
+
+static func _pixel_brick(image: Image, box: Rect2i, colour: Color) -> void:
+	"""One brick, a pixel at a time: lit along its top, shaded along its
+	foot and right side; whatever falls off the picture is left out."""
+	var whole := Rect2i(Vector2i.ZERO, image.get_size())
+	for i in box.size.x:
+		for j in box.size.y:
+			var at := box.position + Vector2i(i, j)
+			if not whole.has_point(at):
+				continue
+			var c: Color = colour
+			if j == 0:
+				c = colour.lightened(0.35)
+			elif j == box.size.y - 1 or i == box.size.x - 1:
+				c = colour.darkened(0.35)
+			image.set_pixelv(at, c)
 
 func _label(id: String, text: String, font_px: int, colour: Color) -> Label:
 	var label := Label.new()
@@ -649,6 +724,12 @@ func take_listing(res: Dictionary) -> void:
 				_crown_known = true
 				if bool(shows_crownfall.call()):
 					note_wait(CROWN_GAME, 0 if crown_left > 0 else crown_wait)
+			if game is Dictionary and str(game.get("id", "")) == PIN_GAME:
+				pin_left = maxi(0, int(game.get("plays_left", 3)))
+				pin_wait = maxi(0, int(game.get("ready_in", 0)))
+				pin_best = maxi(pin_best, int(game.get("best_score", 0)))
+				_pin_said_msec = Time.get_ticks_msec()
+				_pin_known = true
 			if game is Dictionary and str(game.get("id", "")) == FORGE:
 				forge_wait = maxi(0, int(game.get("ready_in", 0)))
 				forge_best = maxi(0, int(game.get("best", 0)))
@@ -677,6 +758,17 @@ func left_now() -> int:
 		return 0
 	@warning_ignore("integer_division")
 	return maxi(0, ready_in - int((Time.get_ticks_msec() - _said_at_msec) / 1000))
+
+
+static func score_words(n: int) -> String:
+	"""1234567 as '1,234,567'."""
+	var digits: String = str(maxi(0, n))
+	var out: String = ""
+	for i in digits.length():
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			out += ","
+		out += digits[i]
+	return out
 
 
 static func wait_text(seconds: int) -> String:
@@ -1163,24 +1255,77 @@ func _on_testing_go() -> void:
 func _paint_pinball() -> void:
 	pinball_box.visible = bool(shows_pinball.call())
 	var in_town: bool = str(area_now.call()) == TOWN
-	pinball_status.text = "Ready - practice, nothing counts yet" if in_town else FROM_TOWN
-	pinball_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
-	pinball_go.disabled = not in_town
-	pinball_go.tooltip_text = "Play the Beholder's Table - your character waits in town" if in_town else "Go back to town first"
+	@warning_ignore("integer_division")
+	var wait_left: int = maxi(0, pin_wait - int((Time.get_ticks_msec() - _pin_said_msec) / 1000)) \
+		if _pin_known else 0
+	var none_left: bool = _pin_known and pin_left <= 0 and wait_left > 0
+	var best_words: String = "  ·  best %s" % score_words(pin_best) if pin_best > 0 else ""
+	if _pin_said != "":
+		pinball_status.text = _pin_said
+	elif not in_town:
+		pinball_status.text = FROM_TOWN
+	elif none_left:
+		pinball_status.text = "Practice - paid games %s%s" % [wait_text(wait_left).to_lower(), best_words]
+	elif _pin_known:
+		pinball_status.text = "Ready - %d of 3 games left today%s" % [pin_left, best_words]
+	else:
+		pinball_status.text = "Ready"
+	var go_on: bool = in_town and not _pin_busy
+	pinball_status.add_theme_color_override("font_color", COLOUR_READY if go_on and not none_left
+		else (COLOUR_WAIT if none_left else COLOUR_HINT))
+	pinball_go.disabled = not go_on
+	pinball_go.tooltip_text = ("Play the Beholder's Table - your character waits in town" if not none_left
+		else "Practice on the Beholder's Table - it pays nothing") if in_town else "Go back to town first"
 
 
 func _on_pinball_go() -> void:
-	"""Go: the table at once - practice, so no day is spent and the server is
-	not asked."""
-	if not bool(shows_pinball.call()) or str(area_now.call()) != TOWN:
+	"""Go: the server asked for one of the day's three paid games first; let
+	in, the table opens on it. With none left - said now, or by the server -
+	it opens as practice."""
+	if not bool(shows_pinball.call()) or str(area_now.call()) != TOWN or _pin_busy:
 		paint()
 		return
-	open_pinball.call()
-	close()
+	@warning_ignore("integer_division")
+	var wait_left: int = maxi(0, pin_wait - int((Time.get_ticks_msec() - _pin_said_msec) / 1000)) \
+		if _pin_known else 0
+	if _pin_known and pin_left <= 0 and wait_left > 0:
+		close()
+		open_pinball.call(0, {}, pin_best)
+		return
+	_pin_busy = true
+	_pin_said = "Asking the server..."
+	paint()
+	var res: Dictionary = await enter_request.call("/api/minigames/enter",
+		{"game": PIN_GAME, "slot": int(CharacterData.active_character_index)}, 6.0)
+	_pin_busy = false
+	_pin_said = ""
+	if not is_instance_valid(self):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if res.get("ok", false) and data.has("run"):
+		pin_left = maxi(0, int(data.get("plays_left", 0)))
+		pin_best = maxi(pin_best, int(data.get("best_score", 0)))
+		_pin_known = true
+		pin_wait = maxi(0, int(data.get("ready_in", 0)))
+		_pin_said_msec = Time.get_ticks_msec()
+		close()
+		open_pinball.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {}, pin_best)
+		return
+	if int(res.get("status", 0)) == 409:
+		pin_left = 0
+		pin_wait = maxi(0, int(data.get("ready_in", 0)))
+		_pin_said_msec = Time.get_ticks_msec()
+		_pin_known = true
+		close()
+		open_pinball.call(0, {}, pin_best)
+		return
+	_pin_said = UNREACHABLE
+	paint()
 
 
-func _open_pinball() -> void:
-	(load("res://src/world/pinball/pinballscreen.gd") as GDScript).call("open", get_tree(), hud)
+func _open_pinball(run_id: int = 0, what_it_pays: Dictionary = {}, best_known: int = 0) -> void:
+	(load("res://src/world/pinball/pinballscreen.gd") as GDScript).call("open", get_tree(), hud, run_id,
+		what_it_pays, best_known)
 
 
 func _shows_cloth() -> bool:

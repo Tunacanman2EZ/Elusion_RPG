@@ -56,6 +56,27 @@ const SLING_KICK := 450.0
 const EYE_R := 60.0
 const EYE_HP := 2
 const SAVE_SECONDS := 8.0
+# a ball within STILL_REACH of one spot for STILL_SECONDS is nudged, up to
+# NUDGE_UP up and NUDGE_SIDE to either side
+const STILL_REACH := 24.0
+const STILL_SECONDS := 1.5
+const NUDGE_UP := 640.0
+const NUDGE_SIDE := 260.0
+# a ride on a level stretch never goes slower than this (px/s)
+const RIDE_CRAWL := 90.0
+# PHONES (0.168.0): a phone's browser draws the table lighter - no shadows,
+# no glow, the fill lights out (the ambient raised to stand in for them),
+# the 3D drawn at PHONE_3D_SCALE of the picture (the panel and words stay
+# sharp), each floor's moving layer and each eye painted at PHONE_PAINT of
+# their size. The table plays exactly the same.
+const PHONE_3D_SCALE := 0.75
+const PHONE_PAINT := 0.5
+const PHONE_AMBIENT := 0.95
+# the camera never looks lower than this far above its floor's foot
+const CAM_FOOT := 290.0
+# the gale's push (px/s a second) and the still air above each floor's foot
+const GALE_PUSH := 310.0
+const GALE_CALM := 380.0
 const S := 0.01
 const FLOORS := [
 	{"name": "THE TOWN SQUARE", "short": "TOWN", "y0": 2400.0, "yb": 3600.0, "h": 0.0, "opens": 0},
@@ -262,10 +283,17 @@ var _font: Font
 var seed_now: int = 0
 var headless: bool = false
 var attract: bool = false
+# drawn as for a phone (on_phone(), or the suite's pretend_phone)
+var light: bool = false
+static var pretend_phone: bool = false
 var paused: bool = false
 var over: bool = false
 var extra_balls: int = 0
 var controls_hint: String = "Z / LEFT  ·  M / RIGHT  ·  HOLD SPACE"
+# the game's gold so far, or PRACTICE (0.168.0): the screen's to say, drawn
+# on the title row under Leave
+var purse_text: String = ""
+var purse_colour: Color = GOLD
 var cam_y: float = 3200.0
 var cam_h: float = 0.0
 var _acc: float = 0.0
@@ -287,9 +315,16 @@ func _ready() -> void:
 	if seed_now == 0:
 		seed_now = randi() % 1000000 + 1
 	quiet = headless
+	light = on_phone()
 	_reset(seed_now)
 	if not headless:
 		_build_world()
+
+
+static func on_phone() -> bool:
+	"""A phone, or a tablet, in a browser or not (the Endless's own test)."""
+	return pretend_phone or OS.has_feature("web_android") or OS.has_feature("web_ios") \
+		or OS.has_feature("android") or OS.has_feature("ios")
 
 
 func _process(delta: float) -> void:
@@ -533,7 +568,10 @@ func _reset(s: int) -> void:
 	_wall(Vector2(1180, y0 + 200), Vector2(1180, yb - 700), "outer")
 	_base(yb, 1, false, yb - 700)
 	# the field's right orbit, with its gate, round to the lanes
-	_wall(Vector2(1100, y0 + 220), Vector2(1100, y0 + 440))
+	# its guide ends 40 px over the gate's lower end's line (0.168.0): it
+	# ended level with it, 22 px from the gate, and a ball coming down the
+	# orbit stuck between them
+	_wall(Vector2(1100, y0 + 220), Vector2(1100, y0 + 400))
 	_wall(Vector2(1178, y0 + 410), Vector2(1102, y0 + 462), "gate")
 	eyes.append({"p": Vector2(300, 1670), "hp": EYE_HP, "flash": 0.0, "cool": 0.0, "open": false})
 	eyes.append({"p": Vector2(900, 1670), "hp": EYE_HP, "flash": 0.0, "cool": 0.0, "open": false})
@@ -810,20 +848,37 @@ func _step_ball(ball: Dictionary, dt: float) -> void:
 	if _new_parts(ball, dt):
 		return
 	_sensors(ball)
-	if (ball["v"] as Vector2).length() < 20.0 and not ball.has("sunk") and not ball.has("ride"):
+	# STUCK, NUDGED (0.168.0): a ball that has stayed within STILL_REACH of
+	# one spot for STILL_SECONDS is nudged out - lying still, or rattling in
+	# a corner (one did in the Field's right orbit, for ever, at a speed
+	# that never read as slow). Never a ball cradled on a flipper held up:
+	# that one is the player's to hold.
+	var here: Vector2 = ball["p"]
+	if ball.has("sunk") or ball.has("ride") or _cradled(here) \
+			or here.distance_to(ball.get("anchor", here)) > STILL_REACH:
+		ball["slow"] = 0.0
+		ball["anchor"] = here
+	else:
 		ball["slow"] += dt
-		if ball["slow"] > 1.2:
+		if ball["slow"] > STILL_SECONDS:
 			ball["slow"] = 0.0
 			stats["nudges"] += 1
-			var p: Vector2 = ball["p"]
-			if p.x > 1180.0 and p.y > 3400.0 and not attract:
+			if here.x > 1180.0 and here.y > 3400.0 and not attract:
 				ball["held"] = true
 				ball["v"] = Vector2.ZERO
 				pulling = 0.0
+			elif here.x > 1180.0 and here.y > 2400.0:
+				ball["v"] = Vector2(0, -2000)
 			else:
-				ball["v"] = Vector2(0, -2000) if p.x > 1180.0 and p.y > 2400.0 else Vector2(rng.randf_range(-160, 160), -300)
-	else:
-		ball["slow"] = 0.0
+				ball["v"] = Vector2(rng.randf_range(-NUDGE_SIDE, NUDGE_SIDE), -rng.randf_range(NUDGE_UP * 0.75, NUDGE_UP))
+
+
+func _cradled(at: Vector2) -> bool:
+	"""Whether a ball at `at` lies on a flipper that is held up."""
+	for f in flippers:
+		if float(f["hold"]) > 0.5 and at.distance_to(f["pivot"]) < float(f["len"]) + BALL_R * 2.0:
+			return true
+	return false
 
 
 func _sensors(ball: Dictionary) -> void:
@@ -980,6 +1035,11 @@ func _ride(ball: Dictionary, dt: float) -> void:
 		var hs: Array = path["high"]
 		slope = -(float(hs[i + 1]) - float(hs[i])) * 100.0 / maxf(1.0, lens[i]) * float(path["climb_k"])
 	ball["rv"] = float(ball["rv"]) + GRAVITY * float(path.get("pull", 1.0)) * slope * dt - float(ball["rv"]) * 0.12 * dt
+	# ON THE FLAT (0.168.0): a ball slow on a level stretch (the top of XL2,
+	# XR2) crawls on at RIDE_CRAWL the way it was going - it used to stop
+	# there, on its ride, for ever
+	if absf(slope) < 0.05 and absf(float(ball["rv"])) < RIDE_CRAWL:
+		ball["rv"] = RIDE_CRAWL * (-1.0 if float(ball["rv"]) < 0.0 else 1.0)
 	s += float(ball["rv"]) * dt
 	if s <= 0.0:
 		ball.erase("ride")
@@ -2099,7 +2159,12 @@ func _feel(ball: Dictionary, dt: float) -> void:
 			if _in_tide(p):
 				ball["v"] = (ball["v"] as Vector2) * (1.0 - 1.1 * dt * k) + Vector2(0, -GRAVITY * 0.55 * dt * k)
 		"wind":
-			ball["v"] = (ball["v"] as Vector2) + Vector2(wind_dir * 620.0 * dt * k, 0)
+			# THE GALE (0.168.0): the owner, "when wind is blowing its a instant
+			# loss" - at 620 it blew the ball down an outlane. Half that now, and
+			# still air over the flippers and their lanes (GALE_CALM above a
+			# floor's foot): it bends shots up the table, it never drains one.
+			if p.y < float(FLOORS[floor_of(p.y)]["yb"]) - GALE_CALM:
+				ball["v"] = (ball["v"] as Vector2) + Vector2(wind_dir * GALE_PUSH * dt * k, 0)
 		"ice":
 			var v: Vector2 = ball["v"]
 			if v.length() < 1300.0:
@@ -2296,11 +2361,13 @@ func _light_at(p: Vector3, c: Color, reach: float) -> OmniLight3D:
 func _eye_dome(at: Vector2, r: float, base: float, node: Node2D) -> MeshInstance3D:
 	"""An eye: a dome with the eye painted on it, seen from above."""
 	var vp := SubViewport.new()
-	vp.size = Vector2i(256, 256)
+	var k: float = PHONE_PAINT if light else 1.0
+	vp.size = Vector2i(int(256 * k), int(256 * k))
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(vp)
 	eye_vps.append(vp)
 	eye_floor.append(floor_of(at.y))
+	node.scale *= k
 	vp.add_child(node)
 	var dome := SphereMesh.new()
 	dome.radius = r * S
@@ -2399,11 +2466,13 @@ func _build_world() -> void:
 	for fl in 3:
 		var top: float = FLOOR_TOP[fl]
 		var mvp := SubViewport.new()
-		mvp.size = Vector2i(int(W), 1200)
+		var k: float = PHONE_PAINT if light else 1.0
+		mvp.size = Vector2i(int(W * k), int(1200 * k))
 		mvp.transparent_bg = true
 		mvp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		add_child(mvp)
 		var mn := Node2D.new()
+		mn.scale = Vector2(k, k)
 		mn.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 		mn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		mvp.add_child(mn)
@@ -2755,9 +2824,9 @@ func _build_world() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.45, 0.4, 0.6)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_energy = PHONE_AMBIENT if light else 0.55
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.glow_enabled = true
+	env.glow_enabled = not light
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.08
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
@@ -2767,7 +2836,7 @@ func _build_world() -> void:
 	var sun := DirectionalLight3D.new()
 	sun_light = sun
 	sun.light_energy = 0.75
-	sun.shadow_enabled = true
+	sun.shadow_enabled = not light
 	sun.directional_shadow_max_distance = 16.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.rotation = Vector3(deg_to_rad(-60), deg_to_rad(16), 0)
@@ -2776,7 +2845,11 @@ func _build_world() -> void:
 			Vector2(800, 1950), Vector2(600, 1500), Vector2(600, 800)]:
 		var fill: OmniLight3D = _light_at(_w(p, height_at(p.y) + 1.8), Color(1.0, 0.85, 0.65), 4.5)
 		fill.light_energy = 0.55
+		fill.visible = not light
 		fills.append(fill)
+	if light:
+		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		get_viewport().scaling_3d_scale = PHONE_3D_SCALE
 	cam3 = Camera3D.new()
 	cam3.fov = 52.0
 	world.add_child(cam3)
@@ -2917,6 +2990,9 @@ func _follow(snap: bool, dt: float = 1.0 / 60.0) -> void:
 		want_y = mid.y + 170.0
 	elif mid.y > cam_y + 110.0:
 		want_y = mid.y - 110.0
+	# never past the floor's foot (0.168.0): a ball on the plunger is at the
+	# very bottom, and the view fell half off the table into the stars
+	want_y = minf(want_y, float(FLOORS[fl]["yb"]) - CAM_FOOT)
 	cam_y = lerpf(cam_y, want_y, k)
 	cam_h = lerpf(cam_h, _ball_height(ball), k)
 	look = _w(Vector2(CX, cam_y - 150.0), cam_h)
@@ -3120,7 +3196,7 @@ func _sync_elusion() -> void:
 		dark = 0.7 * clampf((t - float(effect["warn"])) / WARN, 0.0, 1.0)
 	var bright: float = fx if _effect_is("light") else 0.0
 	sun_light.light_energy = 0.75 * (1.0 - 0.92 * dark) + 0.5 * bright
-	world_env.ambient_light_energy = 0.55 * (1.0 - 0.85 * dark) + 0.35 * bright
+	world_env.ambient_light_energy = (PHONE_AMBIENT if light else 0.55) * (1.0 - 0.85 * dark) + 0.35 * bright
 	for f in fills:
 		(f as OmniLight3D).light_energy = 0.55 * (1.0 - 0.95 * dark)
 	for fm in floor_mats:
@@ -3752,6 +3828,8 @@ func _paint_panel() -> void:
 	cv.draw_arc(e, 27.0, 0, TAU, 40, GOLD, 2.0)
 	_text(Vector2(964, 58), "PINBALL", 36, GOLD)
 	_text(Vector2(966, 82), "THE BEHOLDER'S TABLE", 13, Color(INK, 0.75), _font)
+	if purse_text != "":
+		_text(Vector2(1240 - _width(purse_text, 15), 84), purse_text, 15, purse_colour)
 	var d := Rect2(880, 100, 368, 126)
 	cv.draw_rect(d.grow(4), Color(0, 0, 0, 0.8))
 	cv.draw_rect(d, Color(0.06, 0.025, 0.01))
