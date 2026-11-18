@@ -72,8 +72,27 @@ const RIDE_CRAWL := 90.0
 const PHONE_3D_SCALE := 0.75
 const PHONE_PAINT := 0.5
 const PHONE_AMBIENT := 0.95
+# each side wall's bounce-back: from BOUNCE_FROM (x, height over the foot)
+# to the outlane's outer wall at BOUNCE_TO_Y over the foot
+const BOUNCE_FROM := Vector2(190.0, 404.0)
+const BOUNCE_TO_Y := 385.0
+# how hard it throws the ball back (px/s), keeping this much of its slide
+const BOUNCE_KICK := 1150.0
+const BOUNCE_KEEP := 0.35
+const KICK_CREAM := Color(0.95, 0.9, 0.8)
+# the plunger's bar, beside the panel (its lane is under it)
+const LAUNCH_BOX := Rect2(818, 450, 26, 222)
 # the camera never looks lower than this far above its floor's foot
 const CAM_FOOT := 290.0
+# it looks CAM_LEAD seconds along the ball's way (no faster than LEAD_MOST
+# px/s), and never lets the ball more than CAM_DOWN below its line or CAM_UP
+# above (a still camera shows 240 below and 900 above)
+const CAM_LEAD := 0.15
+const LEAD_MOST := 1800.0
+const CAM_DOWN := 170.0
+const CAM_UP := 650.0
+const CAM_FAST := 6.0
+const FALL_FAST := 1500.0
 # the gale's push (px/s a second) and the still air above each floor's foot
 const GALE_PUSH := 310.0
 const GALE_CALM := 380.0
@@ -413,7 +432,25 @@ func _base(yb: float, fl: int, outlanes: bool, top: float) -> void:
 	for side in [1.0, -1.0]:
 		var m := func(x: float) -> float: return x if side > 0.0 else _mx(x)
 		if outlanes:
-			_chain([Vector2(m.call(20.0), top), Vector2(m.call(270.0), yb - 330), Vector2(m.call(270.0), yb)])
+			# THE BOUNCE-BACKS (0.168.2): the owner, "ball hits bumpers on right
+			# then just falls down to the lose a ball area the bounce backs are
+			# too low on the board" - each side wall slid straight into its
+			# outlane's mouth (93 px, the inlane beside it 42), so a ball down a
+			# side was gone: off the right bumpers, untouched, 45 of 80. The
+			# wall's foot, just over the outlane, is that side's KICKBACK now,
+			# moved up the board: while its KICK is lit a ball coming down it
+			# is thrown back up the table and the light is spent (the old one
+			# low in the outlane shares it); dark, it rolls in. Always on, it
+			# saved nearly everything: a plain player's games went from about
+			# 130 s to 400 s, his median score from 10M to 77M.
+			_chain([Vector2(m.call(20.0), top), Vector2(m.call(BOUNCE_FROM.x), yb - BOUNCE_FROM.y)])
+			var bounce: Dictionary = _wall(Vector2(m.call(BOUNCE_FROM.x), yb - BOUNCE_FROM.y),
+				Vector2(m.call(270.0), yb - BOUNCE_TO_Y), "kick")
+			bounce["flash"] = 0.0
+			bounce["r"] = 4.0
+			bounce["bounce"] = true
+			bounce["kb"] = 0 if side > 0.0 else 1
+			_wall(Vector2(m.call(270.0), yb - BOUNCE_TO_Y), Vector2(m.call(270.0), yb))
 			_chain([Vector2(m.call(330.0), yb - 360), Vector2(m.call(330.0), yb - 250), Vector2(m.call(444.0), yb - 146)])
 		else:
 			_chain([Vector2(m.call(20.0), top), Vector2(m.call(326.0), yb - 336), Vector2(m.call(330.0), yb - 250),
@@ -1175,9 +1212,20 @@ func _hit_walls(ball: Dictionary) -> void:
 		if vn < 0.0:
 			v -= n * vn * (1.0 + WALL_BOUNCE)
 			v -= (v - n * v.dot(n)) * 0.004
-			if kind == "kick" and -vn > 110.0 and t - float(s.get("kick_t", -9.0)) > 0.35:
+			var bounce_back: bool = s.get("bounce", false)
+			if kind == "kick" and -vn > 110.0 and t - float(s.get("kick_t", -9.0)) > 0.35 \
+					and (not bounce_back or kickbacks[int(s["kb"])]):
 				s["kick_t"] = t
-				v += n * SLING_KICK
+				if bounce_back:
+					# a bounce-back: most of the slide along it lost, thrown
+					# back up the table (a slingshot's kick only adds), and
+					# that side's kickback spent
+					v = (v - n * v.dot(n)) * BOUNCE_KEEP + n * BOUNCE_KICK
+					kickbacks[int(s["kb"])] = false
+					stats["kickbacks"] += 1
+					_banner("KICKBACK", "", COLOURS["fire"])
+				else:
+					v += n * SLING_KICK
 				s["flash"] = 1.0
 				_gain(1100, hit["c"], GOLD)
 				_burst(hit["c"], GOLD, 6)
@@ -2530,7 +2578,7 @@ func _build_world() -> void:
 				_box_between(a, b, h, 0.3, 0.1, wood)
 				_box_between(a, b, h + 0.3, 0.02, 0.12, trim)
 			"kick":
-				kick_nodes.append(_box_between(a, b, h, 0.14, 0.07, _mat(Color(0.95, 0.9, 0.8), 0.0, 0.5, 0.2)))
+				kick_nodes.append(_box_between(a, b, h, 0.14, 0.07, _mat(KICK_CREAM, 0.0, 0.5, 0.2)))
 			"gate":
 				_box_between(a, b, h, 0.1, 0.02, trim)
 			"lock":
@@ -2979,21 +3027,40 @@ func _follow(snap: bool, dt: float = 1.0 / 60.0) -> void:
 		elif pip_ball.is_empty():
 			pip_ball = other
 	mid /= float(count)
-	var k: float = 1.0 if snap else 1.0 - exp(-dt * 3.2)
+	# a falling ball is followed faster (0.168.2): up to CAM_FAST more a
+	# second at FALL_FAST px/s, so the view is down on the flippers before it
+	var falling: float = 0.0
+	if not ball["held"] and not ball.has("ride") and not ball.has("sunk"):
+		falling = clampf(float((ball["v"] as Vector2).y) / FALL_FAST, 0.0, 1.0)
+	var k: float = 1.0 if snap else 1.0 - exp(-dt * (3.2 + CAM_FAST * falling))
 	var want_pull: float = clampf(1.0 + (spread - 250.0) / 800.0, 1.0, 1.75)
 	pull_back = want_pull if snap else lerpf(pull_back, want_pull, k * 0.5)
+	# LOOK AHEAD (0.168.2): the owner, "when the ball is falling fast the camera
+	# dousnt track it very well and it flies past my flippers before i can
+	# see" - eased at 3.2 a second, a ball at 2,000 px/s ran 600 px ahead of
+	# it, off the foot of the screen with the flippers. The camera now aims
+	# CAM_LEAD seconds along the ball's way (at most LEAD_MOST px/s of it)...
+	var ahead: float = 0.0
+	if not ball["held"] and not ball.has("ride") and not ball.has("sunk"):
+		ahead = clampf(float((ball["v"] as Vector2).y), -LEAD_MOST, LEAD_MOST) * CAM_LEAD
+	var aim_y: float = mid.y + ahead
 	# the slack: the ball may wander 170 px up and 110 down before it pulls
 	var want_y: float = cam_y
 	if snap:
 		want_y = mid.y
-	elif mid.y < cam_y - 170.0:
-		want_y = mid.y + 170.0
-	elif mid.y > cam_y + 110.0:
-		want_y = mid.y - 110.0
+	elif aim_y < cam_y - 170.0:
+		want_y = aim_y + 170.0
+	elif aim_y > cam_y + 110.0:
+		want_y = aim_y - 110.0
 	# never past the floor's foot (0.168.0): a ball on the plunger is at the
 	# very bottom, and the view fell half off the table into the stars
 	want_y = minf(want_y, float(FLOORS[fl]["yb"]) - CAM_FOOT)
 	cam_y = lerpf(cam_y, want_y, k)
+	# ...and never lets it out of sight: no more than CAM_DOWN below its line
+	# (the screen shows 240) nor CAM_UP above - past that it moves with the
+	# ball, that frame. The floor's foot still holds it.
+	cam_y = clampf(cam_y, p.y - CAM_DOWN, p.y + CAM_UP)
+	cam_y = minf(cam_y, float(FLOORS[fl]["yb"]) - CAM_FOOT)
 	cam_h = lerpf(cam_h, _ball_height(ball), k)
 	look = _w(Vector2(CX, cam_y - 150.0), cam_h)
 	cam3.position = look + Vector3(0, 6.6, 5.6) * pull_back
@@ -3038,7 +3105,15 @@ func _sync_world() -> void:
 	var k: int = 0
 	for s in segs:
 		if s["kind"] == "kick":
-			((kick_nodes[k] as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier = 0.2 + 2.5 * float(s["flash"])
+			var mat := (kick_nodes[k] as MeshInstance3D).material_override as StandardMaterial3D
+			var burn := 0.0
+			if s.get("bounce", false):
+				# a bounce-back burns in the kickback's colour while its KICK is lit
+				var on: bool = kickbacks[int(s["kb"])]
+				mat.albedo_color = COLOURS["fire"] if on else KICK_CREAM
+				mat.emission = mat.albedo_color
+				burn = 0.8 if on else 0.0
+			mat.emission_energy_multiplier = 0.2 + burn + 2.5 * float(s["flash"])
 			k += 1
 	shield_node.visible = shield_t > 0.0
 	plunger_node.position = _w(Vector2(1200, 3586 + pull * 18.0), 0.06)
@@ -3785,6 +3860,7 @@ func _paint_hud() -> void:
 		_text(Vector2(430, y + 1.0), label, 14, Color(GOLD, 0.95), null, true)
 	_paint_cards()
 	_paint_panel()
+	_paint_launch()
 	_draw_end()
 
 
@@ -3814,6 +3890,27 @@ func _paint_cards() -> void:
 	cv.draw_texture_rect_region(hero_tex[w], Rect2(box.position + Vector2(35, 22), Vector2(200, 200)), _hero_region(w, int(age * 10.0)))
 	_text(box.position + Vector2(135, 254), str(HERO_NAME[w]), 26, HERO[w], null, true)
 	_text(box.position + Vector2(135, 280), str(HERO_DOES[w]), 13, Color(INK, 0.85), _font, true)
+
+
+func _paint_launch() -> void:
+	"""THE LAUNCH, SEEN (0.168.2): the plunger's lane is under the panel and
+	below the foot of the view, so "i could not tell if it was charging up".
+	While a ball waits on it, a bar beside the panel fills as it is pulled
+	(`pull`), gold to fire, with a mark each quarter; full, it says MAX."""
+	if attract or not balls.any(func(b: Dictionary) -> bool: return b["held"]):
+		return
+	var box := LAUNCH_BOX
+	cv.draw_rect(box.grow(5.0), Color(0.02, 0.015, 0.04, 0.88))
+	var h: float = box.size.y * clampf(pull, 0.0, 1.0)
+	if h > 0.0:
+		cv.draw_rect(Rect2(box.position.x, box.end.y - h, box.size.x, h), GOLD.lerp(COLOURS["fire"], pull))
+	for i in range(1, 4):
+		var y: float = box.end.y - box.size.y * i / 4.0
+		cv.draw_line(Vector2(box.position.x, y), Vector2(box.end.x, y), Color(INK, 0.35), 1.0)
+	cv.draw_rect(box.grow(5.0), Color(GOLD, 0.85), false, 2.0)
+	_text(Vector2(box.get_center().x, box.position.y - 14.0), "LAUNCH", 12, GOLD, _font, true)
+	if pull >= 1.0:
+		_text(Vector2(box.get_center().x, box.end.y + 22.0), "MAX", 13, COLOURS["fire"], _font, true)
 
 
 func _paint_panel() -> void:

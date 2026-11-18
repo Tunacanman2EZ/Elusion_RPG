@@ -301,6 +301,7 @@ func _run_all() -> void:
 	await _test_the_table_pays()
 	_test_the_table_on_a_phone()
 	await _test_the_minigames_grid()
+	await _test_the_table_opens_and_bounces_back()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

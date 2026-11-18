@@ -123,6 +123,7 @@ const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
 const BLURB := "A horde that never stops."
 const UNREACHABLE := "Could not reach the server - try again."
+const OPENING := "Opening the table..."
 const HEALER_BLURB := "Up a crypt path, shooting - up to 20,000 gold a run."
 const HEALER_GAME := "healerrun"
 const FROM_TOWN := "Play it from town."
@@ -1361,8 +1362,7 @@ func _on_pinball_go() -> void:
 	var wait_left: int = maxi(0, pin_wait - int((Time.get_ticks_msec() - _pin_said_msec) / 1000)) \
 		if _pin_known else 0
 	if _pin_known and pin_left <= 0 and wait_left > 0:
-		close()
-		open_pinball.call(0, {}, pin_best)
+		await _open_table(0, {}, pin_best)
 		return
 	_pin_busy = true
 	_pin_said = "Asking the server..."
@@ -1380,19 +1380,34 @@ func _on_pinball_go() -> void:
 		_pin_known = true
 		pin_wait = maxi(0, int(data.get("ready_in", 0)))
 		_pin_said_msec = Time.get_ticks_msec()
-		close()
-		open_pinball.call(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {}, pin_best)
+		await _open_table(int(data["run"]), data.get("pays", {}) if data.get("pays") is Dictionary else {}, pin_best)
 		return
 	if int(res.get("status", 0)) == 409:
 		pin_left = 0
 		pin_wait = maxi(0, int(data.get("ready_in", 0)))
 		_pin_said_msec = Time.get_ticks_msec()
 		_pin_known = true
-		close()
-		open_pinball.call(0, {}, pin_best)
+		await _open_table(0, {}, pin_best)
 		return
 	_pin_said = UNREACHABLE
 	paint()
+
+
+func _open_table(run_id: int, what_it_pays: Dictionary, best_known: int) -> void:
+	"""SAID FIRST (0.168.2): the table's scripts load and it builds in one long
+	frame - seconds in a browser - so the tile says OPENING and is drawn
+	before it starts, and Go cannot be pressed twice meanwhile."""
+	_pin_busy = true
+	_pin_said = OPENING
+	paint()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(self):
+		return
+	_pin_busy = false
+	_pin_said = ""
+	close()
+	open_pinball.call(run_id, what_it_pays, best_known)
 
 
 func _open_pinball(run_id: int = 0, what_it_pays: Dictionary = {}, best_known: int = 0) -> void:

@@ -107,6 +107,24 @@ func _test_the_beholders_table() -> void:
 	drawn._follow(true)
 	check("  a ball on the plunger: it stops at the floor's foot, the view on the table (0.168.0)",
 		drawn.cam_y <= 3600.0 - Run.CAM_FOOT + 0.5, drawn.cam_y)
+	# 0.168.2: "when the ball is falling fast ... it flies past my flippers
+	# before i can see" - it went off the foot of the screen, flippers too
+	drawn.paused = true
+	b0["p"] = Vector2(560, 2980)
+	b0["v"] = Vector2(0, 2000)
+	drawn.focus_ball = b0
+	drawn._follow(true)
+	var tall: float = drawn.get_viewport().get_visible_rect().size.y
+	var lowest := 0.0
+	for i in 40:
+		drawn.step_frames(1)
+		drawn._follow(false, 1.0 / 60.0)
+		lowest = maxf(lowest, drawn.cam3.unproject_position(drawn._w(b0["p"], drawn._ball_height(b0))).y)
+		if (b0["p"] as Vector2).y > 3440.0:
+			break
+	var flips: float = drawn.cam3.unproject_position(drawn._w(Vector2(600, 3460), 0.0)).y
+	check("  a ball falling at full speed stays on the screen, and the flippers are in view as it reaches them",
+		lowest < tall * 0.92 and flips < tall * 0.92, [lowest, flips, tall])
 	drawn.queue_free()
 	# ---- the screen: keys, mouse, fingers, Leave
 	var screen = Screen.new()
@@ -521,3 +539,77 @@ func _test_the_minigames_grid() -> void:
 	card_hud.queue_free()
 	await get_tree().process_frame
 	print("  the grid: done")
+
+
+func _test_the_table_opens_and_bounces_back() -> void:
+	section("The table opens quicker, and its kickbacks moved up the side walls (0.168.2)")
+	# The owner: "it takes almost 6 seconds to launch the minigame", and
+	# "ball hits bumpers on right then just falls down to the lose a ball area
+	# the bounce backs are too low on the board".
+	var Screen = require_script("res://src/world/pinball/pinballscreen.gd", "pinballscreen.gd")
+	var Healer = require_script("res://src/world/healerrun/healerrunscreen.gd", "healerrunscreen.gd")
+	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
+	if Screen == null or Healer == null or Run == null:
+		return
+	var src: String = FileAccess.get_file_as_string("res://src/world/pinball/pinballscreen.gd")
+	var same := true
+	for c in [[617, 0], [617, 1383], [0, 250], [0, 0], [12345678, 9]]:
+		same = same and Screen.paid_line("The Beholder's Table", c[0], c[1]) == Healer.paid_line("The Beholder's Table", c[0], c[1])
+	check("the screen no longer loads the Healer's Run for its paid line, and says the same words",
+		not src.contains("healerrunscreen.gd\")") and same)
+	# the bounce-backs: a ball sliding down the right side wall is thrown back
+	# up while that side's KICK is lit, spending it; dark, it rolls in
+	for lit in [true, false]:
+		var run = Run.new()
+		run.headless = true
+		run.seed_now = 7
+		add_child(run)
+		run.save_until = -100.0
+		run.kickbacks = [false, lit]
+		var ball: Dictionary = run.balls[0]
+		ball["held"] = false
+		ball["p"] = Vector2(1140, 3010)
+		ball["v"] = Vector2(-380, 300)
+		var highest_after := 99999.0
+		var low_point := 0.0
+		for i in 90:
+			run.step_frames(1)
+			var y: float = (ball["p"] as Vector2).y
+			low_point = maxf(low_point, y)
+			if low_point > 3150.0:
+				highest_after = minf(highest_after, y)
+		if lit:
+			check("  lit, a ball down the right side wall meets its bounce-back, goes back up the table and spends the KICK",
+				run.ball_no == 1 and highest_after < 3000.0 and run.kickbacks == [false, false] and int(run.stats["kickbacks"]) == 1,
+				[ball["p"], highest_after, run.ball_no, run.kickbacks])
+		else:
+			check("  dark, the same ball rolls on into the outlane",
+				highest_after > 3150.0 and int(run.stats["kickbacks"]) == 0, [ball["p"], highest_after, run.ball_no])
+		run.queue_free()
+	# the card says it is opening, drawn, before the table loads
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var card_hud := Control.new()
+	add_child(card_hud)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("class_now", func() -> String: return "warrior")
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": true, "data": {"games": []}})
+	card.set("enter_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"run": 5, "plays_left": 2, "pays": {}, "best_score": 0}})
+	var opened: Array = []
+	card.set("open_pinball", func(run_id: int, _w: Dictionary, _b: int) -> void: opened.append(run_id))
+	card.call("open")
+	await get_tree().process_frame
+	card.call("_on_pinball_go")
+	await get_tree().process_frame
+	var said: String = card.pinball_status.text
+	var before: int = opened.size()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  Go says \"%s\" on the tile, drawn, before the table is opened" % said,
+		said == card.OPENING and before == 0 and opened == [5], [said, before, opened])
+	Api.is_owner = was_owner
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  opens and bounces back: done")

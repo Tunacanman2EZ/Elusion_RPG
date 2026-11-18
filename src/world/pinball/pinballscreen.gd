@@ -38,7 +38,12 @@
 extends CanvasLayer
 
 const RunScript := preload("res://src/world/pinball/pinballrun.gd")
-const HealerScreen := preload("res://src/world/healerrun/healerrunscreen.gd")
+# OPENS FASTER (0.168.2): the owner, "it takes almost 6 seconds to launch the
+# minigame". This screen preloaded the Healer's Run's screen for one line of
+# words, and that pulled in the Healer's Run itself, its party and the field
+# script - 561 of the 792 ms this script took to load in the sandbox. The
+# line is `paid_line()` below now, the same words (the suite holds them
+# equal), and the card says "Opening the table..." before the table loads.
 const GAME := "pinball"
 const GAME_NAME := "The Beholder's Table"
 const LAYER := 90
@@ -373,6 +378,19 @@ func _on_game_over() -> void:
 		_paid_words()
 
 
+static func paid_line(game_name: String, paid: int, held: int) -> String:
+	"""The gold into the purse and, past the day's allowance, what the server
+	held back - the Healer's Run's words (healerrunscreen.gd paid_line())."""
+	if held > 0 and paid > 0:
+		return "%s: %s gold into your purse - %s held back, today's minigame gold is full." % [
+			game_name, RunScript._thousands(paid), RunScript._thousands(held)]
+	if held > 0:
+		return "%s: today's minigame gold is full - %s held back." % [game_name, RunScript._thousands(held)]
+	if paid > 0:
+		return "%s: %s gold, into your purse." % [game_name, RunScript._thousands(paid)]
+	return ""
+
+
 func _show_results() -> void:
 	results.visible = true
 	results.reset_size()
@@ -413,7 +431,7 @@ func _pay() -> bool:
 			_held_back = maxi(0, int(data.get("held_back", 0)))
 			server_best = maxi(server_best, int(data.get("best", 0)))
 			_new_best = bool(data.get("new_best", false))
-			var said: String = HealerScreen.paid_line(GAME_NAME, _gold_paid, _held_back)
+			var said: String = paid_line(GAME_NAME, _gold_paid, _held_back)
 			if said != "" and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
 				hud.call("_push_message", said, GOLD, 0, true)
 		var status: Dictionary = data.get("status", {}) if data.get("status") is Dictionary else {}

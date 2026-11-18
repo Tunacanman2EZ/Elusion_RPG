@@ -16121,6 +16121,99 @@ grid, a list with details, the same list scrolling).
   on the card on the screen above the bar, the scroll when the bar is
   high, a tap and a drag. Sabotaged (one column, no cap, no slop): red.
 
+### The web deploy sends only what changed (after 0.168.1)
+
+The owner, at midnight, his upload at 40 KB/s: "index wasm is taking way
+too long we need to speed it up". tools\deploy_web.ps1 sent the whole build
+every time - the 38 MB engine too, whose bytes change only with Godot - and
+one dropped line (scp's "Connection reset", exit 255) threw it all away.
+Its step 3 (ONLY WHAT CHANGED) now:
+
+- asks the server for the sha256 of every live file
+  (`sha256sum -- *` in /srv/elusion-web) and copies the matching ones
+  across on the server; only the rest go up, usually index.pck and
+  index.html;
+- compresses what goes up (`scp -C`) and sends again on a dropped line,
+  `$UPLOAD_TRIES` (3) times;
+- sends SHA256SUMS with them, and the server checks every file of the new
+  folder against it (`sha256sum -c`) before the swap - a file copied wrong
+  or cut short stops the deploy, the live build untouched;
+- `-Full` sends everything, as before (and a build with folders in it).
+
+The server's side was tried in the sandbox (no PowerShell there): the
+listing parsed, matching files copied, a cut-short index.pck refused, no
+live folder meaning everything is sent.
+
+### The camera keeps up with a falling ball; the launch is seen (0.168.2)
+
+The owner: "when the ball is falling fast the camera dousnt track it very
+well and it flies past my flippers before i can see". A still camera shows
+the table from about 900 px above its line to 240 below (the ball on its
+line at row 469 of 720); eased at 3.2 a second, a ball falling at 2,000
+px/s ran 600 px past it - measured, as low as row 1,088, the flippers off
+the screen too. pinballrun.gd `_follow()` now:
+
+- **looks ahead**: it aims `CAM_LEAD` (0.15 s) along the ball's way, at most
+  `LEAD_MOST` (1,800) px/s of it;
+- **follows a falling ball faster**: its rate rises by up to `CAM_FAST` (6)
+  a second, all of it at `FALL_FAST` (1,500) px/s;
+- **never lets it out of sight**: the ball no more than `CAM_DOWN` (170)
+  below the camera's line or `CAM_UP` (650) above - past that the camera
+  moves with it that frame. The floor's foot (`CAM_FOOT`) still holds it.
+  Measured after: the ball no lower than row 633, and the flippers on
+  screen (row ~690) by the time it is 120 px over them.
+
+**The launch, seen** (`_paint_launch()`, `LAUNCH_BOX`): the plunger's lane
+is under the panel and below the view's foot - "i could not tell if it was
+charging up" (his first report on 18 Nov). While a ball waits on it, a bar
+left of the panel fills with `pull`, gold to fire, a mark each quarter,
+MAX when full.
+
+`_test_the_beholders_table()` gained the fast fall: a ball dropped at
+2,000 px/s stays on the screen and the flippers are in view as it reaches
+them (sabotaged - no window, no lead - it went to row 950: red).
+
+### The kickbacks moved up the side walls; the table opens quicker (0.168.2)
+
+The owner: "ball hits bumpers on right then just falls down to the lose a
+ball area the bounce backs are too low on the board and it takes almost 6
+seconds to launch the minigame".
+
+- **The bounce-backs** (pinballrun.gd `_base()`, `BOUNCE_*`): on the Town
+  floor (the only one with outlanes) each side wall slid straight into its
+  outlane's 93 px mouth, so a ball down a side was gone - off the right
+  bumpers with no flips, 45 of 80 drained that way. The wall's foot, from
+  `BOUNCE_FROM` to the outlane's outer wall at `BOUNCE_TO_Y`, is a kicker
+  now, and **it is that side's kickback, higher up the board**: while the
+  side's KICK is lit, a ball coming down it is thrown back up the table
+  (`BOUNCE_KICK` 1,150 px/s, keeping `BOUNCE_KEEP` of its slide) and the
+  light is spent, with the KICKBACK banner and count the low one gives;
+  dark, it is a plain wall and the ball rolls in. The low kickback in the
+  outlane shares the light. The wall burns in the kickback's orange while
+  lit (`KICK_CREAM` dark).
+- **Always on was far too easy.** zz/pinhuman.gd plays like a plain player
+  (reacts 0.1 s late, misses one flip in six). Always on, its games went
+  from about 130 s to 400 s, calm drains from 1.3-1.6 a minute to 0.54, the
+  median score from about 10M to 77M. Lit only, on
+  the same 24 seeds as the old table: 135 -> 228 s a game, calm drains
+  1.42 -> 0.89 a minute, the right outlane 33 drains -> 18, the median
+  9.8M -> 29M (the old median already reached the day's gold cap). The owner does not want
+  the table too easy: **play the plain player before making a save
+  stronger**, on the same seeds as the old table.
+- **The table opens quicker** (pinballscreen.gd): it preloaded
+  healerrunscreen.gd for one line of words, `paid_line()`, and that pulled
+  in the Healer's Run, its party and the field script - 561 of the 792 ms
+  the screen's script took to load in the sandbox. The line is the
+  screen's own now (the suite holds the words equal); loading and building
+  the table 922 -> 201 ms in the sandbox. And the card
+  (minigamescard.gd `_open_table()`) says `OPENING` ("Opening the
+  table...") on the tile and draws it before the table loads, Go held
+  meanwhile: the load is one long frame, longer in a browser.
+
+`_test_the_table_opens_and_bounces_back()` (testrunner_13): the paid line,
+a lit bounce-back (back up, the light spent) and a dark one (rolls in),
+and OPENING drawn before the table opens.
+
 ### Which file owns which number
 
 | question | lives in | example |

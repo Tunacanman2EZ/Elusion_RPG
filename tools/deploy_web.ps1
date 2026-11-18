@@ -5,6 +5,7 @@
 #     .\tools\deploy_web.ps1                # upload the builds\web you already exported
 #     .\tools\deploy_web.ps1 -Rollback      # put the previous build back
 #     .\tools\deploy_web.ps1 -DryRun        # say every step, run none of them
+#     .\tools\deploy_web.ps1 -Full          # send every file, not only what changed
 #
 # WHAT IT REPLACES. The swap used to be four commands across two windows - make
 # room on the server, scp from the PC, then one long line on the server - and
@@ -17,7 +18,7 @@
 #      the change in it.
 #   3. builds\web goes up under a NEW name (elusion-web-new-<time>), so there
 #      is nothing on the server to delete first and nothing half-copied is ever
-#      live.
+#      live. Only the files that changed travel (see ONLY WHAT CHANGED below).
 #   4. One ssh line swaps it in: the live build becomes elusion-web-old, the
 #      upload becomes elusion-web, everyone can read it. Then the page is
 #      asked for, to see it answers.
@@ -35,6 +36,7 @@ param(
     [switch]$Rollback,
     [switch]$DryRun,
     [switch]$Force,
+    [switch]$Full,
     [string]$Server = "root@159.65.67.51",
     [string]$Site = "https://play.elusionrpg.com/",
     [string]$Godot = $env:GODOT
@@ -190,11 +192,91 @@ if (-not $DryRun) {
         ((Get-ChildItem $web -File | Measure-Object Length -Sum).Sum / 1MB), $pck.LastWriteTime) "Cyan"
 }
 
-# --- 3. UPLOAD UNDER A NEW NAME ----------------------------------------------
+# --- 3. UPLOAD UNDER A NEW NAME - ONLY WHAT CHANGED ---------------------------
+# ONLY WHAT CHANGED (game 0.168.1). The owner, at midnight on a slow line:
+# "index wasm is taking way too long we need to speed it up". Every deploy
+# sent the whole build, the 38 MB engine (index.wasm) included, though its
+# bytes change only with Godot - a quarter of an hour at 40 KB/s, and one
+# dropped line threw it all away. Now:
+#   - the server is asked for the sha256 of every live file first; a file
+#     whose bytes match this PC's is copied across ON THE SERVER, and only the
+#     rest go up the line - usually index.pck and index.html;
+#   - what does go up is compressed on the way (scp -C), and a dropped line
+#     is tried again, UPLOAD_TRIES times;
+#   - before anything is swapped in, the server checks every file in the new
+#     folder against this PC's sums (SHA256SUMS, sent with them), so a file
+#     copied wrong, or cut short, never goes live.
+# -Full sends every file, as before (a build with folders in it always does).
+# No double quotes inside the ssh lines, as in the swap below.
+$UPLOAD_TRIES = 3
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $upload = "elusion-web-new-$stamp"
-Say "3. Uploading to /srv/$upload" "Cyan"
-Run "The upload" "scp" @("-r", $web, "${Server}:/srv/$upload")
+$files = @()
+$nested = @()
+if (Test-Path $web -PathType Container) {
+    $files = @(Get-ChildItem -Path $web -File | Sort-Object Name)
+    $nested = @(Get-ChildItem -Path $web -Directory)
+}
+$sums = @{}
+foreach ($f in $files) { $sums[$f.Name] = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLower() }
+$live = @{}
+if (-not $DryRun -and -not $Full -and $nested.Count -eq 0) {
+    Say "3. Asking the server which files it already has" "Cyan"
+    $global:LASTEXITCODE = 0
+    $said = & ssh $Server 'cd /srv/elusion-web 2>/dev/null && sha256sum -- *'
+    if ($LASTEXITCODE -eq 0) {
+        foreach ($line in @($said)) {
+            if ("$line" -match '^([0-9a-f]{64})\s+\*?(\S+)$') { $live[$Matches[2]] = $Matches[1] }
+        }
+    }
+}
+$same = @()
+$send = @()
+foreach ($f in $files) {
+    if ($live.ContainsKey($f.Name) -and $live[$f.Name] -eq $sums[$f.Name]) { $same += $f.Name } else { $send += $f }
+}
+$sendMB = ($send | Measure-Object Length -Sum).Sum / 1MB
+$sameMB = (($files | Where-Object { $same -contains $_.Name }) | Measure-Object Length -Sum).Sum / 1MB
+if ($Full -or $nested.Count -gt 0 -or $files.Count -eq 0) {
+    Say "3. Uploading all of builds\web to /srv/$upload" "Cyan"
+    Run "The upload" "scp" @("-C", "-r", $web, "${Server}:/srv/$upload")
+} else {
+    if ($send.Count -eq 0) {
+        Say "3. Nothing changed since the live build - sending only the sums" "Cyan"
+    } else {
+        Say ("3. Sending what changed: {0} ({1:N1} MB)" -f (($send | ForEach-Object { $_.Name }) -join ", "), $sendMB) "Cyan"
+    }
+    if ($same.Count -gt 0) {
+        Say ("   The server already has {0} ({1:N1} MB) - copied there, not sent" -f ($same -join ", "), $sameMB) "DarkGray"
+    }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("elusion-sums-" + $stamp)
+    $manifest = Join-Path $tmp "SHA256SUMS"
+    if (-not $DryRun) {
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $lines = @($files | ForEach-Object { "{0}  {1}" -f $sums[$_.Name], $_.Name })
+        [IO.File]::WriteAllText($manifest, (($lines -join "`n") + "`n"))
+    }
+    Run "Making the new folder" "ssh" @($Server, "mkdir -p /srv/$upload")
+    $toSend = @($send | ForEach-Object { $_.FullName }) + @($manifest)
+    for ($try = 1; $try -le $UPLOAD_TRIES; $try++) {
+        Say ("  > scp -C {0} {1}:/srv/{2}/" -f ($toSend -join " "), $Server, $upload) "DarkGray"
+        if ($DryRun) { break }
+        $global:LASTEXITCODE = 0
+        & scp -C @toSend "${Server}:/srv/$upload/"
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($try -eq $UPLOAD_TRIES) {
+            throw "The upload failed $UPLOAD_TRIES times (exit $LASTEXITCODE). Nothing after it was run."
+        }
+        Say ("The line dropped (exit {0}) - sending again, {1} of {2}" -f $LASTEXITCODE, ($try + 1), $UPLOAD_TRIES) "Yellow"
+    }
+    $check = 'cd /srv && '
+    if ($same.Count -gt 0) {
+        $check += 'for f in ' + ($same -join ' ') + '; do cp -p elusion-web/$f ' + $upload + '/$f; done && '
+    }
+    $check += 'cd ' + $upload + ' && sha256sum -c --quiet SHA256SUMS && rm SHA256SUMS && echo every file checked against this PC'
+    Run "The check of every file" "ssh" @($Server, $check)
+    if (-not $DryRun) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+}
 
 # --- 4. SWAP IT IN ------------------------------------------------------------
 Say "4. Swapping it in (the live build becomes elusion-web-old)" "Cyan"
