@@ -3797,30 +3797,46 @@ func _test_crownfall_on_a_phone() -> void:
 	_cf_slide(screen, 0, 20.0 * fit)
 	var slid: float = srun.target_x - from
 	var slider_ok: bool = is_equal_approx(slid, 20.0 * Screen.SLIDER_GAIN) and srun.state == Run.State.AIM
-	# another thumb on the left while it is held takes nothing
+	# a second thumb on the left takes the slider (0.166.3: the newest); the
+	# first then moves nothing
 	_cf_finger(screen, 7, box.position + Vector2(40, 300) * fit, true)
 	var before_other: float = srun.target_x
 	_cf_slide(screen, 7, 25.0 * fit)
-	var one_slider: bool = srun.target_x == before_other
+	var newest: bool = is_equal_approx(srun.target_x, before_other + 25.0 * Screen.SLIDER_GAIN)
+	var before_old: float = srun.target_x
+	_cf_slide(screen, 0, 25.0 * fit)
+	var old_still: bool = srun.target_x == before_old
 	_cf_finger(screen, 7, box.position + Vector2(40, 300) * fit, false)
-	# a finger on the field launches, and moves nothing
+	_cf_finger(screen, 0, thumb, false)
+	# while the ball waits a finger on the field slides the paddle and does
+	# not launch; a tap launches on its lift
 	var field: Vector2 = box.position + Vector2(640, 420) * fit
 	_cf_finger(screen, 1, field, true)
-	var launched: bool = srun.state == Run.State.PLAY
+	var not_on_press: bool = srun.state == Run.State.AIM
 	var held: float = srun.target_x
 	_cf_slide(screen, 1, 30.0 * fit)
-	var field_still: bool = srun.target_x == held
-	_cf_slide(screen, 0, -10.0 * fit)
-	var both: bool = is_equal_approx(srun.target_x, held - 10.0 * Screen.SLIDER_GAIN)
+	var field_slides: bool = is_equal_approx(srun.target_x, held + 30.0 * Screen.SLIDER_GAIN)
 	_cf_finger(screen, 1, field, false)
+	var slide_no_launch: bool = srun.state == Run.State.AIM
+	_cf_finger(screen, 1, field, true)
+	_cf_finger(screen, 1, field, false)
+	var launched: bool = srun.state == Run.State.PLAY
+	# in flight a thumb on the slider and a finger on the field both slide
+	_cf_finger(screen, 0, thumb, true)
+	_cf_finger(screen, 2, field, true)
+	var both_from: float = srun.target_x
+	_cf_slide(screen, 0, -10.0 * fit)
+	_cf_slide(screen, 2, -5.0 * fit)
+	var both: bool = is_equal_approx(srun.target_x, both_from - 15.0 * Screen.SLIDER_GAIN)
+	_cf_finger(screen, 2, field, false)
 	_cf_slide(screen, 0, -2000.0 * fit)
 	var clamped: bool = srun.target_x == Run.ARENA.position.x
 	_cf_finger(screen, 0, thumb, false)
 	_cf_slide(screen, 0, 50.0 * fit)
 	var let_go: bool = srun.target_x == Run.ARENA.position.x
-	check("on a phone a thumb landing left of the field is the slider: it moves the paddle %dx as far as it slides (%.0f for 20), wherever it goes, held to the arena, and a second thumb there takes nothing; a finger on the field launches and moves nothing, and both work at once; lifted, the slider lets go; on the kingdom map a tap still picks; the waiting ball says \"Tap the field to launch\"" % [int(Screen.SLIDER_GAIN), slid],
-		fit > 0.0 and picked and told and slider_ok and one_slider and launched and field_still and both and clamped and let_go,
-		[fit, picked, told, slid, one_slider, launched, field_still, both, clamped, let_go])
+	check("on a phone a thumb landing left of the field is the slider: it moves the paddle %dx as far as it slides (%.0f for 20), wherever it goes, held to the arena; the newest thumb there takes it from the last; while the ball waits a finger on the field slides the paddle and does not launch, and a tap launches on its lift; in flight a thumb and a finger both slide; lifted, the slider lets go; on the kingdom map a tap still picks; the waiting ball says \"Tap the field to launch\"" % [int(Screen.SLIDER_GAIN), slid],
+		fit > 0.0 and picked and told and slider_ok and newest and old_still and not_on_press and field_slides and slide_no_launch and launched and both and clamped and let_go,
+		[fit, picked, told, slid, newest, old_still, not_on_press, field_slides, slide_no_launch, launched, both, clamped, let_go])
 	# ---- the Laser: a tap fires it ----
 	srun.active = {"laser": 10.0}
 	srun.bolts = []
@@ -3845,8 +3861,9 @@ func _test_crownfall_on_a_phone() -> void:
 	ball["stuck"] = 0.0
 	ball["v"] = Vector2.ZERO
 	_cf_finger(screen, 5, field, true)
-	var magnet_let_go: bool = not ball.has("stuck") and ball["v"] != Vector2.ZERO
+	var magnet_waits: bool = ball.has("stuck")
 	_cf_finger(screen, 5, field, false)
+	var magnet_let_go: bool = magnet_waits and not ball.has("stuck") and ball["v"] != Vector2.ZERO
 	# a computer: by itself, as before
 	srun.touch_slider = false
 	srun.bolts = []
@@ -3860,9 +3877,9 @@ func _test_crownfall_on_a_phone() -> void:
 	srun.bolts = []
 	srun._laser_t = 0.0
 	_cf_finger(screen, 6, field, true)
-	var launch_only: bool = srun.state == Run.State.PLAY and srun.bolts.is_empty()
 	_cf_finger(screen, 6, field, false)
-	check("on a phone the Laser never fires by itself: a tap on the field fires a volley, another within %.2f s nothing, one after it the next; the tap that launches only launches; a tap lets go of a ball the Magnet holds; on a computer the Laser fires by itself as before" % Run.LASER_EVERY,
+	var launch_only: bool = srun.state == Run.State.PLAY and srun.bolts.is_empty()
+	check("on a phone the Laser never fires by itself: a tap on the field fires a volley, another within %.2f s nothing, one after it the next; the tap that launches only launches; a tap lets go of a ball the Magnet holds, on its lift; on a computer the Laser fires by itself as before" % Run.LASER_EVERY,
 		quiet and volley and waits and again and launch_only and magnet_let_go and pc_fires,
 		[quiet, volley, waits, again, launch_only, magnet_let_go, pc_fires])
 	# ---- the aim and the tracer, slower ----
@@ -4151,3 +4168,110 @@ func _test_crownfall_never_locked() -> void:
 		hidden and shown and left_alone, [hidden, shown, left_alone])
 	await get_tree().process_frame
 	print("  crownfall never locked: done")
+
+
+# =============================================================================
+# CROWNFALL'S SLIDER NEVER STICKS (0.166.3)
+# =============================================================================
+# The owner: "the move slider is not working out on mobile ... it is working
+# but it is easy for it to stop working". The slider let go of its thumb
+# only on that thumb's own lift; a lift that never came (off the screen's
+# edge, a notification, a system swipe) held it dead, and a new thumb took
+# nothing. And only a thumb that landed left of the field moved the paddle.
+# Now the newest thumb takes the slider, every finger is forgotten when a
+# run starts or ends, the game loses focus or is paused, or the screen
+# hides, and a finger anywhere on the field slides the paddle (its tap on
+# its lift while a ball waits, at once while one flies).
+
+func _test_crownfall_slider_never_sticks() -> void:
+	section("CROWNFALL'S SLIDER NEVER STICKS (0.166.3): the newest thumb, fingers forgotten, a drag anywhere")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
+	var screen: CanvasLayer = Screen.new()
+	screen.set("pays", {"maps": []})
+	screen.set("progress", 1)
+	screen.set("run_id", 0)
+	screen.set("on_touch", func() -> bool: return true)
+	add_child(screen)
+	await get_tree().process_frame
+	var srun: Node2D = screen.get("run")
+	srun.set("running_by_clock", false)
+	var box: Rect2 = screen.call("drawn_rect")
+	var fit: float = box.size.x / Run.VIEW.x
+	var thumb: Vector2 = box.position + Vector2(70, 610) * fit
+	var field: Vector2 = box.position + Vector2(640, 420) * fit
+	srun.selected = 0
+	screen.call("begin")
+	# a thumb whose lift never comes, then another: the new one moves the paddle
+	_cf_finger(screen, 0, thumb, true)
+	_cf_finger(screen, 3, thumb, true)
+	var from: float = srun.target_x
+	_cf_slide(screen, 3, 20.0 * fit)
+	var newest_moves: bool = is_equal_approx(srun.target_x, from + 20.0 * Screen.SLIDER_GAIN)
+	_cf_finger(screen, 3, thumb, false)
+	# losing focus, a window's focus, a pause: every finger forgotten
+	var forgets: Array = []
+	for what in [Node.NOTIFICATION_APPLICATION_FOCUS_OUT, Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT,
+			Node.NOTIFICATION_APPLICATION_PAUSED]:
+		_cf_finger(screen, 0, thumb, true)
+		_cf_finger(screen, 4, field, true)
+		screen.notification(what)
+		forgets.append(int(screen.get("_slider_finger")) == -1 and (screen.get("_field_fingers") as Dictionary).is_empty())
+	var focus_ok: bool = forgets == [true, true, true]
+	# the screen hidden: forgotten
+	_cf_finger(screen, 0, thumb, true)
+	screen.visible = false
+	var hidden_ok: bool = int(screen.get("_slider_finger")) == -1
+	screen.visible = true
+	# a run ending under a thumb: forgotten
+	_cf_finger(screen, 0, thumb, true)
+	screen.call("_process", 1.0 / 60.0)
+	srun.state = Run.State.OVER
+	screen.call("_process", 1.0 / 60.0)
+	var end_ok: bool = int(screen.get("_slider_finger")) == -1
+	# a run starting under a finger: forgotten
+	screen.call("start")
+	srun = screen.get("run")
+	srun.set("running_by_clock", false)
+	srun.selected = 0
+	_cf_finger(screen, 5, box.position + srun.map_spot(0) * fit, true)
+	var held_before: bool = int(screen.get("_finger")) == 5
+	screen.call("begin")
+	var start_ok: bool = held_before and int(screen.get("_finger")) == -1 and srun.state == Run.State.AIM
+	check("a thumb whose lift never came cannot hold the slider: the newest thumb left of the field takes it and moves the paddle; every finger is forgotten when the game loses focus, its window's focus or is paused, when the screen hides, when a run ends and when one starts",
+		newest_moves and focus_ok and hidden_ok and end_ok and start_ok,
+		[newest_moves, forgets, hidden_ok, end_ok, held_before, start_ok])
+	# drag anywhere: a finger on the field slides the paddle, wherever it landed
+	_cf_finger(screen, 1, field, true)
+	var aim_press: bool = srun.state == Run.State.AIM
+	var at: float = srun.target_x
+	_cf_slide(screen, 1, 18.0 * fit)
+	var drag_moves: bool = is_equal_approx(srun.target_x, at + 18.0 * Screen.SLIDER_GAIN)
+	_cf_finger(screen, 1, field, false)
+	var drag_no_launch: bool = srun.state == Run.State.AIM
+	# a tap while aiming: nothing on the press, the launch on the lift
+	_cf_finger(screen, 2, field, true)
+	var still_aiming: bool = srun.state == Run.State.AIM
+	_cf_finger(screen, 2, field, false)
+	var launched_on_lift: bool = srun.state == Run.State.PLAY
+	# in flight a press taps at once: the Laser's volley before any lift
+	srun.active = {"laser": 10.0}
+	srun.bolts = []
+	srun._laser_t = 0.0
+	_cf_finger(screen, 6, field, true)
+	var volley_at_once: bool = srun.bolts.size() == 2
+	var fly_from: float = srun.target_x
+	_cf_slide(screen, 6, -12.0 * fit)
+	var fly_slides: bool = is_equal_approx(srun.target_x, fly_from - 12.0 * Screen.SLIDER_GAIN)
+	_cf_finger(screen, 6, field, false)
+	var no_second: bool = srun.bolts.size() == 2
+	check("a finger anywhere on the field slides the paddle %dx as far as it moves; while the ball waits its press launches nothing, a slide never launches, and a tap launches on its lift; while a ball flies a press taps at once (the Laser's volley) and the same finger slides the paddle, its lift taps no more" % int(Screen.SLIDER_GAIN),
+		aim_press and drag_moves and drag_no_launch and still_aiming and launched_on_lift and volley_at_once and fly_slides and no_second,
+		[aim_press, drag_moves, drag_no_launch, still_aiming, launched_on_lift, volley_at_once, fly_slides, no_second])
+	var head: String = (Screen as GDScript).source_code
+	head = head.substr(0, head.find("extends CanvasLayer"))
+	check("the screen's header says the phone's controls as they are now (the newest thumb, a drag anywhere, the tap on the lift while a ball waits, fingers forgotten)",
+		head.contains("newest thumb") and head.contains("DRAG ANYWHERE") and head.contains("_forget_fingers()"), [])
+	screen.queue_free()
+	await get_tree().process_frame
+	print("  crownfall's slider never sticks: done")

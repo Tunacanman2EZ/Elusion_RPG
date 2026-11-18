@@ -15803,6 +15803,32 @@ and no blow could hurt their bricks - only a light ball got through.
 - `_test_crownfall_never_locked()` (testrunner_12); the ring Guard test
   now leaves its ring open below.
 
+### Crownfall's slider never sticks (0.166.3)
+
+The owner, on his phone: "the move slider is not working out on mobile
+... it is working but it is easy for it to stop working". The slider let
+go of its thumb only on that thumb's own lift; a lift that never came (the
+thumb off the screen's edge, a notification, a system swipe) held it dead,
+and every new thumb took nothing. And only a thumb that landed left of the
+field moved the paddle: one put down a little to the right was a tap. He
+chose both fixes (crownfallscreen.gd, THE CONTROLS):
+
+- **The newest thumb takes the slider**: a finger landing left of the
+  field is the slider's whatever was recorded before.
+- **Fingers are forgotten** (`_forget_fingers()`): when a run starts
+  (`begin()`, `start()`) or ends (`_process()` sees `playing()` turn
+  over), on `NOTIFICATION_APPLICATION_FOCUS_OUT`, `..._WM_WINDOW_FOCUS_OUT`
+  and `..._APPLICATION_PAUSED`, and when the screen hides.
+- **Drag anywhere** (`_field_fingers`): a finger on the field slides the
+  paddle `SLIDER_GAIN` times as far, as the slider does. Its tap
+  (`run.tap()`): while a ball waits on the paddle (`_ball_waits()`: aiming,
+  or held by the Magnet) on its lift, and only if it moved under
+  `TAP_SLACK` - sliding to place the paddle never launches; while a ball
+  flies at its press, at once (the Laser's volley), and the same finger may
+  slide. One thumb slides while another taps.
+- `_test_crownfall_slider_never_sticks()` (testrunner_12); the phone test's
+  field finger now launches on its lift.
+
 ### Which file owns which number
 
 | question | lives in | example |

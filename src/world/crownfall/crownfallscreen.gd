@@ -30,13 +30,25 @@
 #     mouse until the mouse moves again); Space or Enter launches. On the
 #     kingdom map up and down pick, Space or Enter starts.
 #   - a phone (0.166.0, the owner: "using a slider to control the movement
-#     maybe just tap on the screen to fire bullets or magnet"): in a run a
-#     finger that lands left of the field is the slider's (drawn at the left
-#     panel's foot) and moves the paddle SLIDER_GAIN times as far as it
-#     moves, wherever it goes after; any other finger is a tap, at once - a
-#     launch, a ball the Magnet holds let go, the Laser's volley (which on a
-#     phone never fires by itself). One thumb slides while another taps. On
-#     the kingdom map a tap picks, and Start starts.
+#     maybe just tap on the screen to fire bullets or magnet"; 0.166.3: "it
+#     is working but it is easy for it to stop working"): in a run
+#     - a thumb that lands left of the field is the slider's (drawn at the
+#       left panel's foot) and moves the paddle SLIDER_GAIN times as far as
+#       it moves, wherever it goes after. The newest thumb there always
+#       takes it, so a thumb whose lift never arrived (off the screen's
+#       edge, a notification, a system swipe) cannot hold it for ever;
+#     - a finger that lands on the field and slides moves the paddle the
+#       same way, wherever it landed (DRAG ANYWHERE);
+#     - a finger on the field is also a tap (run.tap()): while a ball waits
+#       on the paddle (aiming, or held by the Magnet) the tap is its lift,
+#       and only if it moved less than TAP_SLACK - so sliding to place the
+#       paddle never launches; while a ball is flying the tap is the press,
+#       at once (the Laser's volley, which on a phone never fires by
+#       itself), and that finger may slide the paddle too.
+#     One thumb slides while another taps. Every finger is forgotten when a
+#     run starts or ends, when the game loses focus or is paused, and when
+#     the screen hides (_forget_fingers()). On the kingdom map a tap picks,
+#     and Start starts.
 # The ball waits on the paddle with its aim swaying (crownfallrun.gd): launch
 # when it points where you want.
 #
@@ -112,6 +124,10 @@ var _by_mouse: bool = true
 var _finger: int = -1
 var _finger_moved: float = 0.0
 var _slider_finger: int = -1
+# Fingers on the field in a run: index -> {"moved": px on the picture,
+# "tapped": its tap already made}.
+var _field_fingers: Dictionary = {}
+var _was_playing: bool = false
 var _flash_left: float = 0.0
 var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
@@ -169,6 +185,7 @@ func _ready() -> void:
 	_build_words()
 	_hold_the_character()
 	cover(get_tree().current_scene)
+	visibility_changed.connect(_on_shown_or_hidden)
 	start()
 	tell_story()
 
@@ -329,6 +346,7 @@ func start() -> void:
 	run.connect("life_lost", _on_life_lost)
 	viewport.add_child(run)
 	run.call("show_kingdoms", progress)
+	_forget_fingers()
 	results.visible = false
 	again_button.disabled = false
 	_paid = false
@@ -349,6 +367,7 @@ func begin() -> void:
 		return
 	_skip_story()
 	run.call("begin", picked)
+	_forget_fingers()
 	paint()
 
 
@@ -435,6 +454,11 @@ func _on_touch() -> bool:
 
 
 func _process(delta: float) -> void:
+	# a run started or ended under a finger: it is forgotten
+	var on: bool = playing()
+	if on != _was_playing:
+		_was_playing = on
+		_forget_fingers()
 	_leave_armed = maxf(0.0, _leave_armed - delta)
 	_flash_left = maxf(0.0, _flash_left - delta)
 	flash.color = Color(RED, 0.28 * _flash_left / 0.35)
@@ -579,10 +603,11 @@ func _press_at(at: Vector2, twice: bool) -> void:
 
 func _finger_input(event: InputEvent) -> void:
 	"""A PHONE (the header's THE CONTROLS): in a run a finger landing left of
-	the field takes the slider, any other is a tap there and then (run.tap());
-	before and after a run the first finger down, lifted without moving far,
-	is a tap. Not consumed: Godot's own click from it still presses the
-	buttons."""
+	the field takes the slider (the newest always); one landing on the field
+	slides the paddle too, and taps - at once while a ball flies, on its lift
+	(if it hardly moved) while a ball waits on the paddle. Before and after a
+	run the first finger down, lifted without moving far, is a tap. Not
+	consumed: Godot's own click from it still presses the buttons."""
 	if run == null or not is_instance_valid(run):
 		return
 	var touch := event as InputEventScreenTouch
@@ -592,18 +617,31 @@ func _finger_input(event: InputEvent) -> void:
 				return
 			_by_mouse = false
 			if playing():
+				_field_fingers.erase(touch.index)
 				if world_from_screen(touch.position).x < RunScript.ARENA.position.x:
-					if _slider_finger < 0:
-						_slider_finger = touch.index
-						run.set("target_x", float(run.get("paddle_x")))
+					# the newest thumb takes the slider, whatever held it
+					_slider_finger = touch.index
+					run.set("target_x", float(run.get("paddle_x")))
 				else:
-					run.call("tap")
+					if touch.index == _slider_finger:
+						_slider_finger = -1
+					var tapped: bool = not _ball_waits()
+					_field_fingers[touch.index] = {"moved": 0.0, "tapped": tapped}
+					if _slider_finger < 0 and _field_fingers.size() == 1:
+						run.set("target_x", float(run.get("paddle_x")))
+					if tapped:
+						run.call("tap")
 			elif _finger < 0:
 				_finger = touch.index
 				_finger_moved = 0.0
 		else:
 			if touch.index == _slider_finger:
 				_slider_finger = -1
+			if _field_fingers.has(touch.index):
+				var f: Dictionary = _field_fingers[touch.index]
+				_field_fingers.erase(touch.index)
+				if playing() and not bool(f["tapped"]) and float(f["moved"]) < TAP_SLACK:
+					run.call("tap")
 			if touch.index == _finger:
 				_finger = -1
 				if _finger_moved < TAP_SLACK:
@@ -613,11 +651,48 @@ func _finger_input(event: InputEvent) -> void:
 	if drag == null:
 		return
 	var moved: float = drag.relative.x / maxf(_fit(), 0.001)
-	if drag.index == _slider_finger and playing():
+	if (drag.index == _slider_finger or _field_fingers.has(drag.index)) and playing():
+		if _field_fingers.has(drag.index):
+			var f: Dictionary = _field_fingers[drag.index]
+			f["moved"] = float(f["moved"]) + absf(moved)
 		run.set("target_x", clampf(float(run.get("target_x")) + moved * SLIDER_GAIN, RunScript.ARENA.position.x,
 			RunScript.ARENA.end.x))
 	elif drag.index == _finger:
 		_finger_moved += absf(moved)
+
+
+func _ball_waits() -> bool:
+	"""A ball sits on the paddle: aiming before the launch, or held by the
+	Magnet. Then a finger on the field taps on its lift, not its press."""
+	var state: int = int(run.get("state"))
+	if state == RunScript.State.AIM:
+		return true
+	if state == RunScript.State.PLAY:
+		for b in run.get("balls"):
+			if (b as Dictionary).has("stuck"):
+				return true
+	return false
+
+
+func _forget_fingers() -> void:
+	"""No finger is held over a run starting or ending, the game losing focus
+	or being paused, or the screen hiding - so a lift that never arrived
+	cannot leave the slider dead."""
+	_slider_finger = -1
+	_finger = -1
+	_finger_moved = 0.0
+	_field_fingers.clear()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT \
+			or what == NOTIFICATION_APPLICATION_PAUSED:
+		_forget_fingers()
+
+
+func _on_shown_or_hidden() -> void:
+	if not visible:
+		_forget_fingers()
 
 
 func _on_a_button(at: Vector2) -> bool:
