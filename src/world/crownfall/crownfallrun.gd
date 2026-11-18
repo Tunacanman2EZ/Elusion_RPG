@@ -76,6 +76,15 @@ const MOST_BALLS := 6
 # frame (`floor_layer`); both sit behind the run's own drawing, which is
 # everything above the bricks as before. The helpers both share draw on
 # `_cv`, the picture being drawn.
+# THE STILL BRICKS ARE ONE PICTURE (0.166.2, the owner: "my computer is
+# running a little hard playing this i can tell because my fan kicks up"):
+# a brick's picture was still a draw of its own every frame - a thousand of
+# them on Gilded Gate, most of the frame's work. Now the still ones are drawn
+# into `brick_cache` (a SubViewport) only when one of them changes, and the
+# run shows that one picture (`brick_pic`). A brick drawn every look - struck,
+# burning, shielded, glowing, a lively kind, one that moves - shows its twin
+# in `brick_live` over it instead, its place in the picture left empty. The
+# order of the picture's bricks never changes, so it looks as it did.
 const STILL_KINDS := {"basalt": 1, "boulder": 1, "bumper": 1, "column": 1, "crystal": 1, "drift": 1, "guard": 1, "iron": 1,
 	"keg": 1, "key": 1, "land": 1, "lock": 1, "obsidian": 1, "packed": 1, "prism": 1, "sand": 1, "shell": 1, "stone": 1,
 	"wood": 1}
@@ -150,6 +159,32 @@ const GATE_H := 36.0
 # THE GUARD (the owner: "bricks that protect for defense"): two hits, and
 # while it stands no brick touching it - the eight round it - can be hurt.
 const GUARD_GLOW := Color(0.55, 0.75, 1.0)
+# A GUARD SHUT IN (0.166.2, the owner, of Gilded Gate: "i have no way to
+# break this"): a Guard whose every side is a brick it shields can never be
+# hit - and while it stands neither can they, so the map could not be
+# cleared (a light ball was the only way through). Now a blow on a brick
+# shielded only by Guards no ball can get to goes through to the Guard: the
+# brick glances, the Guard takes the hit and falls in two. A Guard a ball
+# can get to still turns every blow aside. Which cells a ball can get to is
+# a flood from the floor (_refresh_reach()): through empty cells, the band
+# above the rows, the lanes and their gates.
+const DIRS4 := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+const DIRS8 := [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0),
+	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]
+# THE WALLS CRUMBLE (0.166.2): while the balls seek (the last few, or none
+# broken for STUCK_SECONDS) and not one brick left standing can be both
+# reached and hurt, CRUMBLE_AFTER seconds on every brick left that counts
+# breaks - whatever shut it in, a map can always be cleared.
+const CRUMBLE_AFTER := 2.0
+const CRUMBLE_LOOK := 0.25
+# THE SHIELD CRACKS (0.166.2, the owner: "the final ball keeps bouncing into
+# the ice and shield so we need to rethink the logic", and of this, "sounds
+# good"): every GUARD_GLANCES blows that glance off a Guard's shield deal the
+# Guard a hit of its own - it cracks, then breaks - so a shield can never
+# lock a map. And the balls that seek aim only at what a blow can break now:
+# a Guard first when one can be reached, never a shielded brick, a shut rune
+# or clam, or iron (_seek_targets()).
+const GUARD_GLANCES := 3
 # THE ELEMENTS MIXED (the owner: "we can mix elements in bricks if needed for
 # more effects"): the ball takes the element of each land brick it breaks
 # (`el`), and breaking another land's while it carries one sets the two off.
@@ -208,6 +243,7 @@ const PORTAL_HUES := [Color(0.62, 0.32, 0.95), Color(0.2, 0.85, 0.8), Color(1.0,
 const PULL_BELOW := 6
 const PULL_TURN := 40.0
 const UNBREAKABLE := ["iron", "mirror", "bumper", "portal", "lock", "whirl"]
+const NEVER_BREAKS := {"iron": 1, "mirror": 1, "bumper": 1, "portal": 1, "lock": 1, "whirl": 1}
 # THE KINGDOM OF WIND (0.163.0): GUSTS - bands of a map's rows ("gusts" in
 # its data: [first row, last row, way]) that push a ball sideways while it is
 # in them, GUST_PUSH a second; WHIRLS (W) that never break and fling the ball
@@ -431,7 +467,23 @@ var _jolt := Vector2.ZERO
 var _jolt_rng := RandomNumberGenerator.new()
 var _cv: CanvasItem = null
 var floor_layer: Node2D = null
-var brick_layer: Node2D = null
+var brick_layer: Node2D = null   # the still bricks, inside brick_cache
+var brick_cache: SubViewport = null
+var brick_pic: Sprite2D = null
+var brick_live: Node2D = null
+# the stone the bricks are set in, drawn once a map (0.166.2), and the floor
+# over it - tide, slicks, gusts, rails, the dark - every frame
+var building_layer: Node2D = null
+var floor_top: Node2D = null
+var _building_key: int = -1
+var _open: Dictionary = {}        # Vector2i -> true: the empty cells a ball can get to
+var _open_key: int = -1
+var _grid_ver: int = 0            # bumped when a brick is set or moves on the grid
+var _crumbling: bool = false
+var _shut_t: float = 0.0          # how long nothing standing could be reached and hurt
+var _shut_look: float = 0.0
+var _guard_list: Array = []
+var _guard_key: int = -1
 var _glow_last: bool = false
 var _since_break: float = 0.0
 var _said_last: bool = false
@@ -541,10 +593,42 @@ func _ready() -> void:
 	floor_layer.show_behind_parent = true
 	add_child(floor_layer)
 	floor_layer.draw.connect(_paint_floor)
+	building_layer = Node2D.new()
+	building_layer.name = "building_layer"
+	building_layer.show_behind_parent = true
+	add_child(building_layer)
+	building_layer.draw.connect(_paint_building)
+	floor_top = Node2D.new()
+	floor_top.name = "floor_top"
+	floor_top.show_behind_parent = true
+	add_child(floor_top)
+	floor_top.draw.connect(_paint_floor_top)
+	brick_cache = SubViewport.new()
+	brick_cache.name = "brick_cache"
+	brick_cache.size = Vector2i(VIEW)
+	brick_cache.transparent_bg = true
+	brick_cache.disable_3d = true
+	brick_cache.world_2d = World2D.new()
+	brick_cache.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(brick_cache)
 	brick_layer = Node2D.new()
 	brick_layer.name = "brick_layer"
-	brick_layer.show_behind_parent = true
-	add_child(brick_layer)
+	brick_cache.add_child(brick_layer)
+	brick_pic = Sprite2D.new()
+	brick_pic.name = "brick_pic"
+	brick_pic.centered = false
+	brick_pic.texture = brick_cache.get_texture()
+	brick_pic.show_behind_parent = true
+	# a canvas drawn on a clear target keeps its colour premultiplied
+	var premult := CanvasItemMaterial.new()
+	premult.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	brick_pic.material = premult
+	add_child(brick_pic)
+	brick_live = Node2D.new()
+	brick_live.name = "brick_live"
+	brick_live.show_behind_parent = true
+	add_child(brick_live)
 
 
 func _process(delta: float) -> void:
@@ -554,6 +638,13 @@ func _process(delta: float) -> void:
 	sync_bricks()
 	if floor_layer != null:
 		floor_layer.queue_redraw()
+		floor_top.queue_redraw()
+		building_layer.position = _jolt
+		building_layer.visible = state != State.KINGDOMS
+		var key: int = hash([map_index, footprint.size(), hall, cols, rows_count, cw, ch])
+		if key != _building_key:
+			_building_key = key
+			building_layer.queue_redraw()
 
 
 # ---------------------------------------------------------------- the run --
@@ -828,6 +919,11 @@ func _load(index: int) -> void:
 
 func _clear_map() -> void:
 	_since_break = 0.0
+	_open.clear()
+	_open_key = -1
+	_grid_ver += 1
+	_shut_t = 0.0
+	_guard_key = -1
 	_said_last = false
 	bricks.clear()
 	cells.clear()
@@ -935,6 +1031,7 @@ func _add(col: int, row: int, kind: String, land: String, hp: int) -> Dictionary
 	k["cell"] = Vector2i(col, row)
 	bricks.append(k)
 	cells[Vector2i(col, row)] = k
+	_grid_ver += 1
 	return k
 
 
@@ -943,7 +1040,7 @@ func _brick(r: Rect2, kind: String, land: String, hp: int) -> Dictionary:
 
 
 func _breaks(k: Dictionary) -> bool:
-	return not UNBREAKABLE.has(k["kind"])
+	return not NEVER_BREAKS.has(k["kind"])
 
 
 func _make_rails(index: int) -> void:
@@ -985,18 +1082,161 @@ func gates() -> Array:
 
 
 func _guarded(k: Dictionary) -> bool:
-	"""Whether a Guard touching `k` stands (a Guard is never guarded)."""
-	if k["kind"] == "guard":
-		return false
+	"""Whether a Guard touching `k` stands that a ball can get to - the blow
+	glances off its shield (a Guard is never guarded; one shut in takes the
+	blow instead, _shut_guard())."""
+	return _open_guard(k) != null
+
+
+func _open_guard(k: Dictionary) -> Variant:
+	"""The first Guard touching `k` that stands and a ball can get to."""
+	if _crumbling or k["kind"] == "guard":
+		return null
 	var own: Array = k.get("cells", [k["cell"]] if k.has("cell") else [])
 	for c in own:
-		for d in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0),
-				Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]:
+		for d in DIRS8:
+			var o: Variant = cells.get(c + d)
+			if o != null and o["kind"] == "guard" and o["hp"] > 0 and _reachable(o):
+				return o
+	return null
+
+
+func _shut_guard(k: Dictionary) -> Variant:
+	"""The Guard shielding `k` when every Guard touching it is shut in - no
+	ball can get to it - which takes the blow `k` is dealt (0.166.2). Null
+	when a Guard touching it can be reached, or none does."""
+	if _crumbling or k["kind"] == "guard":
+		return null
+	var found: Variant = null
+	var own: Array = k.get("cells", [k["cell"]] if k.has("cell") else [])
+	for c in own:
+		for d in DIRS8:
 			var o: Variant = cells.get(c + d)
 			if o != null and o["kind"] == "guard" and o["hp"] > 0:
+				if _reachable(o):
+					return null
+				if found == null:
+					found = o
+	return found
+
+
+func _reachable(k: Dictionary) -> bool:
+	"""A ball can get to `k` (0.166.2): on the grid, a cell of it beside an
+	empty cell open to the floor; off it, inside the arena."""
+	if not k.has("cell") and not k.has("cells"):
+		return ARENA.grow(-BALL_R).has_point((k["rect"] as Rect2).get_center())
+	_refresh_reach()
+	for c in k.get("cells", [k.get("cell")]):
+		for d in DIRS4:
+			if _open.has(c + d):
 				return true
 	return false
 
+
+func _seek_targets() -> Array:
+	"""What the balls that seek aim at (THE SHIELD CRACKS): bricks a ball can
+	get to and a blow can break now - not shielded, not a shut rune or
+	clam, not iron - and of them, Guards first."""
+	var guards: Array = []
+	var rest: Array = []
+	for k in bricks:
+		if _can_hit(k) and not _shut(k):
+			if k["kind"] == "guard":
+				guards.append(k)
+			else:
+				rest.append(k)
+	return guards if not guards.is_empty() else rest
+
+
+func _can_hit(k: Dictionary) -> bool:
+	"""A brick a ball can get to and hurt now: standing, breakable, under no
+	Guard's shield that turns the blow aside. The last few's glow and pull,
+	and the stuck balls' search, aim only at these (0.166.2)."""
+	return k["hp"] > 0 and _breaks(k) and not _guarded(k) and _reachable(k)
+
+
+func _refresh_reach() -> void:
+	"""THE WAY IN: a flood from under the rows through every empty cell, up
+	the lanes and in at their gates, and across the band above the rows -
+	the cells a ball can get to. Worked out again only when the grid has
+	changed."""
+	var key: int = (((((map_index * 131 + cells.size()) * 131 + broken) * 131 + breakable) * 131 + _grid_ver) * 131
+		+ rows_count) * 131 + cols * 7 + rails.size()
+	if key == _open_key:
+		return
+	_open_key = key
+	_open.clear()
+	var rows: int = rows_count
+	for c in cells:
+		rows = maxi(rows, (c as Vector2i).y + 1)
+	var gate_rows: Dictionary = {}
+	for g in gates():
+		for r in rows:
+			var y0: float = MAP_TOP + r * (ch + gap)
+			if y0 + ch > (g as Vector2).x and y0 < (g as Vector2).y:
+				gate_rows[r] = true
+	var todo: Array[Vector2i] = []
+	for c in range(-1, cols + 1):
+		todo.append(Vector2i(c, rows))
+	for r in rows:
+		todo.append(Vector2i(-1, r))
+		todo.append(Vector2i(cols, r))
+	var seen: Dictionary = {}
+	for q in todo:
+		seen[q] = true
+	var i: int = 0
+	while i < todo.size():
+		var p: Vector2i = todo[i]
+		i += 1
+		var lane: bool = p.x < 0 or p.x >= cols
+		if not lane:
+			_open[p] = true
+		for d in DIRS4:
+			var q: Vector2i = p + d
+			if seen.has(q) or q.x < -1 or q.x > cols or q.y < -1 or q.y > rows:
+				continue
+			var q_lane: bool = q.x < 0 or q.x >= cols
+			if q_lane and q.y < 0:
+				continue
+			if lane != q_lane and not gate_rows.has(p.y):
+				continue
+			if not q_lane and q.y >= 0 and q.y < rows and cells.has(q):
+				continue
+			seen[q] = true
+			todo.append(q)
+
+
+func _walls_crumble(dt: float) -> void:
+	"""THE WALLS CRUMBLE (0.166.2): while the balls seek and not one brick
+	left standing can be reached and hurt (looked at every CRUMBLE_LOOK),
+	CRUMBLE_AFTER seconds on every brick left that counts breaks."""
+	if boss != null or state != State.PLAY or not seeking():
+		_shut_t = 0.0
+		return
+	_shut_look -= dt
+	if _shut_look > 0.0:
+		return
+	_shut_look = CRUMBLE_LOOK
+	if bricks.any(_can_hit):
+		_shut_t = 0.0
+		return
+	_shut_t += CRUMBLE_LOOK
+	if _shut_t >= CRUMBLE_AFTER:
+		_crumble_walls()
+
+
+func _crumble_walls() -> void:
+	_shut_t = 0.0
+	_crumbling = true
+	_say(Vector2(640, 400), "THE WALLS CRUMBLE", GOLD, 28, 1.4)
+	_shake = 1.0
+	for k in bricks.duplicate():
+		if k["hp"] > 0 and _breaks(k):
+			if k["kind"] == "shell":
+				k["kind"] = "stone"
+			k.erase("frost")
+			_damage(k, 99, null)
+	_crumbling = false
 
 func _make_kites(spots: Array, rows_in: int) -> void:
 	"""KITES (k): wind bricks bobbing up and down into the empty cells above
@@ -1188,6 +1428,7 @@ func step(dt: float) -> void:
 	_capsules(dt)
 	if state == State.PLAY or state == State.AIM:
 		_check_cleared()
+	_walls_crumble(dt)
 	queue_redraw()
 
 
@@ -1387,17 +1628,36 @@ func _damage(k: Dictionary, n: int, b) -> void:
 	var mid: Vector2 = (k["rect"] as Rect2).get_center()
 	k["flash"] = 1.0
 	var light_ball: bool = b is Dictionary and element() == "light"
-	if not _breaks(k) or (_shut(k) and not light_ball):
+	if not _breaks(k) or (_shut(k) and not light_ball and not _crumbling):
 		# iron, a mirror, a lock - or a rune while it is dark, a clam while it
 		# is shut: nothing
 		_burst(mid, Color(0.85, 0.88, 0.95), 6, 160.0)
 		return
 	if k["hp"] <= 0:
 		return
-	if _guarded(k) and not light_ball:
-		# A GUARD STANDS BESIDE IT: the blow glances off its shield
+	var warden: Variant = null if light_ball else _open_guard(k)
+	if warden != null:
+		# A GUARD STANDS BESIDE IT: the blow glances off its shield - and
+		# every GUARD_GLANCES of them crack the shield (THE SHIELD CRACKS)
 		k["warded"] = 1.0
 		_burst(mid, GUARD_GLOW, 5, 120.0, 0.0)
+		warden["glances"] = int(warden.get("glances", 0)) + 1
+		if int(warden["glances"]) >= GUARD_GLANCES:
+			warden["glances"] = 0
+			var wm: Vector2 = (warden["rect"] as Rect2).get_center()
+			zaps.append({"pts": PackedVector2Array([mid, wm]), "c": GUARD_GLOW, "age": 0.0})
+			if int(warden["hp"]) > 1:
+				_say(wm + Vector2(0, -14), "THE SHIELD CRACKS", GUARD_GLOW, 14, 0.8)
+			_damage(warden, 1, null)
+		return
+	var shut_in: Variant = null if light_ball else _shut_guard(k)
+	if shut_in != null:
+		# A GUARD SHUT IN (0.166.2): no ball can get to it, so the blow on a
+		# brick it shields goes through to it
+		k["warded"] = 1.0
+		_burst(mid, GUARD_GLOW, 5, 120.0, 0.0)
+		zaps.append({"pts": PackedVector2Array([mid, (shut_in["rect"] as Rect2).get_center()]), "c": GUARD_GLOW, "age": 0.0})
+		_damage(shut_in, n, b)
 		return
 	if k["kind"] == "fuse" and n < 99 and k["burn"] < 0.0:
 		# A FUSE IS LIT, not broken: the spark runs from here
@@ -1615,6 +1875,7 @@ func _wind_ball(dt: float) -> void:
 	if last_few() and not _said_last:
 		_said_last = true
 		_say(Vector2(640, 400), "THE LAST FEW", GOLD, 24, 1.2)
+	var aims: Array = []
 	for b in balls:
 		var v: Vector2 = b["v"]
 		if v == Vector2.ZERO:
@@ -1623,11 +1884,12 @@ func _wind_ball(dt: float) -> void:
 		if float(b["seek_t"]) <= 0.0:
 			b["seek_t"] = 0.3
 			var best: Vector2 = Vector2.INF
-			for k in bricks:
-				if k["hp"] > 0 and _breaks(k) and not _guarded(k):
-					var at: Vector2 = (k["rect"] as Rect2).get_center()
-					if best == Vector2.INF or at.distance_squared_to(b["p"]) < best.distance_squared_to(b["p"]):
-						best = at
+			if aims.is_empty():
+				aims = _seek_targets()
+			for k in aims:
+				var at: Vector2 = (k["rect"] as Rect2).get_center()
+				if best == Vector2.INF or at.distance_squared_to(b["p"]) < best.distance_squared_to(b["p"]):
+					best = at
 			b["seek"] = best
 		var to: Vector2 = b.get("seek", Vector2.INF)
 		if to == Vector2.INF:
@@ -1877,6 +2139,7 @@ func _waters(dt: float) -> void:
 			cells[up] = k
 			k["cell"] = up
 			k["rise"] = BUOY_RISE
+			_grid_ver += 1
 			_burst(_cell(home.x, home.y).get_center(), COLOURS["water"].lightened(0.3), 5, 90.0, -0.5)
 	for bu in bubbles:
 		bu["p"].y -= BUBBLE_SPEED * dt
@@ -2132,9 +2395,8 @@ func _pull(dt: float) -> void:
 	if boss != null or left <= 0 or left > PULL_BELOW * 8:
 		return
 	var targets: Array = []
-	for k in bricks:
-		if k["hp"] > 0 and _breaks(k) and not _guarded(k):
-			targets.append((k["rect"] as Rect2).get_center())
+	for k in _seek_targets():
+		targets.append((k["rect"] as Rect2).get_center())
 	pulling = not targets.is_empty() and targets.size() <= PULL_BELOW
 	if not pulling:
 		return
@@ -2517,6 +2779,7 @@ func _settle() -> void:
 		k["rect"] = r
 		cells[below] = k
 		gone_at.erase(below)
+		_grid_ver += 1
 
 
 func tremor_now(all: bool) -> int:
@@ -3493,6 +3756,11 @@ func _draw_arena() -> void:
 	for i in 5:
 		_cv.draw_circle(Vector2.ZERO, paddle_w * (0.7 + i * 0.22), Color(GOLD, 0.05))
 	_cv.draw_set_transform(_jolt)
+
+
+func _draw_arena_frame() -> void:
+	"""The arena's frame and its gold corners - the last of the arena, drawn
+	with the building, once a map (0.166.2)."""
 	for i in 6:
 		_cv.draw_rect(ARENA.grow(-i * 5.0), Color(0, 0, 0, 0.09), false, 5.0)
 	_cv.draw_rect(ARENA.grow(7), EDGE, false, 10.0)
@@ -3656,7 +3924,11 @@ func _draw_half_shell(mid: Vector2, w: float, h: float, up: bool, c: Color) -> v
 func _draw_guards() -> void:
 	"""Round every standing Guard, the cells it shields: a soft blue frame."""
 	var pulse: float = 0.5 + 0.5 * sin(t * 3.0)
-	for k in bricks:
+	var gk: int = bricks.size()
+	if gk != _guard_key:
+		_guard_key = gk
+		_guard_list = bricks.filter(func(x: Dictionary) -> bool: return x["kind"] == "guard")
+	for k in _guard_list:
 		if k["kind"] == "guard" and k["hp"] > 0 and k.has("cell"):
 			var c: Vector2i = k["cell"]
 			var box: Rect2 = _cell(c.x - 1, c.y - 1).merge(_cell(c.x + 1, c.y + 1)).grow(2.0)
@@ -3667,20 +3939,39 @@ func _draw_guards() -> void:
 
 
 func _paint_floor() -> void:
-	"""THE FLOOR, behind the bricks, every frame: the backdrop, the arena and
-	what lies on it - the tide, the ice, the gusts, the rails, the dark."""
+	"""THE FLOOR, behind the bricks, every frame: the backdrop and the arena
+	(then the building, a layer drawn once a map, and the floor over it)."""
 	_cv = floor_layer
 	_draw_backdrop()
 	if state != State.KINGDOMS:
 		floor_layer.draw_set_transform(_jolt)
 		_draw_arena()
-		_draw_building()
-		_draw_tide_body()
-		_draw_slicks()
-		_draw_gusts()
-		_draw_rails()
-		if dark:
-			_draw_dark()
+	_cv = self
+
+
+func _paint_building() -> void:
+	"""THE STONE THE BRICKS ARE SET IN, drawn again only when a map's shape
+	changes (0.166.2) - it was drawn every frame, the floor's dearest part.
+	The layer is moved with the shake instead."""
+	_cv = building_layer
+	_draw_arena_frame()
+	_draw_building()
+	_cv = self
+
+
+func _paint_floor_top() -> void:
+	"""Over the building, every frame: the tide, the ice, the gusts, the
+	rails, the dark."""
+	if state == State.KINGDOMS:
+		return
+	_cv = floor_top
+	floor_top.draw_set_transform(_jolt)
+	_draw_tide_body()
+	_draw_slicks()
+	_draw_gusts()
+	_draw_rails()
+	if dark:
+		_draw_dark()
 	_cv = self
 
 
@@ -3691,17 +3982,22 @@ func sync_bricks() -> void:
 	looked at half each frame, so a kind always moving is drawn every other
 	frame. What moves (drifters, kites, buoys) is put in place every frame.
 	Pictures whose bricks have gone (a new map, the blight's dead) are let
-	go."""
+	go. THE STILL BRICKS ARE ONE PICTURE: the cache is drawn again only on
+	a frame one of its bricks changed; a brick drawn every look shows its
+	twin (k["twin"], in brick_live) instead."""
 	redrawn = 0
 	if brick_layer == null:
 		return
 	_sync_n += 1
-	brick_layer.position = _jolt
-	brick_layer.visible = state != State.KINGDOMS
+	brick_pic.position = _jolt
+	brick_live.position = _jolt
+	brick_pic.visible = state != State.KINGDOMS
+	brick_live.visible = brick_pic.visible
 	_glow_last = last_few()
 	var glow: bool = pulling or _glow_last
 	var seen: int = 0
 	var half: int = _sync_n % 2
+	var dirty: bool = false
 	for k in bricks:
 		var node: Node2D = k.get("node")
 		if node == null:
@@ -3715,18 +4011,29 @@ func sync_bricks() -> void:
 			k["look"] = -2
 			k["half"] = seen % 2
 			k["shown"] = true
+			k["live"] = false
+			dirty = true
 		seen += 1
-		if k["hp"] <= 0 and UNBREAKABLE.find(k["kind"]) < 0:
+		if not k["shown"] and k["hp"] <= 0:
+			# long gone: nothing to look at
+			continue
+		if k["hp"] <= 0 and not NEVER_BREAKS.has(k["kind"]):
 			if k["shown"]:
 				k["shown"] = false
+				dirty = dirty or node.visible
 				node.visible = false
+				if k.has("twin"):
+					(k["twin"] as Node2D).visible = false
 			continue
 		if not k["shown"]:
 			k["shown"] = true
-			node.visible = true
+			dirty = _show_brick(k, node) or dirty
 		if k["flash"] > 0.0:
+			# struck: its twin flashes over it; the picture keeps it under
 			k["look"] = -1
-			node.queue_redraw()
+			if not k["live"]:
+				_brick_live(k, node, true, true)
+			(k["twin"] as Node2D).queue_redraw()
 			redrawn += 1
 			continue
 		if k["half"] != half and k["look"] != -2:
@@ -3734,24 +4041,121 @@ func sync_bricks() -> void:
 		var at: Vector2 = (k["rect"] as Rect2).position
 		if node.position != at:
 			node.position = at
+			dirty = dirty or not k["live"]
 		var look: int = _brick_look(k, glow)
+		var live: bool = look == -1 or _whole_twin(k)
+		if live and not k["live"]:
+			_brick_live(k, node, true, false)
+			dirty = true
+		elif live and k.get("under", false):
+			# drawn every look for longer than a blow: only its shadow stays
+			# in the picture
+			k["under"] = false
+			k["cached"] = -5
+			node.queue_redraw()
+			(k["twin"] as Node2D).queue_redraw()
+			dirty = true
+		elif not live and k["live"]:
+			dirty = _brick_still(k, node) or dirty
 		if look == -1 or look != k["look"]:
 			k["look"] = look
-			node.queue_redraw()
-			redrawn += 1
+			if live:
+				(k["twin"] as Node2D).queue_redraw()
+				redrawn += 1
+			elif int(k.get("cached", -3)) != look:
+				k["cached"] = look
+				node.queue_redraw()
+				dirty = true
+				redrawn += 1
 	for list in [movers, buoys]:
 		for k in list:
 			var node: Node2D = k.get("node")
-			if node != null and node.position != (k["rect"] as Rect2).position:
-				node.position = (k["rect"] as Rect2).position
+			if node == null:
+				continue
+			if not k.has("moves"):
+				# what moves leaves the picture altogether: its twin draws it
+				# all, its shadow too
+				k["moves"] = true
+				if not k["live"]:
+					_brick_live(k, node, true, false)
+				k["under"] = false
+				node.visible = false
+				(k["twin"] as Node2D).queue_redraw()
+				dirty = true
+			var at: Vector2 = (k["rect"] as Rect2).position
+			if node.position != at:
+				node.position = at
+			if k.has("twin") and (k["twin"] as Node2D).position != at:
+				(k["twin"] as Node2D).position = at
 	if brick_layer.get_child_count() > seen:
 		var keep: Dictionary = {}
 		for k in bricks:
 			if k.has("node"):
 				keep[k["node"]] = true
-		for n in brick_layer.get_children():
-			if not keep.has(n) and not n.is_queued_for_deletion():
-				n.queue_free()
+			if k.has("twin"):
+				keep[k["twin"]] = true
+		for layer in [brick_layer, brick_live]:
+			for n in (layer as Node).get_children():
+				if not keep.has(n) and not n.is_queued_for_deletion():
+					n.queue_free()
+					dirty = dirty or layer == brick_layer
+	if dirty:
+		brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+func _show_brick(k: Dictionary, node: Node2D) -> bool:
+	"""A brick back (the tide's, a hidden one shown): its place in the
+	picture, and its twin if it has one on. True when the picture changes."""
+	if k["live"]:
+		(k["twin"] as Node2D).visible = true
+	node.visible = not _whole_twin(k)
+	return node.visible
+
+
+func _whole_twin(k: Dictionary) -> bool:
+	"""Out of the still picture altogether, its twin drawing it all: what
+	moves, and every brick on a dark map (the dark over each brick reaches
+	over its neighbours, so their order is kept by drawing them all as
+	before)."""
+	return dark or k.has("moves")
+
+
+func _brick_live(k: Dictionary, node: Node2D, live: bool, under: bool) -> void:
+	"""A brick drawn every look, on its twin over the still picture: for a
+	blow's flash the picture keeps the whole brick under it (`under`); for
+	longer, only its shadow, so the picture's order of shadows holds. Back,
+	_brick_still()."""
+	k["live"] = live
+	var twin: Node2D = k.get("twin")
+	if twin == null:
+		twin = Node2D.new()
+		brick_live.add_child(twin)
+		twin.draw.connect(_paint_brick.bind(k, twin))
+		k["twin"] = twin
+	twin.position = node.position
+	twin.visible = true
+	twin.queue_redraw()
+	k["under"] = under
+	if _whole_twin(k):
+		k["under"] = false
+		node.visible = false
+	elif not under:
+		k["cached"] = -5
+		node.queue_redraw()
+
+
+func _brick_still(k: Dictionary, node: Node2D) -> bool:
+	"""Back into the still picture from its twin: true when the picture has
+	to be drawn again (it held only the shadow)."""
+	k["live"] = false
+	if k.has("twin"):
+		(k["twin"] as Node2D).visible = false
+	if k.get("under", false):
+		k["under"] = false
+		return false
+	k["cached"] = -5
+	node.visible = true
+	return true
 
 
 func _brick_look(k: Dictionary, glow: bool = false) -> int:
@@ -3762,7 +4166,7 @@ func _brick_look(k: Dictionary, glow: bool = false) -> int:
 	if not STILL_KINDS.has(kind) or k["flash"] > 0.0 or k["burn"] >= 0.0 or k.has("warded"):
 		return -1
 	var hp: int = k["hp"]
-	if glow and hp > 0 and UNBREAKABLE.find(kind) < 0 and not _guarded(k):
+	if glow and _can_hit(k):
 		return -1
 	var look: int = ((hp * 64 + k["most"]) * 16 + LAND_NO.get(k["land"], 0)) * 4
 	if k.get("frozen", false):
@@ -3783,7 +4187,13 @@ func _paint_brick(k: Dictionary, node: Node2D) -> void:
 	_cv = node
 	var r: Rect2 = k["rect"]
 	var here := Rect2(Vector2.ZERO, r.size)
-	node.draw_rect(Rect2(Vector2(2, 3), r.size), Color(0, 0, 0, 0.38))
+	var twin: bool = node == k.get("twin")
+	if not twin or _whole_twin(k):
+		# the shadow in the still picture, where the bricks' order keeps it
+		# (THE STILL BRICKS ARE ONE PICTURE); a twin draws the rest
+		node.draw_rect(Rect2(Vector2(2, 3), r.size), Color(0, 0, 0, 0.38))
+	if not twin and k.get("live", false) and not k.get("under", false):
+		return
 	var standard := Vector2(CW - 2.0, CH)
 	if r.size.is_equal_approx(standard) or k["kind"] == "heart" or k["kind"] == "boulder":
 		_draw_brick_in(k, here)
@@ -3797,7 +4207,7 @@ func _paint_brick(k: Dictionary, node: Node2D) -> void:
 		_draw_frozen(here)
 	if k.has("frost") and k["hp"] > 0:
 		_draw_frost_coat(here)
-	if (pulling or _glow_last) and k["hp"] > 0 and _breaks(k) and not _guarded(k):
+	if (pulling or _glow_last) and _can_hit(k):
 		var glow: float = 0.5 + 0.5 * sin(t * 6.0)
 		node.draw_rect(here.grow(3.0 + glow * 3.0), Color(GOLD, 0.35 + 0.35 * glow), false, 2.0)
 	if dark:

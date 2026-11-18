@@ -3446,7 +3446,9 @@ func _test_crownfall() -> void:
 	run._damage(shielded, 1, null)
 	_cf_bare(run)
 	var ring_guard: Dictionary = run._add(10, 5, "guard", "light", 2)
-	for d in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+	# a ring open below, so a ball can get to the Guard (one shut in on every
+	# side takes the blows instead - _test_crownfall_never_locked())
+	for d in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0)]:
 		run._add(10 + d.x, 5 + d.y, "land", "light", 1)
 	run._add(25, 3, "land", "light", 1)
 	run.breakable = run.bricks.size()
@@ -3938,9 +3940,12 @@ func _test_crownfall_draws_less() -> void:
 		struck and thawed and hidden, [struck, thawed, hidden])
 	var src: String = _code_src("res://src/world/crownfall/crownfallrun.gd")
 	var own: String = _func_body(src, "func _draw() -> void:")
-	check("  the floor, then the bricks, both behind the run's own drawing - which draws no brick",
-		run.floor_layer.show_behind_parent and run.brick_layer.show_behind_parent
-		and run.floor_layer.get_index() < run.brick_layer.get_index()
+	check("  the floor, the stone they are set in, the floor over it, then the bricks (the still ones one picture, 0.166.2, the rest over it), all behind the run's own drawing - which draws no brick",
+		run.floor_layer.show_behind_parent and run.building_layer.show_behind_parent and run.floor_top.show_behind_parent
+		and run.brick_pic.show_behind_parent and run.brick_live.show_behind_parent
+		and run.floor_layer.get_index() < run.building_layer.get_index() and run.building_layer.get_index() < run.floor_top.get_index()
+		and run.floor_top.get_index() < run.brick_pic.get_index() and run.brick_pic.get_index() < run.brick_live.get_index()
+		and run.brick_layer.get_parent() == run.brick_cache
 		and not own.contains("_draw_brick_in") and not own.contains("for k in bricks"))
 	run.begin(16)
 	run.sync_bricks()
@@ -3990,3 +3995,159 @@ func _test_crownfall_draws_less() -> void:
 	run.queue_free()
 	await get_tree().process_frame
 	print("  crownfall draws less: done")
+
+
+func _test_crownfall_never_locked() -> void:
+	section("Crownfall is never locked (0.166.2): a Guard shut in, the shield cracks, the balls aim at what breaks, the walls crumble, drawn lighter")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	# ---- Gilded Gate, as the owner left it: a Guard in the middle of its own nine ----
+	run.rng.seed = 7
+	run.begin(0)
+	var gate_guards: Array = run.bricks.filter(func(k: Dictionary) -> bool: return k["kind"] == "guard")
+	var all_shut: bool = gate_guards.size() == 4 and gate_guards.all(func(k: Dictionary) -> bool: return not run._reachable(k))
+	var keep: Dictionary = {}
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			keep[Vector2i(13 + dx, 5 + dy)] = true
+	run._crumbling = true
+	for k in run.bricks.duplicate():
+		if k.has("cell") and not keep.has(k["cell"]) and int(k["hp"]) > 0 and run._breaks(k):
+			run._damage(k, 99, null)
+	run._crumbling = false
+	var guard: Dictionary = run.cells[Vector2i(13, 5)]
+	var below: Dictionary = run.cells[Vector2i(13, 6)]
+	var nine: bool = run.breakable - run.broken == 9
+	var shut_in: bool = not run._reachable(guard) and run._reachable(below) and run._shut_guard(below) == guard
+	var below_hp: int = below["hp"]
+	run._damage(below, 1, null)
+	var through: bool = int(below["hp"]) == below_hp and int(guard["hp"]) == 1 and below.has("warded")
+	run._damage(below, 1, null)
+	var fell: bool = int(guard["hp"]) == 0
+	run._damage(below, 1, null)
+	var then_breaks: bool = int(below["hp"]) == 0
+	check("A GUARD SHUT IN: Gilded Gate's four Guards have every side a brick they shield; a blow on one of those goes through to the Guard, which falls in two - then they break",
+		all_shut and nine and shut_in and through and fell and then_breaks,
+		[all_shut, gate_guards.size(), nine, run.breakable - run.broken, shut_in, through, fell, then_breaks])
+	# ---- a Guard a ball can get to: the blow glances, and every third cracks the shield ----
+	_cf_bare(run)
+	var open_guard: Dictionary = run._add(10, 5, "guard", "light", 2)
+	var beside: Dictionary = run._add(11, 5, "land", "light", 1)
+	run._damage(beside, 1, null)
+	run._damage(beside, 1, null)
+	var two_glance: bool = int(beside["hp"]) == 1 and int(open_guard["hp"]) == 2 and run._reachable(open_guard) and run._guarded(beside)
+	run._damage(beside, 1, null)
+	var cracked: bool = int(open_guard["hp"]) == 1 and int(beside["hp"]) == 1
+	for i in Run.GUARD_GLANCES:
+		run._damage(beside, 1, null)
+	var shield_gone: bool = int(open_guard["hp"]) == 0
+	run._damage(beside, 1, null)
+	check("THE SHIELD CRACKS: a Guard a ball can reach still turns the blow aside - but every %d glancing blows give it a hit of its own, so a shield never locks a map" % Run.GUARD_GLANCES,
+		two_glance and cracked and shield_gone and int(beside["hp"]) == 0, [two_glance, cracked, shield_gone, beside["hp"]])
+	# ---- what the seeking balls aim at ----
+	_cf_bare(run)
+	run.t = Run.RUNE_LIT + 0.1
+	var aimed: Dictionary = run._add(10, 5, "guard", "light", 2)
+	run._add(11, 5, "land", "light", 1)
+	run._add(20, 5, "land", "light", 1)
+	var rune: Dictionary = run._add(25, 5, "rune", "light", 1)
+	run._add(5, 5, "iron", "", 1)
+	var aims: Array = run._seek_targets()
+	var guard_first: bool = aims.size() == 1 and aims[0] == aimed
+	run._damage(aimed, 99, null)
+	aims = run._seek_targets()
+	var then_open: bool = aims.size() == 2 and not aims.has(rune) and aims.all(func(k: Dictionary) -> bool: return k["kind"] == "land")
+	_cf_bare(run)
+	var ringed: Dictionary = run._add(10, 5, "guard", "light", 2)
+	for d in Run.DIRS4:
+		run._add(10 + d.x, 5 + d.y, "land", "light", 1)
+	run.breakable = 5
+	run.broken = 0
+	run.balls = [run._ball(Vector2(400, 600), Vector2(0, -560))]
+	run._wind_ball(1.0 / 60.0)
+	var seek: Vector2 = run.balls[0].get("seek", Vector2.INF)
+	var not_shut: bool = run.last_few() and seek != Vector2.INF and seek != (ringed["rect"] as Rect2).get_center() \
+		and run._brick_look(ringed, true) != -1
+	check("THE BALLS AIM AT WHAT BREAKS: a Guard a ball can reach first, never a shielded brick, a dark rune or iron - and never a Guard shut in, nor does it glow",
+		guard_first and then_open and not_shut, [guard_first, then_open, aims.size(), not_shut, seek])
+	# ---- the way in, and the walls that crumble ----
+	_cf_bare(run)
+	var top: Dictionary = run._add(5, 0, "land", "light", 1)
+	for c in [Vector2i(5, 1), Vector2i(4, 0), Vector2i(6, 0)]:
+		run._add(c.x, c.y, "iron", "", 1)
+	var over_top: bool = run._reachable(top)
+	_cf_bare(run)
+	var boxed: Dictionary = run._add(10, 5, "land", "light", 1)
+	for d in Run.DIRS4:
+		run._add(10 + d.x, 5 + d.y, "iron", "", 1)
+	run.breakable = 1
+	run.broken = 0
+	run.balls = [run._ball(Vector2(640, 600), Vector2(0, -400))]
+	var unreached: bool = not run._reachable(boxed) and run.seeking()
+	for i in roundi(Run.CRUMBLE_AFTER / Run.CRUMBLE_LOOK) - 1:
+		run._walls_crumble(Run.CRUMBLE_LOOK)
+	var waited: bool = int(boxed["hp"]) == 1
+	for i in 2:
+		run._walls_crumble(Run.CRUMBLE_LOOK)
+	var crumbled: bool = int(boxed["hp"]) == 0 and run.broken == run.breakable
+	check("THE WAY IN: a brick under the arena's top is reached over the rows; one boxed in iron is not - and with nothing left a ball can reach and hurt, after %ds the walls crumble and the map can be cleared" % int(Run.CRUMBLE_AFTER),
+		over_top and unreached and waited and crumbled, [over_top, unreached, waited, crumbled])
+	# ---- drawn lighter: the stone once a map, the still bricks one picture ----
+	run.begin(0)
+	run._process(1.0 / 60.0)
+	var stone_key: int = run._building_key
+	run._process(1.0 / 60.0)
+	var stone_kept: bool = run._building_key == stone_key
+	run.begin(1)
+	run._process(1.0 / 60.0)
+	var stone_new: bool = run._building_key != stone_key
+	var floor_src: String = _func_body(_code_src("res://src/world/crownfall/crownfallrun.gd"), "func _paint_floor() -> void:")
+	var plain: Dictionary = {}
+	for k in run.bricks:
+		if k["kind"] == "land" and int(k["hp"]) > 0:
+			plain = k
+			break
+	run.sync_bricks()
+	run.sync_bricks()
+	run.brick_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	run.sync_bricks()
+	run.sync_bricks()
+	var quiet: bool = run.brick_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED
+	plain["flash"] = 1.0
+	run.sync_bricks()
+	var twin: bool = plain.has("twin") and (plain["twin"] as Node2D).visible and (plain["node"] as Node2D).visible \
+		and run.brick_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED
+	plain["flash"] = 0.0
+	run.sync_bricks()
+	run.sync_bricks()
+	var back: bool = (plain["node"] as Node2D).visible and not (plain["twin"] as Node2D).visible \
+		and run.brick_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED
+	plain["hp"] = 0
+	run.sync_bricks()
+	var gone: bool = not (plain["node"] as Node2D).visible and run.brick_cache.render_target_update_mode == SubViewport.UPDATE_ONCE
+	var premult: bool = (run.brick_pic.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	check("DRAWN LIGHTER: the stone the bricks are set in is drawn once a map, not every frame; the still bricks are one picture, drawn again only when one changes - a struck brick's twin flashes over it without drawing the picture again, and a broken one leaves it",
+		stone_kept and stone_new and not floor_src.contains("_draw_building") and quiet and twin and back and gone and premult,
+		[stone_kept, stone_new, quiet, twin, back, gone, premult])
+	run.queue_free()
+	# ---- the town is not drawn under the screen ----
+	var screen: CanvasLayer = Screen.new()
+	var town := Node2D.new()
+	add_child(town)
+	screen.cover(town)
+	var hidden: bool = not town.visible
+	screen.uncover()
+	var shown: bool = town.visible
+	var a_node := Node.new()
+	screen.cover(a_node)
+	var left_alone: bool = screen.get("_covered") == null
+	screen.free()
+	town.queue_free()
+	a_node.free()
+	check("THE TOWN UNDER IT: while the screen is up the town is not drawn, and shown again when it goes; a scene that does not draw is left alone",
+		hidden and shown and left_alone, [hidden, shown, left_alone])
+	await get_tree().process_frame
+	print("  crownfall never locked: done")

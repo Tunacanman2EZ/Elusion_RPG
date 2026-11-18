@@ -15756,6 +15756,53 @@ coats of paint is that **an element changes how a thing behaves, not just what
 colour it is** — and the numbers for that live in three separate places, on
 purpose, because they answer three different questions.
 
+### Crownfall can always be cleared (0.166.2)
+
+The owner, of Gilded Gate: "i have no way to break this", "the final ball
+keeps bouncing into the ice and shield so we need to rethink the logic",
+and "my computer is running a little hard playing this i can tell because
+my fan kicks up". Gilded Gate's four Guards each stand in the middle of
+their own nine: every side a brick they shield, so no ball could hit them
+and no blow could hurt their bricks - only a light ball got through.
+
+- **A Guard shut in** (crownfallrun.gd, A GUARD SHUT IN): which cells a
+  ball can get to is a flood from under the rows through the empty cells,
+  the band above the rows, the lanes and their gates (`_refresh_reach()`,
+  `_open`, worked out again only when the grid changes - `_grid_ver` is
+  bumped wherever a brick is set or moves). `_guarded()` counts only a
+  Guard a ball can get to (`_open_guard()`); a blow on a brick shielded
+  only by shut-in Guards goes through to the Guard (`_shut_guard()`), a
+  blue zap from the brick to it.
+- **The shield cracks** (`GUARD_GLANCES`, 3): every third blow that
+  glances off a Guard a ball can reach deals the Guard a hit of its own.
+- **The balls aim at what breaks** (`_seek_targets()`, `_can_hit()`): the
+  last few's glow, their pull and the stuck balls' search aim only at
+  bricks a ball can get to and a blow can break now - Guards first, never
+  a shielded brick, a dark rune, a shut clam or iron.
+- **The walls crumble** (`_walls_crumble()`): while the balls seek and not
+  one brick left can be reached and hurt (looked at every `CRUMBLE_LOOK`),
+  after `CRUMBLE_AFTER` (2 s) every brick left that counts breaks.
+- **Drawn lighter**: the still bricks are one picture (`brick_cache`, a
+  SubViewport shown by `brick_pic` with premultiplied alpha), drawn again
+  only on a frame one of them changes; a brick drawn every look (struck,
+  burning, shielded, glowing, a moving kind, every brick on a dark map)
+  shows its twin in `brick_live` over it. The stone the bricks are set in
+  and the arena's frame are `building_layer`, drawn once a map
+  (`_building_key`) and moved with the shake; the tide, ice, gusts, rails
+  and dark are `floor_top`, every frame. The Guards' list is kept, not
+  filtered every frame. And the town is not drawn under Crownfall's screen
+  (crownfallscreen.gd `cover()` / `uncover()`); it goes on running.
+- **Measured** (container, script work a frame avg / worst, draw calls,
+  0.166.1 -> 0.166.2): Gilded Gate one ball 4.9 / 42.5 ms, 1,528 draws ->
+  3.8 / 7.2, 484; six balls on fire 7.6 / 33.7, 1,364 -> 6.2 / 15.4, 984;
+  Plague Garden (1,342 bricks) six on fire 13.4 / 31.0, 2,213 -> 10.4 /
+  22.7, 1,802; Coral Reef's tide 8.1 / 16.9, 2,297 -> 6.6 / 14.1, 1,053;
+  the Tide King's Grotto 10.3 / 25.4, 1,783 -> 7.8 / 16.8, 1,294; the last
+  few seeking 5.2 / 49.2 -> 4.5 / 15.8. Pictures of eleven maps before and
+  after: a handful of pixels apart.
+- `_test_crownfall_never_locked()` (testrunner_12); the ring Guard test
+  now leaves its ring open below.
+
 ### Which file owns which number
 
 | question | lives in | example |

@@ -43,6 +43,11 @@
 # Leave: the button, or Escape - twice while a run is on, once before or
 # after it. Keys are kept from the rest of the game while it is up.
 #
+# THE TOWN UNDER IT (0.166.2, the owner: "my computer is running a little
+# hard playing this i can tell because my fan kicks up"): the screen covers
+# the whole window, so while it is up the town is not drawn (cover()); it
+# goes on running, and is shown again the moment the screen goes.
+#
 # No class_name; the card loads it by path.
 extends CanvasLayer
 
@@ -76,6 +81,7 @@ const SLIDER_GAIN := 3.0
 
 var run: Node2D = null
 var viewport: SubViewport = null
+var _covered: CanvasItem = null
 var picture: TextureRect = null
 var frame: Control = null
 var flash: ColorRect = null
@@ -162,6 +168,7 @@ func _ready() -> void:
 	add_child(flash)
 	_build_words()
 	_hold_the_character()
+	cover(get_tree().current_scene)
 	start()
 	tell_story()
 
@@ -725,9 +732,25 @@ func close() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode
 	_held = null
+	uncover()
 	queue_free()
 
 
+func cover(scene: Node) -> void:
+	"""The world under the screen goes undrawn while it is up (THE TOWN UNDER
+	IT): only a scene that draws, and is drawn now."""
+	if scene is CanvasItem and scene != self and (scene as CanvasItem).visible:
+		_covered = scene
+		_covered.visible = false
+
+
+func uncover() -> void:
+	if _covered != null and is_instance_valid(_covered):
+		_covered.visible = true
+	_covered = null
+
+
 func _exit_tree() -> void:
+	uncover()
 	if _held != null and is_instance_valid(_held):
 		_held.process_mode = _held_mode

@@ -290,6 +290,7 @@ func _run_all() -> void:
 	await _test_crownfall()
 	await _test_crownfall_on_a_phone()
 	await _test_crownfall_draws_less()
+	await _test_crownfall_never_locked()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
