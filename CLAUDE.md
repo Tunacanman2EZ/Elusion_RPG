@@ -15829,6 +15829,68 @@ chose both fixes (crownfallscreen.gd, THE CONTROLS):
 - `_test_crownfall_slider_never_sticks()` (testrunner_12); the phone test's
   field finger now launches on its lift.
 
+### Each finger moves by its own step (0.166.4)
+
+The owner, on his phone in the browser: "slider is fine but when i tap to
+fire on phone slider stops working and forces slider left". The slider
+and a field finger moved the paddle by `InputEventScreenDrag.relative`,
+and the web build works a drag's relative out against the touch in the
+same place of the browser's event, not the same finger: with a second
+finger down (a tap to fire), the thumb's step could be the leap from that
+finger to the thumb, hundreds of px to the left, and the paddle slammed
+against the left wall (crownfallscreen.gd, THE CONTROLS):
+
+- **Its own step**: `_finger_at` keeps every finger's last place on the
+  window (set on its press, moved on each drag, gone on its lift and in
+  `_forget_fingers()`); a drag moves by its position less that finger's
+  own last one. `drag.relative` is never read, and the suite fails if
+  `drag.relative.x` is back in the screen.
+- **No leaps**: one step past `_most_step()` (a quarter of the field, in
+  px on the picture) moves nothing; the place is still kept, so the next
+  real step moves from it.
+- **The browser's own mouse**: for `TOUCH_QUIET_MS` (800) after a finger
+  a mouse move or click is not believed (a browser may send its own click
+  after a tap), and the frame's mouse and key-rest branches ask
+  `_touching()` - the touch controls on, a finger down, or one just lifted
+  - so nothing but a thumb moves the paddle while one is in use.
+- The test helper `_cf_slide()` sends a position as a phone does; the
+  phone test reaches the left wall in real steps. Checked in
+  `_test_crownfall_slider_never_sticks()`, each fix sabotaged in turn.
+
+### The final fireball (the same 0.166.4)
+
+The owner, with a picture of the last gold brick boxed in mirrors: "the
+ball is not locking on sharp enough and it becomes to hard to hit that 1
+square maybe the final tiles we make the ball turn into a fireball"
+(crownfallrun.gd, THE FINAL FIREBALL):
+
+- **In the last few** (`last_few()`: LAST_FEW or fewer left, no boss)
+  `final_fire` is on, set each step and cleared in `_clear_map()`. Every
+  ball in flight goes through every brick - iron, mirrors, bumpers,
+  portals, whirls, shut and shielded ones - without bouncing, and breaks
+  at a touch whatever can break (`_damage(k, 99, b)`; a final fireball
+  passes a Guard's shield and a shut brick as a light ball does, sets no
+  wood alight and hardens no shell). Walls, the top and the paddle still
+  turn it; a ball lost is a life lost. It is drawn as the Fireball, and
+  "FINAL FIREBALL" is said once, where "THE LAST FEW" was. It is its own
+  flag, not an entry in `active`: the Fireball's timer and the HUD's
+  powers never see it.
+- **It locks on**: `_wind_ball()` turns LAST_TURN (220) degrees a second
+  in the last few, LAST_TURN_ONE (360) with one or two left, and while
+  `final_fire` never a wider turn than half the way to its brick (up to
+  LAST_TURN_MOST, 1440) - so it homes in and does not circle, and is
+  still seen to travel. Its targets (`_seek_targets()`) are then every
+  brick left that breaks, behind mirrors or not. Balls stuck
+  STUCK_SECONDS bend STUCK_TURN (50), as before.
+- **The walls still crumble, later**: while `final_fire` is on they wait
+  FINAL_WAITS (4) times CRUMBLE_AFTER - the fireball should get there
+  first; the crumble stays the last resort.
+- `_test_crownfall_final_fireball()`: the owner's picture (one brick boxed
+  in mirrors and iron, off to one side) breaks inside CRUMBLE_AFTER; a
+  final fireball passes a mirror; outside the last few a ball still
+  bounces off one; the flag is on only in the last few and off on a new
+  map; close by it turns harder than LAST_TURN_ONE. Each sabotaged in turn.
+
 ### Which file owns which number
 
 | question | lives in | example |

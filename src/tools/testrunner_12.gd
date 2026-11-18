@@ -3750,6 +3750,10 @@ func _test_crownfall() -> void:
 	print("  crownfall: done")
 
 
+# Where each of Crownfall's test fingers is on the window (index -> Vector2).
+var _cf_at: Dictionary = {}
+
+
 func _cf_finger(screen: CanvasLayer, index: int, at: Vector2, down: bool) -> void:
 	"""Crownfall's phone checks: a finger put down or lifted at `at` on the
 	window."""
@@ -3757,13 +3761,22 @@ func _cf_finger(screen: CanvasLayer, index: int, at: Vector2, down: bool) -> voi
 	touch.index = index
 	touch.position = at
 	touch.pressed = down
+	if down:
+		_cf_at[index] = at
+	else:
+		_cf_at.erase(index)
 	screen.call("_input", touch)
 
 
 func _cf_slide(screen: CanvasLayer, index: int, by_x: float) -> void:
+	"""A finger slid by `by_x` px on the window: its position and its
+	relative both, as a phone sends them."""
+	var from: Vector2 = _cf_at.get(index, Vector2.ZERO)
 	var drag := InputEventScreenDrag.new()
 	drag.index = index
+	drag.position = from + Vector2(by_x, 0.0)
 	drag.relative = Vector2(by_x, 0.0)
+	_cf_at[index] = drag.position
 	screen.call("_input", drag)
 
 
@@ -3829,7 +3842,10 @@ func _test_crownfall_on_a_phone() -> void:
 	_cf_slide(screen, 2, -5.0 * fit)
 	var both: bool = is_equal_approx(srun.target_x, both_from - 15.0 * Screen.SLIDER_GAIN)
 	_cf_finger(screen, 2, field, false)
-	_cf_slide(screen, 0, -2000.0 * fit)
+	# far to the left in real steps (0.166.4: one leap past a quarter of the
+	# field in a single drag moves nothing)
+	for i in 40:
+		_cf_slide(screen, 0, -60.0 * fit)
 	var clamped: bool = srun.target_x == Run.ARENA.position.x
 	_cf_finger(screen, 0, thumb, false)
 	_cf_slide(screen, 0, 50.0 * fit)
@@ -4184,7 +4200,7 @@ func _test_crownfall_never_locked() -> void:
 # its lift while a ball waits, at once while one flies).
 
 func _test_crownfall_slider_never_sticks() -> void:
-	section("CROWNFALL'S SLIDER NEVER STICKS (0.166.3): the newest thumb, fingers forgotten, a drag anywhere")
+	section("CROWNFALL'S SLIDER NEVER STICKS (0.166.3, 0.166.4): the newest thumb, fingers forgotten, a drag anywhere, each finger by its own step")
 	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
 	const Screen := preload("res://src/world/crownfall/crownfallscreen.gd")
 	var screen: CanvasLayer = Screen.new()
@@ -4268,10 +4284,178 @@ func _test_crownfall_slider_never_sticks() -> void:
 	check("a finger anywhere on the field slides the paddle %dx as far as it moves; while the ball waits its press launches nothing, a slide never launches, and a tap launches on its lift; while a ball flies a press taps at once (the Laser's volley) and the same finger slides the paddle, its lift taps no more" % int(Screen.SLIDER_GAIN),
 		aim_press and drag_moves and drag_no_launch and still_aiming and launched_on_lift and volley_at_once and fly_slides and no_second,
 		[aim_press, drag_moves, drag_no_launch, still_aiming, launched_on_lift, volley_at_once, fly_slides, no_second])
+	# EACH FINGER BY ITS OWN STEP (0.166.4): the web build can hand the
+	# thumb's drag a relative from another finger to it; the paddle goes by
+	# the thumb's own positions, and a leap past a quarter of the field
+	# moves nothing
+	var left_x: float = Run.ARENA.position.x
+	var right_x: float = Run.ARENA.end.x
+	screen.call("_process", 1.0 / 60.0)
+	srun.target_x = (left_x + right_x) / 2.0
+	_cf_finger(screen, 7, thumb, true)
+	_cf_finger(screen, 8, field, true)
+	var before: float = srun.target_x
+	var leap := InputEventScreenDrag.new()
+	leap.index = 7
+	leap.position = thumb + Vector2(6.0, 0.0)
+	leap.relative = Vector2(-700.0, 0.0)
+	_cf_at[7] = leap.position
+	screen.call("_input", leap)
+	var want: float = clampf(before + 6.0 / fit * Screen.SLIDER_GAIN, left_x, right_x)
+	var own_step: bool = absf(srun.target_x - want) < 0.01 and srun.target_x > before
+	var at_tap: float = srun.target_x
+	var bogus := InputEventScreenDrag.new()
+	bogus.index = 8
+	bogus.position = field + Vector2(-4.0, 0.0)
+	bogus.relative = Vector2(900.0, 0.0)
+	_cf_at[8] = bogus.position
+	screen.call("_input", bogus)
+	var tap_own: bool = absf(srun.target_x - clampf(at_tap - 4.0 / fit * Screen.SLIDER_GAIN, left_x, right_x)) < 0.01
+	var at_jump: float = srun.target_x
+	var jump := InputEventScreenDrag.new()
+	jump.index = 7
+	jump.position = (_cf_at[7] as Vector2) + Vector2(Run.ARENA.size.x * 0.5 * fit, 0.0)
+	jump.relative = Vector2(Run.ARENA.size.x * 0.5 * fit, 0.0)
+	_cf_at[7] = jump.position
+	screen.call("_input", jump)
+	var leap_ignored: bool = is_equal_approx(srun.target_x, at_jump)
+	_cf_slide(screen, 7, 5.0)
+	var after_leap: bool = absf(srun.target_x - clampf(at_jump + 5.0 / fit * Screen.SLIDER_GAIN, left_x, right_x)) < 0.01
+	check("each finger moves the paddle by its own step: a thumb's drag carrying another finger's leap as its relative moves by its own +6 px (not slammed to the left wall), a tap finger's drag the same, and a step past a quarter of the field moves nothing while the next real step does",
+		own_step and tap_own and leap_ignored and after_leap,
+		[before, srun.target_x, own_step, tap_own, leap_ignored, after_leap])
+	# the browser's own mouse after a tap takes nothing from the thumbs
+	screen.set("on_touch", func() -> bool: return false)
+	screen.set("mouse_at", func() -> Vector2: return box.position)
+	var held_at: float = srun.target_x
+	var ghost := InputEventMouseMotion.new()
+	ghost.position = box.position + Vector2(5, 300) * fit
+	ghost.relative = Vector2(-40.0, 0.0)
+	screen.call("_input", ghost)
+	var ghost_click := InputEventMouseButton.new()
+	ghost_click.button_index = MOUSE_BUTTON_LEFT
+	ghost_click.pressed = true
+	ghost_click.position = ghost.position
+	screen.call("_input", ghost_click)
+	var mouse_unbelieved: bool = not bool(screen.get("_by_mouse"))
+	screen.call("_process", 1.0 / 60.0)
+	var paddle_kept: bool = is_equal_approx(srun.target_x, held_at)
+	_cf_slide(screen, 7, 5.0)
+	var still_slides: bool = absf(srun.target_x - clampf(held_at + 5.0 / fit * Screen.SLIDER_GAIN, left_x, right_x)) < 0.01
+	check("the mouse just after a finger is the browser's, not believed: its move and click take nothing, the frame does not put the paddle under it (even with the touch controls switched off), and the thumb still slides",
+		mouse_unbelieved and paddle_kept and still_slides, [mouse_unbelieved, paddle_kept, still_slides])
+	screen.set("on_touch", func() -> bool: return true)
+	_cf_finger(screen, 7, thumb, false)
+	_cf_finger(screen, 8, field, false)
 	var head: String = (Screen as GDScript).source_code
 	head = head.substr(0, head.find("extends CanvasLayer"))
-	check("the screen's header says the phone's controls as they are now (the newest thumb, a drag anywhere, the tap on the lift while a ball waits, fingers forgotten)",
-		head.contains("newest thumb") and head.contains("DRAG ANYWHERE") and head.contains("_forget_fingers()"), [])
+	check("the screen's header says the phone's controls as they are now (the newest thumb, a drag anywhere, the tap on the lift while a ball waits, fingers forgotten, each finger by its own step)",
+		head.contains("newest thumb") and head.contains("DRAG ANYWHERE") and head.contains("_forget_fingers()")
+		and head.contains("EACH FINGER MOVES BY ITS OWN STEP"), [])
+	var code: String = (Screen as GDScript).source_code
+	check("the screen never moves the paddle by a drag's relative (the web build's is not the finger's)",
+		not code.contains("drag.relative.x"), [])
 	screen.queue_free()
 	await get_tree().process_frame
 	print("  crownfall's slider never sticks: done")
+
+
+func _test_crownfall_final_fireball() -> void:
+	section("Crownfall's final fireball (0.166.4): the last few go through everything and lock on")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	# ---- the owner's picture: the last brick boxed in mirrors and iron ----
+	_cf_bare(run)
+	var last: Dictionary = run._add(22, 6, "land", "light", 1)
+	for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(0, -1),
+			Vector2i(-1, -1), Vector2i(1, -1)]:
+		run._add(22 + d.x, 6 + d.y, "mirror" if (d.x + d.y) % 2 == 0 else "iron", "light", 0)
+	run.breakable = 1
+	run.broken = 0
+	run.lives = 99
+	run.balls = [run._ball(Vector2(300, 640), Vector2(0, -Run.SPEED))]
+	var broke_at: float = -1.0
+	var lit: bool = false
+	for i in 300:
+		run.step(1.0 / 60.0)
+		lit = lit or run.final_fire
+		if int(last["hp"]) <= 0:
+			broke_at = run.t
+			break
+	var walls_stand: bool = run.bricks.filter(func(k: Dictionary) -> bool: return k["kind"] == "mirror" or k["kind"] == "iron").size() == 8
+	check("THE FINAL FIREBALL: the last brick, boxed in mirrors and iron off to one side, breaks inside %ds - the walls would wait %ds" % [int(Run.CRUMBLE_AFTER), int(Run.CRUMBLE_AFTER * Run.FINAL_WAITS)],
+		lit and broke_at > 0.0 and broke_at < Run.CRUMBLE_AFTER and walls_stand, [lit, broke_at, walls_stand])
+	# ---- straight through a mirror, up to the brick behind it ----
+	_cf_bare(run)
+	var mirror: Dictionary = run._add(10, 12, "mirror", "light", 0)
+	run._add(10, 2, "land", "light", 1)
+	run.breakable = 1
+	run.broken = 0
+	var mid_x: float = (mirror["rect"] as Rect2).get_center().x
+	run.balls = [run._ball(Vector2(mid_x, 600), Vector2(0, -Run.SPEED))]
+	var bounced: bool = false
+	var past: bool = false
+	for i in 60:
+		run.step(1.0 / 60.0)
+		if run.balls.is_empty():
+			break
+		var b: Dictionary = run.balls[0]
+		bounced = bounced or (b["v"] as Vector2).y > 0.0
+		past = past or (b["p"] as Vector2).y < (mirror["rect"] as Rect2).position.y - Run.BALL_R
+		if past:
+			break
+	check("THE FINAL FIREBALL passes a mirror without bouncing", past and not bounced and int(mirror["hp"]) == 0, [past, bounced])
+	# ---- a normal ball outside the last few still bounces off it ----
+	_cf_bare(run)
+	mirror = run._add(10, 12, "mirror", "light", 0)
+	for c in 20:
+		run._add(c, 1, "land", "light", 1)
+	run.breakable = 20
+	run.broken = 0
+	run.balls = [run._ball(Vector2(mid_x, 600), Vector2(0, -Run.SPEED))]
+	var back: bool = false
+	var through: bool = false
+	for i in 60:
+		run.step(1.0 / 60.0)
+		if run.balls.is_empty():
+			break
+		var b: Dictionary = run.balls[0]
+		back = back or (b["v"] as Vector2).y > 0.0
+		through = through or (b["p"] as Vector2).y < (mirror["rect"] as Rect2).position.y - Run.BALL_R
+		if back:
+			break
+	check("Outside the last few a ball still bounces off a mirror (and is no fireball)", back and not through and not run.final_fire,
+		[back, through, run.final_fire])
+	# ---- on only in the last few, off on a new map ----
+	_cf_bare(run)
+	for c in 10:
+		run._add(c + 3, 3, "land", "light", 1)
+	run.breakable = 10
+	run.broken = 0
+	run.balls = [run._ball(Vector2(640, 600), Vector2(0, -Run.SPEED))]
+	run.step(1.0 / 60.0)
+	var off_many: bool = not run.final_fire
+	run.broken = 6
+	run.step(1.0 / 60.0)
+	var on_few: bool = run.final_fire
+	run.begin(1)
+	var off_new: bool = not run.final_fire
+	check("The final fireball is on only in the last %d, and off again on a new map" % Run.LAST_FEW, off_many and on_few and off_new,
+		[off_many, on_few, off_new])
+	# ---- it locks on: the turn is sharp, and sharper close by ----
+	_cf_bare(run)
+	var one: Dictionary = run._add(16, 4, "land", "light", 1)
+	run.breakable = 1
+	run.broken = 0
+	var at: Vector2 = (one["rect"] as Rect2).get_center()
+	run.balls = [run._ball(at + Vector2(-80, 40), Vector2.from_angle(deg_to_rad(-80.0)) * Run.SPEED)]
+	run.final_fire = true
+	var v0: Vector2 = run.balls[0]["v"]
+	run._wind_ball(1.0 / 60.0)
+	var turned: float = absf(v0.angle_to(run.balls[0]["v"]))
+	check("It locks on: close to the last brick a ball turns more than %d degrees a second" % int(Run.LAST_TURN_ONE),
+		turned > deg_to_rad(Run.LAST_TURN_ONE) / 60.0 + 0.001, [rad_to_deg(turned) * 60.0])
+	run.queue_free()
+	print("  crownfall final fireball: done")

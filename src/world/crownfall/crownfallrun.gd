@@ -94,11 +94,23 @@ const LAND_NO := {"light": 1, "wind": 2, "water": 3, "ice": 4, "earth": 5, "fire
 const PARTS_MOST := 350
 # THE LAST FEW (the same 0.166.1, the owner: "the last few bricks are hard
 # to destroy"): with LAST_FEW or fewer left to break, they glow and every
-# ball bends toward the nearest, LAST_TURN degrees a second (the Wind orb's
-# way, gentler); with none broken for STUCK_SECONDS the balls bend too.
+# ball bends toward the nearest; with none broken for STUCK_SECONDS the balls
+# bend too, STUCK_TURN degrees a second (the Wind orb's way, gentler).
+# THE FINAL FIREBALL (0.166.4, the owner: "the ball is not locking on sharp
+# enough and it becomes to hard to hit that 1 square maybe the final tiles we
+# make the ball turn into a fireball"): in the last few every ball in flight
+# is a final fireball (final_fire) - through every brick, iron and mirrors
+# and shut ones alike, breaking at a touch whatever can break, Guards or no -
+# and it locks on: LAST_TURN degrees a second, LAST_TURN_ONE with one or two
+# left, and close by never a wider turn than half the way to its brick, so
+# it homes in and does not circle (up to LAST_TURN_MOST). Still a bend: the
+# ball is seen to travel.
 const LAST_FEW := 5
 const STUCK_SECONDS := 12.0
-const LAST_TURN := 50.0
+const STUCK_TURN := 50.0
+const LAST_TURN := 220.0
+const LAST_TURN_ONE := 360.0
+const LAST_TURN_MOST := 1440.0
 const LIVES := 3
 const CLEARED_SECONDS := 2.6
 const BLIGHT_EVERY := 9.0
@@ -174,8 +186,11 @@ const DIRS8 := [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1,
 # THE WALLS CRUMBLE (0.166.2): while the balls seek (the last few, or none
 # broken for STUCK_SECONDS) and not one brick left standing can be both
 # reached and hurt, CRUMBLE_AFTER seconds on every brick left that counts
-# breaks - whatever shut it in, a map can always be cleared.
+# breaks - whatever shut it in, a map can always be cleared. While a final
+# fireball is out (0.166.4) the walls wait FINAL_WAITS times as long: it goes
+# through them, so it should get there first.
 const CRUMBLE_AFTER := 2.0
+const FINAL_WAITS := 4.0
 const CRUMBLE_LOOK := 0.25
 # THE SHIELD CRACKS (0.166.2, the owner: "the final ball keeps bouncing into
 # the ice and shield so we need to rethink the logic", and of this, "sounds
@@ -487,6 +502,7 @@ var _guard_key: int = -1
 var _glow_last: bool = false
 var _since_break: float = 0.0
 var _said_last: bool = false
+var final_fire: bool = false   # THE FINAL FIREBALL: the last few's balls
 var redrawn: int = 0           # bricks drawn again in the last sync (the suite's)
 var _sync_n: int = 0
 # What the new bricks and the mixing leave going: lava falling down a column,
@@ -925,6 +941,7 @@ func _clear_map() -> void:
 	_shut_t = 0.0
 	_guard_key = -1
 	_said_last = false
+	final_fire = false
 	bricks.clear()
 	cells.clear()
 	footprint.clear()
@@ -1139,6 +1156,12 @@ func _seek_targets() -> Array:
 	clam, not iron - and of them, Guards first."""
 	var guards: Array = []
 	var rest: Array = []
+	if final_fire:
+		# THE FINAL FIREBALL goes through anything: every brick left counts
+		for k in bricks:
+			if k["hp"] > 0 and _breaks(k):
+				rest.append(k)
+		return rest
 	for k in bricks:
 		if _can_hit(k) and not _shut(k):
 			if k["kind"] == "guard":
@@ -1221,7 +1244,9 @@ func _walls_crumble(dt: float) -> void:
 		_shut_t = 0.0
 		return
 	_shut_t += CRUMBLE_LOOK
-	if _shut_t >= CRUMBLE_AFTER:
+	# a final fireball goes through walls to get at them: the walls wait
+	# FINAL_WAITS times as long before they crumble (still the last resort)
+	if _shut_t >= CRUMBLE_AFTER * (FINAL_WAITS if final_fire else 1.0):
 		_crumble_walls()
 
 
@@ -1390,6 +1415,7 @@ func step(dt: float) -> void:
 	else:
 		var speed: float = SPEED * (SLOW_SHARE if active.has("slow") else 1.0)
 		_since_break += dt
+		final_fire = last_few()
 		_pull(dt)
 		_gusts(dt)
 		_wind_ball(dt)
@@ -1554,6 +1580,12 @@ func _move(b: Dictionary, dt: float) -> void:
 		for k in _bricks_near(p):
 			var r: Rect2 = k["rect"]
 			if (k["hp"] > 0 or not _breaks(k)) and r.grow(rad).has_point(p):
+				if final_fire:
+					# THE FINAL FIREBALL: through it, whatever it is; what can
+					# break, breaks - and on to the next it touches
+					if _breaks(k) and k["hp"] > 0:
+						_damage(k, 99, b)
+					continue
 				if k["kind"] == "portal" and k.has("to"):
 					# A PORTAL: in one, out of its pair, the way it was going.
 					if float(b.get("portal_t", 0.0)) > 0.0:
@@ -1627,7 +1659,9 @@ func _move(b: Dictionary, dt: float) -> void:
 func _damage(k: Dictionary, n: int, b) -> void:
 	var mid: Vector2 = (k["rect"] as Rect2).get_center()
 	k["flash"] = 1.0
-	var light_ball: bool = b is Dictionary and element() == "light"
+	# a light ball - and THE FINAL FIREBALL - pass a shut brick's and a
+	# Guard's shield
+	var light_ball: bool = b is Dictionary and (element() == "light" or final_fire)
 	if not _breaks(k) or (_shut(k) and not light_ball and not _crumbling):
 		# iron, a mirror, a lock - or a rune while it is dark, a clam while it
 		# is shut: nothing
@@ -1663,7 +1697,7 @@ func _damage(k: Dictionary, n: int, b) -> void:
 		# A FUSE IS LIT, not broken: the spark runs from here
 		k["burn"] = FUSE_STEP
 		return
-	if k["kind"] == "wood" and k["burn"] < 0.0 and b is Dictionary and (active.has("fire") or element() == "fire"):
+	if k["kind"] == "wood" and k["burn"] < 0.0 and b is Dictionary and (active.has("fire") or element() == "fire") and not final_fire:
 		# WOOD CATCHES from a Fireball or a fire ball, and burns
 		k["burn"] = WOOD_BURN
 		return
@@ -1678,7 +1712,7 @@ func _damage(k: Dictionary, n: int, b) -> void:
 			n -= 1
 			if n <= 0:
 				return
-	if k["kind"] == "shell" and k["hp"] - n <= 0:
+	if k["kind"] == "shell" and k["hp"] - n <= 0 and not (b is Dictionary and final_fire):
 		# A SHELL HARDENS: the blow that would break it turns it to stone.
 		k["kind"] = "stone"
 		k["hp"] = 2
@@ -1868,13 +1902,20 @@ func seeking() -> bool:
 func _wind_ball(dt: float) -> void:
 	"""A WIND BALL curves toward the nearest brick it could break, WIND_TURN
 	degrees a second; its target is looked for every few tenths. The last
-	few draw every ball the same way, LAST_TURN degrees a second."""
-	var turn: float = WIND_TURN if element() == "wind" else (LAST_TURN if seeking() else 0.0)
+	few lock every ball on (THE FINAL FIREBALL: LAST_TURN, LAST_TURN_ONE,
+	tighter close by); balls stuck STUCK_SECONDS bend STUCK_TURN."""
+	var turn: float = 0.0
+	if last_few():
+		turn = LAST_TURN_ONE if breakable - broken <= 2 else LAST_TURN
+	elif element() == "wind":
+		turn = WIND_TURN
+	elif seeking():
+		turn = STUCK_TURN
 	if turn <= 0.0:
 		return
 	if last_few() and not _said_last:
 		_said_last = true
-		_say(Vector2(640, 400), "THE LAST FEW", GOLD, 24, 1.2)
+		_say(Vector2(640, 400), "FINAL FIREBALL", COLOURS["fire"], 26, 1.3)
 	var aims: Array = []
 	for b in balls:
 		var v: Vector2 = b["v"]
@@ -1894,8 +1935,13 @@ func _wind_ball(dt: float) -> void:
 		var to: Vector2 = b.get("seek", Vector2.INF)
 		if to == Vector2.INF:
 			continue
-		var want: float = v.angle_to(to - (b["p"] as Vector2))
-		b["v"] = steady(v.rotated(clampf(want, -deg_to_rad(turn) * dt, deg_to_rad(turn) * dt)))
+		var toward: Vector2 = to - (b["p"] as Vector2)
+		var rate: float = deg_to_rad(turn)
+		if final_fire:
+			# close by, never a wider turn than half the way there
+			rate = minf(maxf(rate, v.length() / maxf(toward.length() * 0.5, 1.0)), deg_to_rad(LAST_TURN_MOST))
+		var want: float = v.angle_to(toward)
+		b["v"] = steady(v.rotated(clampf(want, -rate * dt, rate * dt)))
 
 
 func _land_breaks(k: Dictionary, mid: Vector2, b) -> void:
@@ -4729,7 +4775,7 @@ func _draw_land_mark(land: String, p: Vector2, ink: Color, s: float) -> void:
 
 func _draw_ball(b: Dictionary) -> void:
 	var p: Vector2 = b["p"]
-	var fire: bool = active.has("fire")
+	var fire: bool = active.has("fire") or final_fire
 	var el: String = str(b.get("el", ""))
 	var core: Color = Color(1.0, 0.75, 0.4) if fire else Color(0.92, 0.99, 1.0)
 	var halo: Color = COLOURS["fire"] if fire else Color(0.7, 0.95, 1.0)
@@ -4908,8 +4954,9 @@ func _draw_trail(b: Dictionary) -> void:
 	var trail: PackedVector2Array = b["trail"]
 	if trail.size() < 3:
 		return
-	var c: Color = Color(1.0, 0.7, 0.4) if active.has("fire") else Color(0.8, 0.97, 1.0)
-	if not active.has("fire") and str(b.get("el", "")) != "":
+	var fire: bool = active.has("fire") or final_fire
+	var c: Color = Color(1.0, 0.7, 0.4) if fire else Color(0.8, 0.97, 1.0)
+	if not fire and str(b.get("el", "")) != "":
 		c = COLOURS[str(b["el"])].lerp(Color.WHITE, 0.3)
 	draw_polyline(trail, Color(c, 0.2), 2.0, true)
 	var n: int = trail.size()

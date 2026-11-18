@@ -49,6 +49,17 @@
 #     run starts or ends, when the game loses focus or is paused, and when
 #     the screen hides (_forget_fingers()). On the kingdom map a tap picks,
 #     and Start starts.
+#     EACH FINGER MOVES BY ITS OWN STEP (0.166.4, the owner: "when i tap to
+#     fire on phone slider stops working and forces slider left"): the web
+#     build works a drag's relative out against the touch in the same place
+#     of the browser's event, not the same finger - so with a second finger
+#     down the thumb's step could be a leap from that finger to the thumb,
+#     and the paddle slammed against the left wall. A finger's step is its
+#     position less its own last one (_finger_at), and a step past
+#     _most_step() (a quarter of the field) moves nothing. And for
+#     TOUCH_QUIET_MS after a finger the mouse is not believed (a browser may
+#     click by itself after a tap), so the mouse never takes the paddle
+#     from a thumb (_touching()).
 # The ball waits on the paddle with its aim swaying (crownfallrun.gd): launch
 # when it points where you want.
 #
@@ -90,6 +101,8 @@ const KEY_LEAD := 220.0
 const TAP_SLACK := 14.0
 # The slider moves the paddle this many times as far as the thumb moves.
 const SLIDER_GAIN := 3.0
+# For this long after a finger the mouse is not believed (ms).
+const TOUCH_QUIET_MS := 800
 
 var run: Node2D = null
 var viewport: SubViewport = null
@@ -127,6 +140,10 @@ var _slider_finger: int = -1
 # Fingers on the field in a run: index -> {"moved": px on the picture,
 # "tapped": its tap already made}.
 var _field_fingers: Dictionary = {}
+# Every finger's last place on the window (index -> Vector2), and when a
+# finger was last heard (ms).
+var _finger_at: Dictionary = {}
+var _touch_ms: int = -100000
 var _was_playing: bool = false
 var _flash_left: float = 0.0
 var _held: Node = null
@@ -467,9 +484,9 @@ func _process(delta: float) -> void:
 		if absf(way) > 0.0:
 			_by_mouse = false
 			run.set("target_x", float(run.get("paddle_x")) + way * KEY_LEAD)
-		elif not _by_mouse and _finger < 0 and not bool(on_touch.call()):
+		elif not _by_mouse and _finger < 0 and not _touching():
 			run.set("target_x", float(run.get("paddle_x")))
-		elif _by_mouse and not bool(on_touch.call()):
+		elif _by_mouse and not _touching():
 			run.set("target_x", world_from_screen(mouse_at.call()).x)
 	_fit_frame()
 	paint()
@@ -545,11 +562,13 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch or event is InputEventScreenDrag:
 		_finger_input(event)
 		return
+	# a mouse just after a finger is the browser's own, not a mouse
+	var believed: bool = Time.get_ticks_msec() - _touch_ms >= TOUCH_QUIET_MS
 	var motion := event as InputEventMouseMotion
-	if motion != null and motion.device != InputEvent.DEVICE_ID_EMULATION and motion.relative.length() > MOUSE_MOVED:
+	if motion != null and believed and motion.device != InputEvent.DEVICE_ID_EMULATION and motion.relative.length() > MOUSE_MOVED:
 		_by_mouse = true
 	var click := event as InputEventMouseButton
-	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT \
+	if click != null and believed and click.pressed and click.button_index == MOUSE_BUTTON_LEFT \
 			and click.device != InputEvent.DEVICE_ID_EMULATION and not _on_a_button(click.position):
 		_by_mouse = true
 		_press_at(world_from_screen(click.position), click.double_click)
@@ -608,9 +627,15 @@ func _finger_input(event: InputEvent) -> void:
 	(if it hardly moved) while a ball waits on the paddle. Before and after a
 	run the first finger down, lifted without moving far, is a tap. Not
 	consumed: Godot's own click from it still presses the buttons."""
+	_touch_ms = Time.get_ticks_msec()
 	if run == null or not is_instance_valid(run):
 		return
 	var touch := event as InputEventScreenTouch
+	if touch != null:
+		if touch.pressed:
+			_finger_at[touch.index] = touch.position
+		else:
+			_finger_at.erase(touch.index)
 	if touch != null:
 		if touch.pressed:
 			if _on_a_button(touch.position):
@@ -650,7 +675,12 @@ func _finger_input(event: InputEvent) -> void:
 	var drag := event as InputEventScreenDrag
 	if drag == null:
 		return
-	var moved: float = drag.relative.x / maxf(_fit(), 0.001)
+	# its own step, from its own last place - never drag.relative
+	var last: Vector2 = _finger_at.get(drag.index, drag.position)
+	_finger_at[drag.index] = drag.position
+	var moved: float = (drag.position.x - last.x) / maxf(_fit(), 0.001)
+	if absf(moved) > _most_step():
+		moved = 0.0
 	if (drag.index == _slider_finger or _field_fingers.has(drag.index)) and playing():
 		if _field_fingers.has(drag.index):
 			var f: Dictionary = _field_fingers[drag.index]
@@ -659,6 +689,19 @@ func _finger_input(event: InputEvent) -> void:
 			RunScript.ARENA.end.x))
 	elif drag.index == _finger:
 		_finger_moved += absf(moved)
+
+
+func _most_step() -> float:
+	"""The longest step one finger makes in one drag event (px on the
+	picture): a quarter of the field. Past it, it is not a finger moving."""
+	return RunScript.ARENA.size.x / 4.0
+
+
+func _touching() -> bool:
+	"""A phone in use: the touch controls on, a finger down, or one only just
+	lifted - then the mouse and the keys' rest do not take the paddle."""
+	return bool(on_touch.call()) or _slider_finger >= 0 or not _field_fingers.is_empty() \
+		or Time.get_ticks_msec() - _touch_ms < TOUCH_QUIET_MS
 
 
 func _ball_waits() -> bool:
@@ -682,6 +725,7 @@ func _forget_fingers() -> void:
 	_finger = -1
 	_finger_moved = 0.0
 	_field_fingers.clear()
+	_finger_at.clear()
 
 
 func _notification(what: int) -> void:

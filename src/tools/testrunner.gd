@@ -292,6 +292,7 @@ func _run_all() -> void:
 	await _test_crownfall_draws_less()
 	await _test_crownfall_never_locked()
 	await _test_crownfall_slider_never_sticks()
+	await _test_crownfall_final_fireball()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
