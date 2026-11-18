@@ -75,6 +75,11 @@
 # what each map pays and how far the account has got (`progress`); the
 # listing says the runs left and how many maps are cleared. Any class.
 #
+# THE BEHOLDER'S TABLE (0.167.0, pinball/) is the eighth, the owner's alone
+# while it is built (`shows_pinball`, TESTING): a pinball table in three
+# floors, played over the screen from town like Crownfall. Practice for now -
+# Go opens it at once; the server is not asked and it pays nothing.
+#
 # A TILE A GAME (0.119.1). The owner, of the card grown to five games: "need
 # image 1 upgraded", and of the mock-up, "looks great". Each game is a tile
 # (`_tile()`): a portrait from the game's own art (PORTRAITS - a frame of the
@@ -131,6 +136,7 @@ const PORTRAITS := {
 	"cloth": ["res://scene/projectiles/turretprojectile.tscn", Color(0.86, 0.77, 0.61)],
 	"crownfall": ["res://scene/enemy/lightslimelarge.tscn", Color(1.0, 0.82, 0.38)],
 	"testingground": ["res://scene/enemy/skeletonelite.tscn", Color(0.8, 0.35, 0.3)],
+	"pinball": ["res://scene/enemy/bossenemy.tscn", Color(0.65, 0.45, 1.0)],
 }
 const TAG_DAILY := ["DAILY", Color(0.35, 0.3, 0.6), "Once a day"]
 const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
@@ -139,6 +145,7 @@ const TAG_THREE := ["3 A DAY", Color(0.35, 0.3, 0.6), "Three runs a day"]
 const TAG_TESTING := ["TESTING", Color(0.55, 0.35, 0.1), "Yours only while it is built"]
 # THE TESTING GROUND (0.151.1, testingground.gd): the owner's alone.
 const TAG_OWNER := ["OWNER", Color(0.5, 0.15, 0.15), "Yours only - for measuring"]
+const PINBALL_BLURB := "The Beholder's Table: pinball in three floors - the town, the field, his lair."
 const TESTING_BLURB := "The Endless's arena with nothing in it - measure what each monster costs."
 const TAG_TEXT := Color(1.0, 0.95, 0.85)
 const TILE_BG := Color(0.09, 0.07, 0.05, 0.92)
@@ -200,6 +207,12 @@ var cloth_go: Button = null
 var crown_box: PanelContainer = null
 var crown_status: Label = null
 var crown_go: Button = null
+var pinball_box: PanelContainer = null
+var pinball_status: Label = null
+var pinball_go: Button = null
+# The table's: who sees it (the owner, while it is built) and Go.
+var shows_pinball: Callable = func() -> bool: return bool(Api.is_owner)
+var open_pinball: Callable = Callable(self, "_open_pinball")
 var testing_box: PanelContainer = null
 var testing_status: Label = null
 var testing_go: Button = null
@@ -338,6 +351,12 @@ func _init() -> void:
 	crown_status = crown[3]
 	crown_go = _go_button("crowngo", _on_crown_go)
 	(crown[4] as HBoxContainer).add_child(crown_go)
+	var table: Array = _tile(column, "pinball", "The Beholder's Table", PINBALL_BLURB,
+		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
+	pinball_box = table[0]
+	pinball_status = table[3]
+	pinball_go = _go_button("pinballgo", _on_pinball_go)
+	(table[4] as HBoxContainer).add_child(pinball_go)
 	var testing: Array = _tile(column, "testingground", "Testing Ground", TESTING_BLURB, [TAG_OWNER])
 	testing_box = testing[0]
 	testing_status = testing[3]
@@ -684,6 +703,7 @@ func paint() -> void:
 	_paint_cloth()
 	_paint_crown()
 	_paint_testing()
+	_paint_pinball()
 	if inside_endless():
 		var held: int = chest_held()
 		if held > 0:
@@ -1138,6 +1158,29 @@ func _on_testing_go() -> void:
 	GameState.testing_ground = true
 	travel.call(GAME, ENTRANCE)
 	close()
+
+
+func _paint_pinball() -> void:
+	pinball_box.visible = bool(shows_pinball.call())
+	var in_town: bool = str(area_now.call()) == TOWN
+	pinball_status.text = "Ready - practice, nothing counts yet" if in_town else FROM_TOWN
+	pinball_status.add_theme_color_override("font_color", COLOUR_READY if in_town else COLOUR_HINT)
+	pinball_go.disabled = not in_town
+	pinball_go.tooltip_text = "Play the Beholder's Table - your character waits in town" if in_town else "Go back to town first"
+
+
+func _on_pinball_go() -> void:
+	"""Go: the table at once - practice, so no day is spent and the server is
+	not asked."""
+	if not bool(shows_pinball.call()) or str(area_now.call()) != TOWN:
+		paint()
+		return
+	open_pinball.call()
+	close()
+
+
+func _open_pinball() -> void:
+	(load("res://src/world/pinball/pinballscreen.gd") as GDScript).call("open", get_tree(), hud)
 
 
 func _shows_cloth() -> bool:

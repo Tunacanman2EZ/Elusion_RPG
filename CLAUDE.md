@@ -15944,6 +15944,71 @@ FIELD; crownfallboss.gd, HOW MUCH IT TAKES):
   boss's last few; the Undine and the Tide Mage cornered. Each sabotaged
   in turn. The bosses' own checks read their health off the field.
 
+### The Beholder's Table: pinball, step 1 (0.167.0)
+
+The owner, of the sandbox's films: "the pinball looks amazing but we need
+mor obstacle's and ramps every great pinball game had awesome mechanics",
+"we also needs to speed up the entire game" ("in terms off ms"); then a
+photograph of Stern's Venom: "usually a guide on bottom left and right of
+board switches and levers i do not want the layout to be too easy"; and
+"looks a little wobbly start building the minigame". It was grown in the
+sandbox (zz/pinball5..11, never in this repo) and moved in whole.
+
+- **A tile on the Minigames card** (minigamescard.gd, before the Testing
+  Ground): "The Beholder's Table", TESTING and ANY CLASS, the owner's
+  alone while it is built (`shows_pinball`, `Api.is_owner`). Go from town
+  only (`_on_pinball_go()`), and it is **practice**: no request, no day,
+  it pays nothing - so nothing is in gamedata.json or the API yet.
+- **The screen** (`src/world/pinball/pinballscreen.gd`, no class_name,
+  `open(tree, hud)`): a CanvasLayer at `LAYER` 90 with the table in a
+  SubViewport of its own world (1280 x 720, keep-aspect), the character
+  held where it stood and the town not drawn under it (`cover()`, as
+  Crownfall). Leave asks twice during a game ("Sure?"; Escape twice);
+  the end shows the score, the best of this sitting (`static var best`,
+  never saved) and Again / Leave.
+- **Controls**: Z, A, Left Shift or the left arrow are every left
+  flipper on every floor, M, L, Right Shift or the right arrow the right
+  ones; Space, Enter, S or the down arrow held pulls the plunger and the
+  ball goes as hard as it was pulled (`PULL_SECONDS` 0.9, `LAUNCH_LEAST`
+  1,250 to `LAUNCH_MOST` 2,150). A mouse: left button left, right button
+  right. A phone: a finger on either half holds that side; with a ball on
+  the plunger any finger pulls it. The browser's mouse echo of a touch is
+  ignored for `TOUCH_QUIET_MS` (800), and losing focus or pausing lets go
+  of everything (`_hold(side, down, who)` keeps who holds what).
+- **The table** (`src/world/pinball/pinballrun.gd`, `extends Node`,
+  `signal game_over`): three floors - the Town (the Tower orbit, the
+  Portal ramp, the Bone Wall, the Crowned's keep and its Siege, the
+  climb, the Caged Spirit ramp, the right orbit to the Well, L-V-L), the
+  Big Field from 1,200,000 (the two eyes, the ramps, R-U-N, the high
+  wire) and the Lair from 5,000,000 (the eyestalk banks, the Beholder,
+  the Spiral). Inlanes, outlanes and guides at each foot, one-way orbit
+  gates, kickbacks lit at each new ball, a ball save of `SAVE_SECONDS`
+  (8). `BALLS` 3 and any extra ball won; the last one lost sets `over`
+  and emits `game_over`. `attract` plays it by itself (the films).
+- **A frame**: the table steps at `FPS` 60, `STEPS` 8 a step, from an
+  accumulator (at most 4 steps a frame), whatever the screen's rate. The
+  camera only slides up and down (x fixed at `CX`), with slack round the
+  ball (170 px above, 110 below) and eased (`1 - exp(-dt * 3.2)`); the
+  node's physics interpolation is off, because it moves in `_process`.
+- **Drawing** (pinball9 on the sandbox's bench): the still floor painted
+  once (UPDATE_ONCE), what moves on a floor painted only while that
+  floor is on screen (screen-corner rays onto its plane; `get_frustum`
+  was unreliable), still meshes joined by material, two shadow splits,
+  sprites casting none - 1,631 draws a frame to 730, scripts about 5.9
+  to 3.2 ms.
+- **Art**: his own (art/tiles, art/enemy, art/maincharacter, art/doors)
+  and whole Clockwork Raven cells from art/pack (essences, eyes, coins,
+  potions, the loot bag), credited on the game-over picture; the rest is
+  drawn by code. Without art/pack those pictures are simply missing.
+- **Next** (his call): score and gold through the server (server first),
+  phones and speed, then his own sounds into the table's cue slots.
+- `_test_the_beholders_table()` (testrunner_13.gd, which testrunner.gd
+  now extends): the plunger (waits, pulls, a short pull softer), every
+  left flipper on the left button, the lit lane moving once a press, the
+  third ball ending the game and an extra ball playing on, the camera
+  (never sideways, slack, follows past it), the screen's keys, touches,
+  mouse, focus-out and Leave twice.
+
 ### Which file owns which number
 
 | question | lives in | example |
