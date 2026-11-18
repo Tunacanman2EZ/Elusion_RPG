@@ -1652,7 +1652,7 @@ func _test_crownfall_wind(run: Node2D, wind: Array) -> void:
 	run.balls = [knocked, far_ball]
 	gale.gale_t = 0.001
 	gale.step(0.01, true)
-	var gale_ok: bool = str(gale.kind) == "galeking" and gale.hp == int(Boss.HP["galeking"]) and (knocked["v"] as Vector2).x > 50.0 \
+	var gale_ok: bool = str(gale.kind) == "galeking" and gale.hp == run.boss_left() and (knocked["v"] as Vector2).x > 50.0 \
 		and (far_ball["v"] as Vector2).x == 0.0 and gale.gales.size() == 1
 	run._hit_boss(Boss.SPLIT_EVERY)
 	gale_ok = gale_ok and gale.minions.size() == 1
@@ -1804,7 +1804,7 @@ func _test_crownfall_water(run: Node2D, water: Array) -> void:
 	run.begin(int(water[4]))
 	var king = run.boss
 	run.state = Run.State.PLAY
-	var king_ok: bool = str(king.kind) == "tideking" and king.hp == int(Boss.HP["tideking"])
+	var king_ok: bool = str(king.kind) == "tideking" and king.hp == run.boss_left()
 	run._hit_boss(Boss.SPLIT_EVERY)
 	king_ok = king_ok and king.minions.size() == 1
 	var before_young: int = run.breakable
@@ -1890,7 +1890,7 @@ func _test_crownfall_water(run: Node2D, water: Array) -> void:
 	run.begin(int(water[24]))
 	var lev = run.boss
 	run.state = Run.State.PLAY
-	var lev_ok: bool = lev.crowned and str(lev.title) == "The Leviathan" and lev.hp == int(Boss.HP["leviathan"])
+	var lev_ok: bool = lev.crowned and str(lev.title) == "The Leviathan" and lev.hp == run.boss_left()
 	for k in run.bricks:
 		if k.has("cell") and int(k["hp"]) > 0 and run._breaks(k) and not run._guarded(k) and (k["rect"] as Rect2).position.y > lev.hall.end.y + 60.0:
 			run._damage(k, 99, null)
@@ -1911,8 +1911,10 @@ func _test_crownfall_water(run: Node2D, water: Array) -> void:
 		lev._wave(1.0 / 60.0)
 	var wake: int = run.breakable - before_wave
 	lev_ok = lev_ok and warned and carried and lev.wave == null and wake > 0 and wake <= Boss.WAVE_BRICKS
+	# (the bricks broken for his wave took their share: under half already,
+	# a hit still splits him)
 	@warning_ignore("integer_division")
-	run._hit_boss(lev.hp - lev.most / 2 + 1)
+	run._hit_boss(maxi(Boss.RULER_SPLIT_EVERY, lev.hp - lev.most / 2 + 1))
 	lev.step(0.01, true)
 	lev_ok = lev_ok and lev.dived and lev.dive_left > 0.0 and not lev.hittable() and lev.minions.size() > 0
 	lev.dive_left = 0.0
@@ -2098,8 +2100,9 @@ func _test_crownfall_ice(run: Node2D, ice: Array) -> void:
 	var snowed: int = run.breakable - before_snow
 	var lord_ok: bool = lord.crowned and str(lord.title) == "The Glacier Lord" and snowed > 0 and snowed <= Boss.AVALANCHE_MOST \
 		and lord.slides.size() == 1
+	# (the bricks broken for his avalanche took their share of his health)
 	@warning_ignore("integer_division")
-	run._hit_boss(lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1)
+	run._hit_boss(maxi(Boss.RULER_SPLIT_EVERY, lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1))
 	lord_ok = lord_ok and lord.minions.size() > 0
 	check("  ICE'S BOSSES: the Frost King's breath slows near balls and his young coat bricks in frost; the Snow Sprite hangs an icicle that falls in its time; the Ice Sniper's lance ices the paddle and it slides on; the Frost Mage raises a wall of ice (%d at most) and rebuilds in frost; the Glacier Lord's avalanche pours snowdrifts (%d at most) and he splits" % [Boss.ICE_WALL_MOST, Boss.AVALANCHE_MOST],
 		breathed and young and hung and iced_ok and mage_ok and lord_ok,
@@ -2345,8 +2348,9 @@ func _test_crownfall_earth(run: Node2D, earth: Array) -> void:
 	var lord_ok: bool = lord.crowned and str(lord.title) == "The Mountain Lord" and standing.size() >= 2 \
 		and standing.all(func(k: Dictionary) -> bool: return int(k["hp"]) == 0) and rocks > 0 and rocks <= Boss.ROCKFALL_MOST \
 		and lord.slides.size() == 1 and bool(lord.slides[0].get("rock", false))
+	# (the bricks broken for his quake took their share of his health)
 	@warning_ignore("integer_division")
-	run._hit_boss(lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1)
+	run._hit_boss(maxi(Boss.RULER_SPLIT_EVERY, lord.hp - lord.most * 2 / 3 + Boss.RULER_SPLIT_EVERY + 1))
 	lord_ok = lord_ok and lord.minions.size() > 0
 	check("  EARTH'S BOSSES: the Glacier Lord's fall leads on into the Kingdom of Earth; the Stone King's stomp brings down a pillar on a cracked foot and his young pile sand; the Dust Sprite kicks up %d sand; the Rock Sniper's shot weighs the paddle down; the Earth Mage raises a pillar (%d at most) on its foot and rebuilds in stone; the Mountain Lord's quake brings every pillar down and drops boulders (%d at most), and he splits" % [Boss.DUST_MOST, Boss.PILLAR_TALL, Boss.ROCKFALL_MOST],
 		on_to_earth and stomped and young and dusted and weighed and made_ok and lord_ok,
@@ -3487,7 +3491,7 @@ func _test_crownfall() -> void:
 	# ---- the Slime King ----
 	run.begin(4)
 	var king = run.boss
-	var has_boss: bool = king != null and king.hp == int(Boss.HP["slimeking"]) and run.hall.size.x > 300.0 \
+	var has_boss: bool = king != null and king.hp == run.breakable - run.broken and king.most == king.hp and run.hall.size.x > 300.0 \
 		and str(king.title) == "The Slime King" and not king.crowned
 	var king_art: bool = king.sprite != null and king.sprite.sprite_frames != null
 	var hall_cells: Dictionary = run.cells.duplicate()
@@ -3503,12 +3507,11 @@ func _test_crownfall() -> void:
 	run._move(pressed, 1.0 / 60.0)
 	var press_took: int = before_press - king.hp
 	run.cells = hall_cells
-	check("a boss is tough - the Slime King %d, the Dawn Warden %d - and a ball strikes it for %d, a laser for 1, and a ball pressed into it counts once" % [
-		int(Boss.HP["slimeking"]), int(Boss.HP["ruler"]), Run.BALL_HIT],
+	check("a boss's health is its field - the Slime King's %d bricks - and a ball strikes it for %d, a laser for 1, and a ball pressed into it counts once" % [
+		int(king.most), Run.BALL_HIT],
 		ball_took == Run.BALL_HIT and laser_took == 1 and press_took == Run.BALL_HIT
-		and (struck_ball["v"] as Vector2).y > 0.0 and int(Boss.HP["slimeking"]) >= 150,
+		and (struck_ball["v"] as Vector2).y > 0.0 and king.most == run.boss_base,
 		[ball_took, laser_took, press_took])
-	king.hp = king.most
 	king.hits_since_split = 0
 	run.state = Run.State.PLAY
 	for i in roundi(Boss.THROW_EVERY * 60.0) + 5:
@@ -3517,8 +3520,9 @@ func _test_crownfall() -> void:
 	king.shots = [{"p": Vector2(run.paddle_x, Run.PADDLE_Y), "v": Vector2(0, 10)}]
 	run.step(1.0 / 60.0)
 	var stunned: bool = run.stunned > 0.0
+	var before_split: int = king.hp
 	run._hit_boss(Boss.SPLIT_EVERY)
-	var split: bool = king.minions.size() == 1 and king.hp == int(Boss.HP["slimeking"]) - Boss.SPLIT_EVERY
+	var split: bool = king.minions.size() == 1 and king.hp == before_split - Boss.SPLIT_EVERY
 	var empty_spot: Vector2 = Vector2.INF
 	for row in range(int(run.rows_count) - 1, 0, -1):
 		for col in run.cols:
@@ -3562,7 +3566,7 @@ func _test_crownfall() -> void:
 		blinked = blinked or sprite_boss.blink_t > last_blink
 		last_blink = sprite_boss.blink_t
 	check("the Sprite darts about its hall and never leaves it, blinks to a new spot every %.1f s, and throws its sparks in pairs" % Boss.BLINK_EVERY,
-		str(sprite_boss.kind) == "sprite" and sprite_boss.hp == int(Boss.HP["sprite"]) and in_hall and blinked and sparks >= 2
+		str(sprite_boss.kind) == "sprite" and sprite_boss.hp == run.boss_left() and in_hall and blinked and sparks >= 2
 		and sprite_boss.p != from_spot, [in_hall, blinked, sparks])
 	# ---- the Sniper ----
 	run.begin(14)
@@ -3623,7 +3627,7 @@ func _test_crownfall() -> void:
 	# ---- the Dawn Warden ----
 	run.begin(int(light[-1]))
 	var ruler = run.boss
-	var crowned_now: bool = ruler.crowned and str(ruler.title) == "The Dawn Warden" and ruler.hp == int(Boss.HP["ruler"])
+	var crowned_now: bool = ruler.crowned and str(ruler.title) == "The Dawn Warden" and ruler.hp == run.boss_left()
 	@warning_ignore("integer_division")
 	run._hit_boss(ruler.most / 3 - 1)
 	var none_yet: bool = ruler.minions.is_empty() and ruler.hp * 3 > ruler.most * 2
@@ -4459,3 +4463,171 @@ func _test_crownfall_final_fireball() -> void:
 		turned > deg_to_rad(Run.LAST_TURN_ONE) / 60.0 + 0.001, [rad_to_deg(turned) * 60.0])
 	run.queue_free()
 	print("  crownfall final fireball: done")
+
+
+func _test_crownfall_boss_is_the_field() -> void:
+	section("Crownfall's boss is the field (0.166.5): its health is the bricks left to break, less what hits took")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+	const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	run.rng.seed = 5
+	# ---- every boss begins as its field ----
+	var by_kind: Dictionary = {}
+	var bosses: int = 0
+	var wrong: Array = []
+	for i in Maps.made_count():
+		if not Maps.MAPS[i].get("boss") is Dictionary:
+			continue
+		run.begin(i)
+		bosses += 1
+		by_kind[str(run.boss.kind)] = i
+		var left: int = run.breakable - run.broken
+		if run.boss.hp != left or run.boss.most != left or left <= Run.LAST_FEW:
+			wrong.append([i, run.boss.kind, run.boss.hp, left])
+	check("Every boss's health begins as its field: the bricks there are to break, not iron, mirrors or locks (%d bosses)" % bosses,
+		bosses >= 35 and wrong.is_empty(), wrong)
+	# ---- a brick takes one, a ball's hit BALL_HIT, a laser's 1 ----
+	run.begin(int(by_kind["slimeking"]))
+	var king = run.boss
+	var stones: Array = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "stone" and int(k["hp"]) > 0 and not run._guarded(k))
+	var start: int = king.hp
+	var broken_before: int = run.broken
+	run._damage(stones[0], 99, null)
+	var brick_took: int = start - king.hp
+	var only_one: bool = run.broken == broken_before + 1
+	run._hit_boss(Run.BALL_HIT)
+	var hit_took: int = start - brick_took - king.hp
+	run._hit_boss(1)
+	var laser_took: int = start - brick_took - hit_took - king.hp
+	check("A brick broken takes one off the boss, a ball's hit %d, a laser's 1 - and its health is the bricks left less what hits took" % Run.BALL_HIT,
+		only_one and brick_took == 1 and hit_took == Run.BALL_HIT and laser_took == 1
+		and king.hp == run.breakable - run.broken - Run.BALL_HIT - 1, [brick_took, hit_took, laser_took, king.hp])
+	# ---- a brick it builds gives one back, up to BOSS_HEALS ----
+	var before_build: int = king.hp
+	run.rebuild_near(1, run.hall, "stone")
+	var healed: int = king.hp - before_build
+	var fill: int = run.boss_base + ceili(run.boss_base * Run.BOSS_HEALS)
+	run.breakable += fill
+	var capped: bool = king.hp == fill - run.broken - run.boss_struck and king.most == king.hp
+	run.breakable -= fill
+	var back_down: bool = king.hp == before_build + 1
+	check("A brick the boss builds gives one back (healing); past %d%% of its start it heals no more, so a fight always ends" % roundi(Run.BOSS_HEALS * 100.0),
+		healed == 1 and capped and back_down, [healed, capped, back_down])
+	# ---- its splits come from hits alone ----
+	run.begin(int(by_kind["slimeking"]))
+	king = run.boss
+	stones = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "stone" and int(k["hp"]) > 0 and not run._guarded(k))
+	for k in stones.slice(0, Boss.SPLIT_EVERY + 5):
+		run._damage(k, 99, null)
+	var no_young: bool = king.minions.is_empty() and king.hits_since_split == 0 and king.hp == king.most - Boss.SPLIT_EVERY - 5
+	run._hit_boss(Boss.SPLIT_EVERY)
+	var young: bool = king.minions.size() == 1
+	run.begin(int(by_kind["ruler"]))
+	var ruler = run.boss
+	for k in run.bricks.duplicate():
+		if ruler.hp * 3 < ruler.most * 2:
+			break
+		if int(k["hp"]) > 0 and run._breaks(k) and str(k["kind"]) != "key":
+			run._damage(k, 99, null)
+	var past_two_thirds: bool = ruler.hp * 3 < ruler.most * 2 and ruler.alive() and ruler.minions.is_empty()
+	run._hit_boss(Boss.RULER_SPLIT_EVERY)
+	var ruler_young: bool = ruler.minions.size() == 1
+	check("Its splits come from hits alone: the Slime King's %d bricks broken split him not, %d damage does; the Dawn Warden past two thirds by bricks alone splits at his next %d" % [
+		Boss.SPLIT_EVERY + 5, Boss.SPLIT_EVERY, Boss.RULER_SPLIT_EVERY],
+		no_young and young and past_two_thirds and ruler_young, [no_young, young, past_two_thirds, ruler_young])
+	# ---- every brick broken, and the boss falls with the last ----
+	run.begin(int(by_kind["slimeking"]))
+	king = run.boss
+	run.final_fire = true   # so a blow passes every shield and shut brick
+	var fireball: Dictionary = run._ball(Vector2(640, 600), Vector2.ZERO)
+	var standing_when: int = -1
+	for round_n in 8:
+		for k in run.bricks.duplicate():
+			if king.alive() and int(k["hp"]) > 0 and run._breaks(k):
+				run._damage(k, 99, fireball)
+				if not king.alive() and standing_when < 0:
+					standing_when = run.bricks.filter(func(o: Dictionary) -> bool: return int(o["hp"]) > 0 and run._breaks(o)).size()
+	var defeated_words: bool = run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "THE SLIME KING IS DEFEATED!")
+	run.final_fire = false
+	run.step(1.0 / 60.0)
+	check("Every brick broken and the boss falls with the last of them - the defeat, its words and the map won",
+		standing_when == 0 and run.boss_struck == 0 and defeated_words and run.state == Run.State.CLEARED,
+		[standing_when, run.boss_struck, defeated_words, run.state])
+	# ---- hits and bricks together, at exactly nought ----
+	run.begin(int(by_kind["slimeking"]))
+	king = run.boss
+	stones = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "stone" and int(k["hp"]) > 0 and not run._guarded(k))
+	run._hit_boss(king.hp - 2)
+	run._damage(stones[0], 99, null)
+	var one_to_go: bool = king.alive() and king.hp == 1
+	run._damage(stones[1], 99, null)
+	var by_brick: bool = not king.alive() and run.boss_left() == 0 and run.breakable - run.broken > 100
+	run.begin(int(by_kind["slimeking"]))
+	king = run.boss
+	stones = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "stone" and int(k["hp"]) > 0 and not run._guarded(k))
+	for k in stones.slice(0, 3):
+		run._damage(k, 99, null)
+	run._hit_boss(king.hp - 1)
+	var one_more: bool = king.alive() and king.hp == 1
+	run._hit_boss(1)
+	var by_hit: bool = not king.alive() and run.boss_left() == 0 and run.words.any(func(w: Dictionary) -> bool: return str(w["text"]) == "THE SLIME KING IS DEFEATED!")
+	check("Hits and bricks together bring it down at exactly nought, whichever takes the last - a brick or a hit",
+		one_to_go and by_brick and one_more and by_hit, [one_to_go, by_brick, one_more, by_hit])
+	# ---- the last few of a boss: final fireballs, and it is among their aims ----
+	run.begin(int(by_kind["sprite"]))
+	var sprite_boss = run.boss
+	stones = run.bricks.filter(func(k: Dictionary) -> bool: return str(k["kind"]) == "stone" and int(k["hp"]) > 0 and not run._guarded(k))
+	run.lives = 99
+	run.state = Run.State.PLAY
+	run.balls = [run._ball(Vector2(640, 650), Vector2(0, -Run.SPEED))]
+	run._hit_boss(sprite_boss.hp - Run.LAST_FEW - 1)
+	run.step(1.0 / 60.0)
+	var not_yet: bool = not run.final_fire and not sprite_boss.cornered and sprite_boss.hp == Run.LAST_FEW + 1
+	run._damage(stones[0], 99, null)
+	run.step(1.0 / 60.0)
+	var fire_on: bool = run.final_fire and sprite_boss.cornered and run.last_few() and run.to_win() == Run.LAST_FEW
+	var foe: Vector2 = (sprite_boss.body_rect() as Rect2).get_center()
+	var near: Dictionary = run._ball(foe, Vector2(0, -Run.SPEED))
+	var brick_at: Vector2 = (stones[1]["rect"] as Rect2).get_center()
+	var by_brick_ball: Dictionary = run._ball(brick_at + Vector2(0, 2), Vector2(0, -Run.SPEED))
+	run.balls = [near, by_brick_ball]
+	run._wind_ball(1.0 / 60.0)
+	var aims_at_boss: bool = (near.get("seek", Vector2.INF) as Vector2).is_equal_approx(foe) \
+		and (by_brick_ball.get("seek", Vector2.INF) as Vector2).is_equal_approx(brick_at)
+	check("A boss's last %d: every ball is a final fireball, and the boss is what it locks on to when it is the nearest" % Run.LAST_FEW,
+		not_yet and fire_on and aims_at_boss, [not_yet, fire_on, aims_at_boss])
+	# ---- never out of reach then: no dive, no bubble ----
+	run.begin(int(by_kind["undine"]))
+	var undine = run.boss
+	run.lives = 99
+	run.state = Run.State.PLAY
+	run.balls = [run._ball(Vector2(640, 650), Vector2(0, -Run.SPEED))]
+	undine.dive_left = Boss.DIVE_SECONDS
+	var under: bool = not undine.hittable()
+	run._hit_boss(undine.hp - Run.BALL_HIT)
+	run.step(1.0 / 60.0)
+	var surfaced: bool = undine.dive_left <= 0.0 and undine.hittable()
+	undine.dive_t = 0.001
+	undine.step(0.05, true)
+	surfaced = surfaced and undine.dive_left <= 0.0
+	var strike: Dictionary = run._ball(undine.p + Vector2(0, (undine.body_rect() as Rect2).size.y / 2.0 + Run.BALL_R + 2.0), Vector2(0, -Run.SPEED))
+	run._move(strike, 1.0 / 60.0)
+	var struck_down: bool = not undine.alive()
+	run.begin(int(by_kind["tidemage"]))
+	var tide_mage = run.boss
+	run.lives = 99
+	run.state = Run.State.PLAY
+	run.balls = [run._ball(Vector2(640, 650), Vector2(0, -Run.SPEED))]
+	var bubbled: bool = tide_mage.bubble_hits > 0 and not tide_mage.hittable()
+	run._hit_boss(tide_mage.hp - Run.BALL_HIT)
+	run.step(1.0 / 60.0)
+	tide_mage.bubble_down = 0.0
+	tide_mage._bubble_step(0.1)
+	var popped: bool = tide_mage.bubble_hits <= 0 and tide_mage.hittable()
+	check("In a boss's last few it is never out of reach: the Undine comes up and dives no more (a fireball brings her down), the Tide Mage's bubble pops and stays down",
+		under and surfaced and struck_down and bubbled and popped, [under, surfaced, struck_down, bubbled, popped])
+	run.queue_free()
+	print("  crownfall boss is the field: done")

@@ -146,16 +146,14 @@ const KINDS_OF := {"light": ["slimeking", "sprite", "sniper", "mage", "ruler"],
 	"earth": ["stoneking", "dustsprite", "rocksniper", "earthmage", "mountainlord"],
 	"fire": ["fireking", "flamesprite", "firesniper", "firemage", "inferno"],
 	"dark": ["shadowking", "wisp", "shadesniper", "voidmage", "beholder"]}
-# TOUGH (the owner: "bosses die too fast we really need to buff up bosses",
-# and "hitting with a ball does a bit more damage"): a ball's hit is the run's
-# BALL_HIT (3), a laser's 1, and a fight is about twice the ball hits it was.
-const HP := {"slimeking": 180, "sprite": 160, "sniper": 190, "mage": 200, "ruler": 300,
-	"galeking": 220, "whirlwind": 200, "gustsniper": 240, "stormmage": 250, "tempest": 380,
-	"tideking": 240, "undine": 220, "harpooner": 260, "tidemage": 275, "leviathan": 420,
-	"frostking": 260, "snowsprite": 240, "icesniper": 280, "frostmage": 300, "glacierlord": 460,
-	"stoneking": 280, "dustsprite": 260, "rocksniper": 300, "earthmage": 325, "mountainlord": 500,
-	"fireking": 300, "flamesprite": 280, "firesniper": 320, "firemage": 350, "inferno": 540,
-	"shadowking": 320, "wisp": 300, "shadesniper": 340, "voidmage": 375, "beholder": 640}
+# HOW MUCH IT TAKES (0.166.5, the owner: "bosses are too hard to kill", then
+# "how about boss hp is based on number of bricks on the field instead so
+# when all bricks break boss is dead but hitting the boss reduces what it
+# takes to win"): a boss has no health table. The run sets `hp` from its
+# field (crownfallrun.gd boss_left()): every brick still to break, less
+# what hits have taken - a ball's BALL_HIT (3, twice that for earth's), a
+# laser's 1 - and `most` is the most that has been, for the bar and the
+# phases. A brick broken takes one, one it builds gives one back.
 # How big each is drawn (their frames differ: a slime 48 px, a mage 150).
 const SCALE := {"slimeking": 3.0, "sprite": 1.7, "sniper": 2.3, "mage": 1.3, "ruler": 2.2, "minion": 1.25,
 	"galeking": 3.0, "whirlwind": 1.7, "gustsniper": 2.3, "stormmage": 1.3, "tempest": 2.2,
@@ -326,8 +324,11 @@ var land: String = "light"
 var crowned: bool = false
 var hall := Rect2()
 var p := Vector2.ZERO
-var hp: int = 30
+var hp: int = 30     # set by the run from its field (boss_left())
 var most: int = 30
+# THE LAST FEW (0.166.5): set by the run while its balls are final
+# fireballs - no dive, no bubble, nothing keeps them off it (_cornered()).
+var cornered: bool = false
 var dir: float = 1.0
 var flash: float = 0.0
 var throw_t: float = THROW_EVERY
@@ -415,8 +416,6 @@ func setup(on_run: Node2D, info: Dictionary, land_id: String, the_hall: Rect2, t
 	tint = Element.Type.FIRE if str(info.get("tint", "")) == "fire" else -1
 	land = land_id
 	hall = the_hall
-	most = int(HP.get(kind, 30))
-	hp = most
 	p = hall.get_center() + Vector2(0, 4)
 	dest = p
 	if kind == "tempest":
@@ -453,6 +452,8 @@ func clear() -> void:
 
 func step(dt: float, playing: bool) -> void:
 	flash = maxf(0.0, flash - dt * 5.0)
+	if hp > 0 and cornered:
+		_cornered()
 	if hp > 0 and playing:
 		match kind:
 			"sprite":
@@ -508,7 +509,7 @@ func step(dt: float, playing: bool) -> void:
 				_throw(dt, 1.3)
 				_bubble_step(dt)
 			"leviathan":
-				if hp * 2 < most and not dived:
+				if hp * 2 < most and not dived and not cornered:
 					dived = true
 					dive_left = DIVE_SECONDS + 0.5
 					dest = _hall_spot()
@@ -686,8 +687,22 @@ func step(dt: float, playing: bool) -> void:
 
 func hittable() -> bool:
 	"""Whether a ball or a laser can strike its body now: alive, not under
-	the water, not inside its bubble."""
-	return hp > 0 and dive_left <= 0.0 and not (kind == "tidemage" and bubble_hits > 0)
+	the water, not inside its bubble - and always, cornered."""
+	return hp > 0 and (cornered or (dive_left <= 0.0 and not (kind == "tidemage" and bubble_hits > 0)))
+
+
+func _cornered() -> void:
+	"""CORNERED (0.166.5): in the run's last few a boss under the water comes
+	up and a bubble pops, and neither comes back while it lasts, so the end
+	is never out of reach."""
+	if dive_left > 0.0:
+		dive_left = 0.0
+		splashes.append({"p": p, "age": 0.0})
+		flash = 1.0
+	if kind == "tidemage" and bubble_hits > 0:
+		bubble_hits = 0
+		bubble_down = BUBBLE_DOWN
+		run.call("burst_at", p, land, 30)
 
 
 func _walk(dt: float, pace: float) -> void:
@@ -822,7 +837,8 @@ func _step_shots(dt: float) -> void:
 
 
 func hit(n: int) -> bool:
-	"""`n` hits taken; true when this one brought it down."""
+	"""`n` hits taken; true when this one brought it down. The splits come
+	from hits alone: never from bricks breaking (field())."""
 	if hp <= 0:
 		return false
 	hp = maxi(0, hp - n)
@@ -838,24 +854,45 @@ func hit(n: int) -> bool:
 			hits_since_split -= every
 			_split()
 	if hp <= 0:
-		for m in minions:
-			run.call("burst_at", m["p"], land, 14)
-			_free_minion(m)
-		minions.clear()
-		shots.clear()
-		vortices.clear()
-		wall_left = 0.0
-		wave = null
-		rope_left = 0.0
-		harpoon_u = -1.0
-		aim_left = 0.0
-		dive_left = 0.0
-		breaths.clear()
-		slides.clear()
-		gaze_warn = 0.0
-		gaze_left = 0.0
+		fall()
 		return true
 	return false
+
+
+func field(left: int) -> bool:
+	"""THE BOSS IS THE FIELD (0.166.5): its health set to what is left to
+	win (the run's boss_left()) - a brick broken takes one, one built gives
+	one back, and `most` keeps the most it has been. True when that brought
+	it down."""
+	if hp <= 0:
+		return false
+	hp = maxi(0, left)
+	most = maxi(most, hp)
+	if hp <= 0:
+		fall()
+		return true
+	return false
+
+
+func fall() -> void:
+	"""DOWN: what it had out goes with it."""
+	hp = 0
+	for m in minions:
+		run.call("burst_at", m["p"], land, 14)
+		_free_minion(m)
+	minions.clear()
+	shots.clear()
+	vortices.clear()
+	wall_left = 0.0
+	wave = null
+	rope_left = 0.0
+	harpoon_u = -1.0
+	aim_left = 0.0
+	dive_left = 0.0
+	breaths.clear()
+	slides.clear()
+	gaze_warn = 0.0
+	gaze_left = 0.0
 
 
 # ---------------------------------------------------------------- the waters --
@@ -873,7 +910,7 @@ func _dive(dt: float) -> void:
 			run.call("splash_from", p, SPLASH_REACH, SPLASH_KICK)
 			flash = 1.0
 		return
-	if kind != "undine":
+	if kind != "undine" or cornered:
 		return
 	dive_t -= dt
 	if dive_t <= 0.0:
@@ -915,7 +952,7 @@ func _bubble_step(dt: float) -> void:
 	raises bubble bricks near his hall every REBUILD_EVERY."""
 	if bubble_hits <= 0:
 		bubble_down -= dt
-		if bubble_down <= 0.0:
+		if bubble_down <= 0.0 and not cornered:
 			bubble_hits = BUBBLE_HITS
 			run.call("burst_at", p, land, 16)
 	rebuild_t -= dt

@@ -15095,11 +15095,11 @@ The owner's alone while it is built (`shows_crownfall`, TESTING).
   with `boss`, drawn in the run's `_draw()`; the owner: "more bosses for
   other maps"): the kingdom's own monster from its art (`sprite_of()`,
   recoloured by EnemyPortraits' gates; no crown drawn over it - "no need for
-  crown above slime"), `HP` each, in its hall (the R cells). **Tough** (the owner: "bosses die
-  to fast we really need to buff up bosses", "hitting with a ball does a bit
-  more damage"): a ball strikes for `BALL_HIT` (3), a laser for 1, and the
-  health is about twice the ball hits it was (Slime King 180, Sprite 160,
-  Sniper 190, Bush Mage 200, Dawn Warden 300); splits count damage
+  crown above slime"), in its hall (the R cells). **Its health is its
+  field** since 0.166.5 ("A Crownfall boss is the field", below; it was an
+  `HP` table, made tough when the owner said "bosses die to fast we really
+  need to buff up bosses", "hitting with a ball does a bit more damage"): a
+  ball strikes for `BALL_HIT` (3), a laser for 1; splits count damage
   (`SPLIT_EVERY` 15, `RULER_SPLIT_EVERY` 18). A ball touching a boss counts
   once a `BOSS_HIT_GAP` (0.2 s) and goes off it the way it came: before, a
   ball landing on a boss's head was sent down into it and struck every
@@ -15864,7 +15864,8 @@ ball is not locking on sharp enough and it becomes to hard to hit that 1
 square maybe the final tiles we make the ball turn into a fireball"
 (crownfallrun.gd, THE FINAL FIREBALL):
 
-- **In the last few** (`last_few()`: LAST_FEW or fewer left, no boss)
+- **In the last few** (`last_few()`: LAST_FEW or fewer left - since
+  0.166.5 on a boss's map too, of its health)
   `final_fire` is on, set each step and cleared in `_clear_map()`. Every
   ball in flight goes through every brick - iron, mirrors, bumpers,
   portals, whirls, shut and shielded ones - without bouncing, and breaks
@@ -15890,6 +15891,58 @@ square maybe the final tiles we make the ball turn into a fireball"
   final fireball passes a mirror; outside the last few a ball still
   bounces off one; the flag is on only in the last few and off on a new
   map; close by it turns harder than LAST_TURN_ONE. Each sabotaged in turn.
+
+### A Crownfall boss is the field (0.166.5)
+
+The owner: "bosses are too hard to kill we need to think of a solution for
+that for crowned", then "how about boss hp is based on number of bricks on
+the field instead so when all bricks break boss is dead but hitting the
+boss reduces what it takes to win" (crownfallrun.gd, THE BOSS IS THE
+FIELD; crownfallboss.gd, HOW MUCH IT TAKES):
+
+- **Its health is the bricks left to break** (`boss_left()`): what counts
+  to clear a map (`breakable` less `broken` - not iron, mirrors, bumpers,
+  locks, portals or whirls), less what hits on it have taken
+  (`boss_struck`): a ball's `BALL_HIT` (3, twice that for earth's), a
+  laser's 1. A brick broken takes one. At nought it falls by the old
+  defeat (`_boss_falls()`: the words, the rings, its walls crumble,
+  5,000), whether the last of it went to a brick or a hit. The `HP` table
+  is gone; `boss.most` is the most it has been, and the bar over its hall
+  and the side panel's "N to go" read `boss.hp`.
+- **Kept with every change**: `breakable` and `broken` have setters that
+  call `_boss_field()` (`boss.field()`), so the health is the field's
+  whatever broke or built a brick; `_fighting` is on from the map's build
+  to `_clear_map()`, so clearing a map never fells a boss.
+- **It heals by building**: a brick a boss or its young put down - a
+  mage's stone, the Tide Mage's bubbles, ice, sand, water, blight - gives
+  it one back, **up to `BOSS_HEALS`** (a quarter) of its start; past that
+  what it builds is only in the way (breaking it still takes one), so a
+  fight always ends. The Leviathan built 553 bricks in one bot fight.
+- **Splits come from hits alone** (`boss.hit()`); the phases (a half, two
+  thirds, a third) read this health, so a ruler can pass two thirds by
+  bricks alone and split at its next hit.
+- **Its last few** (`last_few()`, `to_win()`: LAST_FEW or fewer left to
+  win): every ball is a final fireball, and the boss is among what they
+  lock on to when it is the nearest. **Cornered** (`boss.cornered`, set
+  each step with `final_fire`; `_cornered()`): a dive ends and none
+  starts (the Undine's, the Leviathan's), the Tide Mage's bubble pops and
+  stays down, and a final fireball breaks a ward without bouncing. The
+  walls' crumble still never runs on a boss's map: while it lives a brick
+  is left (its health is never more than the bricks), and in its last few
+  nothing keeps a fireball off it.
+- **Measured** (the container, an auto-paddle, 15 minutes at most, two
+  seeds each, zz/crownfield.gd): before, not one of ten fights was won
+  (the Slime King ended on 9 and 33 of 180); now the Slime King falls in
+  128 and 444 s, the Leviathan in 234 and 566 s, the Dawn Warden in 713 s
+  (and stood on 44 of 450 at 15 minutes), the Beholder stood on 55 and
+  114 of 697 (142 of 640 before); the Mountain Lord's quakes and boulders
+  cost the bot its lives either way.
+- `_test_crownfall_boss_is_the_field()` (testrunner_12): every boss
+  begins as its field; a brick, a ball's hit and a laser's; healing and
+  its cap; splits from hits alone; every brick broken fells it with the
+  last; hits and bricks at exactly nought, either taking the last; a
+  boss's last few; the Undine and the Tide Mage cornered. Each sabotaged
+  in turn. The bosses' own checks read their health off the field.
 
 ### Which file owns which number
 

@@ -105,6 +105,9 @@ const PARTS_MOST := 350
 # left, and close by never a wider turn than half the way to its brick, so
 # it homes in and does not circle (up to LAST_TURN_MOST). Still a bend: the
 # ball is seen to travel.
+# On a boss's map (0.166.5) the last few are its health: LAST_FEW or fewer
+# left to win (to_win()), and the boss is among what they lock on to - and
+# cornered (crownfallboss.gd): no dive, no bubble, no ward turns them away.
 const LAST_FEW := 5
 const STUCK_SECONDS := 12.0
 const STUCK_TURN := 50.0
@@ -223,8 +226,18 @@ const DRIP_SPEED := 380.0
 const SHARD_DEPTH := 6
 const SHATTER_STEP := 0.06
 const REACT_DEPTH := 2
-# A BALL HITS A BOSS FOR BALL_HIT; a laser for 1 (crownfallboss.gd's HP).
+# A BALL HITS A BOSS FOR BALL_HIT; a laser for 1: so many bricks' worth off
+# what is left to win its map (THE BOSS IS THE FIELD, boss_left()).
 const BALL_HIT := 3
+# THE BOSS IS THE FIELD (0.166.5, the owner: "how about boss hp is based on
+# number of bricks on the field instead so when all bricks break boss is dead
+# but hitting the boss reduces what it takes to win"): a boss's health is
+# every brick still to break on its map, less what hits have taken
+# (boss_left()). It HEALS by building bricks - a mage's stone, the Tide
+# Mage's bubbles, sand, ice, water, what its young plant - each one counted,
+# up to BOSS_HEALS of what the fight began with; past that a brick it builds
+# is only in the way (breaking it still takes one), so a fight always ends.
+const BOSS_HEALS := 0.25
 const BOSS_HIT_GAP := 0.2
 # HOW FAR A REACTION REACHES (measured with the bot, M3: a firestorm burning
 # the whole row, and the mixed bricks it burnt each going off, cleared 90%
@@ -457,8 +470,16 @@ var t: float = 0.0
 var bricks: Array = []
 var cells: Dictionary = {}       # Vector2i -> brick
 var footprint: Dictionary = {}   # Vector2i -> true: where the map had bricks
-var breakable: int = 0
-var broken: int = 0
+# what counts to clear a map, and what is broken of it - on a boss's map,
+# its health too (_boss_field() keeps it with every change)
+var breakable: int = 0:
+	set(v):
+		breakable = v
+		_boss_field()
+var broken: int = 0:
+	set(v):
+		broken = v
+		_boss_field()
 var balls: Array = []
 var bolts: Array = []
 var caps: Array = []
@@ -468,6 +489,9 @@ var words: Array = []
 var rings: Array = []
 # The map's boss (crownfallboss.gd), or null; it walks `hall`, the R cells.
 var boss = null
+var boss_base: int = 0     # THE BOSS IS THE FIELD: the bricks to break when it began
+var boss_struck: int = 0   # what hits on it have taken, in bricks
+var _fighting: bool = false
 var hall := Rect2()
 var rows_count: int = 0
 # THIS MAP'S GRID (the owner: "we can even make the map bigger in some"): a
@@ -927,6 +951,12 @@ func _load(index: int) -> void:
 	if data.get("boss") is Dictionary and hall.size != Vector2.ZERO:
 		boss = Boss.new()
 		boss.setup(self, data["boss"], str(Maps.kingdom_of(index).get("land", "light")), hall, ARENA, PADDLE_Y, VIEW.y)
+		# THE BOSS IS THE FIELD: its health, every brick there is to break
+		boss_base = breakable - broken
+		boss_struck = 0
+		boss.most = maxi(1, boss_base)
+		boss.hp = boss_base
+		_fighting = true
 	_reset_ball()
 	_banner_t = BANNER_SECONDS
 	said.emit("%s - map %d of %d" % [data["name"], Maps.in_kingdom(index) + 1, Maps.MAPS_A_KINGDOM])
@@ -934,6 +964,9 @@ func _load(index: int) -> void:
 
 
 func _clear_map() -> void:
+	_fighting = false
+	boss_base = 0
+	boss_struck = 0
 	_since_break = 0.0
 	_open.clear()
 	_open_key = -1
@@ -1416,6 +1449,8 @@ func step(dt: float) -> void:
 		var speed: float = SPEED * (SLOW_SHARE if active.has("slow") else 1.0)
 		_since_break += dt
 		final_fire = last_few()
+		if boss != null:
+			boss.cornered = final_fire
 		_pull(dt)
 		_gusts(dt)
 		_wind_ball(dt)
@@ -1574,7 +1609,8 @@ func _move(b: Dictionary, dt: float) -> void:
 			if killed > 0:
 				score += 300 * killed
 			var ward: Vector2 = boss.ward_touch(p, rad)
-			if ward != Vector2.INF:
+			if ward != Vector2.INF and not final_fire:
+				# a final fireball breaks a ward and goes on
 				b["v"] = (p - ward).normalized() * (b["v"] as Vector2).length()
 				p = prev
 		for k in _bricks_near(p):
@@ -1885,12 +1921,38 @@ func _ball_breaks(b: Dictionary, k: Dictionary, mid: Vector2) -> void:
 
 
 func last_few() -> bool:
-	"""THE LAST FEW: LAST_FEW or fewer bricks left to break on a map (not a
-	boss's) - they glow, and the balls bend toward them."""
-	if boss != null or state != State.PLAY:
+	"""THE LAST FEW: LAST_FEW or fewer left to win the map (to_win()) - the
+	bricks glow, and the balls bend toward them (and a boss)."""
+	if state != State.PLAY:
 		return false
-	var left: int = breakable - broken
+	var left: int = to_win()
 	return left > 0 and left <= LAST_FEW
+
+
+func to_win() -> int:
+	"""What is left to win this map: the bricks to break, or on a boss's map
+	its health (boss_left())."""
+	if boss != null:
+		return maxi(0, boss_left()) if boss.alive() else 0
+	return breakable - broken
+
+
+func boss_left() -> int:
+	"""THE BOSS IS THE FIELD (0.166.5): a boss's health - every brick still to
+	break on its map (what it has built counts, up to BOSS_HEALS of the
+	start), less what hits on it have taken. At 0 it falls."""
+	var counted: int = mini(breakable, boss_base + ceili(boss_base * BOSS_HEALS))
+	return counted - broken - boss_struck
+
+
+func _boss_field() -> void:
+	"""The boss's health kept the field's (boss_left()) whatever changed it -
+	a brick broken, a brick built, a hit - and at 0 it falls, whichever way
+	the last of it went."""
+	if boss == null or not _fighting or not boss.alive():
+		return
+	if boss.field(boss_left()):
+		_boss_falls()
 
 
 func seeking() -> bool:
@@ -1906,7 +1968,7 @@ func _wind_ball(dt: float) -> void:
 	tighter close by); balls stuck STUCK_SECONDS bend STUCK_TURN."""
 	var turn: float = 0.0
 	if last_few():
-		turn = LAST_TURN_ONE if breakable - broken <= 2 else LAST_TURN
+		turn = LAST_TURN_ONE if to_win() <= 2 else LAST_TURN
 	elif element() == "wind":
 		turn = WIND_TURN
 	elif seeking():
@@ -1931,6 +1993,11 @@ func _wind_ball(dt: float) -> void:
 				var at: Vector2 = (k["rect"] as Rect2).get_center()
 				if best == Vector2.INF or at.distance_squared_to(b["p"]) < best.distance_squared_to(b["p"]):
 					best = at
+			if final_fire and boss != null and boss.hittable():
+				# a boss's last few: it counts too, when it is the nearest
+				var foe: Vector2 = (boss.body_rect() as Rect2).get_center()
+				if best == Vector2.INF or foe.distance_squared_to(b["p"]) < best.distance_squared_to(b["p"]):
+					best = foe
 			b["seek"] = best
 		var to: Vector2 = b.get("seek", Vector2.INF)
 		if to == Vector2.INF:
@@ -3394,13 +3461,24 @@ func _crumbles(dt: float) -> void:
 
 
 func _hit_boss(n: int) -> void:
+	"""A HIT ON THE BOSS: `n` bricks' worth off what is left to win
+	(boss_left()); its splits come from hits alone (boss.hit())."""
 	if boss == null or not boss.alive():
 		return
 	var land: String = boss.land
 	score += 200
 	_burst(boss.p, COLOURS.get(land, Color.WHITE), 10, 200.0)
-	if not boss.hit(n):
-		return
+	boss_struck += n
+	# its health was the field's, so less `n` it is again
+	if boss.hit(n):
+		_boss_falls()
+	else:
+		_boss_field()
+
+
+func _boss_falls() -> void:
+	"""THE BOSS DEFEATED - by a hit or by the last brick it needed."""
+	var land: String = boss.land
 	score += 5000
 	_burst(boss.p, COLOURS.get(land, Color.WHITE), 80, 460.0, 0.2)
 	_burst(boss.p, GOLD, 40, 320.0, -0.2)
