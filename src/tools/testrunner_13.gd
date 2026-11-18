@@ -393,7 +393,7 @@ func _test_the_table_pays() -> void:
 
 
 func _test_the_table_on_a_phone() -> void:
-	section("The Beholder's Table on a phone (0.168.0)")
+	section("The Beholder's Table on a phone (0.168.0, cooler 0.168.4)")
 	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
 	var Screen = require_script("res://src/world/pinball/pinballscreen.gd", "pinballscreen.gd")
 	if Run == null or Screen == null:
@@ -415,11 +415,47 @@ func _test_the_table_on_a_phone() -> void:
 		and (run.eye_vps as Array).all(func(v: SubViewport) -> bool: return v.size == Vector2i(128, 128)),
 		[run.light, run.sun_light.shadow_enabled, run.world_env.glow_enabled, fills_out, holder.scaling_3d_scale,
 		(run.moving_vps[0] as SubViewport).size])
+	# COOLER ON A PHONE (0.168.4): "phone started to overheat on minigame"
+	var lit_count := func(r: Node) -> int:
+		return (r.world.find_children("*", "OmniLight3D", true, false) as Array).filter(
+			func(l: Node) -> bool: return (l as Light3D).visible).size()
+	var cadence := func(r: Node) -> Array:
+		var modes: Array = []
+		var vp: SubViewport = r.moving_vps[(r.floor_seen as Array).find(true)]
+		for i in 4:
+			vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+			r._sync_world()
+			modes.append(vp.render_target_update_mode)
+		return modes
+	var phone_lights: int = lit_count.call(run)
+	var phone_modes: Array = cadence.call(run)
+	check("  cooler (0.168.4): none of the table's own lights on, the moving layer painted and drawn every other frame, once, the panel painted on its own",
+		phone_lights == 0 and phone_modes.count(SubViewport.UPDATE_ONCE) == 2 and phone_modes.count(SubViewport.UPDATE_DISABLED) == 2
+		and run.panel_node.draw.is_connected(run._paint_panel_layer), [phone_lights, phone_modes])
 	holder.queue_free()
+	var desk_holder := SubViewport.new()
+	desk_holder.size = Vector2i(1280, 720)
+	add_child(desk_holder)
+	var desk = Run.new()
+	desk.seed_now = 7
+	desk_holder.add_child(desk)
+	var desk_lights: int = lit_count.call(desk)
+	var desk_modes: Array = cadence.call(desk)
+	check("  a PC's table keeps its lights and paints every frame", desk_lights > 10
+		and desk_modes.count(SubViewport.UPDATE_ALWAYS) == 4, [desk_lights, desk_modes])
+	desk_holder.queue_free()
+	var under := CanvasLayer.new()
+	under.layer = 3
+	add_child(under)
+	var above := CanvasLayer.new()
+	above.layer = 120
+	add_child(above)
 	var screen = Screen.new()
 	screen.set("headless_run", true)
 	screen.set("on_touch", func() -> bool: return true)
 	add_child(screen)
+	check("the layers under the screen (the HUD) are not drawn while it is up; those over it are",
+		not under.visible and above.visible, [under.visible, above.visible])
 	screen._process(0.1)
 	var wide: float = screen.leave_button.anchor_right - screen.leave_button.anchor_left
 	check("on a touch screen a new game says which half holds which flippers, how to launch, and Leave is bigger",
@@ -436,7 +472,10 @@ func _test_the_table_on_a_phone() -> void:
 	check("  with keys none of it shows, and Leave is its own size",
 		not screen.left_hint.visible and not screen.plunger_hint.visible
 		and is_equal_approx(screen.leave_button.anchor_right - screen.leave_button.anchor_left, Screen.LEAVE_BOX.size.x / float(Screen.VIEW.x)))
-	screen.queue_free()
+	screen.close()
+	check("  closed, they are drawn again", under.visible and above.visible)
+	under.queue_free()
+	above.queue_free()
 	print("  the table on a phone: done")
 
 
@@ -630,6 +669,23 @@ func _test_the_table_opens_and_bounces_back() -> void:
 		roll_top = minf(roll_top, (rolling["p"] as Vector2).y)
 	check("  lit, a ball rolling gently down it is thrown back too (a slingshot needs a 110 px/s hit)",
 		roll.kickbacks == [false, false] and roll_top < 2950.0, [roll.kickbacks, roll_top, catcher.get("a"), catcher.get("b")])
+	# THE PRONGS (0.168.4): "we need to add prongs on both of these corners
+	# its to easy for the ball to fall down" - from each catcher's foot over
+	# the outlane's mouth, leaving one ball and a half beside the inlane post
+	var gaps: Array = []
+	var yb: float = 3600.0
+	for side in [1.0, -1.0]:
+		var at := func(x: float) -> float: return x if side > 0.0 else roll._mx(x)
+		var corner := Vector2(at.call(270.0), yb - Run.BOUNCE_TO_Y)
+		var tip := Vector2(at.call(Run.PRONG_TIP.x), yb - Run.PRONG_TIP.y)
+		var found := false
+		for sg in roll.segs:
+			if (sg["a"] as Vector2).is_equal_approx(corner) and (sg["b"] as Vector2).is_equal_approx(tip):
+				found = true
+		var post := Vector2(at.call(330.0), yb - 360.0)
+		gaps.append((tip.distance_to(post) - 6.0) / (Run.BALL_R * 2.0) if found else -1.0)
+	check("  a prong over each outlane's mouth, leaving %.2f and %.2f balls' width beside the inlane post (it was 3)" % gaps,
+		gaps.all(func(g: float) -> bool: return g > 1.1 and g < 2.0), gaps)
 	roll.queue_free()
 	# the card says it is opening, drawn, before the table loads
 	var was_owner: bool = Api.is_owner
@@ -705,3 +761,55 @@ func _test_the_table_loads_behind_a_cover() -> void:
 	screen.close()
 	await get_tree().process_frame
 	print("  the table loads behind a cover: done")
+
+
+func _test_the_ball_floats_on_the_tide() -> void:
+	section("High tide: the ball is lighter than water (0.168.4)")
+	# The owner: "with the water i want to pretend the ball is lighter then
+	# water". It was lifted by 0.55 of gravity, and sank slowly.
+	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
+	if Run == null:
+		return
+	var tide := func(from: Vector2, v: Vector2) -> Node:
+		var run = Run.new()
+		run.headless = true
+		run.seed_now = 7
+		add_child(run)
+		run.save_until = -100.0
+		run.next_effect = 1e9
+		run.effect = {"land": "water", "warn": run.t - 3.0, "from": run.t - 2.0, "to": run.t + 30.0, "begun": true}
+		var ball: Dictionary = run.balls[0]
+		ball["held"] = false
+		ball["p"] = from
+		ball["v"] = v
+		return run
+	var run = tide.call(Vector2(500, 3250), Vector2.ZERO)
+	var ball: Dictionary = run.balls[0]
+	var surface: float = run._tide_y(0)
+	run.step_frames(150)
+	var off: float = (ball["p"] as Vector2).y - run._surface_at((ball["p"] as Vector2).x, 0)
+	check("a ball under the tide rises to its surface and rides it (%.0f px off it, the surface at %.0f)" % [off, surface],
+		surface < 3200.0 and absf(off) < 12.0, [ball["p"], off])
+	var low := -99999.0
+	var high := 99999.0
+	for i in 90:
+		run.step_frames(1)
+		low = maxf(low, (ball["p"] as Vector2).y)
+		high = minf(high, (ball["p"] as Vector2).y)
+	check("  it bobs on the waves, and is never nudged as stuck", low - high > 2.0 and int(run.stats["nudges"]) == 0,
+		[low - high, run.stats["nudges"]])
+	run.effect["to"] = run.t + 0.1
+	run.step_frames(80)
+	check("  and comes down as the tide goes out", (ball["p"] as Vector2).y > surface + 120.0, ball["p"])
+	run.queue_free()
+	var dive = tide.call(Vector2(500, 2950), Vector2(0, 1500))
+	var dball: Dictionary = dive.balls[0]
+	var deepest := 0.0
+	for i in 240:
+		dive.step_frames(1)
+		deepest = maxf(deepest, (dball["p"] as Vector2).y)
+	var doff: float = (dball["p"] as Vector2).y - dive._surface_at((dball["p"] as Vector2).x, 0)
+	check("a ball falling in at 1,500 px/s dives (to %.0f), is slowed, and comes back up to float" % deepest,
+		dive.ball_no == 1 and absf(doff) < 12.0 and deepest > surface, [dball["p"], doff, deepest, dive.ball_no])
+	dive.queue_free()
+	print("  the ball floats on the tide")

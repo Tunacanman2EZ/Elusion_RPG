@@ -72,6 +72,15 @@ const RIDE_CRAWL := 90.0
 const PHONE_3D_SCALE := 0.75
 const PHONE_PAINT := 0.5
 const PHONE_AMBIENT := 0.95
+# COOLER ON A PHONE (0.168.4): the owner, "phone started to overheat on
+# minigame". A phone's browser draws with the Compatibility renderer, where
+# every light a mesh is in draws that mesh again - so there the table has no
+# lights of its own (bumpers, eyes, the Beholder, the portal, the tower; the
+# raised ambient and the meshes' own glow stand in). And its panel, each
+# floor's moving layer and each eye are painted every PHONE_EVERY frames, the
+# moving layers' and eyes' pictures drawn only then (UPDATE_ONCE), not every
+# frame. (pinballscreen.gd also stops drawing the HUD under the table.)
+const PHONE_EVERY := 2
 # each side wall's bounce-back: from BOUNCE_FROM (x, height over the foot)
 # to the outlane's outer wall at BOUNCE_TO_Y over the foot - from 0.168.3
 # the wall's whole lower part (it began at x 190, 404 over the foot)
@@ -82,11 +91,26 @@ const BOUNCE_TO_Y := 385.0
 # ball came back down the same wall: 9 of 29 drained that side)
 const BOUNCE_AIM := Vector2(270.0, -1120.0)
 const LOW_KICK_AIM := Vector2(80.0, -1900.0)
+# THE PRONGS (0.168.4): from the corner where the catcher meets the outlane's
+# outer wall, a post sticks in over the outlane's mouth to PRONG_TIP (x,
+# height over the foot) - the owner: "we need to add prongs on both of these
+# corners its to easy for the ball to fall down". The mouth was 65 px from
+# that corner to the inlane's post (three balls wide); past the prong's tip
+# it is 35, room for one ball and a half. A plain player's drains fell by
+# about half with any prong tried (290, 297, 304) - see CLAUDE.md
+const PRONG_TIP := Vector2(300.0, 378.0)
 const KICK_CREAM := Color(0.95, 0.9, 0.8)
 # the plunger's bar, beside the panel (its lane is under it)
 const LAUNCH_BOX := Rect2(818, 450, 26, 222)
 # the camera never looks lower than this far above its floor's foot
 const CAM_FOOT := 290.0
+# THE VIEW (0.168.4): the owner, "i cannot see all of the right side of the
+# map we need to zoom out on the board just a little bit". At 52 degrees and
+# 1.55 to the side the right wall and the plunger's lane sat under the LAUNCH
+# bar; 56, moved over to 2.1, shows the right outlane, its KICK and the wall
+# clear of it, and the left side still in
+const CAM_FOV := 56.0
+const CAM_SIDE := 2.1
 # it looks CAM_LEAD seconds along the ball's way (no faster than LEAD_MOST
 # px/s), and never lets the ball more than CAM_DOWN below its line or CAM_UP
 # above (a still camera shows 240 below and 900 above)
@@ -138,6 +162,18 @@ const TOWER_R := 62.0
 const TOWER_TOP := 1.4
 # THE LANDS' EFFECTS: one at a time, on the whole table
 const EFFECT_FIRST := 6.0
+# LIGHTER THAN WATER (0.168.4): the owner, "with the water i want to pretend
+# the ball is lighter then water". Under the tide the water lifts the ball by
+# TIDE_BUOY times gravity when it is all under (so more than it weighs), by
+# as much of that as is under at the surface, and takes TIDE_DRAG of its
+# speed a second: it rises, rides the waves bobbing, and comes down with the
+# water as the tide goes out. (It was lifted by 0.55 of gravity, and sank.)
+const TIDE_BUOY := 1.6
+const TIDE_DRAG := 4.0
+# the waves on the tide: how high, how close, how fast (the picture's own)
+const WAVE_HIGH := 7.0
+const WAVE_EVERY := 0.03
+const WAVE_SPEED := 4.0
 const EFFECT_GAP := 8.4
 const EFFECT_LEN := 6.4
 const WARN := 1.5
@@ -475,6 +511,7 @@ func _base(yb: float, fl: int, outlanes: bool, top: float) -> void:
 			bounce["bounce"] = true
 			bounce["kb"] = 0 if side > 0.0 else 1
 			_wall(Vector2(m.call(270.0), yb - BOUNCE_TO_Y), Vector2(m.call(270.0), yb))
+			_wall(Vector2(m.call(270.0), yb - BOUNCE_TO_Y), Vector2(m.call(PRONG_TIP.x), yb - PRONG_TIP.y))
 			_chain([Vector2(m.call(330.0), yb - 360), Vector2(m.call(330.0), yb - 250), Vector2(m.call(444.0), yb - 146)])
 		else:
 			_chain([Vector2(m.call(20.0), top), Vector2(m.call(326.0), yb - 336), Vector2(m.call(330.0), yb - 250),
@@ -912,9 +949,9 @@ func _step_ball(ball: Dictionary, dt: float) -> void:
 	# one spot for STILL_SECONDS is nudged out - lying still, or rattling in
 	# a corner (one did in the Field's right orbit, for ever, at a speed
 	# that never read as slow). Never a ball cradled on a flipper held up:
-	# that one is the player's to hold.
+	# that one is the player's to hold. Nor one afloat on the tide (0.168.4).
 	var here: Vector2 = ball["p"]
-	if ball.has("sunk") or ball.has("ride") or _cradled(here) \
+	if ball.has("sunk") or ball.has("ride") or _cradled(here) or _afloat(here) \
 			or here.distance_to(ball.get("anchor", here)) > STILL_REACH:
 		ball["slow"] = 0.0
 		ball["anchor"] = here
@@ -2109,6 +2146,16 @@ func _in_tide(p: Vector2) -> bool:
 	return p.y > _tide_y(floor_of(p.y))
 
 
+func _surface_at(x: float, fl: int) -> float:
+	"""The tide's surface at x, waves and all, on floor fl."""
+	return _tide_y(fl) + sin(x * WAVE_EVERY + t * WAVE_SPEED) * WAVE_HIGH
+
+
+func _afloat(p: Vector2) -> bool:
+	"""A ball riding the tide's surface."""
+	return _effect_is("water") and absf(p.y - _surface_at(p.x, floor_of(p.y))) < BALL_R * 3.0
+
+
 func _vent_on(i: int) -> bool:
 	return _effect_is("fire") and fmod(t - float(effect["from"]) + i * 0.55, 1.65) < 0.5
 
@@ -2227,8 +2274,12 @@ func _feel(ball: Dictionary, dt: float) -> void:
 	var p: Vector2 = ball["p"]
 	match str(effect["land"]):
 		"water":
-			if _in_tide(p):
-				ball["v"] = (ball["v"] as Vector2) * (1.0 - 1.1 * dt * k) + Vector2(0, -GRAVITY * 0.55 * dt * k)
+			# lighter than water: lifted by the share of it under the surface
+			var under: float = clampf((p.y + BALL_R - _surface_at(p.x, floor_of(p.y))) / (BALL_R * 2.0), 0.0, 1.0)
+			if under > 0.0:
+				var v: Vector2 = ball["v"] * (1.0 - TIDE_DRAG * under * dt * k)
+				v.y -= GRAVITY * TIDE_BUOY * under * dt * k
+				ball["v"] = v
 		"wind":
 			# THE UPDRAFT (0.168.3): the gale blew sideways, and halved and
 			# stilled over the flippers (0.168.0) it still blew the ball into
@@ -2329,6 +2380,9 @@ void fragment() {
 var eye_nodes: Array = []
 var eye_lights: Array = []
 var hud_node: Node2D
+# the panel down the right, painted on its own (every PHONE_EVERY frames on a phone)
+var panel_node: Node2D
+var _paint_frame: int = 0
 var back_node: Node2D
 var cv: CanvasItem
 var ball_nodes: Array = []
@@ -2431,6 +2485,7 @@ func _light_at(p: Vector3, c: Color, reach: float) -> OmniLight3D:
 	l.light_color = c
 	l.omni_range = reach
 	l.position = p
+	l.visible = not light
 	world.add_child(l)
 	return l
 
@@ -2627,7 +2682,8 @@ func _build_world() -> void:
 	for fl in 3:
 		var yb: float = FLOORS[fl]["yb"]
 		for side in [1.0, -1.0]:
-			var tops: Array = [Vector2(330, yb - 360), Vector2(372, yb - 350)] if fl == 0 else [Vector2(326, yb - 336), Vector2(372, yb - 350)]
+			var tops: Array = [Vector2(330, yb - 360), Vector2(372, yb - 350), Vector2(PRONG_TIP.x, yb - PRONG_TIP.y)] if fl == 0 \
+				else [Vector2(326, yb - 336), Vector2(372, yb - 350)]
 			for p in tops:
 				posts.append(Vector2(p.x if side > 0.0 else _mx(p.x), p.y))
 			var tri: Array = [Vector2(372, yb - 350), Vector2(372, yb - 262), Vector2(430, yb - 215)]
@@ -2928,10 +2984,10 @@ func _build_world() -> void:
 		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		get_viewport().scaling_3d_scale = PHONE_3D_SCALE
 	cam3 = Camera3D.new()
-	cam3.fov = 52.0
+	cam3.fov = CAM_FOV
 	world.add_child(cam3)
 	cam3.current = true
-	cam3.h_offset = 1.55
+	cam3.h_offset = CAM_SIDE
 	# the window onto a ball on another floor: a second camera, the same world
 	var back_layer := CanvasLayer.new()
 	back_layer.layer = -1
@@ -2941,6 +2997,10 @@ func _build_world() -> void:
 	back_node.draw.connect(_paint_back)
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	panel_node = Node2D.new()
+	panel_node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	layer.add_child(panel_node)
+	panel_node.draw.connect(_paint_panel_layer)
 	hud_node = Node2D.new()
 	hud_node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	layer.add_child(hud_node)
@@ -3161,17 +3221,29 @@ func _sync_world() -> void:
 	slime_node.position = _w(slime_at(), 0.38 + hop * 0.35)
 	slime_node.texture = slime_frames[int(t * 8.0) % slime_frames.size()]
 	_floors_on_screen()
+	_paint_frame += 1
+	var paint_now: bool = not light or _paint_frame % PHONE_EVERY == 0
 	for fl in 3:
-		(moving_vps[fl] as SubViewport).render_target_update_mode = SubViewport.UPDATE_ALWAYS if floor_seen[fl] else SubViewport.UPDATE_DISABLED
-		if floor_seen[fl]:
-			(moving_nodes[fl] as Node2D).queue_redraw()
+		_paint_layer(moving_vps[fl], moving_nodes[fl], floor_seen[fl], paint_now)
 	for i in eye_nodes.size():
-		var on: bool = floor_seen[eye_floor[i]]
-		(eye_vps[i] as SubViewport).render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
-		if on:
-			(eye_nodes[i] as Node2D).queue_redraw()
+		_paint_layer(eye_vps[i], eye_nodes[i], floor_seen[eye_floor[i]], paint_now)
 	back_node.queue_redraw()
 	hud_node.queue_redraw()
+	if paint_now:
+		panel_node.queue_redraw()
+
+
+func _paint_layer(vp: SubViewport, node: Node2D, seen: bool, paint_now: bool) -> void:
+	"""A painted layer: off the screen, not drawn; on it, painted and drawn
+	every frame - on a phone every PHONE_EVERY, its picture drawn once then."""
+	if not seen:
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	elif not light:
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		node.queue_redraw()
+	elif paint_now:
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		node.queue_redraw()
 
 
 func _sync_elusion() -> void:
@@ -3461,7 +3533,7 @@ func _paint_effect(fl: int) -> void:
 				_tiled(_rect_pts(Rect2(0, ty, 1240, yb - ty)), tiles["water"], Color(1, 1, 1, 0.8), Vector2(t * 26.0, sin(t * 1.3) * 12.0))
 				var wave := PackedVector2Array()
 				for i in 64:
-					wave.append(Vector2(i * 20.0, ty + sin(i * 0.6 + t * 4.0) * 7.0))
+					wave.append(Vector2(i * 20.0, _surface_at(i * 20.0, fl)))
 				cv.draw_polyline(wave, Color(0.88, 0.96, 1.0, 0.9), 5.0)
 		"ice":
 			_tiled(shape, tiles["snow"], Color(0.8, 0.92, 1.0, 0.36 * k))
@@ -3889,9 +3961,15 @@ func _paint_hud() -> void:
 			cv.draw_colored_polygon(PackedVector2Array([c + Vector2(0, tip), c + Vector2(7, -tip), c + Vector2(-7, -tip)]), Color(GOLD, pulse))
 		_text(Vector2(430, y + 1.0), label, 14, Color(GOLD, 0.95), null, true)
 	_paint_cards()
-	_paint_panel()
 	_paint_launch()
 	_draw_end()
+
+
+func _paint_panel_layer() -> void:
+	"""The panel, under the rest of the HUD (the game over's dimming covers it)."""
+	cv = panel_node
+	_paint_panel()
+	cv = hud_node
 
 
 func _hero_region(w: String, i: int) -> Rect2:

@@ -16274,6 +16274,70 @@ step a frame, the board built and held, 3 2 1 GO, Again),
 mouth and a gentle roll; the cover's checks and the gentle roll sabotaged
 red (built at once; the old 110 px/s rule).
 
+### Prongs, a cooler phone, a ball lighter than water, a wider view (0.168.4)
+
+The owner, with a picture of the corner where a catcher meets its outlane's
+outer wall: "we need to add prongs on both of these corners its to easy for
+the ball to fall down", and "also phone started to overheat on minigame".
+(He then asked for the catcher to be a bumper too, and took it back - "they
+both are i see it just has a timer": it kicks while its KICK is lit.)
+
+- **The prongs** (pinballrun.gd `_base()`, `PRONG_TIP`): from that corner a
+  rail sticks in over the outlane's mouth to a post at (300, 378 over the
+  foot), mirrored. The mouth was 65 px from the corner to the inlane's post,
+  three balls wide; past the tip it is 35, a ball and a half. The plain
+  player on the same 24 seeds, no prong / tips at 290, 297, 300, 304: calm
+  drains 1.25 / 0.69 / 0.78 / 0.74 / 0.60 a minute, games 169 / 303 / 291 /
+  274 / 359 s, median 21M / 50M / 49M / 40M / 57M, outlane drains 36 / 31 /
+  18 / 22 / 18. **Any prong about halves the drains**, outlane and middle
+  both (a ball off a prong goes to an inlane and a flipper). Ten games at
+  300 mapped for a ball at rest 3 s or a loop: none. If it plays too soft,
+  make it harder elsewhere rather than take the prongs out.
+- **Cooler on a phone** (light mode; the PC is unchanged): the owner's phone
+  was already held to 30 fps (`Settings.PHONE_FPS`), so the work per frame
+  was cut. A phone's browser draws with the Compatibility renderer, where
+  every light a mesh is in draws it again, so `_light_at()` makes every
+  table light hidden there (bumpers, eyes, Beholder, portal, tower; the
+  fills already were). The panel is its own node (`panel_node`,
+  `_paint_panel_layer()`, under the HUD node so the game over's dimming
+  still covers it) and, with each floor's moving layer and each eye
+  (`_paint_layer()`), is painted every `PHONE_EVERY` (2) frames; those
+  layers' pictures are drawn then and only then (`UPDATE_ONCE`, left
+  disabled between). Sparks, popups, the hero cards and the LAUNCH bar stay
+  every frame. pinballscreen.gd `cover()` also hides every visible
+  CanvasLayer under its own (the HUD, the touch buttons), which went on
+  being drawn beneath the opaque screen; `uncover()` - also on
+  `_exit_tree()` - shows them again. **Not measured on a phone**: the
+  container renders in software, where the pieces off were 9 ms (lights),
+  12 (panel) and 12 (moving layers) of a 158 ms frame. If it still runs
+  hot, the 3D at under `PHONE_3D_SCALE` (0.75) is the next step.
+
+- **Lighter than water** (`_feel()`, `TIDE_*`, `_surface_at()`): the
+  owner, "with the water i want to pretend the ball is lighter then water".
+  High tide lifted the ball by 0.55 of gravity and slowed it, so it sank
+  slowly. Now the water lifts it by `TIDE_BUOY` (1.6) times gravity, by the
+  share of it under the surface (`_surface_at()`, the drawn waves -
+  `WAVE_HIGH`, `WAVE_EVERY`, `WAVE_SPEED` - which the picture now draws
+  from), and takes `TIDE_DRAG` (4; 2 left it bobbing 22 px for seconds) of
+  its speed a second while under. It rises to the surface, rides the waves,
+  and comes down with the water as the tide goes out; one falling in at
+  1,500 px/s dives to about 3,400 (the flippers are at 3,460) and comes back
+  up. A ball afloat (`_afloat()`) is never nudged as stuck.
+- **A wider view** (`CAM_FOV` 56, `CAM_SIDE` 2.1; they were 52 and 1.55):
+  "i cannot see all of the right side of the map we need to zoom out on the
+  board just a little bit". The right wall and the plunger's lane sat under
+  the LAUNCH bar; now the right outlane, its KICK and the wall are clear of
+  it and the left side is still in. Pictured at 52, 56 and 59, and at 56
+  with the view moved over 1.85 and 2.1.
+
+`_test_the_table_on_a_phone()` (no lights on a phone, the moving layer
+painted every other frame, the panel apart, a PC's table unchanged, the
+layers under the screen hidden and shown again), the prongs in
+`_test_the_table_opens_and_bounces_back()`, and
+`_test_the_ball_floats_on_the_tide()` (rises and rides the surface, bobs
+unnudged, comes down with the tide, a dive comes back up); all sabotaged
+red (the float with the old tide).
+
 ### Which file owns which number
 
 | question | lives in | example |

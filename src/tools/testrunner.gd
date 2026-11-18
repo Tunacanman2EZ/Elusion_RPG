@@ -303,6 +303,7 @@ func _run_all() -> void:
 	await _test_the_minigames_grid()
 	await _test_the_table_opens_and_bounces_back()
 	await _test_the_table_loads_behind_a_cover()
+	_test_the_ball_floats_on_the_tide()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()

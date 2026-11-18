@@ -114,6 +114,7 @@ var plunger_hint: Label = null
 var _hints_left: float = 0.0
 
 var _covered: CanvasItem = null
+var _hidden_layers: Array = []
 var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
@@ -793,13 +794,32 @@ func close() -> void:
 
 func cover(scene: Node) -> void:
 	"""The world under the screen goes undrawn while it is up: only a scene
-	that draws, and is drawn now."""
+	that draws, and is drawn now. And every layer under this one (the HUD,
+	the touch buttons; 0.168.4, for a phone that ran hot): the screen is
+	opaque, and they went on being drawn beneath it every frame."""
 	if scene is CanvasItem and scene != self and (scene as CanvasItem).visible:
 		_covered = scene
 		_covered.visible = false
+	if not is_inside_tree():
+		return
+	for node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+		var under := node as CanvasLayer
+		if under == self or is_ancestor_of(under) or not under.visible or under.layer >= LAYER:
+			continue
+		under.visible = false
+		_hidden_layers.append(under)
 
 
 func uncover() -> void:
 	if _covered != null and is_instance_valid(_covered):
 		_covered.visible = true
 	_covered = null
+	for under in _hidden_layers:
+		if is_instance_valid(under):
+			(under as CanvasLayer).visible = true
+	_hidden_layers.clear()
+
+
+func _exit_tree() -> void:
+	# however the screen goes, what it hid comes back
+	uncover()
