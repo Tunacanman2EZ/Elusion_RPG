@@ -101,9 +101,23 @@ const COLOUR_HINT := Color(0.82, 0.78, 0.7)
 const COLOUR_READY := Color(0.6, 0.9, 0.55)
 const COLOUR_WAIT := Color(1.0, 0.72, 0.4)
 const FONT_SIZE := 14
-const WIDTH := 430.0
+# A GRID OF CARDS (0.168.1). The owner: "we have to remake the minigames
+# hud because I cannot see the new minigame" - nine tiles in one column
+# stood 680 of the screen's 720 high, and the ninth fell under the bar.
+# Two columns of TILE_W now, in a scroll that holds the card to the room
+# above the bar (`_place()`); a tap anywhere on a game's card is its Go
+# (`_on_tile_input()`). The tiles' words wrap at TEXT_W, their tags on a
+# line under the name.
+const TILE_W := 396.0
+const TEXT_W := 246.0
+const COLUMNS := 2
+const WIDTH := TILE_W * 2.0 + 6.0
 const GAP := 6.0
-const STATUS_WIDTH := 230.0
+const STATUS_WIDTH := TEXT_W
+# the least of the list shown when the room is short; a tap that moved
+# further than TAP_SLOP was a drag of the scroll, not a Go
+const SCROLL_LEAST := 160.0
+const TAP_SLOP := 12.0
 const GAME := "endless"
 const ENTRANCE := "endless_entrance"
 const TOWN := "elusion"
@@ -305,6 +319,10 @@ static var _asked_by: String = ""
 const NEWS_SECONDS := 5.0
 
 
+var scroller: ScrollContainer = null
+var grid: GridContainer = null
+
+
 static func attach(on_hud: Node) -> Control:
 	var card: Control = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).new()
 	card.name = "minigamescard"
@@ -332,7 +350,19 @@ func _init() -> void:
 	close_button.focus_mode = Control.FOCUS_NONE
 	close_button.pressed.connect(close)
 	head.add_child(close_button)
-	var endless: Array = _tile(column, "endless", "The Endless", BLURB, [TAG_DAILY])
+	scroller = ScrollContainer.new()
+	scroller.name = "scroller"
+	scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroller.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	column.add_child(scroller)
+	grid = GridContainer.new()
+	grid.name = "grid"
+	grid.columns = COLUMNS
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroller.add_child(grid)
+	var endless: Array = _tile(grid, "endless", "The Endless", BLURB, [TAG_DAILY])
 	endless_box = endless[0]
 	game_name = endless[1]
 	blurb = endless[2]
@@ -340,54 +370,59 @@ func _init() -> void:
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	go_button = _go_button("go", _on_go)
 	(endless[4] as HBoxContainer).add_child(go_button)
-	var healer: Array = _tile(column, "healerrun", "The Healer's Run", HEALER_BLURB,
+	var healer: Array = _tile(grid, "healerrun", "The Healer's Run", HEALER_BLURB,
 		[TAG_THREE, ["HEALER", Color(0.2, 0.45, 0.3), "The healer's"]])
 	healer_box = healer[0]
 	healer_status = healer[3]
 	healer_go = _go_button("healergo", _on_healer_go)
 	(healer[4] as HBoxContainer).add_child(healer_go)
-	var stand: Array = _tile(column, "magestand", "The Mage's Stand", STAND_BLURB,
+	var stand: Array = _tile(grid, "magestand", "The Mage's Stand", STAND_BLURB,
 		[["MAGE", Color(0.2, 0.3, 0.55), "The mage's"]])
 	stand_box = stand[0]
 	stand_status = stand[3]
 	stand_go = _go_button("standgo", _on_stand_go)
 	(stand[4] as HBoxContainer).add_child(stand_go)
-	var descent: Array = _tile(column, "descent", "The Descent", DESCENT_BLURB,
+	var descent: Array = _tile(grid, "descent", "The Descent", DESCENT_BLURB,
 		[["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go - each with its own upgrades"]])
 	descent_box = descent[0]
 	descent_status = descent[3]
 	descent_go = _go_button("descentgo", _on_descent_go)
 	(descent[4] as HBoxContainer).add_child(descent_go)
-	var forge: Array = _tile(column, "forge", "The Forge", FORGE_BLURB,
+	var forge: Array = _tile(grid, "forge", "The Forge", FORGE_BLURB,
 		[TAG_DAILY, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"],
 		["TANK BEST", Color(0.55, 0.3, 0.12), "The tank's world - he lasts longest"]])
 	forge_box = forge[0]
 	forge_status = forge[3]
 	forge_go = _go_button("forgego", _on_forge_go)
 	(forge[4] as HBoxContainer).add_child(forge_go)
-	var cloth: Array = _tile(column, "cloth", "Cut the Cloth", CLOTH_BLURB,
+	var cloth: Array = _tile(grid, "cloth", "Cut the Cloth", CLOTH_BLURB,
 		[TAG_THREE, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
 	cloth_box = cloth[0]
 	cloth_status = cloth[3]
 	cloth_go = _go_button("clothgo", _on_cloth_go)
 	(cloth[4] as HBoxContainer).add_child(cloth_go)
-	var crown: Array = _tile(column, "crownfall", "Crownfall", CROWN_BLURB,
+	var crown: Array = _tile(grid, "crownfall", "Crownfall", CROWN_BLURB,
 		[TAG_THREE, TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
 	crown_box = crown[0]
 	crown_status = crown[3]
 	crown_go = _go_button("crowngo", _on_crown_go)
 	(crown[4] as HBoxContainer).add_child(crown_go)
-	var table: Array = _tile(column, "pinball", "The Beholder's Table", PINBALL_BLURB,
+	var table: Array = _tile(grid, "pinball", "The Beholder's Table", PINBALL_BLURB,
 		[TAG_TESTING, ["ANY CLASS", Color(0.3, 0.3, 0.32), "Every class may go"]])
 	pinball_box = table[0]
 	pinball_status = table[3]
 	pinball_go = _go_button("pinballgo", _on_pinball_go)
 	(table[4] as HBoxContainer).add_child(pinball_go)
-	var testing: Array = _tile(column, "testingground", "Testing Ground", TESTING_BLURB, [TAG_OWNER])
+	var testing: Array = _tile(grid, "testingground", "Testing Ground", TESTING_BLURB, [TAG_OWNER])
 	testing_box = testing[0]
 	testing_status = testing[3]
 	testing_go = _go_button("testinggo", _on_testing_go)
 	(testing[4] as HBoxContainer).add_child(testing_go)
+	for tile in grid.get_children():
+		var go: Button = ((tile as Control).get_child(0) as Control).get_child(-1) as Button
+		(tile as Control).gui_input.connect(_on_tile_input.bind(tile, go))
+		(tile as Control).mouse_entered.connect(_hover.bind(tile, true))
+		(tile as Control).mouse_exited.connect(_hover.bind(tile, false))
 
 
 func _tile(column: Control, id: String, game_title: String, line: String, tags: Array) -> Array:
@@ -396,6 +431,9 @@ func _tile(column: Control, id: String, game_title: String, line: String, tags: 
 	var tile := PanelContainer.new()
 	tile.name = id
 	tile.add_theme_stylebox_override("panel", _flat(TILE_BG, Color(COLOUR, 0.28), 4, 6, 1))
+	tile.custom_minimum_size = Vector2(TILE_W, 0)
+	tile.mouse_filter = Control.MOUSE_FILTER_STOP
+	tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	column.add_child(tile)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -419,20 +457,47 @@ func _tile(column: Control, id: String, game_title: String, line: String, tags: 
 	words.add_theme_constant_override("separation", 1)
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(words)
+	var name_label: Label = _label(id + "game", game_title, FONT_SIZE, COLOUR)
+	words.add_child(name_label)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 4)
 	words.add_child(head)
-	var name_label: Label = _label(id + "game", game_title, FONT_SIZE, COLOUR)
-	head.add_child(name_label)
 	for tag in tags:
 		head.add_child(_tag(tag))
 	var line_label: Label = _label(id + "blurb", line, 11, COLOUR_HINT)
+	line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line_label.custom_minimum_size = Vector2(TEXT_W, 0)
 	words.add_child(line_label)
 	var state: Label = _label(id + "status", "", 12, COLOUR_HINT)
 	state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	state.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	state.custom_minimum_size = Vector2(STATUS_WIDTH, 0)
 	words.add_child(state)
 	return [tile, name_label, line_label, state, row]
+
+
+func _on_tile_input(event: InputEvent, tile: Control, go: Button) -> void:
+	"""A tap on a game's card, anywhere off its Go, is its Go - unless the
+	finger moved, which was a drag of the scroll."""
+	if not (event is InputEventMouseButton) or (event as InputEventMouseButton).button_index != MOUSE_BUTTON_LEFT:
+		return
+	var press: InputEventMouseButton = event
+	if press.pressed:
+		tile.set_meta("down_at", press.global_position)
+		return
+	if not tile.has_meta("down_at"):
+		return
+	var from: Vector2 = tile.get_meta("down_at")
+	tile.remove_meta("down_at")
+	if press.global_position.distance_to(from) > TAP_SLOP or go.disabled or not go.is_visible_in_tree():
+		return
+	tile.accept_event()
+	go.pressed.emit()
+
+
+func _hover(tile: Control, on: bool) -> void:
+	"""A card under the mouse lights its rim."""
+	tile.add_theme_stylebox_override("panel", _flat(TILE_BG, Color(COLOUR, 0.7 if on else 0.28), 4, 6, 1))
 
 
 func _go_button(id: String, on_press: Callable) -> Button:
@@ -843,6 +908,8 @@ func _place() -> void:
 	bar's dropdowns stand (characterhud.gd nav_menu_position())."""
 	if not is_inside_tree():
 		return
+	var whole: float = grid.get_combined_minimum_size().y
+	scroller.custom_minimum_size.y = whole
 	reset_size()
 	var screen: Vector2 = get_viewport_rect().size
 	var button: Control = hud.get_node_or_null("%minigamesbutton") as Control if hud != null else null
@@ -852,6 +919,11 @@ func _place() -> void:
 		anchor = button.get_global_rect()
 	elif nav != null:
 		anchor = Rect2(nav.get_global_rect().position + Vector2(size.x, 0), Vector2.ZERO)
+	# never taller than the room above the bar: the list scrolls instead
+	var room: float = anchor.position.y - GAP
+	if size.y > room:
+		scroller.custom_minimum_size.y = maxf(SCROLL_LEAST, whole - (size.y - room))
+		reset_size()
 	var x: float = clampf(anchor.end.x - size.x, 0.0, maxf(0.0, screen.x - size.x))
 	var y: float = maxf(0.0, anchor.position.y - size.y - GAP)
 	position = Vector2(x, y).floor()

@@ -16098,6 +16098,29 @@ this one.
   `_test_the_gale_is_fair()`, and the camera's foot in
   `_test_the_beholders_table()`. Each sabotaged and watched go red.
 
+### The Minigames card is a grid (0.168.1)
+
+The owner: "we have to remake the minigames hud because I cannot see the
+new minigame". Nine tiles in one column stood 680 of the screen's 720
+high, the Beholder's Table eighth of them - under the bar wherever the
+room above it was any shorter. He chose a grid from three layouts (a
+grid, a list with details, the same list scrolling).
+
+- **Two columns** (minigamescard.gd `grid`, a GridContainer of `COLUMNS`
+  2, in `scroller`): each game a card `TILE_W` (396) wide - its picture,
+  its name, its tags on a line under it, its line and its status wrapped
+  at `TEXT_W`, Go on the right. Nine games: 574 high, under the 680.
+  396, not more: the card's right edge stays on the Minigames button's
+  (`_test_minigames()`), 833 from the screen's left.
+- **Never taller than the room above the bar** (`_place()`): when it
+  would be, the list scrolls, at least `SCROLL_LEAST` (160) of it shown.
+- **A tap anywhere on a game's card is its Go** (`_on_tile_input()`, off
+  its Go, unless the finger moved more than `TAP_SLOP` - 12 px, a drag of
+  the scroll - or Go is off); its rim lights under the mouse (`_hover()`).
+- `_test_the_minigames_grid()` (testrunner_13): two columns, every game
+  on the card on the screen above the bar, the scroll when the bar is
+  high, a tap and a drag. Sabotaged (one column, no cap, no slop): red.
+
 ### Which file owns which number
 
 | question | lives in | example |

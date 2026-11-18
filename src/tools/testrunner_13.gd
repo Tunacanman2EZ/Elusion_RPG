@@ -450,3 +450,74 @@ func _test_the_gale_is_fair() -> void:
 	check("  over the flippers and their lanes the air is still", absf(low) < 1.0, low)
 	run.queue_free()
 	print("  the gale is fair")
+
+
+func _test_the_minigames_grid() -> void:
+	section("The Minigames card is a grid that fits the screen (0.168.1)")
+	# The owner: "we have to remake the minigames hud because I cannot see
+	# the new minigame" - nine tiles in one column stood 680 of 720 high.
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var card_hud := Control.new()
+	card_hud.size = Vector2(1280, 720)
+	add_child(card_hud)
+	var bar := Button.new()
+	bar.name = "minigamesbutton"
+	bar.unique_name_in_owner = true
+	card_hud.add_child(bar)
+	bar.owner = card_hud
+	bar.position = Vector2(734, 676)
+	bar.size = Vector2(99, 30)
+	var card = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).call("attach", card_hud)
+	card.set("area_now", func() -> String: return "elusion")
+	card.set("class_now", func() -> String: return "warrior")
+	card.set("list_request", func(_p: String, _t: float = 0.0) -> Dictionary: return {"ok": true, "data": {"games": []}})
+	var asked: Array = []
+	card.set("enter_request", func(path: String, body: Dictionary, _t: float = 0.0) -> Dictionary:
+		asked.append(body.get("game", ""))
+		return {"ok": false, "status": 0})
+	card.call("open")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var endless: Control = card.endless_box
+	var healer: Control = card.healer_box
+	var drawn: Rect2 = (card as Control).get_global_rect()
+	var shown: Array = card.grid.get_children().filter(func(t: Control) -> bool: return t.visible)
+	var in_view: bool = shown.all(func(t: Control) -> bool: return drawn.encloses(t.get_global_rect()))
+	check("two columns: the Endless and the Healer's Run side by side",
+		card.grid.columns == 2 and is_equal_approx(endless.position.y, healer.position.y) and healer.position.x > endless.position.x,
+		[endless.position, healer.position])
+	check("  every game shown (%d) is on the card, the card on the screen above the bar, no scroll needed" % shown.size(),
+		shown.size() >= 9 and in_view and drawn.position.y >= 0.0 and drawn.end.y <= bar.position.y
+		and is_equal_approx(card.scroller.custom_minimum_size.y, card.grid.get_combined_minimum_size().y), [drawn, shown.size()])
+	bar.position = Vector2(734, 300)
+	card.call("_place")
+	await get_tree().process_frame
+	drawn = (card as Control).get_global_rect()
+	check("  with the bar high up, the card keeps above it and its list scrolls",
+		drawn.position.y >= 0.0 and drawn.end.y <= 300.0 and card.scroller.custom_minimum_size.y < card.grid.get_combined_minimum_size().y,
+		[drawn, card.scroller.custom_minimum_size.y])
+	var tile: Control = card.pinball_box
+	var go: Button = card.pinball_go
+	var tap := func(from: Vector2, to: Vector2) -> void:
+		var down := InputEventMouseButton.new()
+		down.button_index = MOUSE_BUTTON_LEFT
+		down.pressed = true
+		down.global_position = from
+		card._on_tile_input(down, tile, go)
+		var up := InputEventMouseButton.new()
+		up.button_index = MOUSE_BUTTON_LEFT
+		up.pressed = false
+		up.global_position = to
+		card._on_tile_input(up, tile, go)
+	tap.call(Vector2(500, 200), Vector2(503, 202))
+	await get_tree().process_frame
+	var after_tap: Array = asked.duplicate()
+	tap.call(Vector2(500, 200), Vector2(500, 260))
+	await get_tree().process_frame
+	check("a tap on a game's card is its Go; a drag (the scroll) is not",
+		after_tap == ["pinball"] and asked == ["pinball"], [after_tap, asked])
+	Api.is_owner = was_owner
+	card_hud.queue_free()
+	await get_tree().process_frame
+	print("  the grid: done")

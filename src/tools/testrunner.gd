@@ -300,6 +300,7 @@ func _run_all() -> void:
 	_test_the_gale_is_fair()
 	await _test_the_table_pays()
 	_test_the_table_on_a_phone()
+	await _test_the_minigames_grid()
 	await _test_the_waystones()
 	await _test_the_forge()
 	await _test_text_boxes_have_no_right_click_menu()
