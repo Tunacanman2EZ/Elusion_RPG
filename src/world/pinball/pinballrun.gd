@@ -81,6 +81,23 @@ const PHONE_AMBIENT := 0.95
 # moving layers' and eyes' pictures drawn only then (UPDATE_ONCE), not every
 # frame. (pinballscreen.gd also stops drawing the HUD under the table.)
 const PHONE_EVERY := 2
+# FEWER DRAWS (0.168.7): the owner's readout on his PC (i9-14900K, RX 6800
+# XT, a 100 Hz screen): 100 fps but busy 10.24 ms of each 10 ms frame,
+# process 9.1 ms, and 974 draws a frame "redrawing a picture" - the table's
+# own views. The game's code is about 2 ms of that; the rest is the
+# processor handing the graphics card its draws. Measured here: the side
+# panel alone was 195 of the 218 draws over the table, every frame - a
+# canvas is drawn again every frame even when nothing in it changed. So the
+# panel is its own picture (panel_vp, PANEL_BOX), drawn once each time it is
+# painted, at most PANEL_HZ times a second, and shown as one sprite; and
+# each floor's moving layer and each eye is painted and drawn at most
+# PAINT_HZ times a second (half the frames at 100 Hz; a phone keeps every
+# PHONE_EVERY frames). And the round meshes left at Godot's defaults (a
+# sphere 64 x 32, a cylinder 64 round, a ring 64 x 32) are made as fine as
+# this camera can show (_put()).
+const PAINT_HZ := 50.0
+const PANEL_HZ := 15.0
+const PANEL_BOX := Rect2(856, 0, 424, 720)
 # each side wall's bounce-back: from BOUNCE_FROM (x, height over the foot)
 # to the outlane's outer wall at BOUNCE_TO_Y over the foot - from 0.168.3
 # the wall's whole lower part (it began at x 190, 404 over the foot)
@@ -2402,7 +2419,10 @@ var eye_lights: Array = []
 var hud_node: Node2D
 # the panel down the right, painted on its own (every PHONE_EVERY frames on a phone)
 var panel_node: Node2D
+var panel_vp: SubViewport
 var _paint_frame: int = 0
+var _layers_at: float = -1.0
+var _panel_at: float = -1.0
 var back_node: Node2D
 var cv: CanvasItem
 var ball_nodes: Array = []
@@ -2455,6 +2475,8 @@ var meteor_tex: Texture2D
 var pack: Dictionary = {}
 var extra_keep: Array = []
 var still_joined: int = 0
+var shadow_meshes: Array = []
+var joined_meshes: Array = []
 var loot_nodes: Array = []
 
 
@@ -2475,6 +2497,18 @@ func _mat(c: Color, metal: float = 0.0, rough: float = 0.5, glow: float = 0.0) -
 
 
 func _put(mesh: Mesh, m: Material, at: Vector3, parent: Node3D = null) -> MeshInstance3D:
+	# as fine as this camera can show (0.168.7): Godot's defaults drew a ball
+	# of 4,224 triangles and a post of 512; a cylinder's rings up its side
+	# add nothing to a plain colour
+	if mesh is SphereMesh and (mesh as SphereMesh).radial_segments > 32:
+		(mesh as SphereMesh).radial_segments = 32
+		(mesh as SphereMesh).rings = 16
+	elif mesh is CylinderMesh:
+		(mesh as CylinderMesh).radial_segments = mini((mesh as CylinderMesh).radial_segments, 28)
+		(mesh as CylinderMesh).rings = 0
+	elif mesh is TorusMesh:
+		(mesh as TorusMesh).rings = mini((mesh as TorusMesh).rings, 40)
+		(mesh as TorusMesh).ring_segments = mini((mesh as TorusMesh).ring_segments, 12)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = m
@@ -3017,10 +3051,23 @@ func _build_world() -> void:
 	back_node.draw.connect(_paint_back)
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	panel_vp = SubViewport.new()
+	panel_vp.name = "panel_picture"
+	panel_vp.size = Vector2i(PANEL_BOX.size)
+	panel_vp.transparent_bg = true
+	panel_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(panel_vp)
 	panel_node = Node2D.new()
 	panel_node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	layer.add_child(panel_node)
+	panel_node.position = -PANEL_BOX.position
+	panel_vp.add_child(panel_node)
 	panel_node.draw.connect(_paint_panel_layer)
+	var panel_pic := Sprite2D.new()
+	panel_pic.name = "panel"
+	panel_pic.centered = false
+	panel_pic.position = PANEL_BOX.position
+	panel_pic.texture = panel_vp.get_texture()
+	layer.add_child(panel_pic)
 	hud_node = Node2D.new()
 	hud_node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	layer.add_child(hud_node)
@@ -3031,15 +3078,23 @@ func _build_world() -> void:
 	_sync_world()
 
 
-const CELL := 400.0
-
-
 func _merge_still() -> void:
 	"""THE STILL PIECES IN A FEW MESHES: every mesh straight under the world
-	that never moves is joined with the others of its material in its CELL
-	of the table - hundreds of rails, walls, posts and rims become a few
-	dozen draws. A material shared keeps glowing as one (the blackout's).
-	What moves, flashes on its own or hides is left alone."""
+	that never moves is joined with the others of its look on its floor -
+	hundreds of rails, walls, posts and rims become a few dozen draws.
+	Two materials that look the same are one look (0.168.7: 111
+	materials, 53 looks); a material something changes in play - the
+	blackout's glow, a ball's colour - stays itself, and every piece of it
+	still glows as one. What moves, flashes on its own or hides is left
+	alone. A flipper's ivory parts are one mesh under it.
+	A mesh is lit by LIGHTS_EACH lamps at most, so a join stops growing
+	before it would reach more (the first try, a floor a mesh, lost the
+	bumpers' glow on their rims) - on a phone, its lamps out, a floor is
+	one mesh a look.
+	THE SHADOWS APART: a shadow needs only the shape, so the plain
+	pieces' shadows are a few meshes of their own, a floor each, drawn
+	only into the shadow (0.168.7: a shadow draw for every piece in view
+	was as many draws again as the table)."""
 	var keep: Dictionary = {}
 	for n in ball_nodes + target_nodes + kick_nodes + [plunger_node, shield_node, crystal, lock_node]:
 		keep[n] = true
@@ -3050,6 +3105,15 @@ func _merge_still() -> void:
 		keep[b["cap"]] = true
 	for n in extra_keep:
 		keep[n] = true
+	var live: Dictionary = {}
+	for m in stripe_mats + ball_mats + floor_mats + [lock_mat, spinner_mat, magnet_mat, spirit_mat, gate_mat]:
+		live[m] = true
+	for gm in glow_mats:
+		live[gm[0]] = true
+	for n in keep:
+		if n is GeometryInstance3D and (n as GeometryInstance3D).material_override != null:
+			live[(n as GeometryInstance3D).material_override] = true
+	var looks: Dictionary = {}
 	var groups: Dictionary = {}
 	for ch in world.get_children():
 		if not (ch is MeshInstance3D) or keep.has(ch):
@@ -3057,32 +3121,160 @@ func _merge_still() -> void:
 		var mi: MeshInstance3D = ch
 		if mi.material_override == null or mi.mesh == null or mi.mesh.get_surface_count() != 1 or not mi.visible:
 			continue
+		var mat: Material = mi.material_override
+		if mat is BaseMaterial3D and not live.has(mat):
+			var same: String = _look_of(mat)
+			if not looks.has(same):
+				looks[same] = mat
+			mat = looks[same]
 		var at: Vector3 = mi.global_transform * mi.mesh.get_aabb().get_center()
-		var cell := Vector2i(int(floor((at.x / S + W / 2.0) / CELL)), int(floor((at.z / S + H / 2.0) / CELL)))
-		var key: Array = [mi.material_override, mi.mesh is PrimitiveMesh, cell,
-			mi.cast_shadow]
+		var key: Array = [mat, mi.mesh is PrimitiveMesh, floor_of(at.z / S + H / 2.0), mi.cast_shadow]
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(mi)
+	var lamps: Array = []
+	for l in world.find_children("*", "OmniLight3D", true, false):
+		if (l as Node3D).visible:
+			lamps.append([(l as Node3D).position, (l as OmniLight3D).omni_range])
+	var shapes: Dictionary = {}
 	var joined: int = 0
 	for key in groups:
-		var list: Array = groups[key]
-		if list.size() < 2:
-			continue
+		var unshaded: bool = key[0] is BaseMaterial3D and (key[0] as BaseMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
+		var shadow: int = key[3]
+		if sun_light.shadow_enabled and shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON and _plain_shadow(key[0]):
+			var shape_key: Array = [key[2], (key[0] as BaseMaterial3D).cull_mode, key[1]]
+			if not shapes.has(shape_key):
+				shapes[shape_key] = []
+			for mi in groups[key]:
+				(shapes[shape_key] as Array).append([(mi as MeshInstance3D).mesh, (mi as MeshInstance3D).transform])
+				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for part in _lit_parts(groups[key], [] if unshaded else lamps):
+			joined += _join(part, world, key[0], shadow)
+	shadow_meshes.clear()
+	for shape_key in shapes:
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for mi in list:
-			st.append_from((mi as MeshInstance3D).mesh, 0, (mi as MeshInstance3D).transform)
-		var one := MeshInstance3D.new()
-		one.mesh = st.commit()
-		one.material_override = key[0]
-		one.cast_shadow = key[3]
-		world.add_child(one)
-		for mi in list:
-			world.remove_child(mi)
-			(mi as Node).queue_free()
-		joined += list.size()
+		for e in shapes[shape_key]:
+			st.append_from(e[0], 0, e[1])
+		var only := MeshInstance3D.new()
+		only.mesh = st.commit()
+		var plain := StandardMaterial3D.new()
+		plain.cull_mode = shape_key[1]
+		only.material_override = plain
+		only.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		world.add_child(only)
+		shadow_meshes.append(only)
+	for pivot in flipper_nodes:
+		var parts: Dictionary = {}
+		for ch in (pivot as Node3D).get_children():
+			var mi := ch as MeshInstance3D
+			if mi != null and mi.mesh is PrimitiveMesh and not live.has(mi.material_override):
+				if not parts.has(mi.material_override):
+					parts[mi.material_override] = []
+				(parts[mi.material_override] as Array).append(mi)
+		for mat in parts:
+			joined += _join(parts[mat], pivot, mat, (parts[mat][0] as MeshInstance3D).cast_shadow)
 	still_joined = joined
+
+
+static func _plain_shadow(m: Material) -> bool:
+	"""A material whose pieces' shadow is their shape alone: solid, facing
+	no camera, the same size."""
+	var b := m as BaseMaterial3D
+	return b != null and b.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and not b.grow \
+		and b.billboard_mode == BaseMaterial3D.BILLBOARD_DISABLED and not b.heightmap_enabled \
+		and not b.no_depth_test and b.depth_draw_mode != BaseMaterial3D.DEPTH_DRAW_DISABLED
+
+
+# Godot's Mobile and Compatibility renderers light one mesh by at most 8
+# omni lights; past that a lamp is dropped from all of it
+const LIGHTS_EACH := 8
+
+
+func _lit_parts(list: Array, lamps: Array) -> Array:
+	"""The pieces of one look on one floor in parts each reached by at most
+	LIGHTS_EACH of the lamps ([where, reach]), neighbours together."""
+	var order: Array = list.duplicate()
+	order.sort_custom(_sooner_piece)
+	var parts: Array = []
+	var part: Array = []
+	var box := AABB()
+	for mi in order:
+		var b: AABB = (mi as MeshInstance3D).transform * (mi as MeshInstance3D).mesh.get_aabb()
+		var grown: AABB = b if part.is_empty() else box.merge(b)
+		if not part.is_empty() and _lamps_on(grown, lamps) > LIGHTS_EACH:
+			parts.append(part)
+			part = []
+			grown = b
+		part.append(mi)
+		box = grown
+	if not part.is_empty():
+		parts.append(part)
+	return parts
+
+
+static func _sooner_piece(a: MeshInstance3D, b: MeshInstance3D) -> bool:
+	"""Row by row of 400 px squares, then across: neighbours in turn."""
+	var pa: Vector3 = a.transform * a.mesh.get_aabb().get_center()
+	var pb: Vector3 = b.transform * b.mesh.get_aabb().get_center()
+	var ra: int = int(floor(pa.z / (400.0 * S)))
+	var rb: int = int(floor(pb.z / (400.0 * S)))
+	if ra != rb:
+		return ra < rb
+	return pa.x < pb.x
+
+
+static func _lamps_on(box: AABB, lamps: Array) -> int:
+	"""How many lamps the renderer pairs with box: a lamp's box is the cube
+	its reach fills, not the ball."""
+	var n: int = 0
+	for l in lamps:
+		var r: float = l[1]
+		if box.intersects(AABB((l[0] as Vector3) - Vector3(r, r, r), Vector3(r, r, r) * 2.0)):
+			n += 1
+	return n
+
+
+func _join(list: Array, parent: Node3D, mat: Material, shadow: int) -> int:
+	"""One mesh of the pieces in list, in place of them, under parent."""
+	if list.size() < 2:
+		return 0
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for mi in list:
+		st.append_from((mi as MeshInstance3D).mesh, 0, (mi as MeshInstance3D).transform)
+	var one := MeshInstance3D.new()
+	one.mesh = st.commit()
+	one.material_override = mat
+	one.cast_shadow = shadow
+	parent.add_child(one)
+	joined_meshes.append(one)
+	for mi in list:
+		parent.remove_child(mi)
+		(mi as Node).queue_free()
+	return list.size()
+
+
+static func _word_kinds(held: Array) -> Dictionary:
+	"""Held words by kind - [font, size, outline] - the kinds in the order
+	their first was asked for, each kind's words in theirs."""
+	var kinds: Dictionary = {}
+	for w in held:
+		var kind: Array = [w[0], w[1], w[2]]
+		if not kinds.has(kind):
+			kinds[kind] = []
+		(kinds[kind] as Array).append(w)
+	return kinds
+
+
+static func _look_of(m: Material) -> String:
+	"""Everything a material keeps, as words: two the same draw the same."""
+	var parts := PackedStringArray([m.get_class()])
+	for p in m.get_property_list():
+		if int(p["usage"]) & PROPERTY_USAGE_STORAGE and not str(p["name"]).begins_with("resource_"):
+			parts.append(str(m.get(p["name"])))
+	return "|".join(parts)
 
 
 func _focus() -> Dictionary:
@@ -3246,25 +3438,28 @@ func _sync_world() -> void:
 	slime_node.texture = slime_frames[int(t * 8.0) % slime_frames.size()]
 	_floors_on_screen()
 	_paint_frame += 1
-	var paint_now: bool = not light or _paint_frame % PHONE_EVERY == 0
+	var now: float = Time.get_ticks_msec() / 1000.0
+	var paint_now: bool = _paint_frame % PHONE_EVERY == 0 if light else now - _layers_at >= 1.0 / PAINT_HZ - 0.004
+	if paint_now:
+		_layers_at = now
 	for fl in 3:
 		_paint_layer(moving_vps[fl], moving_nodes[fl], floor_seen[fl], paint_now)
 	for i in eye_nodes.size():
 		_paint_layer(eye_vps[i], eye_nodes[i], floor_seen[eye_floor[i]], paint_now)
 	back_node.queue_redraw()
 	hud_node.queue_redraw()
-	if paint_now:
+	if now - _panel_at >= 1.0 / PANEL_HZ - 0.004:
+		_panel_at = now
+		panel_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 		panel_node.queue_redraw()
 
 
 func _paint_layer(vp: SubViewport, node: Node2D, seen: bool, paint_now: bool) -> void:
-	"""A painted layer: off the screen, not drawn; on it, painted and drawn
-	every frame - on a phone every PHONE_EVERY, its picture drawn once then."""
+	"""A painted layer: off the screen, not drawn; on it, painted and its
+	picture drawn once each time it is due - at most PAINT_HZ a second, on a
+	phone every PHONE_EVERY frames - and left as it is between."""
 	if not seen:
 		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	elif not light:
-		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-		node.queue_redraw()
 	elif paint_now:
 		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 		node.queue_redraw()
@@ -3726,6 +3921,7 @@ func _paint_moving(fl: int, node: Node2D) -> void:
 	land's effect and its warning, shadows of what walks, the lamps, the
 	inserts, the turning circles."""
 	cv = node
+	_hold_words = true
 	var top: float = FLOOR_TOP[fl]
 	band_lo = top
 	band_hi = top + 1200.0
@@ -3847,7 +4043,8 @@ func _paint_moving(fl: int, node: Node2D) -> void:
 		for bank in STALKS:
 			_text(Vector2(float(bank[1]) + 13.0, STALK_Y - 22.0), "EYESTALKS", 12, Color(COLOURS["dark"].lightened(0.5), 0.8), null, true, 1.0, 0)
 	_paint_moving_more(fl, chase)
-	# the ramps' shadows
+	_write_held_words()
+	# the ramps' shadows, over the words as before
 	for r in ramps:
 		var box: Rect2 = r["box"]
 		if box.end.y < band_lo - 40.0 or box.position.y > band_hi + 40.0:
@@ -3992,7 +4189,9 @@ func _paint_hud() -> void:
 func _paint_panel_layer() -> void:
 	"""The panel, under the rest of the HUD (the game over's dimming covers it)."""
 	cv = panel_node
+	_hold_words = true
 	_paint_panel()
+	_write_held_words()
 	cv = hud_node
 
 
@@ -4079,6 +4278,8 @@ func _paint_panel() -> void:
 	while small > 10 and _width(sub, small) > d.size.x - 24.0:
 		small -= 1
 	_text(Vector2(d.get_center().x, d.position.y + 102), sub, small, sub_c, null, true, 1.0, 0)
+	# the dot screen's lines go over its words
+	_words_between()
 	var y: float = d.position.y
 	while y < d.end.y:
 		cv.draw_line(Vector2(d.position.x, y), Vector2(d.end.x, y), Color(0, 0, 0, 0.55), 1.5)
@@ -4274,9 +4475,44 @@ func _text(at: Vector2, s: String, size: int, c: Color, f: Font = null, centre: 
 	var use: Font = _bold if f == null else f
 	if centre:
 		at.x -= use.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x / 2.0
+	if _hold_words:
+		_held_words.append([use, size, outline, at, s, c, alpha])
+		return
 	if outline > 0:
 		cv.draw_string_outline(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0, 0, 0, 0.75 * alpha))
 	cv.draw_string(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, c)
+
+
+# THE WORDS TOGETHER (0.168.7): a picture's words wait and are written at
+# its end, alike together - a font's letters of one size come from one
+# picture, so they are one draw; a word between two shapes cost two (the
+# ground floor's moving picture was 164 draws, the panel 207). Each kind
+# of word (font, size, outline) is written in the order its first was
+# asked for, outlines then letters, so where two kinds cross the later
+# is on top as before.
+var _hold_words: bool = false
+var _held_words: Array = []
+
+
+func _words_between() -> void:
+	"""The words held so far written now, under what comes next; later
+	words still held."""
+	if _hold_words:
+		_write_held_words()
+		_hold_words = true
+
+
+func _write_held_words() -> void:
+	"""The words held since _hold_words was set, written now."""
+	_hold_words = false
+	var kinds: Dictionary = _word_kinds(_held_words)
+	_held_words = []
+	for kind in kinds:
+		if int(kind[2]) > 0:
+			for w in kinds[kind]:
+				cv.draw_string_outline(w[0], w[3], w[4], HORIZONTAL_ALIGNMENT_LEFT, -1, w[1], w[2], Color(0, 0, 0, 0.75 * float(w[6])))
+		for w in kinds[kind]:
+			cv.draw_string(w[0], w[3], w[4], HORIZONTAL_ALIGNMENT_LEFT, -1, w[1], w[5])
 
 
 # =============================================================================

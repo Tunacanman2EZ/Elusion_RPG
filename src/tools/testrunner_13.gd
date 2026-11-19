@@ -394,7 +394,7 @@ func _test_the_table_pays() -> void:
 
 
 func _test_the_table_on_a_phone() -> void:
-	section("The Beholder's Table on a phone (0.168.0, cooler 0.168.4)")
+	section("The Beholder's Table on a phone (0.168.0, cooler 0.168.4), fewer draws (0.168.7)")
 	var Run = require_script("res://src/world/pinball/pinballrun.gd", "pinballrun.gd")
 	var Screen = require_script("res://src/world/pinball/pinballscreen.gd", "pinballscreen.gd")
 	if Run == null or Screen == null:
@@ -433,6 +433,10 @@ func _test_the_table_on_a_phone() -> void:
 	check("  cooler (0.168.4): none of the table's own lights on, the moving layer painted and drawn every other frame, once, the panel painted on its own",
 		phone_lights == 0 and phone_modes.count(SubViewport.UPDATE_ONCE) == 2 and phone_modes.count(SubViewport.UPDATE_DISABLED) == 2
 		and run.panel_node.draw.is_connected(run._paint_panel_layer), [phone_lights, phone_modes])
+	var world_joins := func(r: Node) -> Array:
+		return (r.joined_meshes as Array).filter(func(m: Node) -> bool: return m.get_parent() == r.world)
+	var phone_joins: int = world_joins.call(run).size()
+	var phone_shadow_meshes: int = run.shadow_meshes.size()
 	holder.queue_free()
 	var desk_holder := SubViewport.new()
 	desk_holder.size = Vector2i(1280, 720)
@@ -441,9 +445,75 @@ func _test_the_table_on_a_phone() -> void:
 	desk.seed_now = 7
 	desk_holder.add_child(desk)
 	var desk_lights: int = lit_count.call(desk)
+	desk._layers_at = -100.0
 	var desk_modes: Array = cadence.call(desk)
-	check("  a PC's table keeps its lights and paints every frame", desk_lights > 10
-		and desk_modes.count(SubViewport.UPDATE_ALWAYS) == 4, [desk_lights, desk_modes])
+	desk._layers_at -= 1.0
+	var desk_vp: SubViewport = desk.moving_vps[(desk.floor_seen as Array).find(true)]
+	desk_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	desk._sync_world()
+	var later: int = desk_vp.render_target_update_mode
+	check("  a PC's table keeps its lights; its layers are painted at most %d times a second (0.168.7), each drawn once then"
+		% int(Run.PAINT_HZ), desk_lights > 10 and desk_modes == [SubViewport.UPDATE_ONCE, SubViewport.UPDATE_DISABLED,
+		SubViewport.UPDATE_DISABLED, SubViewport.UPDATE_DISABLED] and later == SubViewport.UPDATE_ONCE, [desk_lights, desk_modes, later])
+	# the panel is a picture of its own, shown as one sprite, drawn when painted
+	var shown: Sprite2D = desk.panel_vp.get_parent().find_child("panel", true, false) as Sprite2D
+	desk._panel_at = -100.0
+	desk.panel_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	desk._sync_world()
+	var painted: int = desk.panel_vp.render_target_update_mode
+	desk.panel_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	desk._sync_world()
+	check("  the side panel is a picture of its own (one sprite over the table), painted and drawn at most %d times a second" % int(Run.PANEL_HZ),
+		shown != null and shown.texture == desk.panel_vp.get_texture() and desk.panel_node.get_parent() == desk.panel_vp
+		and painted == SubViewport.UPDATE_ONCE and desk.panel_vp.render_target_update_mode == SubViewport.UPDATE_DISABLED,
+		[shown, painted])
+	# round meshes as fine as the camera shows
+	var finest: int = 0
+	for mi in desk.world.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		if mesh is SphereMesh:
+			finest = maxi(finest, (mesh as SphereMesh).radial_segments)
+		elif mesh is CylinderMesh:
+			finest = maxi(finest, (mesh as CylinderMesh).radial_segments)
+	check("  no sphere or post finer than 32 round (Godot's default is 64)", finest > 0 and finest <= 32, finest)
+	# THE STILL PIECES (0.168.7, more): joined by look, no mesh lit by more
+	# lamps than a renderer keeps, the plain ones' shadows apart
+	var lamps: Array = []
+	for l in desk.world.find_children("*", "OmniLight3D", true, false):
+		if (l as Node3D).visible:
+			lamps.append([(l as Node3D).position, (l as OmniLight3D).omni_range])
+	var joins: Array = world_joins.call(desk)
+	var most_lamps: int = 0
+	var casting: int = 0
+	for mi in joins:
+		var mat: Material = (mi as MeshInstance3D).material_override
+		if not (mat is BaseMaterial3D and (mat as BaseMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED):
+			most_lamps = maxi(most_lamps, Run._lamps_on((mi as MeshInstance3D).transform * (mi as MeshInstance3D).mesh.get_aabb(), lamps))
+		if (mi as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and Run._plain_shadow(mat):
+			casting += 1
+	var only_shadow: bool = true
+	for m in desk.shadow_meshes:
+		only_shadow = only_shadow and (m as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY \
+			and (m as Node).get_parent() == desk.world
+	check("  the still pieces: %d joined into %d meshes by look, none lit by more than %d lamps (a renderer drops the rest), on a phone (lamps out) %d"
+		% [desk.still_joined, joins.size(), Run.LIGHTS_EACH, phone_joins],
+		desk.still_joined > 600 and joins.size() > 20 and joins.size() < 120 and most_lamps <= Run.LIGHTS_EACH
+		and phone_joins > 0 and phone_joins < joins.size(), [desk.still_joined, joins.size(), most_lamps, phone_joins])
+	check("  the plain pieces' shadows are %d meshes of their own, drawn only as shadow; the pieces cast none; a phone (no shadows) makes none"
+		% desk.shadow_meshes.size(), desk.shadow_meshes.size() > 0 and desk.shadow_meshes.size() <= 12 and only_shadow
+		and casting == 0 and phone_shadow_meshes == 0, [desk.shadow_meshes.size(), only_shadow, casting, phone_shadow_meshes])
+	# a picture's words wait for its end and are written alike together
+	var f1: Font = desk._bold
+	var kinds: Dictionary = Run._word_kinds([[f1, 16, 3, Vector2.ZERO, "RAMP", Color.WHITE, 1.0],
+		[f1, 20, 0, Vector2.ZERO, "W", Color.WHITE, 1.0], [f1, 16, 3, Vector2.ZERO, "ORBIT", Color.WHITE, 1.0]])
+	desk._hold_words = true
+	desk._text(Vector2(10, 10), "HELD", 14, Color.WHITE)
+	var waiting: int = desk._held_words.size()
+	desk._hold_words = false
+	desk._held_words = []
+	check("  a picture's words wait for its end, then are written alike together, each kind in the order its first was asked for",
+		waiting == 1 and kinds.keys() == [[f1, 16, 3], [f1, 20, 0]] and (kinds[[f1, 16, 3]] as Array).size() == 2,
+		[waiting, kinds.keys()])
 	desk_holder.queue_free()
 	var under := CanvasLayer.new()
 	under.layer = 3

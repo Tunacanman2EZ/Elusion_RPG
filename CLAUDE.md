@@ -16436,6 +16436,102 @@ left on). The Crownfall suite (141 checks with the
 standard ones) passes unchanged: its taps go through `kingdom_spot()`,
 `map_spot()` and `slot_spot()`, never fixed numbers.
 
+### Pinball draws less each frame (0.168.7)
+
+The owner: "pinball is running a little heavy on my machine can we optimize
+even more?", and his readout on his PC (i9-14900K, RX 6800 XT, a 100 Hz
+screen): fps 100 capped by vsync, frame 10.00 ms, busy 10.24 ms, process
+9.10 ms, "draws 14 (+974 redrawing a picture)". Not a runaway frame rate:
+the main thread full every frame, and most of it handing the graphics card
+the table's draws (the game's code measured about 2 ms of it, the table
+playing itself headless).
+
+- **Where the draws were** (the sandbox, a frame, by view): the table's 3D
+  267, the canvas over it 218 - of which **the side panel 195** - each
+  floor's moving layer 164 and 73 (two on screen), each eye 22. A canvas
+  is drawn again every frame even when nothing in it changed:
+  queue_redraw() less often saves the painting, not the draws. (The floor
+  picture, UPDATE_ONCE, reads 86 a frame from its own info, but switching
+  it off changes nothing - it is a stale number.)
+- **The panel is a picture of its own** (pinballrun.gd `panel_vp`,
+  `PANEL_BOX` 856, 0, 424 x 720, transparent): `panel_node` paints into it,
+  drawn once each time it is painted - at most `PANEL_HZ` (15) a second -
+  and shown over the table as one Sprite2D ("panel"), under the HUD node as
+  before (the game over's dimming covers it). It looks the same, pictured
+  side by side.
+- **The floors' moving layers and the eyes**: painted and drawn once each
+  time they are due, at most `PAINT_HZ` (50) a second, by the clock
+  (`_layers_at`); left as they are between (`_paint_layer()`). Half the
+  frames at 100 Hz; a phone keeps every `PHONE_EVERY` frames.
+- **Round meshes as fine as the camera shows** (`_put()`): Godot's
+  defaults drew a sphere of 4,224 triangles (64 x 32), a post of 512 (64
+  round, 4 rings), a ring 64 x 32. Now at most 32 x 16, 28 round with no
+  rings, 40 x 12: 209,600 triangles a frame -> 74,300.
+- **What it should come to at 100 fps**: about 460 draws a frame here
+  against 785 (the panel about one frame in seven, the layers every other),
+  so roughly 560 for his 974, before the 3D below. Not measured on his PC;
+  his readout will say. Not touched: the town's physics under the table
+  (1.9 ms a tick in his readout).
+
+**More, the same version** ("lets do it i have to optimize to max
+efficiency"). The sandbox now runs Godot's Mobile renderer, his, on
+software Vulkan (`apt-get install mesa-vulkan-drivers`, then
+`--rendering-driver vulkan --rendering-method mobile` under xvfb), which
+counts shadow draws; the OpenGL renderer counted none and drew every mesh
+twice (a second pass for the shadowed sun).
+
+- **The 3D was a draw for every mesh in view and another for its shadow**:
+  four fixed views (zz/pin3d.gd, zz/pinshot3d.gd), draws + shadow draws,
+  274 / 295 / 265 / 154. Now **178 / 185 / 155 / 90**, the pictures side
+  by side the same.
+- **Joined by look, not by material** (`_merge_still()`, `_look_of()`): 111
+  materials were 53 looks (each `_mat()` call a new one). A material
+  something changes in play stays itself (`stripe_mats`, `ball_mats`,
+  `floor_mats`, the glow rails, `lock_mat`, `spinner_mat`, `magnet_mat`,
+  `spirit_mat`, `gate_mat`, and any a kept node wears). A look is joined a
+  floor at a time, not in 400 px squares.
+- **But a mesh is lit by 8 omni lights at most** (`LIGHTS_EACH`, both the
+  Mobile and Compatibility renderers): the first try, a floor a mesh, lost
+  the bumpers' glow on their rims and a warm lamp on the right rail. So
+  `_lit_parts()` grows each join piece by piece (rows of 400 px, then
+  across) and starts a new one before it would reach a ninth lamp -
+  counted as the renderer pairs them, the lamp's CUBE of reach, not its
+  ball (`_lamps_on()`; the ball still lost one). The old squares reached
+  9 or 10 in places and dropped one: a few hundred pixels are a touch
+  brighter now, where a lamp was lost before. A phone's lamps are out, so
+  there a look is one mesh a floor (48 joined meshes on a PC, 24 on a
+  phone).
+- **The shadows apart**: a shadow needs only the shape, so every plain
+  piece's (solid, no billboard, not grown - `_plain_shadow()`) goes into a
+  few `SHADOWS_ONLY` meshes, one a floor, cull mode and kind of mesh
+  (`shadow_meshes`, 6), with a plain material; the joined meshes cast
+  none. None on a phone (no shadows). Shadow draws 84-159 -> 41-74.
+- **A flipper's three ivory parts are one mesh** under its pivot.
+- The table's meshes 222 -> 168 (6 of them shadow only).
+- **The words together** (`_text()`, `_hold_words`, `_write_held_words()`,
+  `_word_kinds()`): a canvas batches alike draws in a row, and a word
+  between two shapes broke it twice. The moving layers and the panel now
+  hold their words and write them together, each kind (font, size,
+  outline) in the order its first was asked for, outlines then letters, so
+  where two kinds cross the later is still on top. The panel's dot screen
+  lines go over its words, so they are written before them
+  (`_words_between()`); the ramps' shadows still go over the floor's
+  words. Ground floor's moving picture 168 -> 132 draws, the next 73 ->
+  59, the panel 207 -> 121; the pictures pixel for pixel the same at three
+  moments of a seeded game (zz/pinlayers.gd).
+- Left: kept pieces (bumpers, targets, kick walls, gates), the sprites,
+  the town under the table. The draws left that cost most are the moving
+  layers' shapes - each polygon, arc or circle is a draw of its own.
+
+`_test_the_table_on_a_phone()` (testrunner_13) holds a PC's layers to
+`PAINT_HZ` and the panel to its picture and `PANEL_HZ`, and no sphere or
+post over 32 round; sabotaged red (both at 1000, a 64-round post). It also
+holds the joins (over 600 pieces in 20 to 120 meshes, none reaching more
+than `LIGHTS_EACH` lamps, fewer on a phone), the shadow meshes (1 to 12,
+shadow only, no joined plain mesh casting, none on a phone) and the held
+words (waiting while held, kinds in first-asked order); each sabotaged red
+(no lamp limit, no shadow meshes, no holding).
+
 ### Which file owns which number
 
 | question | lives in | example |
