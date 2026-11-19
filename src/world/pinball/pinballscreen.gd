@@ -46,6 +46,7 @@ extends CanvasLayer
 # part), then 3, 2, 1, GO over the table and the ball is yours. Again does
 # the same on a new table. The suite's tables (headless_run) open at once.
 const RUN_PATH := "res://src/world/pinball/pinballrun.gd"
+const PayAnswer := preload("res://src/ui/minigames/payanswer.gd")
 const EYE_PATH := "res://art/pack/materials/crownedbeholdereye.png"
 # each of 3, 2, 1 and GO, by the clock on the wall: a slow phone's frames
 # are cut to 0.1 s each by the engine, which would drag the count out
@@ -122,6 +123,11 @@ var _fingers: Dictionary = {}
 var _touch_ms: int = -100000
 var _mouse_sides: Dictionary = {}
 var _paid: bool = false
+# A RUN THE SERVER WOULD NOT PAY (0.168.8, payanswer.gd): how many tries
+# failed, whether Leave now goes without the gold, and why
+var _pay_fails: int = 0
+var _go_without: bool = false
+var _not_paid_why: String = ""
 var _busy: bool = false
 var _gold_paid: int = -1
 var _held_back: int = 0
@@ -369,6 +375,9 @@ func start() -> void:
 	results.visible = false
 	again_button.disabled = false
 	_paid = false
+	_pay_fails = 0
+	_go_without = false
+	_not_paid_why = ""
 	_gold_paid = -1
 	_held_back = 0
 	_new_best = false
@@ -602,7 +611,7 @@ func _paid_words() -> void:
 func _pay() -> bool:
 	"""This game finished on the server and its gold paid - once. True when
 	it is (or it is practice). Not reached, the screen says so and stays."""
-	if run_id == 0 or _paid or run == null or not is_instance_valid(run):
+	if run_id == 0 or _paid or _go_without or run == null or not is_instance_valid(run):
 		return true
 	_busy = true
 	# still while it is settled: the score sent is the score
@@ -627,8 +636,11 @@ func _pay() -> bool:
 		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
 			_held.call("set_gold", int(status["gold"]))
 		return true
-	result_line.text = "Could not reach the server"
-	gold_line.text = "Your gold is waiting: Again or Leave tries again."
+	_pay_fails += 1
+	_go_without = PayAnswer.refused(res) or _pay_fails >= 2
+	_not_paid_why = PayAnswer.why_not(res)
+	result_line.text = _not_paid_why
+	gold_line.text = PayAnswer.waiting_line(_go_without)
 	best_line.text = ""
 	pay_line.text = ""
 	_show_results()
@@ -780,7 +792,12 @@ func leave() -> void:
 	if _busy:
 		return
 	if not await _pay():
+		if gold_now() <= 0:
+			# nothing earned: nothing to lose by going
+			close()
 		return
+	if _go_without and not _paid and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
+		hud.call("_push_message", PayAnswer.not_paid_line(GAME_NAME, _not_paid_why), GOLD, 0, true)
 	close()
 
 

@@ -546,6 +546,32 @@ var _jolt := Vector2.ZERO
 var _jolt_rng := RandomNumberGenerator.new()
 var _cv: CanvasItem = null
 var floor_layer: Node2D = null
+# THE BARS ARE A PICTURE (0.168.8, the owner: "my pc is running hard here
+# too"): the top bar and the two side panels were half of every frame's draws
+# - 254 of 523 on Keys of the Keep, every frame, though they change a few
+# times a second. They are painted into `panel_cache` and shown as one sprite
+# over the run's own drawing (where they were drawn, last), painted again at
+# most PANEL_HZ a second by the clock - their pulses and glints still move,
+# at that pace - with their words written together (_hold_words). The stars
+# behind the arena likewise, at STARS_HZ: 70 of them twinkle over seconds.
+const PANEL_HZ := 20.0
+const STARS_HZ := 10.0
+var panel_cache: SubViewport = null
+var panel_node: Node2D = null
+var panel_pic: Sprite2D = null
+var stars_cache: SubViewport = null
+var stars_node: Node2D = null
+var stars_pic: Sprite2D = null
+var _panels_at: float = -100.0
+var _stars_at: float = -100.0
+# A MAP'S BRICKS ARE PAINTED A FEW AT A TIME (0.168.8): every brick's first
+# picture in one frame was a hitch at each map's start (214 on Keys of the
+# Keep, about 21 ms here; a thousand on Gilded Gate). Now FIRST_PAINTS a
+# frame (`_unpainted`), the still picture shown once all are in - a few
+# frames after the map opens, under its banner.
+const FIRST_PAINTS := 100
+var _unpainted: Array = []
+var _map_painting: bool = false
 var brick_layer: Node2D = null   # the still bricks, inside brick_cache
 var brick_cache: SubViewport = null
 var brick_pic: Sprite2D = null
@@ -667,7 +693,26 @@ func _ready() -> void:
 	rng.randomize()
 	_jolt_rng.randomize()
 	_cv = self
-	# the floor, then the bricks, both behind the run's own drawing
+	# the stars, then the floor, then the bricks, all behind the run's own
+	# drawing
+	stars_cache = SubViewport.new()
+	stars_cache.name = "stars_cache"
+	stars_cache.size = Vector2i(VIEW)
+	stars_cache.disable_3d = true
+	stars_cache.world_2d = World2D.new()
+	stars_cache.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	stars_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(stars_cache)
+	stars_node = Node2D.new()
+	stars_node.name = "stars"
+	stars_cache.add_child(stars_node)
+	stars_node.draw.connect(_paint_stars)
+	stars_pic = Sprite2D.new()
+	stars_pic.name = "stars_pic"
+	stars_pic.centered = false
+	stars_pic.texture = stars_cache.get_texture()
+	stars_pic.show_behind_parent = true
+	add_child(stars_pic)
 	floor_layer = Node2D.new()
 	floor_layer.name = "floor_layer"
 	floor_layer.show_behind_parent = true
@@ -709,6 +754,26 @@ func _ready() -> void:
 	brick_live.name = "brick_live"
 	brick_live.show_behind_parent = true
 	add_child(brick_live)
+	# the bars, over the run's own drawing as they were drawn last in it
+	panel_cache = SubViewport.new()
+	panel_cache.name = "panel_cache"
+	panel_cache.size = Vector2i(VIEW)
+	panel_cache.transparent_bg = true
+	panel_cache.disable_3d = true
+	panel_cache.world_2d = World2D.new()
+	panel_cache.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	panel_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(panel_cache)
+	panel_node = Node2D.new()
+	panel_node.name = "panels"
+	panel_cache.add_child(panel_node)
+	panel_node.draw.connect(_paint_panels)
+	panel_pic = Sprite2D.new()
+	panel_pic.name = "panel_pic"
+	panel_pic.centered = false
+	panel_pic.texture = panel_cache.get_texture()
+	panel_pic.material = premult
+	add_child(panel_pic)
 
 
 func _process(delta: float) -> void:
@@ -721,6 +786,8 @@ func _process(delta: float) -> void:
 	elif crest_art != null:
 		crest_art.visible = false
 		crest_top.visible = false
+	if panel_pic != null:
+		_paint_pictures()
 	if floor_layer != null:
 		floor_layer.queue_redraw()
 		floor_top.queue_redraw()
@@ -1009,6 +1076,10 @@ func _load(index: int) -> void:
 
 
 func _clear_map() -> void:
+	PerfOverlay.mark(&"map opens")
+	_unpainted.clear()
+	_map_painting = true
+	_panels_at = -100.0
 	_fighting = false
 	boss_base = 0
 	boss_struck = 0
@@ -1677,6 +1748,9 @@ func _move(b: Dictionary, dt: float) -> void:
 					b["portal_t"] = PORTAL_WAIT
 					k["flash"] = 1.0
 					out["flash"] = 1.0
+					# the readout names it beside a spike (0.168.8, the owner:
+					# "i think the spikes were going through the teleportar")
+					PerfOverlay.mark(&"portal")
 					_burst((k["rect"] as Rect2).get_center(), PORTAL_HUES[int(k.get("pair", 0)) % PORTAL_HUES.size()], 10, 160.0, 0.0)
 					_burst(p, PORTAL_HUES[int(k.get("pair", 0)) % PORTAL_HUES.size()], 10, 160.0, 0.0)
 					break
@@ -3860,14 +3934,17 @@ func _draw() -> void:
 	for w in words:
 		var a: float = clampf(w["life"] / 0.45, 0.0, 1.0)
 		var pop: float = 1.0 + 0.35 * maxf(0.0, 1.0 - w["age"] / 0.12)
-		_text(w["p"], w["text"], int(w["size"] * pop), Color(w["c"], a), null, true, a)
+		# THE POP IS A SCALE (0.168.8): a word is drawn at its own size and
+		# scaled as it pops - it was drawn at a new font size each frame of
+		# the pop, and each size has its letters drawn anew the first time:
+		# a hitch, and graphics memory kept for good (40-odd sizes)
+		draw_set_transform(_jolt + (w["p"] as Vector2), 0.0, Vector2(pop, pop))
+		_text(Vector2.ZERO, w["text"], int(w["size"]), Color(w["c"], a), null, true, a)
 	draw_set_transform(Vector2.ZERO)
 	_draw_banner()
 	if state == State.AIM and _banner_t <= 0.0 and launch_hint != "":
 		_text(Vector2(paddle_x, PADDLE_Y - 34.0), launch_hint, 14, Color(INK, 0.55 + 0.25 * sin(t * 3.0)), _font, true)
-	_draw_hud()
-	_draw_left_panel()
-	_draw_right_panel()
+	# the bars: their own picture over this (THE BARS ARE A PICTURE)
 
 
 func _draw_banner() -> void:
@@ -4107,12 +4184,46 @@ func _draw_guards() -> void:
 			draw_rect(box, Color(GUARD_GLOW, (0.4 + 0.25 * pulse) * shown), false, 1.5)
 
 
-func _paint_floor() -> void:
-	"""THE FLOOR, behind the bricks, every frame: the backdrop and the arena
-	(then the building, a layer drawn once a map, and the floor over it)."""
-	_cv = floor_layer
+func _paint_pictures() -> void:
+	"""The bars and the stars painted again when due (THE BARS ARE A
+	PICTURE), each drawn once then and left as it is between."""
+	var now: float = Time.get_ticks_msec() / 1000.0
+	panel_pic.visible = state != State.KINGDOMS
+	if panel_pic.visible and now - _panels_at >= 1.0 / PANEL_HZ - 0.004:
+		_panels_at = now
+		panel_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+		panel_node.queue_redraw()
+	if now - _stars_at >= 1.0 / STARS_HZ - 0.004:
+		_stars_at = now
+		stars_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+		stars_node.queue_redraw()
+
+
+func _paint_panels() -> void:
+	"""The top bar and the side panels, into their picture."""
+	if state == State.KINGDOMS:
+		return
+	_cv = panel_node
+	_hold_words = true
+	_draw_hud()
+	_draw_left_panel()
+	_draw_right_panel()
+	_write_held_words()
+	_cv = self
+
+
+func _paint_stars() -> void:
+	"""The sky behind everything, into its picture."""
+	_cv = stars_node
 	_draw_backdrop()
+	_cv = self
+
+
+func _paint_floor() -> void:
+	"""THE FLOOR, behind the bricks, every frame: the arena over the stars
+	(then the building, a layer drawn once a map, and the floor over it)."""
 	if state != State.KINGDOMS:
+		_cv = floor_layer
 		floor_layer.draw_set_transform(_jolt)
 		_draw_arena()
 	_cv = self
@@ -4175,7 +4286,8 @@ func sync_bricks() -> void:
 			node = Node2D.new()
 			node.position = (k["rect"] as Rect2).position
 			brick_layer.add_child(node)
-			node.draw.connect(_paint_brick.bind(k, node))
+			# its picture is painted when its turn comes (FIRST_PAINTS)
+			_unpainted.append([k, node])
 			k["node"] = node
 			k["look"] = -2
 			k["half"] = seen % 2
@@ -4268,7 +4380,23 @@ func sync_bricks() -> void:
 				if not keep.has(n) and not n.is_queued_for_deletion():
 					n.queue_free()
 					dirty = dirty or layer == brick_layer
-	if dirty:
+	if not _unpainted.is_empty():
+		# A MAP'S BRICKS ARE PAINTED A FEW AT A TIME: the next FIRST_PAINTS
+		var n: int = mini(FIRST_PAINTS, _unpainted.size())
+		for i in n:
+			var e: Array = _unpainted[i]
+			var node: Node2D = e[1]
+			if is_instance_valid(node) and not node.is_queued_for_deletion():
+				node.draw.connect(_paint_brick.bind(e[0], node))
+				node.queue_redraw()
+		_unpainted = _unpainted.slice(n)
+		dirty = true
+	if _map_painting:
+		# a map's first picture is shown whole, once all its bricks are in
+		_map_painting = not _unpainted.is_empty()
+		brick_pic.visible = brick_pic.visible and not _map_painting
+		brick_live.visible = brick_pic.visible
+	if dirty and not _map_painting:
 		brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
@@ -4832,68 +4960,68 @@ func _draw_icon(kind: String, p: Vector2, ink: Color, s: float) -> void:
 	match kind:
 		"multi":
 			for i in 3:
-				draw_circle(p + Vector2(-8 + i * 8, 0) * s, 3.2 * s, ink)
+				_cv.draw_circle(p + Vector2(-8 + i * 8, 0) * s, 3.2 * s, ink)
 		"wide":
-			draw_line(p + Vector2(-11, 0) * s, p + Vector2(11, 0) * s, ink, 2.5 * s)
-			draw_colored_polygon(PackedVector2Array([p + Vector2(-14, 0) * s, p + Vector2(-8, -5) * s, p + Vector2(-8, 5) * s]), ink)
-			draw_colored_polygon(PackedVector2Array([p + Vector2(14, 0) * s, p + Vector2(8, -5) * s, p + Vector2(8, 5) * s]), ink)
+			_cv.draw_line(p + Vector2(-11, 0) * s, p + Vector2(11, 0) * s, ink, 2.5 * s)
+			_cv.draw_colored_polygon(PackedVector2Array([p + Vector2(-14, 0) * s, p + Vector2(-8, -5) * s, p + Vector2(-8, 5) * s]), ink)
+			_cv.draw_colored_polygon(PackedVector2Array([p + Vector2(14, 0) * s, p + Vector2(8, -5) * s, p + Vector2(8, 5) * s]), ink)
 		"laser":
 			for x in [-5.0, 5.0]:
-				draw_line(p + Vector2(x, 7) * s, p + Vector2(x, -6) * s, ink, 2.5 * s)
-				draw_circle(p + Vector2(x, -7) * s, 2.0 * s, ink)
+				_cv.draw_line(p + Vector2(x, 7) * s, p + Vector2(x, -6) * s, ink, 2.5 * s)
+				_cv.draw_circle(p + Vector2(x, -7) * s, 2.0 * s, ink)
 		"shield":
-			draw_arc(p + Vector2(0, 6) * s, 11.0 * s, PI * 1.15, PI * 1.85, 12, ink, 2.5 * s)
+			_cv.draw_arc(p + Vector2(0, 6) * s, 11.0 * s, PI * 1.15, PI * 1.85, 12, ink, 2.5 * s)
 		"fire":
-			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -9) * s, p + Vector2(6, 2) * s, p + Vector2(0, 8) * s,
+			_cv.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -9) * s, p + Vector2(6, 2) * s, p + Vector2(0, 8) * s,
 				p + Vector2(-6, 2) * s]), ink)
 		"slow":
 			for a in 3:
 				var d := Vector2.from_angle(a * PI / 3.0) * 8.0 * s
-				draw_line(p - d, p + d, ink, 2.0 * s)
+				_cv.draw_line(p - d, p + d, ink, 2.0 * s)
 		"magnet":
-			draw_arc(p + Vector2(0, -1) * s, 7.0 * s, 0.0, PI, 12, ink, 3.0 * s)
+			_cv.draw_arc(p + Vector2(0, -1) * s, 7.0 * s, 0.0, PI, 12, ink, 3.0 * s)
 			for x in [-7.0, 7.0]:
-				draw_line(p + Vector2(x, -1) * s, p + Vector2(x, -8) * s, ink, 3.0 * s)
-				draw_line(p + Vector2(x, -6) * s, p + Vector2(x, -9) * s, Color(1.0, 0.45, 0.45), 3.0 * s)
+				_cv.draw_line(p + Vector2(x, -1) * s, p + Vector2(x, -8) * s, ink, 3.0 * s)
+				_cv.draw_line(p + Vector2(x, -6) * s, p + Vector2(x, -9) * s, Color(1.0, 0.45, 0.45), 3.0 * s)
 		"split":
-			draw_line(p + Vector2(0, 8) * s, p + Vector2(0, 1) * s, ink, 2.5 * s)
+			_cv.draw_line(p + Vector2(0, 8) * s, p + Vector2(0, 1) * s, ink, 2.5 * s)
 			for x in [-7.0, 7.0]:
-				draw_line(p + Vector2(0, 1) * s, p + Vector2(x, -6) * s, ink, 2.5 * s)
-				draw_circle(p + Vector2(x, -7) * s, 2.6 * s, ink)
+				_cv.draw_line(p + Vector2(0, 1) * s, p + Vector2(x, -6) * s, ink, 2.5 * s)
+				_cv.draw_circle(p + Vector2(x, -7) * s, 2.6 * s, ink)
 		"big":
-			draw_arc(p, 8.0 * s, 0, TAU, 18, ink, 2.0 * s)
-			draw_circle(p, 4.0 * s, ink)
+			_cv.draw_arc(p, 8.0 * s, 0, TAU, 18, ink, 2.0 * s)
+			_cv.draw_circle(p, 4.0 * s, ink)
 		"life":
 			_heart(p + Vector2(0, -1) * s, 0.9 * s, ink)
 		"element":
 			for i in ELEMENTS.size():
 				var a0: float = i * TAU / ELEMENTS.size()
-				draw_arc(p, 7.5 * s, a0, a0 + TAU / ELEMENTS.size(), 4, COLOURS[ELEMENTS[i]].lightened(0.3), 3.0 * s)
-			draw_circle(p, 3.0 * s, ink)
+				_cv.draw_arc(p, 7.5 * s, a0, a0 + TAU / ELEMENTS.size(), 4, COLOURS[ELEMENTS[i]].lightened(0.3), 3.0 * s)
+			_cv.draw_circle(p, 3.0 * s, ink)
 
 
 func _draw_land_mark(land: String, p: Vector2, ink: Color, s: float) -> void:
 	"""A land's mark, as its bricks wear it (fire a flame, ice a star...)."""
 	match land:
 		"fire":
-			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(3.5, 1.5) * s, p + Vector2(0, 5) * s,
+			_cv.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(3.5, 1.5) * s, p + Vector2(0, 5) * s,
 				p + Vector2(-3.5, 1.5) * s]), ink)
 		"ice":
 			for a in 3:
 				var d := Vector2.from_angle(a * PI / 3.0) * 4.5 * s
-				draw_line(p - d, p + d, ink, 1.3 * s)
+				_cv.draw_line(p - d, p + d, ink, 1.3 * s)
 		"water":
-			draw_arc(p + Vector2(-3.5, 1) * s, 3.5 * s, PI, TAU, 8, ink, 1.2 * s)
-			draw_arc(p + Vector2(3.5, 1) * s, 3.5 * s, 0, PI, 8, ink, 1.2 * s)
+			_cv.draw_arc(p + Vector2(-3.5, 1) * s, 3.5 * s, PI, TAU, 8, ink, 1.2 * s)
+			_cv.draw_arc(p + Vector2(3.5, 1) * s, 3.5 * s, 0, PI, 8, ink, 1.2 * s)
 		"wind":
-			draw_line(p + Vector2(-6, -2) * s, p + Vector2(4, -2) * s, ink, 1.2 * s)
-			draw_line(p + Vector2(-4, 2.5) * s, p + Vector2(6, 2.5) * s, ink, 1.2 * s)
+			_cv.draw_line(p + Vector2(-6, -2) * s, p + Vector2(4, -2) * s, ink, 1.2 * s)
+			_cv.draw_line(p + Vector2(-4, 2.5) * s, p + Vector2(6, 2.5) * s, ink, 1.2 * s)
 		"earth":
-			draw_rect(Rect2(p - Vector2(3.5, 3.5) * s, Vector2(7, 7) * s), ink, false, 1.2 * s)
+			_cv.draw_rect(Rect2(p - Vector2(3.5, 3.5) * s, Vector2(7, 7) * s), ink, false, 1.2 * s)
 		"light":
-			draw_circle(p, 2.5 * s, ink)
+			_cv.draw_circle(p, 2.5 * s, ink)
 		"dark":
-			draw_arc(p, 4.5 * s, 0, TAU, 14, ink, 1.2 * s)
+			_cv.draw_arc(p, 4.5 * s, 0, TAU, 14, ink, 1.2 * s)
 
 
 func _draw_ball(b: Dictionary) -> void:
@@ -5097,59 +5225,59 @@ func _draw_trail(b: Dictionary) -> void:
 func _panel(r: Rect2, tint: Color = GOLD) -> void:
 	"""A FRAME: a soft shadow, a body lit from above, a bronze edge, a fine
 	inner line in `tint`, and gold diamonds at its corners (the arena's)."""
-	draw_rect(Rect2(r.position + Vector2(3, 5), r.size), Color(0, 0, 0, 0.45))
+	_cv.draw_rect(Rect2(r.position + Vector2(3, 5), r.size), Color(0, 0, 0, 0.45))
 	var top := Color(0.085, 0.09, 0.14, 0.96)
 	var foot := Color(0.04, 0.042, 0.07, 0.96)
-	draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+	_cv.draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
 		PackedColorArray([top, top, foot, foot]))
-	draw_rect(Rect2(r.position + Vector2(2, 2), Vector2(r.size.x - 4, 1.5)), Color(1, 1, 1, 0.08))
-	draw_rect(r, EDGE, false, 2.0)
-	draw_rect(r.grow(-4), Color(tint, 0.22), false, 1.0)
+	_cv.draw_rect(Rect2(r.position + Vector2(2, 2), Vector2(r.size.x - 4, 1.5)), Color(1, 1, 1, 0.08))
+	_cv.draw_rect(r, EDGE, false, 2.0)
+	_cv.draw_rect(r.grow(-4), Color(tint, 0.22), false, 1.0)
 	for corner in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
 		_diamond(corner, 5.0, GOLD)
 
 
 func _diamond(at: Vector2, size: float, c: Color) -> void:
-	draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size), at + Vector2(size, 0), at + Vector2(0, size),
+	_cv.draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size), at + Vector2(size, 0), at + Vector2(0, size),
 		at + Vector2(-size, 0)]), c)
-	draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size * 0.45), at + Vector2(size * 0.45, 0),
+	_cv.draw_colored_polygon(PackedVector2Array([at + Vector2(0, -size * 0.45), at + Vector2(size * 0.45, 0),
 		at + Vector2(0, size * 0.45), at + Vector2(-size * 0.45, 0)]), c.darkened(0.6))
 
 
 func _divider(y: float, x0: float, x1: float, c: Color) -> void:
 	"""A heading's rule: fading out both ways from a small gem."""
 	var mid: float = (x0 + x1) / 2.0
-	draw_polygon(PackedVector2Array([Vector2(x0, y - 0.5), Vector2(mid, y - 1.0), Vector2(x1, y - 0.5), Vector2(x1, y + 0.5),
+	_cv.draw_polygon(PackedVector2Array([Vector2(x0, y - 0.5), Vector2(mid, y - 1.0), Vector2(x1, y - 0.5), Vector2(x1, y + 0.5),
 		Vector2(mid, y + 1.0), Vector2(x0, y + 0.5)]), PackedColorArray([Color(c, 0.0), Color(c, 0.6), Color(c, 0.0),
 		Color(c, 0.0), Color(c, 0.6), Color(c, 0.0)]))
 	_diamond(Vector2(mid, y), 3.5, c)
 
 
 func _heart(at: Vector2, size: float, c: Color) -> void:
-	draw_circle(at + Vector2(-4.2, -2.0) * size, 4.6 * size, c)
-	draw_circle(at + Vector2(4.2, -2.0) * size, 4.6 * size, c)
-	draw_colored_polygon(PackedVector2Array([at + Vector2(-8.6, -0.6) * size, at + Vector2(8.6, -0.6) * size,
+	_cv.draw_circle(at + Vector2(-4.2, -2.0) * size, 4.6 * size, c)
+	_cv.draw_circle(at + Vector2(4.2, -2.0) * size, 4.6 * size, c)
+	_cv.draw_colored_polygon(PackedVector2Array([at + Vector2(-8.6, -0.6) * size, at + Vector2(8.6, -0.6) * size,
 		at + Vector2(0, 9.0) * size]), c)
 
 
 func _half_heart(at: Vector2, side: float, c: Color) -> void:
 	"""One side of a heart (side -1 left, 1 right) - a heart cracking."""
-	draw_circle(at + Vector2(side * 4.2, -2.0), 4.6, c)
-	draw_colored_polygon(PackedVector2Array([at + Vector2(side * 8.6, -0.6), at + Vector2(0, -1.5), at + Vector2(0, 9.0)]), c)
+	_cv.draw_circle(at + Vector2(side * 4.2, -2.0), 4.6, c)
+	_cv.draw_colored_polygon(PackedVector2Array([at + Vector2(side * 8.6, -0.6), at + Vector2(0, -1.5), at + Vector2(0, 9.0)]), c)
 
 
 func _crest(p: Vector2, c: Color) -> void:
 	"""A kingdom's crest, small (the kingdom map's): its ring and castle."""
-	draw_circle(p, 26.0, Color(c, 0.12))
-	draw_circle(p, 22.0, c.darkened(0.55))
-	draw_arc(p, 22.0, 0, TAU, 32, c, 2.0)
+	_cv.draw_circle(p, 26.0, Color(c, 0.12))
+	_cv.draw_circle(p, 22.0, c.darkened(0.55))
+	_cv.draw_arc(p, 22.0, 0, TAU, 32, c, 2.0)
 	var k: float = 0.62
 	var base: Vector2 = p + Vector2(0, 10)
 	var castle := PackedVector2Array()
 	for v in [Vector2(-20, 0), Vector2(-20, -22), Vector2(-14, -22), Vector2(-14, -16), Vector2(-6, -16), Vector2(-6, -30),
 			Vector2(6, -30), Vector2(6, -16), Vector2(14, -16), Vector2(14, -22), Vector2(20, -22), Vector2(20, 0)]:
 		castle.append(base + v * k)
-	draw_colored_polygon(castle, Color(c, 0.9))
+	_cv.draw_colored_polygon(castle, Color(c, 0.9))
 
 
 func _text(at: Vector2, s: String, size: int, c: Color, f: Font = null, centre: bool = false, alpha: float = 1.0,
@@ -5157,9 +5285,46 @@ func _text(at: Vector2, s: String, size: int, c: Color, f: Font = null, centre: 
 	var use: Font = _bold if f == null else f
 	if centre:
 		at.x -= use.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x / 2.0
+	if _hold_words:
+		_held_words.append([use, size, outline, at, s, c, alpha])
+		return
 	if outline > 0:
 		_cv.draw_string_outline(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0, 0, 0, 0.75 * alpha))
 	_cv.draw_string(use, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, c)
+
+
+# THE WORDS TOGETHER (0.168.8, as the pinball table's since 0.168.7): the
+# bars' words wait and are written at the end of their picture, alike
+# together - a font's letters of one size are one draw, and a word between
+# two shapes cost two. Each kind (font, size, outline) in the order its first
+# was asked for, outlines then letters, so where two cross the later is on top.
+var _hold_words: bool = false
+var _held_words: Array = []
+
+
+func _write_held_words() -> void:
+	"""The words held since _hold_words was set, written now."""
+	_hold_words = false
+	var kinds: Dictionary = _word_kinds(_held_words)
+	_held_words = []
+	for kind in kinds:
+		if int(kind[2]) > 0:
+			for w in kinds[kind]:
+				_cv.draw_string_outline(w[0], w[3], w[4], HORIZONTAL_ALIGNMENT_LEFT, -1, w[1], w[2], Color(0, 0, 0, 0.75 * float(w[6])))
+		for w in kinds[kind]:
+			_cv.draw_string(w[0], w[3], w[4], HORIZONTAL_ALIGNMENT_LEFT, -1, w[1], w[5])
+
+
+static func _word_kinds(held: Array) -> Dictionary:
+	"""Held words by kind - [font, size, outline] - the kinds in the order
+	their first was asked for, each kind's words in theirs."""
+	var kinds: Dictionary = {}
+	for w in held:
+		var kind: Array = [w[0], w[1], w[2]]
+		if not kinds.has(kind):
+			kinds[kind] = []
+		(kinds[kind] as Array).append(w)
+	return kinds
 
 
 static func thousands(n: int) -> String:
@@ -5180,7 +5345,7 @@ func _draw_hud() -> void:
 	var kingdom: Dictionary = Maps.kingdom_of(map_index)
 	var colour: Color = COLOURS.get(kingdom.get("land", "light"), GOLD)
 	_panel(bar, colour)
-	draw_polygon(PackedVector2Array([bar.position + Vector2(4, 4), bar.position + Vector2(430, 4), bar.position + Vector2(430, 60),
+	_cv.draw_polygon(PackedVector2Array([bar.position + Vector2(4, 4), bar.position + Vector2(430, 4), bar.position + Vector2(430, 60),
 		bar.position + Vector2(4, 60)]), PackedColorArray([Color(colour, 0.22), Color(colour, 0.0), Color(colour, 0.0), Color(colour, 0.22)]))
 	_crest(Vector2(48, 40), colour)
 	var data: Dictionary = Maps.MAPS[map_index]
@@ -5198,12 +5363,12 @@ func _draw_hud() -> void:
 	# the gold
 	var hop: float = sin(_gold_bounce * PI) * 7.0
 	var coin := Vector2(612, 41 - hop)
-	draw_circle(Vector2(612, 55), 9.0 - hop * 0.4, Color(0, 0, 0, 0.35))
-	draw_circle(coin, 13.0, Color(0.55, 0.38, 0.05))
-	draw_circle(coin, 11.0, GOLD)
-	draw_arc(coin, 7.0, 0, TAU, 20, Color(0.78, 0.56, 0.1), 1.5)
+	_cv.draw_circle(Vector2(612, 55), 9.0 - hop * 0.4, Color(0, 0, 0, 0.35))
+	_cv.draw_circle(coin, 13.0, Color(0.55, 0.38, 0.05))
+	_cv.draw_circle(coin, 11.0, GOLD)
+	_cv.draw_arc(coin, 7.0, 0, TAU, 20, Color(0.78, 0.56, 0.1), 1.5)
 	var glint: float = fmod(t * 0.7, 3.0)
-	draw_circle(coin + Vector2(-3.5, -3.5), 3.2 + (2.0 if glint < 0.25 else 0.0), Color(1, 0.97, 0.8, 0.95))
+	_cv.draw_circle(coin + Vector2(-3.5, -3.5), 3.2 + (2.0 if glint < 0.25 else 0.0), Color(1, 0.97, 0.8, 0.95))
 	_text(Vector2(634, 31), "GOLD", 11, Color(INK, 0.55), _font)
 	_text(Vector2(634, 60), thousands(gold_now()), 24, INK.lerp(GOLD, _gold_bounce))
 	# the combo: five segments to the next step of the multiplier
@@ -5216,18 +5381,18 @@ func _draw_hud() -> void:
 		var heat: Color = COLOURS["fire"].lerp(GOLD, i / 4.0)
 		if i < lit:
 			var glow := PackedVector2Array([Vector2(x0 + 3, 21), Vector2(x0 + 35, 21), Vector2(x0 + 29, 45), Vector2(x0 - 3, 45)])
-			draw_colored_polygon(glow, Color(heat, 0.25 + 0.1 * sin(t * 8.0 + i)))
-			draw_colored_polygon(seg, heat)
-			draw_line(Vector2(x0 + 7, 25.5), Vector2(x0 + 31, 25.5), Color(1, 1, 1, 0.5), 1.5)
+			_cv.draw_colored_polygon(glow, Color(heat, 0.25 + 0.1 * sin(t * 8.0 + i)))
+			_cv.draw_colored_polygon(seg, heat)
+			_cv.draw_line(Vector2(x0 + 7, 25.5), Vector2(x0 + 31, 25.5), Color(1, 1, 1, 0.5), 1.5)
 		else:
-			draw_colored_polygon(seg, Color(1, 1, 1, 0.06))
+			_cv.draw_colored_polygon(seg, Color(1, 1, 1, 0.06))
 		var edge := seg.duplicate()
 		edge.append(seg[0])
-		draw_polyline(edge, Color(1, 1, 1, 0.22 if i < lit else 0.12), 1.0)
+		_cv.draw_polyline(edge, Color(1, 1, 1, 0.22 if i < lit else 0.12), 1.0)
 	if lit > 0 and combo > 0:
 		var tip: Vector2 = Vector2(744.0 + (lit - 1) * 34.0 + 19.0, 22.0)
 		var f: float = sin(t * 18.0) * 1.5
-		draw_colored_polygon(PackedVector2Array([tip + Vector2(-5, 0), tip + Vector2(0, -9 - f), tip + Vector2(5, 0)]), Color(1.0, 0.75, 0.3, 0.9))
+		_cv.draw_colored_polygon(PackedVector2Array([tip + Vector2(-5, 0), tip + Vector2(0, -9 - f), tip + Vector2(5, 0)]), Color(1.0, 0.75, 0.3, 0.9))
 	_text(Vector2(744, 60), "COMBO %d" % combo, 13, Color(INK, 0.8))
 	# the multiplier's badge, pulsing when it rises
 	var badge := Vector2(942, 40)
@@ -5236,11 +5401,11 @@ func _draw_hud() -> void:
 	for i in 6:
 		hexa.append(badge + Vector2.from_angle(PI / 6.0 + i * TAU / 6.0) * 21.0 * grow)
 	var hot: bool = mult > 1.0
-	draw_colored_polygon(hexa, COLOURS["fire"].darkened(0.45) if hot else Color(0.16, 0.16, 0.2))
+	_cv.draw_colored_polygon(hexa, COLOURS["fire"].darkened(0.45) if hot else Color(0.16, 0.16, 0.2))
 	hexa.append(hexa[0])
-	draw_polyline(hexa, COLOURS["fire"].lerp(GOLD, 0.4) if hot else Color(1, 1, 1, 0.2), 2.0)
+	_cv.draw_polyline(hexa, COLOURS["fire"].lerp(GOLD, 0.4) if hot else Color(1, 1, 1, 0.2), 2.0)
 	if _mult_pop > 0.0:
-		draw_circle(badge, 26.0 * grow, Color(COLOURS["fire"], 0.25 * _mult_pop))
+		_cv.draw_circle(badge, 26.0 * grow, Color(COLOURS["fire"], 0.25 * _mult_pop))
 	_text(badge + Vector2(0, 6), "x%s" % (str(mult) if mult != floorf(mult) else str(int(mult))), int(16 * grow),
 		Color.WHITE if hot else Color(INK, 0.5), null, true)
 	# the lives, as hearts
@@ -5248,9 +5413,9 @@ func _draw_hud() -> void:
 	for i in mini(maxi(LIVES, lives), LIVES_MOST):
 		var at := Vector2(1018 + i * 30, 50)
 		if i < lives:
-			draw_circle(at + Vector2(0, 1), 13.0, Color(1.0, 0.3, 0.38, 0.12 + 0.05 * sin(t * 3.0 + i)))
+			_cv.draw_circle(at + Vector2(0, 1), 13.0, Color(1.0, 0.3, 0.38, 0.12 + 0.05 * sin(t * 3.0 + i)))
 			_heart(at, 1.0, HEART_RED)
-			draw_circle(at + Vector2(-5, -4), 1.8, Color(1, 1, 1, 0.75))
+			_cv.draw_circle(at + Vector2(-5, -4), 1.8, Color(1, 1, 1, 0.75))
 		elif i == lives and _heart_crack > 0.0:
 			var u: float = 1.0 - _heart_crack
 			_half_heart(at + Vector2(-6.0 * u, 4.0 * u), -1.0, Color(0.95, 0.28, 0.36, _heart_crack))
@@ -5279,13 +5444,13 @@ func _draw_left_panel() -> void:
 		var left: float = clampf(active[kind] / float(info["secs"]), 0.0, 1.0)
 		var blink: float = (0.5 + 0.5 * sin(t * 14.0)) if float(active[kind]) < 2.0 else 1.0
 		var box := Rect2(18, y, 122, tall - 6.0)
-		draw_rect(box, Color(col, 0.08 + 0.08 * blink))
-		draw_rect(box, Color(col, 0.3 + 0.45 * blink), false, 1.0)
+		_cv.draw_rect(box, Color(col, 0.08 + 0.08 * blink))
+		_cv.draw_rect(box, Color(col, 0.3 + 0.45 * blink), false, 1.0)
 		var ring_r: float = 17.5 if big_card else (tall - 6.0) * 0.42
 		var at := Vector2(18 + 6 + ring_r, y + (tall - 6.0) / 2.0)
-		draw_circle(at, ring_r - 2.5, col.darkened(0.45))
-		draw_arc(at, ring_r, 0, TAU, 28, Color(0, 0, 0, 0.55), 3.0)
-		draw_arc(at, ring_r, -PI / 2.0, -PI / 2.0 + TAU * left, 28, col.lightened(0.25), 3.0)
+		_cv.draw_circle(at, ring_r - 2.5, col.darkened(0.45))
+		_cv.draw_arc(at, ring_r, 0, TAU, 28, Color(0, 0, 0, 0.55), 3.0)
+		_cv.draw_arc(at, ring_r, -PI / 2.0, -PI / 2.0 + TAU * left, 28, col.lightened(0.25), 3.0)
 		var icon_s: float = 0.75 if big_card else ring_r / 23.0
 		if kind == "element":
 			_draw_land_mark(ball_land, at, Color(1, 1, 1), icon_s * 1.4)
@@ -5307,12 +5472,12 @@ func _draw_left_panel() -> void:
 	var orb := Vector2(42, 452)
 	var ec: Color = COLOURS.get(el, Color(0.62, 0.64, 0.72))
 	if el != "":
-		draw_circle(orb, 20.0, Color(ec, 0.14 + 0.06 * sin(t * 3.0)))
-	draw_circle(orb, 14.0, ec.darkened(0.4) if el != "" else Color(0.22, 0.23, 0.28))
-	draw_circle(orb, 11.0, ec if el != "" else Color(0.42, 0.44, 0.52))
+		_cv.draw_circle(orb, 20.0, Color(ec, 0.14 + 0.06 * sin(t * 3.0)))
+	_cv.draw_circle(orb, 14.0, ec.darkened(0.4) if el != "" else Color(0.22, 0.23, 0.28))
+	_cv.draw_circle(orb, 11.0, ec if el != "" else Color(0.42, 0.44, 0.52))
 	if el != "":
-		draw_arc(orb, 7.5, t * 3.0, t * 3.0 + 2.4, 12, Color(1, 1, 1, 0.55), 1.5)
-	draw_circle(orb + Vector2(-4, -4), 2.8, Color(1, 1, 1, 0.75))
+		_cv.draw_arc(orb, 7.5, t * 3.0, t * 3.0 + 2.4, 12, Color(1, 1, 1, 0.55), 1.5)
+	_cv.draw_circle(orb + Vector2(-4, -4), 2.8, Color(1, 1, 1, 0.75))
 	_text(Vector2(64, 450), el.to_upper() if el != "" else "PLAIN", 13, ec.lightened(0.3) if el != "" else Color(INK, 0.5))
 	_text(Vector2(64, 465), "it carries" if el != "" else "carries nothing", 10, Color(INK, 0.45), _font)
 	var yy: float = 492.0
@@ -5324,7 +5489,7 @@ func _draw_left_panel() -> void:
 			var kind: String = reaction_of(el, other)
 			if other == el or kind == "clash":
 				continue
-			draw_circle(Vector2(27, yy - 4), 4.0, COLOURS[other])
+			_cv.draw_circle(Vector2(27, yy - 4), 4.0, COLOURS[other])
 			_text(Vector2(35, yy), "+ " + other, 10, Color(INK, 0.7), _font)
 			var word: String = str(REACTION_WORDS[kind]).trim_suffix("!")
 			var lands: Array = MIX_LANDS[kind]
@@ -5340,9 +5505,9 @@ func _draw_left_panel() -> void:
 	for kind in CAN_FALL:
 		var p := Vector2(34 + (i % 4) * 30, 588 + floorf(i / 4.0) * 30)
 		var col: Color = HEART_RED if kind == "life" else COLOURS[BONUS[kind]["land"]]
-		draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), col.darkened(0.6))
-		draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), Color(col, 0.7), false, 1.0)
-		draw_rect(Rect2(p - Vector2(12, 12), Vector2(24, 2)), Color(1, 1, 1, 0.12))
+		_cv.draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), col.darkened(0.6))
+		_cv.draw_rect(Rect2(p - Vector2(13, 13), Vector2(26, 26)), Color(col, 0.7), false, 1.0)
+		_cv.draw_rect(Rect2(p - Vector2(12, 12), Vector2(24, 2)), Color(1, 1, 1, 0.12))
 		_draw_icon(kind, p, Color(1, 1, 1, 0.9), 0.6)
 		i += 1
 	_text(Vector2(79, 680), "? bricks drop", 11, Color(INK, 0.5), _font, true)
@@ -5361,11 +5526,11 @@ func _draw_slider() -> void:
 	_divider(566, 22, 136, GOLD)
 	# the pad: sunken, its top in shadow, edged in the kingdom's colour
 	var pad := Rect2(20, 578, 118, 76)
-	draw_rect(pad, Color(0.015, 0.015, 0.03, 0.9))
-	draw_rect(Rect2(pad.position, Vector2(pad.size.x, 7)), Color(0, 0, 0, 0.45))
-	draw_rect(Rect2(pad.position.x, pad.end.y - 22, pad.size.x, 22), Color(land, 0.07))
-	draw_rect(pad, Color(land, 0.45), false, 1.0)
-	draw_rect(pad.grow(-3), Color(1, 1, 1, 0.035), false, 1.0)
+	_cv.draw_rect(pad, Color(0.015, 0.015, 0.03, 0.9))
+	_cv.draw_rect(Rect2(pad.position, Vector2(pad.size.x, 7)), Color(0, 0, 0, 0.45))
+	_cv.draw_rect(Rect2(pad.position.x, pad.end.y - 22, pad.size.x, 22), Color(land, 0.07))
+	_cv.draw_rect(pad, Color(land, 0.45), false, 1.0)
+	_cv.draw_rect(pad.grow(-3), Color(1, 1, 1, 0.035), false, 1.0)
 	for corner in [pad.position, Vector2(pad.end.x, pad.position.y), pad.end, Vector2(pad.position.x, pad.end.y)]:
 		_diamond(corner, 3.5, GOLD)
 	_text(Vector2(79, pad.position.y + 17), "slide here", 10, Color(INK, 0.45), _font, true)
@@ -5373,37 +5538,37 @@ func _draw_slider() -> void:
 	var lane: float = pad.position.y + 52.0
 	var x0: float = pad.position.x + 18.0
 	var x1: float = pad.end.x - 18.0
-	draw_line(Vector2(x0, lane), Vector2(x1, lane), Color(land, 0.55), 2.0)
+	_cv.draw_line(Vector2(x0, lane), Vector2(x1, lane), Color(land, 0.55), 2.0)
 	for i in 9:
 		var tx: float = lerpf(x0, x1, i / 8.0)
-		draw_line(Vector2(tx, lane + 4), Vector2(tx, lane + (9.0 if i % 4 == 0 else 6.0)), Color(INK, 0.3 if i % 4 else 0.5), 1.0)
+		_cv.draw_line(Vector2(tx, lane + 4), Vector2(tx, lane + (9.0 if i % 4 == 0 else 6.0)), Color(INK, 0.3 if i % 4 else 0.5), 1.0)
 	# chevrons at its ends, breathing
 	for side in [-1.0, 1.0]:
 		var tip := Vector2(79.0 + side * 52.0, lane - 9.0)
 		var arm := Vector2(-side * 5.0, 5.0)
-		draw_polyline(PackedVector2Array([tip + Vector2(arm.x, -arm.y), tip, tip + arm]), Color(GOLD, 0.35 + 0.45 * breathe), 2.0)
+		_cv.draw_polyline(PackedVector2Array([tip + Vector2(arm.x, -arm.y), tip, tip + arm]), Color(GOLD, 0.35 + 0.45 * breathe), 2.0)
 	# the paddle in small, where the paddle is
 	var share: float = clampf((paddle_x - ARENA.position.x - paddle_w / 2.0) / maxf(1.0, ARENA.size.x - paddle_w), 0.0, 1.0)
 	var at := Vector2(lerpf(x0, x1, share), lane - 9.0)
 	# where the thumb goes: a soft glow, a ring of dashes turning slowly
-	draw_circle(at + Vector2(0, 3), 17.0, Color(land, 0.1 + 0.06 * breathe))
+	_cv.draw_circle(at + Vector2(0, 3), 17.0, Color(land, 0.1 + 0.06 * breathe))
 	for d in 10:
 		var a0: float = t * 0.8 + d * TAU / 10.0
-		draw_arc(at + Vector2(0, 3), 19.0, a0, a0 + TAU / 20.0, 4, Color(GOLD, 0.3 + 0.3 * breathe), 1.5)
+		_cv.draw_arc(at + Vector2(0, 3), 19.0, a0, a0 + TAU / 20.0, 4, Color(GOLD, 0.3 + 0.3 * breathe), 1.5)
 	var body := Rect2(at.x - 15.0, at.y - 4.5, 30.0, 9.0)
-	draw_rect(body.grow(2.0), Color(GOLD, 0.15))
-	draw_rect(body, Color(0.2, 0.18, 0.25))
-	draw_circle(Vector2(body.position.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
-	draw_circle(Vector2(body.end.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
-	draw_rect(Rect2(body.position, Vector2(body.size.x, 3.5)), GOLD)
-	draw_line(Vector2(body.position.x + 6, at.y + 1.5), Vector2(body.end.x - 6, at.y + 1.5), Color(0.55, 0.95, 1.0, 0.8), 1.0)
-	draw_rect(Rect2(body.position, Vector2(body.size.x, 1.0)), Color(1, 0.95, 0.8))
+	_cv.draw_rect(body.grow(2.0), Color(GOLD, 0.15))
+	_cv.draw_rect(body, Color(0.2, 0.18, 0.25))
+	_cv.draw_circle(Vector2(body.position.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
+	_cv.draw_circle(Vector2(body.end.x, at.y), 4.5, Color(0.2, 0.18, 0.25))
+	_cv.draw_rect(Rect2(body.position, Vector2(body.size.x, 3.5)), GOLD)
+	_cv.draw_line(Vector2(body.position.x + 6, at.y + 1.5), Vector2(body.end.x - 6, at.y + 1.5), Color(0.55, 0.95, 1.0, 0.8), 1.0)
+	_cv.draw_rect(Rect2(body.position, Vector2(body.size.x, 1.0)), Color(1, 0.95, 0.8))
 	for x in [body.position.x, body.end.x]:
-		draw_circle(Vector2(x, at.y), 2.4, GOLD)
-		draw_circle(Vector2(x, at.y), 1.1, Color(1, 1, 1))
+		_cv.draw_circle(Vector2(x, at.y), 2.4, GOLD)
+		_cv.draw_circle(Vector2(x, at.y), 1.1, Color(1, 1, 1))
 	if state == State.AIM:
-		draw_circle(at + Vector2(0, -9), 5.0, Color(0.75, 0.95, 1.0, 0.25))
-		draw_circle(at + Vector2(0, -9), 3.0, Color(0.92, 0.98, 1.0))
+		_cv.draw_circle(at + Vector2(0, -9), 5.0, Color(0.75, 0.95, 1.0, 0.25))
+		_cv.draw_circle(at + Vector2(0, -9), 3.0, Color(0.92, 0.98, 1.0))
 	# what a tap does
 	_text(Vector2(79, 674), "TAP THE FIELD", 11, GOLD, null, true)
 	_text(Vector2(79, 690), "launch · fire · let go", 11, Color(INK, 0.6), _font, true)
@@ -5428,16 +5593,16 @@ func _draw_right_panel() -> void:
 	# taken in red; ticks every tenth, a glow, and a bright head
 	var ring: Color = Color(1.0, 0.38, 0.32) if boss != null else colour.lightened(0.15)
 	var c := Vector2(1201, 186)
-	draw_circle(c, 54.0, Color(ring, 0.05))
-	draw_arc(c, 44.0, 0, TAU, 64, Color(0, 0, 0, 0.5), 11.0)
+	_cv.draw_circle(c, 54.0, Color(ring, 0.05))
+	_cv.draw_arc(c, 44.0, 0, TAU, 64, Color(0, 0, 0, 0.5), 11.0)
 	for k in 20:
 		var a: float = -PI / 2.0 + TAU * k / 20.0
-		draw_line(c + Vector2.from_angle(a) * 33.0, c + Vector2.from_angle(a) * (36.0 if k % 2 else 38.0), Color(1, 1, 1, 0.18), 1.0)
+		_cv.draw_line(c + Vector2.from_angle(a) * 33.0, c + Vector2.from_angle(a) * (36.0 if k % 2 else 38.0), Color(1, 1, 1, 0.18), 1.0)
 	if done > 0.0:
 		var end_a: float = -PI / 2.0 + TAU * done
-		draw_arc(c, 44.0, -PI / 2.0, end_a, 64, Color(ring, 0.22), 17.0)
-		draw_arc(c, 44.0, -PI / 2.0, end_a, 64, ring, 9.0)
-		draw_circle(c + Vector2.from_angle(end_a) * 44.0, 5.5, ring.lightened(0.45))
+		_cv.draw_arc(c, 44.0, -PI / 2.0, end_a, 64, Color(ring, 0.22), 17.0)
+		_cv.draw_arc(c, 44.0, -PI / 2.0, end_a, 64, ring, 9.0)
+		_cv.draw_circle(c + Vector2.from_angle(end_a) * 44.0, 5.5, ring.lightened(0.45))
 	_text(c + Vector2(0, 9), "%d%%" % int(round(done * 100.0)), 24, INK, null, true)
 	if boss != null:
 		_text(Vector2(1201, 254), str(boss.title), 12, ring.lightened(0.35), null, true)
@@ -5462,28 +5627,28 @@ func _draw_right_panel() -> void:
 		if j < Maps.BOSS_EVERY - 1:
 			var lit_path: bool = made and idx < map_index
 			if lit_path:
-				draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.25), 6.0)
-			draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.85) if lit_path else Color(1, 1, 1, 0.16), 2.0)
+				_cv.draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.25), 6.0)
+			_cv.draw_line(p + Vector2(0, 12), p + Vector2(0, 40), Color(GOLD, 0.85) if lit_path else Color(1, 1, 1, 0.16), 2.0)
 		var here: bool = made and idx == map_index
 		var done_map: bool = made and (idx < map_index or (here and state == State.CLEARED))
 		var col: Color = GOLD if done_map else (COLOURS["fire"] if here else Color(1, 1, 1, 0.25 if made else 0.14))
 		var radius: float = 12.0 if boss_slot else 10.0
 		if here:
-			draw_circle(p, radius + 6.0 + 2.5 * sin(t * 4.0), Color(col, 0.18))
-			draw_arc(p, radius + 4.0 + 2.5 * sin(t * 4.0), 0, TAU, 24, Color(col, 0.5), 1.0)
-		draw_circle(p, radius, col.darkened(0.35) if not here else col)
-		draw_arc(p, radius, 0, TAU, 20, col, 1.5)
+			_cv.draw_circle(p, radius + 6.0 + 2.5 * sin(t * 4.0), Color(col, 0.18))
+			_cv.draw_arc(p, radius + 4.0 + 2.5 * sin(t * 4.0), 0, TAU, 24, Color(col, 0.5), 1.0)
+		_cv.draw_circle(p, radius, col.darkened(0.35) if not here else col)
+		_cv.draw_arc(p, radius, 0, TAU, 20, col, 1.5)
 		if boss_slot:
 			var top: Vector2 = p + Vector2(0, -radius - 1.0)
 			if made and Maps.MAPS[idx].get("boss") is Dictionary and bool(Maps.MAPS[idx]["boss"].get("crown", false)):
-				draw_colored_polygon(PackedVector2Array([top + Vector2(-7, 2), top + Vector2(-7, -5), top + Vector2(-3, -1),
+				_cv.draw_colored_polygon(PackedVector2Array([top + Vector2(-7, 2), top + Vector2(-7, -5), top + Vector2(-3, -1),
 					top + Vector2(0, -7), top + Vector2(3, -1), top + Vector2(7, -5), top + Vector2(7, 2)]), col)
 			else:
 				for side in [-1.0, 1.0]:
-					draw_colored_polygon(PackedVector2Array([top + Vector2(side * 3, 2), top + Vector2(side * 8, -5), top + Vector2(side * 8, 3)]), col)
+					_cv.draw_colored_polygon(PackedVector2Array([top + Vector2(side * 3, 2), top + Vector2(side * 8, -5), top + Vector2(side * 8, 3)]), col)
 		if done_map:
-			draw_line(p + Vector2(-4, 0), p + Vector2(-1, 4), Color(1, 1, 1), 2.0)
-			draw_line(p + Vector2(-1, 4), p + Vector2(5, -4), Color(1, 1, 1), 2.0)
+			_cv.draw_line(p + Vector2(-4, 0), p + Vector2(-1, 4), Color(1, 1, 1), 2.0)
+			_cv.draw_line(p + Vector2(-1, 4), p + Vector2(5, -4), Color(1, 1, 1), 2.0)
 		var slot_name: String
 		if made:
 			slot_name = Maps.short_name(idx)
@@ -5496,8 +5661,8 @@ func _draw_right_panel() -> void:
 			_font if not here else null)
 	# the run's best combo, in a box of its own
 	var box := Rect2(1146, 628, 110, 64)
-	draw_rect(box, Color(0, 0, 0, 0.3))
-	draw_rect(box, Color(GOLD, 0.25), false, 1.0)
+	_cv.draw_rect(box, Color(0, 0, 0, 0.3))
+	_cv.draw_rect(box, Color(GOLD, 0.25), false, 1.0)
 	_text(Vector2(1201, 650), "BEST COMBO", 10, Color(INK, 0.55), _font, true)
 	_text(Vector2(1201, 678), "%d" % best_combo, 22, GOLD.lerp(Color.WHITE, 0.3) if best_combo > 0 else Color(INK, 0.4), null, true)
 

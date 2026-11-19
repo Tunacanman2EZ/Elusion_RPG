@@ -81,6 +81,7 @@ extends CanvasLayer
 const RunScript := preload("res://src/world/healerrun/healerrun.gd")
 const Pad := preload("res://src/ui/touchpad.gd")
 const PartyScript := preload("res://src/world/healerrun/healerparty.gd")
+const PayAnswer := preload("res://src/ui/minigames/payanswer.gd")
 # THE START PANEL, ONE LOOK (0.161.0, startpanel.gd; the owner: "lets fix
 # the other minigames with the same idea"): a line under the title, HOW TO
 # PLAY as a grid with a gold word a line (TUTORIAL_KEYS; the lines are still
@@ -176,6 +177,11 @@ var finish_request: Callable = Callable(Api, "post")
 var enter_request: Callable = Callable(Api, "post")
 var slot_now: Callable = Callable(self, "_slot")
 var _paid: bool = false
+# A RUN THE SERVER WOULD NOT PAY (0.168.8, payanswer.gd): how many tries
+# failed, whether Leave now goes without the gold, and why
+var _pay_fails: int = 0
+var _go_without: bool = false
+var _not_paid_why: String = ""
 var _busy: bool = false
 # What the server paid at Leave and held back (0.157.0, A DAY'S MINIGAME GOLD:
 # one allowance an account a day across every minigame); -1 before it says.
@@ -687,6 +693,9 @@ func start() -> void:
 	_leave_armed = 0.0
 	_lives_seen = -1
 	_paid = false
+	_pay_fails = 0
+	_go_without = false
+	_not_paid_why = ""
 	# THE FIRST RUN OF A SESSION OPENS ON THE TUTORIAL, her standing still
 	# on the landing behind it until Start.
 	party_line.visible = with_party
@@ -1039,11 +1048,15 @@ func leave() -> void:
 	if _busy:
 		return
 	if not await _pay():
+		if _worth_nothing():
+			close()
 		return
 	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
 	if _gold_paid >= 0:
 		gold = _gold_paid
 	var said: String = paid_line("The Healer's Run", gold, _held_back)
+	if _go_without and not _paid:
+		said = PayAnswer.not_paid_line("The Healer's Run", _not_paid_why)
 	if hud != null and is_instance_valid(hud) and hud.has_method("_push_message") and said != "":
 		hud.call("_push_message", said, COLOUR, 0, true)
 	close()
@@ -1101,7 +1114,7 @@ func again() -> void:
 func _pay() -> bool:
 	"""This run finished on the server and its gold paid - once. True when it
 	is (or there is no run on the server: a test, or the owner's own)."""
-	if run_id == 0 or _paid:
+	if run_id == 0 or _paid or _go_without:
 		return true
 	if run == null or not is_instance_valid(run):
 		return true
@@ -1129,10 +1142,19 @@ func _pay() -> bool:
 		if status.has("gold") and _held != null and is_instance_valid(_held) and _held.has_method("set_gold"):
 			_held.call("set_gold", int(status["gold"]))
 		return true
-	banner_line.text = "Could not reach the server - Leave again to try once more."
+	_pay_fails += 1
+	_go_without = PayAnswer.refused(res) or _pay_fails >= 2
+	_not_paid_why = PayAnswer.why_not(res)
+	banner_line.text = _not_paid_why
 	results.visible = true
-	result_line.text = "Your gold is waiting: Leave again to take it."
+	result_line.text = PayAnswer.waiting_line(_go_without)
 	return false
+
+
+func _worth_nothing() -> bool:
+	"""A run that has earned no gold: Leave goes when the server cannot be
+	reached for it - there is nothing to lose."""
+	return run == null or not is_instance_valid(run) or int(run.call("gold_now")) <= 0
 
 
 func _slot() -> int:

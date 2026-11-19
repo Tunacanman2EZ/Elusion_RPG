@@ -1680,6 +1680,7 @@ func _test_the_healers_run() -> void:
 	refused.finish_request = func(_path: String, _body: Dictionary, _wait: float) -> Dictionary:
 		return {"ok": false, "status": 0}
 	await get_tree().process_frame
+	refused.run.waves_done = 9
 	refused.leave()
 	await get_tree().process_frame
 	check("  not reached, it stays and says the gold is waiting", is_instance_valid(refused)

@@ -12798,6 +12798,11 @@ about 2 ms of it.
   so `SHADOWS_ONLY` meshes can carry many pieces' shadows at once.
   Alpha-blended materials cast none at all. The Compatibility renderer
   draws every mesh twice while the sun casts shadows.
+- **Every font size is its own set of letters.** Text drawn at a size it
+  has not been drawn at before has its letters drawn then (the game's code)
+  and put in a new texture (the graphics card), kept for good. A word that
+  pops by font size (`int(size * pop)`) made a dozen sizes a word; scale it
+  with `draw_set_transform` instead (Crownfall's words, 0.168.8).
 - **Godot caps a frame's delta** (8 physics steps), so a slow frame
   stretches anything counted in delta - the table's 3-2-1 crawled in slow
   frames. What must keep time runs on `Time.get_ticks_msec()`.
@@ -16563,6 +16568,96 @@ than `LIGHTS_EACH` lamps, fewer on a phone), the shadow meshes (1 to 12,
 shadow only, no joined plain mesh casting, none on a phone) and the held
 words (waiting while held, kinds in first-asked order); each sabotaged red
 (no lamp limit, no shadow meshes, no holding).
+
+### Crownfall lighter still; leaving never traps (0.168.8)
+
+The owner, stuck on Crownfall's results with "Could not reach the server.
+Your gold is waiting: Leave again to take it.": "issue trying to leave the
+game"; then, with a readout of Crownfall: "lets make it perfect because my
+pc is running hard here too".
+
+**Leaving never traps** (`src/ui/minigames/payanswer.gd`, new; the Healer's
+Run, Cut the Cloth, Crownfall and the Beholder's Table's screens). Each
+screen called any answer to `/api/minigames/finish` but a payment "Could not
+reach the server", and Leave only asked again - so a no that would always
+be no (signed out, a run the server will not pay: a 400, 401, 403 or 404)
+kept the screen up for good. The server was up when he hit it (/api/status
+answered); what it said is not known. Now:
+- `PayAnswer.why_not(res)` says what happened: no answer (status 0), signed
+  out (401), busy (408, 429), the server's problem (5xx), or "The server
+  would not pay this run: <its message>".
+- `PayAnswer.refused(res)` - a 4xx but 408 and 429 - is a no for good: the
+  screen says "Leave again to go without its gold." After a second failed
+  try of any kind the same (`_pay_fails`). Then `_go_without`: `_pay()`
+  answers true without asking, Leave goes, and the HUD is told
+  `PayAnswer.not_paid_line()` ("Crownfall: this run's gold was not paid.
+  ..."). Again goes on too, the run unpaid.
+- A run worth nothing (`gold_now()` 0) leaves at once when the pay fails -
+  nothing to lose.
+
+**Crownfall's frame**, measured on the Mobile renderer (the sandbox can now:
+CLAUDE.md "What a frame's draws are"), Keys of the Keep played by a bot:
+**523 draws a frame**, of them the top bar and the side panels 254, the
+floor 102 (70 of them the backdrop's twinkling stars), the floor over the
+building 27, the run's own drawing in the arena the rest.
+- **The bars are a picture** (crownfallrun.gd `panel_cache`, `panel_node`,
+  `panel_pic`, `_paint_panels()`): painted at most `PANEL_HZ` (20) a second
+  by the clock (`_paint_pictures()`, `_panels_at`), shown as one sprite
+  over the run's own drawing - the last child, not behind it, as the bars
+  were drawn last in `_draw()`, with the premultiplied material the brick
+  picture uses. Their pulses and glints move at that pace. Their words are
+  held and written together (`_hold_words`, `_write_held_words()`,
+  `_word_kinds()`, pinball's way): 254 draws a painting -> 214. For it the
+  bars and their helpers draw through `_cv` (`_draw_hud`,
+  `_draw_left_panel`, `_draw_slider`, `_draw_right_panel`, `_panel`,
+  `_diamond`, `_divider`, `_heart`, `_half_heart`, `_crest`, `_draw_icon`,
+  `_draw_land_mark`) - every draw entry sets `_cv` first.
+- **The stars are a picture** (`stars_cache`, `stars_pic`, the first child,
+  behind the floor): the backdrop painted at most `STARS_HZ` (10) a second;
+  `_paint_floor()` draws only the arena now.
+- So **about 280 draws a frame at 60 fps** (199, the bars' 214 a third of
+  the frames, the stars' 71 a sixth). Pictures before and after match pixel
+  for pixel but for a few on the current map's pulsing ring (a transparent
+  picture's rounding).
+- **A map's bricks are painted a few at a time** (`FIRST_PAINTS` 100 a frame,
+  `_unpainted`, `_map_painting`): a brick's node is made at once (so
+  `k["node"]` is there), its draw connected when its turn comes; the still
+  picture is hidden and not drawn until all are in, then drawn once (the
+  biggest map, 1,344 bricks, 14 frames). A brick added in play is painted
+  that frame, the picture kept on screen. Measured, a map's start costs
+  less than feared here (about 10 ms with or without); the spikes in his
+  readout were not reproduced.
+- **A popping word is a scale** (`_draw()`'s words): drawn at its own size
+  through `draw_set_transform(... Vector2(pop, pop))`, not at
+  `int(size * pop)` - each new size has its letters drawn anew, a hitch the
+  first time and graphics memory kept for good (14 sizes x the pop, 40-odd
+  font sizes). A burst of new words: worst frame 18.5 ms -> 7.1 here. The
+  pop's 0.12 s are drawn scaled with the run's nearest filter.
+- His readout said "drawing" spikes, 15-65 ms, every few seconds, and the
+  graphics memory growing (185 -> 225 MB) - the letters at new sizes are
+  the likeliest cause found; his next readout will say.
+- **Going through is named beside a spike**: then "i think the spikes were
+  going through the teleportar". In the sandbox a portal costs nothing
+  seen (software Vulkan draws 50 ms every frame, hiding a spike), so the
+  readout says it instead: `PerfOverlay.mark(&"teleport")` in
+  `src/world/teleporter.gd` (after its sound), `&"portal"` in
+  crownfallrun.gd's portal branch, `&"map opens"` at the top of
+  `_clear_map()`; `MARK_LETTERS` gives them `@`, `%` and `#`. A spike line
+  then says e.g. "portal x1" - what to fix next.
+
+`_test_leaving_never_traps()` and `_test_crownfall_lighter_still()`
+(testrunner_13): the words for each answer and which are a no for good; a
+refusal on Crownfall said in the server's words, Leave again going without
+(asked once, the HUD told); no answer on the pinball table tried once more,
+then going; a run worth nothing out at once; all four screens the same; the
+bars and stars pictures, their order and their pace; a map painted 100 a
+frame, shown whole once all are in, drawn then and not before; a brick added
+in play painted at once; the pop a scale. Each sabotaged red (no refusal, no
+worth-nothing exit, the bars every frame, the picture shown half painted,
+the pop by size). Older checks moved with it: the pinball table's "not
+reached" now "No answer from the server." with a score worth gold; the
+Healer's Run's with waves done; Crownfall's DRAWN LIGHTER paints all the
+bricks before it looks.
 
 ### Which file owns which number
 

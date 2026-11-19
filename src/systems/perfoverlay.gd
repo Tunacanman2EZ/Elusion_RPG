@@ -224,6 +224,12 @@ const MARK_LETTERS := {
 	&"vents erupt": "N",
 	&"lava burns": "~",
 	&"elements mix": "+",
+	# Going through (0.168.8, the owner: "i think the spikes were going
+	# through the teleportar"): the town's teleporters, Crownfall's portals
+	# and a Crownfall map opening.
+	&"teleport": "@",
+	&"portal": "%",
+	&"map opens": "#",
 }
 const NOTHING_MARKED := "nothing marked"
 # A kind is the cause when this share of its frames hitched and this many

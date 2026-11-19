@@ -339,13 +339,14 @@ func _test_the_table_pays() -> void:
 		and str(screen.pay_line.text).contains("pays nothing"))
 	screen.run_id = 43
 	screen.start()
+	screen.run.score = 50000
 	screen.finish_request = func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
 		return {"ok": false, "status": 0}
 	screen.ask_to_leave()
 	screen.ask_to_leave()
-	check("Leave during a paid game, the server not reached: the screen stays and says so",
+	check("Leave during a paid game, the server not reached: the screen stays and says so (0.168.8's words)",
 		is_instance_valid(screen) and not screen.is_queued_for_deletion()
-		and str(screen.result_line.text) == "Could not reach the server", screen.result_line.text)
+		and str(screen.result_line.text) == "No answer from the server.", screen.result_line.text)
 	screen.finish_request = finish_ok
 	screen.leave()
 	check("  Leave again pays it, then goes", sent.size() == 3 and int(sent[2][1]["run"]) == 43
@@ -997,3 +998,208 @@ func _test_the_crownfall_map_is_neater() -> void:
 	check("it opens without loading the Healer's Run, saying the same paid line",
 		not src.contains("healerrunscreen.gd\")") and same)
 	print("  Crownfall's map screen: done")
+
+
+# =============================================================================
+# LEAVING NEVER TRAPS (0.168.8)
+# =============================================================================
+# The owner, on Crownfall's results: "issue trying to leave the game". Every
+# paying screen called any answer but a payment "Could not reach the server",
+# and Leave only asked again - a no that would always be no kept the screen up
+# for good. payanswer.gd words the answer and says when to go without.
+
+func _test_leaving_never_traps() -> void:
+	section("Leaving a minigame never traps you (0.168.8): the server's answer in words, and a way out")
+	const Pay := preload("res://src/ui/minigames/payanswer.gd")
+	var Screen = require_script("res://src/world/crownfall/crownfallscreen.gd", "crownfallscreen.gd")
+	var Table = require_script("res://src/world/pinball/pinballscreen.gd", "pinballscreen.gd")
+	if Screen == null or Table == null:
+		return
+	check("the answer in words - no answer, signed out, busy, broken, the server's reason - and only a 4xx (not 408 or 429) is a no for good",
+		Pay.why_not({"ok": false, "status": 0}) == "No answer from the server."
+		and Pay.why_not({"ok": false, "status": 401}).contains("signed out")
+		and Pay.why_not({"ok": false, "status": 429}).contains("busy")
+		and Pay.why_not({"ok": false, "status": 502}).contains("problem")
+		and Pay.why_not({"ok": false, "status": 400, "data": {"message": "that map is not open to you yet"}})
+			== "The server would not pay this run: that map is not open to you yet"
+		and Pay.refused({"status": 404}) and Pay.refused({"status": 401}) and not Pay.refused({"status": 0})
+		and not Pay.refused({"status": 429}) and not Pay.refused({"status": 503}))
+	var hud_script := GDScript.new()
+	hud_script.source_code = "extends Node\nvar said: Array = []\nfunc _push_message(text, _colour = null, _at = 0, _log = false) -> void:\n\tsaid.append(str(text))\n"
+	hud_script.reload()
+	var hud := Node.new()
+	hud.set_script(hud_script)
+	add_child(hud)
+	# a refusal, on Crownfall: said in the server's words; Leave again goes
+	var asked: Array = []
+	var screen: CanvasLayer = Screen.new()
+	screen.set("hud", hud)
+	screen.set("pays", {"maps": [600, 600, 700, 800, 2000]})
+	screen.set("progress", 1)
+	screen.set("run_id", 9)
+	screen.set("on_touch", func() -> bool: return false)
+	screen.set("finish_request", func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		asked.append(1)
+		return {"ok": false, "status": 404, "data": {"message": "No such run."}})
+	add_child(screen)
+	await get_tree().process_frame
+	var srun: Node2D = screen.get("run")
+	srun.set("running_by_clock", false)
+	srun.call("begin", 0)
+	srun.set("cleared", 1)
+	await screen.call("leave")
+	var stayed: bool = is_instance_valid(screen) and not screen.is_queued_for_deletion()
+	var said: String = str((screen.get("result_line") as Label).text)
+	var next: String = str((screen.get("gold_line") as Label).text)
+	await screen.call("leave")
+	check("a run the server will not pay (Crownfall, 600 gold reached): the screen says why in its words; Leave again goes without it, asked once, the HUD told",
+		stayed and said == "The server would not pay this run: No such run." and next == "Leave again to go without its gold."
+		and screen.is_queued_for_deletion() and asked.size() == 1
+		and (hud.get("said") as Array).has("Crownfall: this run's gold was not paid. The server would not pay this run: No such run."),
+		[stayed, said, next, asked.size(), hud.get("said")])
+	# no answer, on the Beholder's Table: once more, then go without
+	var tries: Array = []
+	var table: CanvasLayer = Table.new()
+	table.set("headless_run", true)
+	table.set("on_touch", func() -> bool: return false)
+	table.set("hud", hud)
+	table.run_id = 50
+	table.pays = {"points_per_gold": 2000, "most": 3000}
+	table.finish_request = func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		tries.append(1)
+		return {"ok": false, "status": 0}
+	add_child(table)
+	table.run.score = 40000
+	await table.leave()
+	var first: String = str(table.gold_line.text)
+	await table.leave()
+	var second: String = str(table.gold_line.text)
+	var still: bool = not table.is_queued_for_deletion()
+	await table.leave()
+	check("no answer (the Beholder's Table, 20 gold reached): Leave tries once more; after the second it says Leave goes without it, and the third goes - asked twice",
+		first == "Your gold is waiting: Leave again to try once more." and second == "Leave again to go without its gold."
+		and still and table.is_queued_for_deletion() and tries.size() == 2, [first, second, still, tries.size()])
+	# worth nothing: out at once
+	var empty: CanvasLayer = Table.new()
+	empty.set("headless_run", true)
+	empty.set("on_touch", func() -> bool: return false)
+	empty.run_id = 51
+	empty.pays = {"points_per_gold": 2000, "most": 3000}
+	empty.finish_request = func(_p: String, _b: Dictionary, _t: float = 0.0) -> Dictionary:
+		return {"ok": false, "status": 0}
+	add_child(empty)
+	await empty.leave()
+	check("  a run worth nothing leaves at once when the server cannot be reached - nothing to lose",
+		empty.is_queued_for_deletion())
+	var four: bool = true
+	for path in ["res://src/world/healerrun/healerrunscreen.gd", "res://src/world/cloth/clothscreen.gd",
+			"res://src/world/crownfall/crownfallscreen.gd", "res://src/world/pinball/pinballscreen.gd"]:
+		var src: String = _code_src(path)
+		four = four and src.contains("PayAnswer.refused(res) or _pay_fails >= 2") and src.contains("_go_without")
+	check("  all four paying screens work the same way (the Healer's Run, Cut the Cloth, Crownfall, the Beholder's Table)", four)
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  leaving never traps: done")
+
+
+# =============================================================================
+# CROWNFALL LIGHTER STILL (0.168.8)
+# =============================================================================
+# The owner: "my pc is running hard here too". Keys of the Keep drew 523
+# draws a frame, 254 of them the bars; a map's bricks were all painted in
+# its first frame; a popping word was drawn at a new font size each frame.
+
+func _test_crownfall_lighter_still() -> void:
+	section("Crownfall lighter still (0.168.8): the bars and the stars pictures, a map painted a few bricks at a time, words pop by scale")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	run.begin(0)
+	var src: String = _code_src("res://src/world/crownfall/crownfallrun.gd")
+	var own: String = _func_body(src, "func _draw() -> void:")
+	var floor_src: String = _func_body(src, "func _paint_floor() -> void:")
+	var premult: bool = run.panel_pic.material is CanvasItemMaterial \
+		and (run.panel_pic.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	check("the bars are a picture over the run's own drawing (where they were drawn, last), the stars one behind the floor",
+		run.panel_pic.texture == run.panel_cache.get_texture() and not run.panel_pic.show_behind_parent and premult
+		and run.panel_node.get_parent() == run.panel_cache and run.panel_pic.get_index() > run.brick_live.get_index()
+		and run.stars_pic.show_behind_parent and run.stars_pic.get_index() < run.floor_layer.get_index()
+		and run.stars_pic.texture == run.stars_cache.get_texture()
+		and not own.contains("_draw_hud()") and not own.contains("_draw_left_panel()") and not floor_src.contains("_draw_backdrop"),
+		[premult, run.panel_pic.get_index(), run.stars_pic.get_index()])
+	var now: float = Time.get_ticks_msec() / 1000.0
+	run._panels_at = now
+	run._stars_at = now
+	run.panel_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	run.stars_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	run._paint_pictures()
+	var quiet: bool = run.panel_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED \
+		and run.stars_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED
+	run._panels_at = now - 1.0 / Run.PANEL_HZ
+	run._paint_pictures()
+	var bars_due: bool = run.panel_cache.render_target_update_mode == SubViewport.UPDATE_ONCE \
+		and run.stars_cache.render_target_update_mode == SubViewport.UPDATE_DISABLED
+	check("  painted again when due - the bars at most %d times a second, the stars %d - and left as they are between"
+		% [int(Run.PANEL_HZ), int(Run.STARS_HZ)], quiet and bars_due, [quiet, bars_due])
+	# a map a few bricks at a time: the one with the most bricks
+	var most: int = 0
+	var most_at: int = 0
+	for i in Run.Maps.made_count():
+		run.begin(i)
+		var n: int = run.bricks.filter(func(k: Dictionary) -> bool: return not k.has("rail")).size()
+		if n > most:
+			most = n
+			most_at = i
+	run.begin(most_at)
+	run.sync_bricks()
+	var painted: int = 0
+	for n in run.brick_layer.get_children():
+		if (n as Node2D).draw.get_connections().size() > 0:
+			painted += 1
+	var hidden_first: bool = not run.brick_pic.visible
+	var frames: int = 1
+	var rendered_early: bool = false
+	while not run._unpainted.is_empty() and frames < 100:
+		run.brick_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		run.sync_bricks()
+		frames += 1
+		if not run._unpainted.is_empty() and run.brick_cache.render_target_update_mode == SubViewport.UPDATE_ONCE:
+			rendered_early = true
+	var shown: bool = run.brick_pic.visible and run.brick_cache.render_target_update_mode == SubViewport.UPDATE_ONCE
+	check("a map's bricks are painted %d a frame (%d bricks, %d frames), its picture shown whole once all are in and drawn then, not before"
+		% [Run.FIRST_PAINTS, most, frames], painted == mini(most, Run.FIRST_PAINTS) and hidden_first == (most > Run.FIRST_PAINTS)
+		and shown and not rendered_early and frames == ceili(float(most) / Run.FIRST_PAINTS),
+		[painted, hidden_first, shown, rendered_early, frames])
+	run.begin(0)
+	for i in 30:
+		run.sync_bricks()
+	var added: Dictionary = run._add(1, 0, "land", "light", 1)
+	run.sync_bricks()
+	var node: Node2D = added.get("node")
+	check("  a brick added in play is painted at once, the picture kept on screen",
+		node != null and node.draw.get_connections().size() > 0 and run.brick_pic.visible and run._unpainted.is_empty())
+	var words_src: String = _func_body(src, "func _draw() -> void:")
+	check("a popping word is drawn at its own size and scaled - not at a new font size each frame of its pop",
+		words_src.contains("draw_set_transform(_jolt + (w[\"p\"] as Vector2), 0.0, Vector2(pop, pop))")
+		and not words_src.contains("int(w[\"size\"] * pop)"))
+	# the readout names a teleport, a portal and a map opening beside a spike
+	var was_on: bool = PerfOverlay.visible
+	PerfOverlay.visible = true
+	PerfOverlay._marks_now = {}
+	run._clear_map()
+	var marked: bool = PerfOverlay._marks_now.has(&"map opens")
+	PerfOverlay._marks_now = {}
+	PerfOverlay.visible = was_on
+	var letters: Array = (PerfOverlay.MARK_LETTERS as Dictionary).values()
+	var unique: bool = true
+	for l in letters:
+		unique = unique and letters.count(l) == 1
+	check("the readout names a teleport, a portal and a map opening beside a spike (\"i think the spikes were going through the teleportar\"), each its own letter",
+		marked and unique and _code_src("res://src/world/teleporter.gd").contains("PerfOverlay.mark(&\"teleport\")")
+		and src.contains("PerfOverlay.mark(&\"portal\")")
+		and (PerfOverlay.MARK_LETTERS as Dictionary).has(&"teleport") and (PerfOverlay.MARK_LETTERS as Dictionary).has(&"portal"),
+		[marked, unique])
+	run.queue_free()
+	await get_tree().process_frame
+	print("  Crownfall lighter still: done")

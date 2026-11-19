@@ -4149,6 +4149,9 @@ func _test_crownfall_never_locked() -> void:
 			break
 	run.sync_bricks()
 	run.sync_bricks()
+	# a map's bricks are painted a few at a time since 0.168.8: all in first
+	while not run._unpainted.is_empty():
+		run.sync_bricks()
 	run.brick_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	run.sync_bricks()
 	run.sync_bricks()

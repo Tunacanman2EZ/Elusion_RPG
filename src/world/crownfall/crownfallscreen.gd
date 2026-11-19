@@ -76,6 +76,7 @@ extends CanvasLayer
 
 const RunScript := preload("res://src/world/crownfall/crownfallrun.gd")
 const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
+const PayAnswer := preload("res://src/ui/minigames/payanswer.gd")
 # OPENS FASTER (0.168.6): it preloaded healerrunscreen.gd for one line of
 # words, and with it the Healer's Run, its party and more - the pinball
 # table's 0.168.2 fix. The line is this screen's own now (paid_line(), the
@@ -154,6 +155,11 @@ var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
 var _leave_armed: float = 0.0
 var _paid: bool = false
+# A RUN THE SERVER WOULD NOT PAY (0.168.8, payanswer.gd): how many tries
+# failed, whether Leave now goes without the gold, and why
+var _pay_fails: int = 0
+var _go_without: bool = false
+var _not_paid_why: String = ""
 var _busy: bool = false
 # What the server paid at Leave and held back (A DAY'S MINIGAME GOLD); -1
 # before it says.
@@ -371,6 +377,9 @@ func start() -> void:
 	results.visible = false
 	again_button.disabled = false
 	_paid = false
+	_pay_fails = 0
+	_go_without = false
+	_not_paid_why = ""
 	_gold_paid = -1
 	_held_back = 0
 	_leave_armed = 0.0
@@ -771,11 +780,15 @@ func leave() -> void:
 	if _busy:
 		return
 	if not await _pay():
+		if _worth_nothing():
+			close()
 		return
 	var gold: int = int(run.call("gold_now")) if run != null and is_instance_valid(run) else 0
 	if _gold_paid >= 0:
 		gold = _gold_paid
 	var said: String = paid_line("Crownfall", gold, _held_back)
+	if _go_without and not _paid:
+		said = PayAnswer.not_paid_line("Crownfall", _not_paid_why)
 	if run_id != 0 and said != "" and hud != null and is_instance_valid(hud) and hud.has_method("_push_message"):
 		hud.call("_push_message", said, GOLD, 0, true)
 	close()
@@ -818,7 +831,7 @@ func again() -> void:
 func _pay() -> bool:
 	"""This run finished on the server and its gold paid - once. True when it
 	is (or it is practice)."""
-	if run_id == 0 or _paid:
+	if run_id == 0 or _paid or _go_without:
 		return true
 	if run == null or not is_instance_valid(run):
 		return true
@@ -843,12 +856,21 @@ func _pay() -> bool:
 			_held.call("set_gold", int(status["gold"]))
 		return true
 	run.set("running_by_clock", true)
+	_pay_fails += 1
+	_go_without = PayAnswer.refused(res) or _pay_fails >= 2
+	_not_paid_why = PayAnswer.why_not(res)
 	if not results.visible:
 		results.visible = true
 		_centre(results)
-	result_line.text = "Could not reach the server"
-	gold_line.text = "Your gold is waiting: Leave again to take it."
+	result_line.text = _not_paid_why
+	gold_line.text = PayAnswer.waiting_line(_go_without)
 	return false
+
+
+func _worth_nothing() -> bool:
+	"""A run that has earned no gold: Leave goes when the server cannot be
+	reached for it - there is nothing to lose."""
+	return run == null or not is_instance_valid(run) or int(run.call("gold_now")) <= 0
 
 
 func close() -> void:
