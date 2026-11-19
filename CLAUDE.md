@@ -12774,6 +12774,38 @@ including alignment spaces inside a `const` table, which is where it is hardest
 to see. This project is tabs only. Alignment *after* the first non-space
 character is fine; leading whitespace must be tabs and nothing else.
 
+### What a frame's draws are (0.168.7)
+
+Learned on the pinball table; true of every screen. Most of a pinball frame
+on the owner's PC was handing the graphics card its draws; the script was
+about 2 ms of it.
+
+- **A canvas is handed over again every frame**, all its draws, whether or
+  not anything called `queue_redraw()`. Painting less often saves the
+  script's time, not the draws. Only a SubViewport left at
+  `UPDATE_DISABLED` between `UPDATE_ONCE`s, shown as a texture, saves them.
+  A SubViewport's own render info after an `UPDATE_ONCE` is the last frame
+  it drew - a stale number, not a cost.
+- **Alike draws in a row are one.** The 2D batcher joins draws of one
+  texture; a word between two shapes breaks it twice (each font size is a
+  texture of its own), and every polygon, arc and circle is a draw of its
+  own. Hold the words to the end (`_hold_words` in pinballrun.gd).
+- **A mesh is lit by 8 omni lights at most** on the Mobile and
+  Compatibility renderers, paired by the cube of each light's reach.
+  Join meshes past that and a lamp is dropped from all of the join,
+  silently - the bumpers' rims went dark.
+- **A shadow is a draw again**, per mesh. A shadow needs only the shape,
+  so `SHADOWS_ONLY` meshes can carry many pieces' shadows at once.
+  Alpha-blended materials cast none at all. The Compatibility renderer
+  draws every mesh twice while the sun casts shadows.
+- **Godot caps a frame's delta** (8 physics steps), so a slow frame
+  stretches anything counted in delta - the table's 3-2-1 crawled in slow
+  frames. What must keep time runs on `Time.get_ticks_msec()`.
+- **Measure on his renderer.** His PC runs Mobile (Vulkan), the browser
+  Compatibility. A sandbox can run Mobile on software Vulkan
+  (`apt-get install mesa-vulkan-drivers`, then `--rendering-driver vulkan
+  --rendering-method mobile` under xvfb); OpenGL counts no shadow draws.
+
 ## Traps on the server side
 
 ### Two requests sent together used to read the same old number
@@ -16672,6 +16704,14 @@ src/ui/owner/       owner-only tooling, gated on Api.is_owner
 src/world/          levels (elusion, field), interactables, lootbag, roofswap,
                     mapbackdrop (grey under the tiles, black past the map),
                     enemysleeper (far enemies stop thinking)
+src/world/<game>/   the minigames, each a run (the game) and a screen (its
+                    window), most a party (playing together): descent (the
+                    warrior's crypt), forge (the tank's island), magestand
+                    (the Mage's Stand), healerrun (the Healer's Run), cloth
+                    (Cut the Cloth), crownfall (the brick breaker), pinball
+                    (the Beholder's Table), endless (the Endless and the
+                    Testing Ground); crowned is the Crowned's room
+src/ui/minigames/   the Minigames card (the grid), the start and Ready panels
 src/shared/         pure helpers used across characters, enemies and pets —
                     facing, formation, homing, safespot, marks (the dots and
                     arrows drawn as pixels), and localtime, which
