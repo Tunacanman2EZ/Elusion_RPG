@@ -3559,15 +3559,21 @@ func _test_crownfall() -> void:
 	var sparks: int = 0
 	var blinked: bool = false
 	var last_blink: float = sprite_boss.blink_t
-	for i in roundi((Boss.BLINK_EVERY + 0.1) * 60.0):
+	var quiet: bool = true
+	var never_stunned: bool = true
+	for i in roundi((Boss.BLINK_EVERY * 3.0 + 0.1) * 60.0):
 		run.step(1.0 / 60.0)
 		in_hall = in_hall and run.hall.grow(2.0).has_point(sprite_boss.p)
 		sparks = maxi(sparks, sprite_boss.shots.size())
-		blinked = blinked or sprite_boss.blink_t > last_blink
+		if sprite_boss.blink_t > last_blink:
+			blinked = true
+			quiet = quiet and sprite_boss.throw_t >= Boss.BLINK_QUIET - 0.02
 		last_blink = sprite_boss.blink_t
-	check("the Sprite darts about its hall and never leaves it, blinks to a new spot every %.1f s, and throws its sparks in pairs" % Boss.BLINK_EVERY,
-		str(sprite_boss.kind) == "sprite" and sprite_boss.hp == run.boss_left() and in_hall and blinked and sparks >= 2
-		and sprite_boss.p != from_spot, [in_hall, blinked, sparks])
+		never_stunned = never_stunned and run.stunned <= 0.0
+	check("the Sprite darts about its hall and never leaves it, blinks to a new spot every %.1f s and then throws nothing for %.1f s, and throws its sparks in a fan of %d (0.168.9: \"this boss is firing shots to fast\") - a paddle standing still in the middle lane is never hit" % [Boss.BLINK_EVERY, Boss.BLINK_QUIET, Boss.SPARK_FAN.size()],
+		str(sprite_boss.kind) == "sprite" and sprite_boss.hp == run.boss_left() and in_hall and blinked and quiet
+		and sparks >= 4 and Boss.SPARK_FAN.size() == 4 and never_stunned
+		and sprite_boss.p != from_spot, [in_hall, blinked, quiet, sparks, never_stunned])
 	# ---- the Sniper ----
 	run.begin(14)
 	var sniper = run.boss

@@ -16659,6 +16659,35 @@ reached" now "No answer from the server." with a score worth gold; the
 Healer's Run's with waves done; Crownfall's DRAWN LIGHTER paints all the
 bricks before it looks.
 
+### The Sprite throws fairer (0.168.9)
+
+The owner, on the Sprite's map (light, map 10) with "+0 gold": "this boss
+is firing shots to fast haha suggestions?". It threw a pair of sparks
+every `SPARK_EVERY` 1.6 s (1.2 under half), at 330 against other bosses'
+one shot every 2.3 s at 250; a spark falls about 500 px, so 2-3 pairs
+were always on their way, each a 0.8 s stun. Of four fixes offered (fewer
+throws, slower sparks, a glow before a throw, a pause after a blink) he
+chose fewer throws and the pause, "and add a few more projectiles".
+
+crownfallboss.gd `_dart()` (every boss that darts: the Sprite, the
+Whirlwind, the Undine, the Snow, Dust and Flame Sprites, the Wisp):
+- A throw is a fan, `SPARK_FAN` [-33, -12, 12, 33] degrees about the
+  paddle. At the hall's drop (488-510 px) the middle lane is +-104 px
+  around where the paddle stood and the side lanes 213 px wide; a paddle
+  needs 152 (a hit is within half its width + 6) - a paddle standing still
+  is never hit. The old pair was +-12 too; the wide paddle (230) fits no
+  lane, as before.
+- `SPARK_EVERY` 3.0 s (2.25 under half, the same 0.75).
+- `BLINK_QUIET` 0.8 s: a blink sets `throw_t` to at least that.
+- Measured (`zz/spritesim.gd`, sandbox): a bot chasing the lowest ball, 90
+  s on each of 8 seeds, stuns counted - the old pairs 99, a fan of four
+  every 2.4 s 97 (his 2.4 with four sparks was no easier), every 2.8 s 72,
+  every 3.0 s 64.
+
+`_test_crownfall()` (testrunner_12), the Sprite: three blinks, then
+nothing thrown for `BLINK_QUIET`, four sparks in the air, a still paddle
+never stunned.
+
 ### Which file owns which number
 
 | question | lives in | example |

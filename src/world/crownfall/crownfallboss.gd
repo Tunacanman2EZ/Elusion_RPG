@@ -6,7 +6,8 @@
 #            he spits a small slime that hops across the bricks, planting
 #            blight where it lands on nothing; the ball kills one.
 #   map 10   the Sprite (its sprite) - DARTS about its hall and BLINKS to
-#            another spot every BLINK_EVERY, throwing sparks in pairs.
+#            another spot every BLINK_EVERY, throwing sparks in a fan of
+#            four (SPARK_FAN), none for BLINK_QUIET after a blink.
 #   map 15   the Sniper (its bush sniper) - MARKS A COLUMN where the paddle
 #            is (a line for AIM_SECONDS), then fires down it: a paddle still
 #            under it is stunned. Get out of the line.
@@ -190,8 +191,17 @@ const PLANT_CHANCE := 0.55
 # THE SPRITE
 const DART_SPEED := 320.0
 const BLINK_EVERY := 3.5
-const SPARK_EVERY := 1.6
+# 0.168.9, the owner: "this boss is firing shots to fast" - a pair every
+# 1.6 s (1.2 under half) was 2-3 pairs in the air at once. He chose
+# fewer throws, a breath after each blink to find it again, and more
+# sparks a throw: a fan of four, its lanes wider than the paddle (the
+# middle one where the paddle stands). A bot chasing the ball, 12 minutes
+# on 8 seeds: the old pairs stunned it 99 times, fans every 2.4 s 97,
+# every 3.0 s 64. Every boss that darts (_dart()) throws so.
+const SPARK_EVERY := 3.0
 const SPARK_SPEED := 330.0
+const SPARK_FAN := [-33.0, -12.0, 12.0, 33.0]
+const BLINK_QUIET := 0.8
 # THE SNIPER (and the ruler's last third)
 const SNIPE_EVERY := 3.4
 const AIM_SECONDS := 1.0
@@ -729,7 +739,8 @@ func _hall_spot() -> Vector2:
 
 func _dart(dt: float) -> void:
 	"""THE SPRITE: darts from spot to spot in its hall, blinks every
-	BLINK_EVERY, and throws sparks in pairs."""
+	BLINK_EVERY (then throws nothing for BLINK_QUIET), and throws sparks
+	in a fan (SPARK_FAN)."""
 	p = p.move_toward(dest, DART_SPEED * dt)
 	if p.distance_to(dest) < 4.0:
 		dest = _hall_spot()
@@ -741,11 +752,12 @@ func _dart(dt: float) -> void:
 		dest = _hall_spot()
 		flash = 1.0
 		run.call("burst_at", p, land, 14)
+		throw_t = maxf(throw_t, BLINK_QUIET)
 	throw_t -= dt
 	if throw_t <= 0.0:
 		throw_t = SPARK_EVERY * (0.75 if hp * 2 < most else 1.0)
 		var to := Vector2(float(run.get("paddle_x")), paddle_y)
-		for turn in [-12.0, 12.0]:
+		for turn in SPARK_FAN:
 			shots.append({"p": p + Vector2(0, 16), "v": (to - p).normalized().rotated(deg_to_rad(turn)) * SPARK_SPEED})
 
 
