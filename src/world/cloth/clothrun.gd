@@ -66,7 +66,8 @@
 # THE LOOK, all drawn in code but the slimes (the game's own) and the shot
 # (the healer's, turretprojectile.gd's own pieces): a linen cloth with a
 # faded map's ink, darker to its edges, coloured by its land (`_board`, drawn
-# again only when the board changes); the dark under it where it is cut;
+# again only when the board changes, into a picture - see THE CLOTH A
+# PICTURE); the dark under it where it is cut;
 # frayed edges; the open cut as the shot's dotted glowing trail (`_fx`); a
 # cut piece dissolving cell by cell into green motes.
 #
@@ -313,6 +314,16 @@ var _path: Array = []
 var _path_goal := Vector2i(-1, -1)
 var _astar: AStarGrid2D = null
 var _board: Node2D = null
+# THE CLOTH A PICTURE (0.168.10, measured while the owner watched anime: "if
+# any new features we added needs it feel free to measure"): the cloth is
+# about 1,100 draws - its weave alone a line every 2 px each way - and a
+# canvas is sent again every frame, changed or not (CLAUDE.md "What a
+# frame's draws are"). So `_board` draws into `board_cache`, a SubViewport
+# the size of the view, painted only when the board changes
+# (`_redraw_board()`), and `board_pic` shows it: one draw. Opaque (the board
+# fills the view first), at the view's own size, nearest: the same pixels.
+var board_cache: SubViewport = null
+var board_pic: Sprite2D = null
 var _under: Node2D = null
 var _fx: Node2D = null
 var _foes_node: Node2D = null
@@ -414,7 +425,22 @@ func _ready() -> void:
 	_board = Node2D.new()
 	_board.name = "board"
 	_board.draw.connect(_draw_board)
-	add_child(_board)
+	board_cache = SubViewport.new()
+	board_cache.name = "board_cache"
+	board_cache.size = Vector2i(VIEW)
+	board_cache.disable_3d = true
+	board_cache.world_2d = World2D.new()
+	board_cache.transparent_bg = false
+	board_cache.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	board_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+	board_cache.add_child(_board)
+	add_child(board_cache)
+	board_pic = Sprite2D.new()
+	board_pic.name = "board_pic"
+	board_pic.centered = false
+	board_pic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	board_pic.texture = board_cache.get_texture()
+	add_child(board_pic)
 	_under = Node2D.new()
 	_under.name = "under"
 	_under.z_index = 1
@@ -547,7 +573,7 @@ func begin(which: int, seed_now: int = 0) -> void:
 	for k in saws_for(which):
 		_add_saw(k)
 	_dark.visible = land == "dark"
-	_board.queue_redraw()
+	_redraw_board()
 	_under.queue_redraw()
 
 
@@ -992,7 +1018,7 @@ func _close() -> void:
 		_mark_edges()
 		_count()
 		_redraw_left = DISSOLVE_STEP
-		_board.queue_redraw()
+		_redraw_board()
 		return
 	_cut_away(turned, my_id())
 
@@ -1041,7 +1067,7 @@ func _cut_away(turned: PackedInt32Array, closer: int) -> void:
 	_count()
 	_motes(gone)
 	_redraw_left = DISSOLVE_STEP
-	_board.queue_redraw()
+	_redraw_board()
 	if party_on():
 		_announce_cut(turned, closer)
 	if state != State.PLAYING:
@@ -1355,7 +1381,7 @@ func _gnaw(f: Dictionary, at: Vector2i) -> void:
 		return
 	_mark_edges()
 	_count()
-	_board.queue_redraw()
+	_redraw_board()
 	if party_on():
 		var cells: Array = []
 		for c in chewed:
@@ -1421,7 +1447,7 @@ func _step_dissolve(delta: float) -> void:
 		dissolving[i] = float(dissolving[i]) - stepped
 		if float(dissolving[i]) <= 0.0:
 			dissolving.erase(i)
-	_board.queue_redraw()
+	_redraw_board()
 
 
 func slimes_left() -> int:
@@ -1806,6 +1832,12 @@ func _look(k: int) -> Color:
 func _void_colour(y: float) -> Color:
 	var k: float = clampf((y - ORIGIN.y) / (ROWS * CELL), 0.0, 1.0)
 	return _look(3).lerp(Color(0.012, 0.012, 0.024), k)
+
+
+func _redraw_board() -> void:
+	"""The board changed: drawn again, and its picture painted once."""
+	_board.queue_redraw()
+	board_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _draw_board() -> void:
@@ -2458,7 +2490,7 @@ func _apply_cut(event: Array) -> void:
 	_count()
 	_motes(gone)
 	_redraw_left = DISSOLVE_STEP
-	_board.queue_redraw()
+	_redraw_board()
 
 
 func _apply_open(event: Array) -> void:
@@ -2478,7 +2510,7 @@ func _apply_open(event: Array) -> void:
 	if changed:
 		_mark_edges()
 		_count()
-		_board.queue_redraw()
+		_redraw_board()
 
 
 func party_heard(from_id: int, kind: int, x: int, y: int) -> void:
@@ -2544,7 +2576,7 @@ func other_close(id: int) -> void:
 	_mark_edges()
 	_count()
 	_redraw_left = DISSOLVE_STEP
-	_board.queue_redraw()
+	_redraw_board()
 
 
 func _forget_other_cell(i: int) -> void:

@@ -297,6 +297,7 @@ func _run_all() -> void:
 	_test_the_crownfall_map_is_neater()
 	await _test_leaving_never_traps()
 	await _test_crownfall_lighter_still()
+	await _test_cut_the_cloth_a_picture()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

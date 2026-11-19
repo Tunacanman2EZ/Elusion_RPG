@@ -16688,6 +16688,37 @@ Whirlwind, the Undine, the Snow, Dust and Flame Sprites, the Wisp):
 nothing thrown for `BLINK_QUIET`, four sparks in the air, a still paddle
 never stunned.
 
+### Cut the Cloth a picture (0.168.10)
+
+The owner: "lets fix performance", then "everything feels ok but if any
+new features we added needs it feel free to measure while i watch anime".
+Measured on the Mobile renderer (all draws a frame, `zz/mgdraws.gd`, a
+simple bot; script times there are not his - software Vulkan shares the
+processor): the Healer's Run 40, the Mage's Stand 163, **Cut the Cloth
+about 1,000-1,300** (19,000-25,000 objects). The cloth (`_draw_board()`)
+is a line every 2 px each way for the weave (about 470), the map's ink,
+the vignette, the frayed rim, the cut edges - drawn again only when the
+board changes, but a canvas is sent again every frame.
+
+- **The cloth is a picture** (clothrun.gd `board_cache`, `board_pic`):
+  `_board` lives in a SubViewport the view's size (640 x 360, the screen's
+  own), opaque (the board fills it first), nearest, its own `world_2d`
+  (without one it never painted again - the brick picture's recipe), and
+  `board_pic` shows it where `_board` was, under the rest. Every redraw
+  goes through `_redraw_board()`: `queue_redraw()` and `UPDATE_ONCE`.
+- **971 -> 35 draws a frame** (objects 19,226 -> 109) on the same drive.
+  The cloth alone, old against new on a set seed stepped by hand
+  (`zz/clothsame.gd`, `BOARD_ONLY=1`), a cut and its dissolve: the same
+  pixels at every step. The whole picture differs only by its particles
+  (they run on the clock), as two old runs do.
+- A probe that steps a run by hand must take it before `begin()`'s first
+  frames: physics steps run in them, as many as each slow frame allows,
+  and the runs part ways.
+
+`_test_cut_the_cloth_a_picture()` (testrunner_13): the picture's place,
+size, filter and order, painted once a change, every redraw through the
+helper.
+
 ### Which file owns which number
 
 | question | lives in | example |

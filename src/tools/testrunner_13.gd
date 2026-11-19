@@ -1203,3 +1203,29 @@ func _test_crownfall_lighter_still() -> void:
 	run.queue_free()
 	await get_tree().process_frame
 	print("  Crownfall lighter still: done")
+
+
+func _test_cut_the_cloth_a_picture() -> void:
+	section("CUT THE CLOTH A PICTURE (0.168.10): the cloth drawn once a change, shown as one picture")
+	const ClothRun := preload("res://src/world/cloth/clothrun.gd")
+	var run: Node2D = ClothRun.new()
+	run.set("seed_value", 7)
+	add_child(run)
+	run.set_physics_process(false)
+	await get_tree().process_frame
+	var cache: SubViewport = run.board_cache
+	var pic: Sprite2D = run.board_pic
+	var board: Node2D = run._board
+	var placed: bool = cache != null and pic != null and board.get_parent() == cache and cache.get_parent() == run \
+		and pic.get_parent() == run and pic.texture == cache.get_texture() and cache.size == Vector2i(ClothRun.VIEW) \
+		and not cache.transparent_bg and cache.world_2d != null and not pic.centered and pic.position == Vector2.ZERO \
+		and pic.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST and pic.get_index() < run._under.get_index()
+	cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	run.call("_redraw_board")
+	var painted: bool = cache.render_target_update_mode == SubViewport.UPDATE_ONCE
+	var src: String = _code_src("res://src/world/cloth/clothrun.gd")
+	var only_helper: bool = src.count("_board.queue_redraw()") == 1 and src.count("_redraw_board()") >= 9
+	check("Cut the Cloth's cloth (about 1,100 draws, sent again every frame) is drawn into a picture the view's size, opaque, nearest, under the rest, painted once each time the board changes - every redraw goes through _redraw_board() (\"if any new features we added needs it feel free to measure\")",
+		placed and painted and only_helper, [placed, painted, only_helper, src.count("_redraw_board()")])
+	run.queue_free()
+	await get_tree().process_frame
