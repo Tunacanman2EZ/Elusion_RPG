@@ -16719,6 +16719,36 @@ board changes, but a canvas is sent again every frame.
 size, filter and order, painted once a change, every redraw through the
 helper.
 
+### Crownfall: no smoothing (0.168.11)
+
+The owner: "bricks are randomly outlining them selfs when i break a brick
+sometimes", then "its like when i hit a brick with the ball random brick
+flicker for a split second you can see them vanish in spots".
+
+- **Not the brick picture.** `zz/cfstale.gd` (the cache read, every still
+  brick drawn again, read again, every 10 frames; 9 maps thinned to their
+  last bricks, cleared) found it never out of date. The gold and blue
+  outlines are meant (the pull, `PULL_BELOW`; a Guard's ward).
+- **The screen, frame by frame** (`zz/cfflicker.gd`, Mobile renderer:
+  three points of every standing still brick read off each frame, a brick
+  whose three all change and come back is a flicker, the frames saved):
+  a brick drawn whole a little up and left of a place, one frame, every
+  time `brick_live` gained a child. The project smooths what moves between
+  physics ticks (`physics/common/physics_interpolation`); a twin made for a
+  brick's first blow is added at (0, 0) and then placed, in `_process`, so
+  its first frame was drawn part way from the corner.
+- **The fix**: crownfallrun.gd `_ready()` sets
+  `physics_interpolation_mode = PHYSICS_INTERPOLATION_MODE_OFF`, as
+  pinballrun.gd does - the run moves everything in `_process`, so smoothing
+  never helped it (the shake, `brick_pic`/`brick_live.position = _jolt`, was
+  smoothed too). The same seed, 1,000 frames: 4 flickers before, 0 after.
+- Anything else made then placed in `_process` under smoothing has the
+  same one frame: `reset_physics_interpolation()` after placing it, or the
+  mode off (the warrior's trail rule, Never).
+
+`_test_crownfall_no_smoothing()` (testrunner_13): a plain node is smoothed,
+the run, its picture, its twin layer and a twin added under it are not.
+
 ### Which file owns which number
 
 | question | lives in | example |

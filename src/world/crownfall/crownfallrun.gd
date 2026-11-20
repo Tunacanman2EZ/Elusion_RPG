@@ -686,6 +686,14 @@ var _bold: FontVariation
 
 
 func _ready() -> void:
+	# NO SMOOTHING (0.168.11, the owner: "when i hit a brick with the ball
+	# random brick flicker for a split second"): the game smooths what moves
+	# between physics ticks (physics_interpolation on), but this run moves
+	# everything in _process. A brick's twin made for its first blow is added
+	# at (0, 0), then placed: for one frame it was drawn part way between,
+	# a brick out of its place. Off for the run and all under it, as the
+	# Beholder's Table does.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_font = ThemeDB.fallback_font
 	_bold = FontVariation.new()
 	_bold.base_font = _font

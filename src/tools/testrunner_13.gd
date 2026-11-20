@@ -1229,3 +1229,23 @@ func _test_cut_the_cloth_a_picture() -> void:
 		placed and painted and only_helper, [placed, painted, only_helper, src.count("_redraw_board()")])
 	run.queue_free()
 	await get_tree().process_frame
+
+
+func _test_crownfall_no_smoothing() -> void:
+	section("CROWNFALL NO SMOOTHING (0.168.11): a brick never drawn out of its place")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	var plain := Node2D.new()
+	add_child(plain)
+	var smoothed: bool = plain.is_physics_interpolated()
+	plain.queue_free()
+	var run = Run.new()
+	add_child(run)
+	await get_tree().process_frame
+	var twin := Node2D.new()
+	run.brick_live.add_child(twin)
+	check("Crownfall moves everything in _process, so the game's smoothing between physics ticks is off for the run and all under it - a brick's twin made for its first blow is drawn where it is placed, never part way from (0, 0) (\"when i hit a brick with the ball random brick flicker for a split second\")",
+		smoothed and not run.is_physics_interpolated() and not run.brick_live.is_physics_interpolated()
+		and not run.brick_pic.is_physics_interpolated() and not twin.is_physics_interpolated(),
+		[smoothed, run.is_physics_interpolated(), twin.is_physics_interpolated()])
+	run.queue_free()
+	await get_tree().process_frame
