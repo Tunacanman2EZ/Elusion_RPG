@@ -1,0 +1,9 @@
+# The first time a tank walks up to the shopkeeper.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+shopkeeper: Are you lost?
+hero: I held the line. Then it broke... and I woke here.
+shopkeeper: The portal again. It never asks first.
+shopkeeper: I make a living buying and selling gear.
+hero: Then I'll need a shield that holds.
+shopkeeper: Bring me gold and I'll find you one. Welcome to Elusion!

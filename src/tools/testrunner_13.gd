@@ -1653,3 +1653,305 @@ func _test_the_coffers_as_rows() -> void:
 	board.queue_free()
 	await get_tree().process_frame
 	print("  the coffers: sources and you as rows, what a title is, gifts as buttons")
+
+
+# CHARACTERS TALK IN TURN (0.171.0). The owner: "we need to make a story
+# scene", "i was thinking about adding the chat bubbles above characters",
+# "there are 4 heros that means 4 separate chats for each char", and "the
+# chat bubbles start in town then work our way out". talk.gd plays a script
+# - data/story/<scene>/<class>.txt, "speaker: words" a line - in speech
+# bubbles over each speaker in turn; the first is the shopkeeper's first
+# meeting, a script a hero.
+func _test_characters_talk_in_turn() -> void:
+	section("CHARACTERS TALK IN TURN (0.171.0): a scene is a script a hero, said in bubbles over each speaker")
+	const Talk := preload("res://src/shared/talk.gd")
+	const Bubble := preload("res://src/shared/speechbubble.gd")
+	const Keeper := preload("res://src/world/shopkeeperanim.gd")
+	const HEROES := ["warrior", "mage", "tank", "healer"]
+	var read: Array = Talk.read_script("# a note\n\nShopkeeper: Hello: there\r\nhero:   Hi  \nno speaker here\n: nobody\nhero:\n")
+	check("a script: a line a speaker, the speaker in lower case, notes, blanks and empty lines skipped, words may hold a colon",
+		read == [["shopkeeper", "Hello: there"], ["hero", "Hi"]], read)
+	var parts: Array = Talk.read_parts("a: one\n---\n# only a note\n  ---  \nb: two\nb: three\n---\n")
+	check("  in parts, \"---\" between them; a part with nothing said is dropped",
+		parts == [[["a", "one"]], [["b", "two"], ["b", "three"]]], parts)
+	# ---- the first meeting's scripts ---------------------------------------
+	var scripts_ok := true
+	var said_by: Array = []
+	var missing: Array = []
+	for hero in HEROES:
+		var path: String = Talk.script_path(Keeper.MEETING, hero)
+		var lines: Array = Talk.lines_for(Keeper.MEETING, hero)
+		var speakers: Array = []
+		for line in lines:
+			if not speakers.has(line[0]):
+				speakers.append(line[0])
+		said_by.append(speakers)
+		if path != "%s%s/%s.txt" % [Talk.STORY_DIR, Keeper.MEETING, hero] or lines.size() < 2 \
+				or str(lines[0][0]) != "shopkeeper" or not speakers.has("hero") or speakers.size() != 2:
+			scripts_ok = false
+		for line in lines:
+			var words: String = str(line[1])
+			for i in words.length():
+				if not ThemeDB.fallback_font.has_char(words.unicode_at(i)):
+					missing.append("%s: %s" % [hero, words[i]])
+	check("each of the four heroes has its own first meeting with the shopkeeper: he speaks first, then the two of them",
+		scripts_ok, said_by)
+	# EVERY SCRIPT THERE IS, so one the owner writes is held too: a line with
+	# no "speaker:" would be dropped without a word, and a letter the font
+	# lacks is a box on the web.
+	var dropped: Array = []
+	var scripts: int = 0
+	for scene in DirAccess.get_directories_at(Talk.STORY_DIR):
+		for file in DirAccess.get_files_at(Talk.STORY_DIR + scene):
+			if not file.ends_with(".txt"):
+				continue
+			scripts += 1
+			var text: String = FileAccess.get_file_as_string(Talk.STORY_DIR + scene + "/" + file)
+			var meant: int = 0
+			for raw in text.split("\n"):
+				var line: String = raw.strip_edges()
+				if line != "" and not line.begins_with("#") and line != Talk.PART_BREAK:
+					meant += 1
+			var read_back: Array = []
+			for one_part in Talk.read_parts(text):
+				read_back.append_array(one_part)
+			if read_back.size() != meant:
+				dropped.append("%s/%s" % [scene, file])
+			for line in read_back:
+				var words: String = str(line[1])
+				for i in words.length():
+					if not ThemeDB.fallback_font.has_char(words.unicode_at(i)):
+						missing.append("%s/%s: %s" % [scene, file, words[i]])
+	check("  every script in data/story: each line has a speaker, and every letter is in the game's font",
+		scripts >= 6 and dropped.is_empty() and missing.is_empty(), [scripts, dropped, missing])
+	check("  a hero with no script, and no all.txt, has none", Talk.script_path(Keeper.MEETING, "nobody") == ""
+		and Talk.lines_for(Keeper.MEETING, "nobody").is_empty())
+	var presets := ConfigFile.new()
+	var filters: Array = []
+	if presets.load("res://export_presets.cfg") == OK:
+		for preset in presets.get_sections():
+			if preset.begins_with("preset.") and not preset.ends_with(".options"):
+				filters.append(str(presets.get_value(preset, "include_filter", "")))
+	check("  every export carries the scripts (.txt is left out unless the filter names it)",
+		filters.size() >= 2 and filters.all(func(f: String) -> bool: return f.contains(Talk.STORY_FILTER)), filters)
+	# ---- a conversation ----------------------------------------------------
+	var holder := Node2D.new()
+	add_child(holder)
+	var first := Node2D.new()
+	var second := Node2D.new()
+	holder.add_child(first)
+	holder.add_child(second)
+	# Side by side: each speaks over its own head.
+	second.position = Vector2(120, 0)
+	var ended: Array = []
+	var talk: Node = Talk.play(holder, [["a", "One."], ["ghost", "Nobody says this."], ["b", "Two, a little longer."]],
+		{"a": first, "b": second})
+	talk.connect("finished", func() -> void: ended.append(true))
+	await get_tree().process_frame
+	var bubble: Node2D = talk.get("bubble")
+	check("it says the first line over its speaker, where the speaker says (or over the head by default)",
+		bubble != null and bubble.get_parent() == first and bubble.get("lines") == ["One."] and bubble.position == Talk.DEFAULT_AT)
+	var press := InputEventAction.new()
+	press.action = "interact"
+	press.pressed = true
+	talk.call("_unhandled_input", press)
+	var whole: bool = (bubble.get("label") as Label).visible_characters == -1
+	talk.call("_unhandled_input", press)
+	bubble.call("_process", 1.0)
+	var next: Node2D = talk.get("bubble")
+	check("  Interact hurries it: the line shows whole, then gives way; the next speaker in the cast says the next line",
+		whole and next != null and next != bubble and next.get_parent() == second and next.get("lines") == ["Two, a little longer."],
+		next.get("lines") if next != null else null)
+	for step in 40:
+		if not is_instance_valid(next):
+			break
+		next.call("_process", 0.5)
+	check("  after the last line the conversation says it is finished and goes", ended.size() == 1 and talk.is_queued_for_deletion())
+	var gone: Node = Talk.play(holder, [["a", "First."], ["b", "Second."]], {"a": first, "b": second})
+	await get_tree().process_frame
+	first.free()
+	gone.call("_process", 0.0)
+	var after: Node2D = gone.get("bubble")
+	check("  a speaker who goes mid-line takes the line, and the next is said",
+		after != null and is_instance_valid(after) and after.get_parent() == second and after.get("lines") == ["Second."])
+	gone.free()
+	if is_instance_valid(after):
+		after.free()
+	# ONE UNDER ANOTHER speaks from below its feet, or its bubble covers them.
+	var upper := Node2D.new()
+	holder.add_child(upper)
+	second.position = Vector2(-4, 40)
+	var stacked: Node = Talk.play(holder, [["up", "Above."], ["down", "Below."]], {"up": upper, "down": second})
+	await get_tree().process_frame
+	var top_bubble: Node2D = stacked.get("bubble")
+	top_bubble.call("hurry")
+	top_bubble.call("hurry")
+	top_bubble.call("_process", 1.0)
+	var low_bubble: Node2D = stacked.get("bubble")
+	var paper: Rect2 = low_bubble.call("box") if low_bubble != null else Rect2()
+	check("  one standing just under another speaks from below its feet, the paper hanging down; the one above, over its head",
+		not bool(top_bubble.get("below")) and low_bubble != null and bool(low_bubble.get("below"))
+		and low_bubble.position == Talk.FEET_AT and paper.position.y > 0.0, [paper])
+	stacked.free()
+	check("  nothing to say is no conversation", Talk.play(holder, [], {}) == null)
+	holder.queue_free()
+	# ---- the hero's bubble sits over its name --------------------------------
+	var hero_body: CharacterBody2D = (load("res://src/characters/player.gd") as GDScript).new()
+	hero_body.set("character_name", "tank")
+	var bare: Vector2 = hero_body.call("talk_at")
+	var plate := Label.new()
+	plate.position = Vector2(-10, -70)
+	hero_body.set("_nameplate", plate)
+	var over_name: Vector2 = hero_body.call("talk_at")
+	check("a hero's bubble points just over its name (over its head with no name yet)",
+		is_equal_approx(bare.y, -58.0 - 3.0 - 1.0) and is_equal_approx(over_name.y, -71.0) and over_name.x == 0.0, [bare, over_name])
+	plate.free()
+	hero_body.free()
+	# ---- the shopkeeper's first meeting --------------------------------------
+	var key: String = Keeper.talk_key()
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	if cfg.has_section_key("talk", key.replace("/", "|")):
+		cfg.erase_section_key("talk", key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var area := Area2D.new()
+	var keeper := AnimatedSprite2D.new()
+	var frames := SpriteFrames.new()
+	frames.add_animation(Keeper.IDLE_ANIM)
+	frames.add_animation(Keeper.WAVE_ANIM)
+	keeper.sprite_frames = frames
+	area.add_child(keeper)
+	keeper.set_script(Keeper)
+	keeper.set("class_override", "warrior")
+	add_child(area)
+	var visitor := CharacterBody2D.new()
+	visitor.add_to_group("player")
+	add_child(visitor)
+	await get_tree().process_frame
+	var others: Array = get_tree().get_nodes_in_group("player").filter(func(n: Node) -> bool: return n != visitor)
+	for other in others:
+		other.remove_from_group("player")
+	keeper.call("_on_body_entered", visitor)
+	var meeting: Node = keeper.get("bubble")
+	await get_tree().process_frame
+	var opening: Node2D = meeting.get("bubble") if meeting != null else null
+	var warrior_lines: Array = Talk.lines_for(Keeper.MEETING, "warrior")
+	check("a warrior meeting him the first time: a conversation, his first line over his head, counted for the character",
+		meeting != null and meeting.get("lines") == warrior_lines and opening != null and opening.get_parent() == keeper
+		and opening.position == Keeper.BUBBLE_AT and opening.get("lines") == [warrior_lines[0][1]] and Bubble.times_said(key) == 1)
+	opening.call("hurry")
+	opening.call("hurry")
+	opening.call("_process", 1.0)
+	var reply: Node2D = meeting.get("bubble")
+	check("  then the hero answers, over the hero", reply != null and reply.get_parent() == visitor
+		and reply.get("lines") == [warrior_lines[1][1]], reply.get("lines") if reply != null else null)
+	keeper.call("greet")
+	check("  he does not start again while they talk", keeper.get("bubble") == meeting and Bubble.times_said(key) == 1)
+	meeting.free()
+	if is_instance_valid(reply):
+		reply.free()
+	keeper.set("_last_greeting", -1000.0)
+	keeper.call("greet")
+	var later: Node = keeper.get("bubble")
+	check("  the next visit is the next greeting, as before", later is Node2D and later.get("lines") == Keeper.GREETINGS[1])
+	for other in others:
+		if is_instance_valid(other):
+			other.add_to_group("player")
+	visitor.queue_free()
+	area.queue_free()
+	await get_tree().process_frame
+	print("  characters talk: scripts a hero, in turn, hurried, the shopkeeper's first meeting")
+
+
+# A HERO SPEAKS ON ARRIVING (0.171.0). The owner: "when warrior dies he could
+# arrive and say, This is not the crypt where am I how did I get here my head
+# is screaming", "I think I have been here before", "My entire body hurts like
+# I was slashed into pieces?", and "warrior goes through portal and another
+# chat come up saying I am so hungry". talk.gd arrival(): the scene
+# "arrive_<the area's scene>", once a character, after the area's story.
+func _test_a_hero_speaks_on_arriving() -> void:
+	section("A HERO SPEAKS ON ARRIVING (0.171.0): the warrior's first town and first Big Field, in his words")
+	const Talk := preload("res://src/shared/talk.gd")
+	const Bubble := preload("res://src/shared/speechbubble.gd")
+	var town: Array = Talk.lines_for("arrive_elusion", "warrior")
+	var field: Array = Talk.lines_for("arrive_bigfield", "warrior")
+	check("the warrior's first time in town is three lines, his own; the Big Field one",
+		town.size() == 3 and town.all(func(line: Array) -> bool: return line[0] == "hero")
+		and str(town[0][1]).begins_with("This is not the crypt") and str(town[2][1]).contains("slashed into pieces")
+		and field.size() == 1 and str(field[0][1]).begins_with("I am so hungry"), [town, field])
+	var wired: Array = []
+	for wiring in [["res://src/world/elusion.gd", "Talk.arrive(self, Talk.came_back_from_death())"],
+			["res://src/world/field.gd", "Talk.arrive(self, Talk.came_back_from_death())"],
+			["res://src/ui/menus/gameover.gd", "Talk.note_death()"]]:
+		var src: String = FileAccess.get_file_as_string(str(wiring[0]))
+		var ready: int = _first_code_index(src, "func _ready", 0)
+		var call: int = _first_code_index(src, str(wiring[1]), ready)
+		var after: int = src.find("\nfunc ", ready + 4)
+		wired.append(ready >= 0 and call > ready and (after < 0 or call < after))
+	var named := Node.new()
+	named.scene_file_path = "res://scene/bigfield.tscn"
+	check("  the town and every area on field.gd ask for it as they start, the game over screen notes a death; the Big Field's is arrive_bigfield",
+		wired == [true, true, true] and Talk.arrival_scene(named) == "arrive_bigfield", wired)
+	named.free()
+	# ---- once, after the story, a line at a time ------------------------------
+	var area := Node2D.new()
+	area.scene_file_path = "res://scene/elusion.tscn"
+	add_child(area)
+	var key: String = Talk.seen_key("arrive_elusion")
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	if cfg.has_section_key("talk", key.replace("/", "|")):
+		cfg.erase_section_key("talk", key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var others: Array = get_tree().get_nodes_in_group("player")
+	for other in others:
+		other.remove_from_group("player")
+	var hero := Node2D.new()
+	hero.add_to_group("player")
+	area.add_child(hero)
+	var story := StoryScreen.new()
+	area.add_child(story)
+	var talk: Node = Talk.arrival(area, "warrior")
+	await get_tree().process_frame
+	talk.call("_process", Talk.ARRIVE_DELAY + 1.0)
+	var quiet: bool = talk.get("bubble") == null and Bubble.times_said(key) == 0
+	story.free()
+	talk.call("_process", 0.1)
+	var first: Node2D = talk.get("bubble")
+	check("arriving in town: nothing while the story screen is up; then the warrior's first line over his head, counted",
+		talk != null and talk.name == "arrivaltalk" and quiet and first != null and first.get_parent() == hero
+		and first.get("lines") == [town[0][1]] and not bool(first.get("below")) and Bubble.times_said(key) == 1,
+		[quiet, Bubble.times_said(key)])
+	first.call("hurry")
+	first.call("hurry")
+	first.call("_process", 1.0)
+	var waiting: bool = talk.get("held") == true
+	await get_tree().process_frame
+	talk.call("_process", 0.0)
+	var second: Node2D = talk.get("bubble")
+	check("  his next line waits for the last bubble to go, then is said over him",
+		waiting and second != null and second != first and second.get_parent() == hero and second.get("lines") == [town[1][1]])
+	check("  a part each time: with its one part said, arriving again says nothing; a hero with no lines here says nothing",
+		Talk.arrival(area, "warrior") == null and Talk.arrival(area, "nobody") == null)
+	# ---- after a death -----------------------------------------------------------
+	Talk.note_death()
+	var back: bool = Talk.came_back_from_death()
+	var once: bool = not Talk.came_back_from_death()
+	GameState.back_from_death = "somebody/else#talk:"
+	var not_them: bool = not Talk.came_back_from_death() and GameState.back_from_death == ""
+	check("after a death: the hero who died comes back from it, once; another hero picked after it did not",
+		back and once and not_them)
+	cfg.load(ControlsPanel.seen_path)
+	cfg.erase_section_key("talk", key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var fallback: Node = Talk.arrive(area, true, "warrior")
+	check("  with no after-death lines left, the arrival's own are said",
+		fallback != null and fallback.get("waiting_scene") == "arrive_elusion" and int(fallback.get("part")) == 0)
+	if fallback != null:
+		fallback.free()
+	area.queue_free()
+	for other in others:
+		if is_instance_valid(other):
+			other.add_to_group("player")
+	await get_tree().process_frame
+	print("  a hero speaks on arriving: once, after the story, a line at a time")

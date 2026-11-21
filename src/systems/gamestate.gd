@@ -70,6 +70,13 @@ var next_spawn_id: String = ""
 # logout runs, puts it back. The credits are on it, so it must still play once.
 var opening_story_told: bool = false
 
+# WHO JUST DIED (0.171.0): the dead character's story key (field.gd
+# story_key()), set by the game over screen and read once by the next arrival
+# (talk.gd came_back_from_death()), so the hero back in town after a death
+# says the next of its after-death lines. A key, not a flag: from the game
+# over screen a player can go to character select and pick another hero.
+var back_from_death: String = ""
+
 
 # =============================================================================
 # GLOBAL STATE

@@ -1,0 +1,9 @@
+# The first time a healer walks up to the shopkeeper.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+shopkeeper: Are you lost?
+hero: I think I died. And yet... here I am.
+shopkeeper: The portal brings the dead back. It never says why.
+shopkeeper: I make a living buying and selling gear.
+hero: Then I'll need potions. A lot of potions.
+shopkeeper: It's rare that travelers have money... but I make do. Welcome to Elusion!

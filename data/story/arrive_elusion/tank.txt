@@ -1,0 +1,9 @@
+# A tank arriving in town. Part 1 the first time; part 2 the next time
+# the tank comes into town.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said. --- starts a new part.
+hero: I need to forge new gear. My armor is leaking mana.
+hero: My armor is spilling corrosive mana on the ground. I could use some repairs.
+hero: Not even the lava of a volcano can stop me from smithing.
+---
+hero: I can hear metal. It calls to me like a sound I have never heard before.

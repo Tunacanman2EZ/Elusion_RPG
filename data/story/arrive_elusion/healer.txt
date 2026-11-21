@@ -1,0 +1,9 @@
+# A healer arriving in town. Part 1 the first time; part 2 the next time
+# the healer comes into town.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said. --- starts a new part.
+hero: I remember everything. I will have my revenge.
+hero: My weapon is in this realm. I can feel it pulsing in my mana.
+hero: My magic is useless without my weapon!
+---
+hero: I sense another portal. The darkness in this realm is unlike anything I have ever seen.

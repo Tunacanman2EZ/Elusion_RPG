@@ -31,6 +31,7 @@ var current_player: Node = null
 @export var bullet_zone: bool = false
 # How strong the Field's element effects are, against a boss room's 1 (0.86.0).
 const FIELD_EFFECTS := 0.5
+const Talk := preload("res://src/shared/talk.gd")
 # THE OPENING STORY is the fields' (0.93.0): the endless run (endless.tscn)
 # shares this script and is no place for it.
 @export var tells_story: bool = true
@@ -53,6 +54,11 @@ func _ready() -> void:
 		add_child(zone)
 	spawn_player_from_selection()
 	_position_player_at_spawn()
+	# THE HERO SAYS SOMETHING ON ARRIVING (0.171.0): the next part of
+	# data/story/arrive_<this scene>/ for their class, or of after_death/ when
+	# they come back from dying, after the story screen below if it plays
+	# (talk.gd).
+	Talk.arrive(self, Talk.came_back_from_death())
 	if not tells_story:
 		return
 	# ONCE PER LOGIN - see GameState.opening_story_told - and since 0.117.0

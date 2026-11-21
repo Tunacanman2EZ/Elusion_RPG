@@ -1,0 +1,6 @@
+# A warrior's first arrival in town, after dying in the crypt.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+hero: This is not the crypt... Where am I? How did I get here? My head is screaming.
+hero: I think I have been here before.
+hero: My entire body hurts... like I was slashed into pieces?

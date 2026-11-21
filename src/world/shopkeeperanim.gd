@@ -52,9 +52,16 @@
 # still being said, nor within REGREET_SECONDS of the last, so stepping back
 # and forth at the counter is not a speech each time. Cosmetic, like the
 # wave: it never touches when the shop opens.
+#
+# THE FIRST MEETING IS A CONVERSATION (0.171.0, talk.gd): when the hero's
+# class has a script in data/story/meet_shopkeeper/ (or an all.txt there),
+# he and the hero talk in turn instead of GREETINGS[0]. Later visits are the
+# greetings as before. `class_override` is the suite's.
 extends AnimatedSprite2D
 
 const Bubble := preload("res://src/shared/speechbubble.gd")
+const Talk := preload("res://src/shared/talk.gd")
+const MEETING := "meet_shopkeeper"
 const TALK_KEY := "#shopkeeper"
 # The tail's tip: just over his head (the sheet is 64 px, drawn 7 px up).
 const BUBBLE_AT := Vector2(0, -27)
@@ -68,7 +75,9 @@ const GREETINGS := [
 	["Coin comes and goes. Mostly goes.", "But I make do."],
 ]
 
-var bubble: Node2D = null
+# The bubble he is saying, or the conversation (talk.gd) under way.
+var bubble: Node = null
+var class_override: String = ""
 var _last_greeting: float = -1000.0
 
 
@@ -131,7 +140,26 @@ func greet() -> void:
 	var key: String = talk_key()
 	var times: int = Bubble.times_said(key)
 	Bubble.note_said(key)
+	if times <= 0:
+		var meeting: Node = _meeting()
+		if meeting != null:
+			bubble = meeting
+			return
 	bubble = Bubble.say(self, greeting_for(times), BUBBLE_AT)
+
+
+func _meeting() -> Node:
+	"""The first meeting as a conversation with the hero, if their class has
+	a script; null if not, and the first greeting is said instead."""
+	var hero: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if not (hero is Node2D):
+		return null
+	var hero_class: String = class_override if class_override != "" else str(CharacterData.active_class_id())
+	return Talk.play(self, Talk.lines_for(MEETING, hero_class), {"shopkeeper": self, "hero": hero})
+
+
+func talk_at() -> Vector2:
+	return BUBBLE_AT
 
 
 static func greeting_for(times: int) -> Array:

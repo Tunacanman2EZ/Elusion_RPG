@@ -2959,6 +2959,8 @@ func _test_the_shopkeeper_talks() -> void:
 	keeper.sprite_frames = frames
 	area.add_child(keeper)
 	keeper.set_script(Keeper)
+	# A hero with no first-meeting script (0.171.0): the greetings, as here.
+	keeper.set("class_override", "nobody")
 	add_child(area)
 	await get_tree().process_frame
 	var visitor := CharacterBody2D.new()

@@ -1,0 +1,9 @@
+# The first time a mage walks up to the shopkeeper.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+shopkeeper: Are you lost?
+hero: I remember the end. My end. And now... this town.
+shopkeeper: The portal takes all kinds. Few come through with full pockets.
+shopkeeper: I make a living buying and selling gear.
+hero: Strange magic brought me here. I mean to learn it.
+shopkeeper: Learn it with coin in your purse. Welcome to Elusion!

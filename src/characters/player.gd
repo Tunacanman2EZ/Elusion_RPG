@@ -2852,6 +2852,16 @@ func _nameplate_head_y() -> float:
 	return NAMEPLATE_FALLBACK_HEAD_Y
 
 
+func talk_at() -> Vector2:
+	"""Where a speech bubble over this character points (talk.gd, 0.171.0):
+	just over the name, and over the crown when one is worn."""
+	var top: float = _nameplate_head_y() - NAMEPLATE_GAP
+	for part in [_nameplate, _nameplate_crown]:
+		if part != null and is_instance_valid(part) and (part as Control).visible:
+			top = minf(top, (part as Control).position.y)
+	return Vector2(0, top - 1.0)
+
+
 func _place_nameplate() -> void:
 	if _nameplate == null:
 		return

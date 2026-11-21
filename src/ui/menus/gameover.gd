@@ -43,6 +43,9 @@ var revive_cost: int:
 	get:
 		return GameConstants.REVIVE_COST
 
+# The hero's after-death lines (talk.gd note_death(), 0.171.0).
+const Talk := preload("res://src/shared/talk.gd")
+
 # scene paths — exposed so they can be retargeted without editing code
 @export var character_select_path: String = "res://scene/ui/menus/characterselect.tscn"
 @export var world_scene_path:      String = "res://scene/elusion.tscn"
@@ -63,6 +66,9 @@ var _reviving: bool = false
 # =============================================================================
 
 func _ready() -> void:
+	# THE NEXT ARRIVAL IS AFTER A DEATH (0.171.0, talk.gd): whichever way out
+	# of this screen, the hero's next arrival says its after-death lines.
+	Talk.note_death()
 	# laid out at 16:9 in the middle of a wider screen (widefit.gd)
 	add_child(WideFit.new())
 	_update_display()

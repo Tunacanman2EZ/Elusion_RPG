@@ -16,6 +16,10 @@
 # by somebody, kept beside the stories in the seen file (ControlsPanel's
 # seen_path, section "talk"), so a sequence of greetings goes on where it was.
 #
+# hurry() (0.171.0, talk.gd): a line still typing shows whole; a whole line
+# gives way to the next. `below`: the paper under the tail's tip, its tail
+# pointing up - for one speaker standing under another (talk.gd).
+#
 # No class_name: preload it by path.
 extends Node2D
 
@@ -37,6 +41,7 @@ const EDGE := Color(0.32, 0.22, 0.12)
 
 var lines: Array = []
 var line_index: int = 0
+var below: bool = false
 var label: Label = null
 var _shown: float = 0.0
 var _held: float = 0.0
@@ -45,11 +50,13 @@ var _fading: float = -1.0
 var words_size: Vector2 = Vector2.ZERO
 
 
-static func say(over: Node2D, said: Array, at: Vector2) -> Node2D:
-	"""A bubble over `over`, its tail's tip at `at`, saying `said` in turn."""
+static func say(over: Node2D, said: Array, at: Vector2, under: bool = false) -> Node2D:
+	"""A bubble over `over`, its tail's tip at `at`, saying `said` in turn;
+	`under`, the paper hangs below the tip instead."""
 	var bubble: Node2D = (load("res://src/shared/speechbubble.gd") as GDScript).new()
 	bubble.name = "speechbubble"
 	bubble.set("lines", said.duplicate())
+	bubble.set("below", under)
 	bubble.position = at
 	over.add_child(bubble)
 	bubble.reset_physics_interpolation()
@@ -141,10 +148,24 @@ func _process(delta: float) -> void:
 		_show_line()
 
 
+func hurry() -> void:
+	"""A key pressed while it talks (talk.gd): a line still typing shows
+	whole; a whole line gives way to the next, or the bubble to its fade."""
+	if _fading >= 0.0 or line_index >= lines.size() or label == null:
+		return
+	if label.visible_characters >= 0:
+		label.visible_characters = -1
+		return
+	line_index += 1
+	_show_line()
+
+
 func box() -> Rect2:
 	"""The paper, in this node's pixels: centred over the tail's tip."""
 	var words: Vector2 = words_size * SCALE
 	var size: Vector2 = words + PAD * 2.0
+	if below:
+		return Rect2(Vector2(-size.x / 2.0, TAIL), size)
 	return Rect2(Vector2(-size.x / 2.0, -TAIL - size.y), size)
 
 
@@ -160,6 +181,7 @@ func _draw() -> void:
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(3)
 	draw_style_box(style, paper)
-	var tail := PackedVector2Array([Vector2(-TAIL, -TAIL - 1.0), Vector2(TAIL, -TAIL - 1.0), Vector2(0.0, 0.0)])
+	var up: float = -1.0 if below else 1.0
+	var tail := PackedVector2Array([Vector2(-TAIL, -(TAIL + 1.0) * up), Vector2(TAIL, -(TAIL + 1.0) * up), Vector2(0.0, 0.0)])
 	draw_colored_polygon(tail, PAPER)
-	draw_polyline(PackedVector2Array([Vector2(-TAIL, -TAIL), Vector2(0.0, 0.0), Vector2(TAIL, -TAIL)]), EDGE, 1.0)
+	draw_polyline(PackedVector2Array([Vector2(-TAIL, -TAIL * up), Vector2(0.0, 0.0), Vector2(TAIL, -TAIL * up)]), EDGE, 1.0)

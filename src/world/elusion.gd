@@ -17,6 +17,8 @@ extends Node2D
 # =============================================================================
 
 # reference to the currently active player node — set on spawn, freed on logout
+const Talk := preload("res://src/shared/talk.gd")
+
 var current_player: Node = null
 
 # HUD canvas layer that displays bars and owns the lazy-instantiated panels.
@@ -34,6 +36,10 @@ func _ready() -> void:
 	# already implies — and that one also says whether the spawn actually
 	# worked, which is the part worth reading.
 	spawn_player_from_selection()
+	# THE HERO SAYS SOMETHING ON ARRIVING (0.171.0): the next part of
+	# data/story/arrive_elusion/ for their class, or of after_death/ when they
+	# come back from dying (talk.gd).
+	Talk.arrive(self, Talk.came_back_from_death())
 
 
 # =============================================================================

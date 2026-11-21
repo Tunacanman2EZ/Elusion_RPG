@@ -1,0 +1,4 @@
+# A warrior's first time in the Big Field, through the portal.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+hero: I am so hungry. Surely there is something to eat around here... but my pockets are empty. *sigh*

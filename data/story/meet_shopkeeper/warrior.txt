@@ -1,0 +1,9 @@
+# The first time a warrior walks up to the shopkeeper.
+# Each line is "speaker: words". hero is whoever is playing.
+# Lines starting with # are notes and are never said.
+shopkeeper: Are you lost?
+hero: I was dead. I know I was. Then a light...
+shopkeeper: The portal. You're not the first it has spat out.
+shopkeeper: I make a living buying and selling gear.
+hero: Then sell me something that cuts.
+shopkeeper: Bring me gold and we'll talk. Welcome to Elusion!
