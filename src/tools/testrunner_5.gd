@@ -3616,11 +3616,6 @@ func _test_the_smith_certifies() -> void:
 func _test_the_board_takes_gifts() -> void:
 	section("PATRONAGE - a Donate control on the kingdom board, and titles beside names (0.74.0)")
 	const Board := preload("res://src/ui/kingdom/kingdomboard.gd")
-	# "12.400" IS HOW HALF THE WORLD WRITES TWELVE THOUSAND FOUR HUNDRED, and
-	# String.to_int() stops at the point and gives 12.
-	check("a gift's box reads digits: \"12,400\" and \"12.400\" are 12,400, and a word is nothing",
-		Board.typed_gold("12,400") == 12400 and Board.typed_gold("12.400") == 12400
-		and Board.typed_gold("abc") == 0 and Board.typed_gold("") == 0, Board.typed_gold("12.400"))
 	check("your line: a title and the way to the next",
 		Board.patron_line(12400, "Patron", "Benefactor", 100000) == "Patron  -  12,400 / 100,000 to Benefactor",
 		Board.patron_line(12400, "Patron", "Benefactor", 100000))
@@ -3696,7 +3691,15 @@ func _test_the_board_takes_gifts() -> void:
 	check("your own line shows the way to your first title, with a bar",
 		patron.visible and patron.text == "9,000 / 10,000 to Patron" and bar.visible and is_equal_approx(bar.value, 0.9),
 		[patron.text, bar.value])
-	check("the minimum is shown beside the box", (board.get("donate_minimum") as Label).text == "at least 100")
+	# A GIFT IS A BUTTON (0.170.0, "get rid of the gold to give box and only
+	# keep the buttons"): no box to type in, three amounts, the smallest the
+	# Crown's own minimum.
+	var gifts: HBoxContainer = board.get("quick_row")
+	var gift_texts: Array = gifts.get_children().map(func(gift: Node) -> String: return (gift as Button).text)
+	check("the gifts are three buttons and there is no box: Give 100, Give 1,000, Give 10,000",
+		gift_texts == ["Give 100", "Give 1,000", "Give 10,000"] and board.get("donate_input") == null
+		and board.find_child("donaterow", true, false) == null and int(Board.QUICK_GIFTS[0]) == GameConstants.DONATION_MINIMUM,
+		gift_texts)
 
 	server.clear()
 	await board.donate(50)
@@ -3706,22 +3709,46 @@ func _test_the_board_takes_gifts() -> void:
 	await board.donate(6000)
 	check("  so is one larger than the purse", server.asked.is_empty(), server.asked)
 
-	(board.get("donate_input") as LineEdit).text = "1,500"
-	await board._on_donate_pressed()
-	check("Donate sends the typed amount for this character",
+	(gifts.get_node("gift1000") as Button).pressed.emit()
+	var waited := 0.0
+	while not (board.get("notice_label") as Label).text.begins_with("You gave") and waited < 4.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	check("Give 1,000 sends 1,000 for this character, at one press",
 		server.asked.size() >= 1 and server.asked[0] == "POST /api/kingdom/donate"
-		and int(server.bodies[0].get("amount", 0)) == 1500 and int(server.bodies[0].get("slot", -9)) == CharacterData.active_character_index,
+		and int(server.bodies[0].get("amount", 0)) == 1000 and int(server.bodies[0].get("slot", -9)) == CharacterData.active_character_index,
 		[server.asked, server.bodies])
-	check("  the purse is the server's after it", giver.gold == 3500, giver.gold)
+	check("  the purse is the server's after it", giver.gold == 4000, giver.gold)
 	check("  the title it earned is yours at once, with the way to the next",
-		patron.text == "Patron  -  10,500 / 100,000 to Benefactor" and patron.get_theme_color("font_color") == Board.title_colour("Patron"),
+		patron.text == "Patron  -  10,000 / 100,000 to Benefactor" and patron.get_theme_color("font_color") == Board.title_colour("Patron"),
 		patron.text)
 	check("  the board is read again, so the realm's total and your row move",
 		server.asked.has("GET /api/economy/kingdom"), server.asked)
 	check("  and it thanks you, naming the title",
-		(board.get("notice_label") as Label).text == "You gave the Crown 1,500 gold. You are named Patron!",
+		(board.get("notice_label") as Label).text == "You gave the Crown 1,000 gold. You are named Patron!",
 		(board.get("notice_label") as Label).text)
-	check("  the box is emptied for the next gift", (board.get("donate_input") as LineEdit).text == "")
+	check("  the buttons can be pressed again after it", not (gifts.get_node("gift100") as Button).disabled)
+
+	# THE BIG ONE ASKS TWICE, as a ban does: the first press says "Sure?",
+	# sends nothing, and goes back after ARM_SECONDS.
+	server.clear()
+	var big: Button = gifts.get_node("gift10000")
+	await board._on_gift_pressed(10000)
+	check("Give 10,000 asks first: \"Sure? 10,000\", and nothing is sent",
+		big.text == "Sure? 10,000" and server.asked.is_empty()
+		and (board.get("notice_label") as Label).text.begins_with("Press it again"), [big.text, server.asked])
+	board._process(Board.ARM_SECONDS + 0.1)
+	check("  unanswered, it goes back to Give 10,000", big.text == "Give 10,000" and int(board.get("_armed_gift")) == 0, big.text)
+	await board._on_gift_pressed(10000)
+	await board._on_gift_pressed(1000)
+	check("  another gift between the two presses disarms it (and is given: the purse is 3,000)",
+		big.text == "Give 10,000" and giver.gold == 3000, [big.text, giver.gold])
+	server.clear()
+	await board._on_gift_pressed(10000)
+	await board._on_gift_pressed(10000)
+	check("  pressed twice it is a gift - here more than the purse, so refused here and nothing sent",
+		server.asked.is_empty() and (board.get("notice_label") as Label).text == "You carry 3,000 gold." and big.text == "Give 10,000",
+		[server.asked, (board.get("notice_label") as Label).text])
 
 	# THE TALLEST THE BOARD GETS: a reader's line of four sentences, a title
 	# with the way to the next, at the largest text size in the tallest font.
@@ -3736,7 +3763,7 @@ func _test_the_board_takes_gifts() -> void:
 	board._show_patron({"donated": 120000, "title": "Benefactor", "next_title": "Noble Patron", "next_at": 1000000})
 	Settings.set_value("font", "fell")
 	Settings.set_value("text_size", 1.5)
-	var added: Array = [board.get("patron_label"), board.get("patron_bar"), (board.get("donate_input") as Control).get_parent()]
+	var added: Array = [board.get("patron_label"), board.get("patron_bar"), board.get("quick_row")]
 	for part in added:
 		(part as Control).visible = false
 	scroll.custom_minimum_size.y = 220.0

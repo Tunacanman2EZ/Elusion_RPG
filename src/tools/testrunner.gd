@@ -305,6 +305,7 @@ func _run_all() -> void:
 	await _test_the_highscores()
 	await _test_staff_says_why_you_were_signed_out()
 	_test_a_browser_starts_windowed()
+	await _test_the_coffers_as_rows()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

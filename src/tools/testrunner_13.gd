@@ -1582,3 +1582,61 @@ func _test_a_browser_starts_windowed() -> void:
 		and _func_body(code, "func _start_window_watch(").contains("_watch_browser_window")
 		and _func_body(code, "func _watch_browser_window(").contains("browser_window_mode("))
 	print("  a browser starts windowed; picking Borderless is the click that goes fullscreen")
+
+
+# THE COFFERS AS ROWS (0.170.0). The owner: "i want us to upgrade this", and
+# "im also not sure what patron douse". Where the gold came from, a row a
+# source biggest first with its share behind it; your standing as rows; a line
+# saying what a title is; the gifts as buttons, with no box.
+func _test_the_coffers_as_rows() -> void:
+	section("THE KINGDOM'S COFFERS AS ROWS (0.170.0): where it came from, and you")
+	const Board := preload("res://src/ui/kingdom/kingdomboard.gd")
+	var rows: Array = Board.source_rows({"kingdom_tax": 25, "death": 33097, "shop_buy": 13995, "revive": 21666})
+	check("the sources, biggest first, each in the player's words",
+		rows == [["Lost by the dead", 33097], ["Paid to cheat death", 21666], ["Spent with merchants", 13995], ["Trade tax", 25]], rows)
+	var mine: Array = Board.you_rows({"contributed": 70021, "lusions": 40, "lost": 29021, "deaths": 85, "rank": 1}, 7,
+		"THE CAN: 75,141 from 5")
+	var said: Array = mine.map(func(row: Array) -> String: return "%s=%s" % [row[0], row[1]])
+	check("  you: your place first, the gold, how much of it was lost, lusions, deaths, your guild - each once",
+		said == ["Your place=1st of 7", "Gold you gave the realm=70,021", "  of it lost when you died=29,021", "Lusions=40",
+			"Deaths=85", "Guild=THE CAN: 75,141 from 5"], said)
+	var fresh: Array = Board.you_rows({"contributed": 0, "lusions": 0, "rank": null}, 7, "")
+	check("  somebody who has given nothing has no place, no losses, no deaths and no guild row",
+		fresh.map(func(row: Array) -> String: return str(row[0])) == ["Gold you gave the realm", "Lusions"], fresh)
+	check("  a guild in words, ranked only against others; places in words",
+		Board.guild_words({"tag": "THE CAN", "contributed": 75141, "members": 5, "rank": 2}, [{}, {}, {}]) == "THE CAN: 75,141 from 5 (2nd of 3)"
+		and Board.guild_words({"tag": "SOLO", "contributed": 10, "members": 1, "rank": 1}, [{}]) == "SOLO: 10"
+		and Board.guild_words(null, []) == "" and Board.place_words(1) == "1st" and Board.place_words(12) == "12th"
+		and Board.place_words(22) == "22nd")
+	var board: Control = (load("res://scene/ui/kingdom/kingdomboard.tscn") as PackedScene).instantiate() as Control
+	add_child(board)
+	await get_tree().process_frame
+	board.call("_render", {"total": 1000, "total_deaths": 2, "contributors": 3, "by_reason": {"death": 600, "shop_buy": 400},
+		"lusions_by_reason": {"revive": 5}, "total_lusions": 5,
+		"you": {"username": "kt_me", "contributed": 900, "lusions": 5, "lost": 500, "deaths": 2, "rank": 1,
+			"donated": 0, "next_title": "Patron", "next_at": 10000}, "top": []})
+	var sources: GridContainer = board.get("sources_box")
+	var first: Node = sources.get_child(0)
+	var share: Control = first.get_node("share") as Control
+	var you: GridContainer = board.get("you_grid")
+	check("on the board: the sources two to a row with their share behind them, the old sentence their hover; you as rows",
+		sources.columns == 2 and sources.get_child_count() == 3
+		and (first.find_child("words", true, false) as Label).text.strip_edges() == "Lost by the dead"
+		and is_equal_approx(float(share.get("share")), 0.6) and sources.tooltip_text.contains("lost by the dead")
+		and not (board.get("breakdown_label") as Label).visible and not (board.get("you_label") as Label).visible
+		and (you.get_child(1) as Label).text == "1st of 3" and you.tooltip_text.begins_with("You have given 900 gold")
+		and (board.get("headline_label") as Label).text == "2 deaths  ·  3 subjects",
+		[(board.get("headline_label") as Label).text, (you.get_child(1) as Label).text])
+	var hint: Label = board.get("patron_hint")
+	var gifts: HBoxContainer = board.get("quick_row")
+	check("  what a title is, said under the bar, every title on its hover; under it the gifts, buttons, and no box",
+		hint.visible and hint.text == "Gifts earn a title under your name in the ranking."
+		and hint.tooltip_text.contains("Patron - 10,000 gold given") and hint.tooltip_text.contains("Royal Patron - 10,000,000")
+		and gifts.get_index() == hint.get_index() + 1 and gifts.get_child_count() == 3
+		and (gifts.get_child(2) as Button).theme_type_variation == &"ButtonSocket"
+		and (gifts.get_child(2) as Button).tooltip_text.contains("asks twice")
+		and not (gifts.get_child(1) as Button).tooltip_text.contains("asks twice")
+		and board.get("donate_input") == null and not board.has_method("_on_donate_pressed"))
+	board.queue_free()
+	await get_tree().process_frame
+	print("  the coffers: sources and you as rows, what a title is, gifts as buttons")

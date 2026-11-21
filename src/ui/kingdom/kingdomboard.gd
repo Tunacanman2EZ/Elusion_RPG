@@ -13,13 +13,23 @@
 #
 # THE ONE WRITE IS A GIFT (0.74.0). The owner, of the economy: "Cosmetics on
 # the kingdom board ... people pay for being seen". A player may give the Crown
-# gold outright through the Donate control - POST /api/kingdom/donate, which
+# gold outright through the gift buttons - POST /api/kingdom/donate, which
 # burns it as a `donation` - and an account's lifetime gifts earn it a title
 # (GameConstants.PATRON_TITLES) that the board shows under its name on every
 # row it appears in. The board still computes nothing: the server answers
 # what was given, the title it earned and the next one, and the board draws
 # that. A gift is a burn like any other, so it counts toward "given" and the
 # giver climbs the ranking by the same sum everybody else is ranked by.
+#
+# AS ROWS (0.170.0, the owner: "i want us to upgrade this"). Where the gold
+# came from is a row a source, biggest first, its share a bar behind it
+# (`sources_box`); your own standing is rows too - your place, the gold, how
+# much of it was lost, lusions, deaths, your guild (`you_grid`). The old
+# sentences (_breakdown_text(), _your_line()) are their hovers. And of the
+# titles ("im also not sure what patron douse"): a line under the bar says
+# what one is (`patron_hint`). A GIFT IS A BUTTON ("get rid of the gold to
+# give box and only keep the buttons"): Give 100, Give 1,000, Give 10,000,
+# the last asking twice (ARM_SECONDS), as a ban does.
 extends Control
 
 
@@ -70,7 +80,7 @@ const REASON_LABELS := {
 	"staff_gold": "taken back by staff",
 	# THREE MORE IN 0.74.0, named before they could ever render as their ids:
 	# a piece tempered at the anvil, a rank of Royal Certification, and gold
-	# given to the Crown outright through the Donate control below.
+	# given to the Crown outright through the gift buttons below.
 	"smith_temper": "paid to the smith",
 	"royal_certification": "paid for the Crown's seal",
 	"donation": "given as gifts",
@@ -97,6 +107,13 @@ const YOU_COLOUR := Color(0.6, 0.9, 0.7)
 # different KIND of number rather than a second pile of the same one.
 const LUSION_COLOUR := Color(0.78, 0.62, 1.0)
 
+# A source's share of the total, drawn behind its row (0.170.0).
+const SHARE_COLOUR := Color(0.85, 0.66, 0.3, 0.22)
+# The amounts the quick buttons put in the box.
+const QUICK_GIFTS := [100, 1000, 10000]
+const BIG_GIFT := 10000
+const ARM_SECONDS := 4.0
+
 # Deaths. Not a currency and not gold, so it gets a hue of its own - a muted
 # rust, dark enough that a long column of them does not compete with the
 # figures it sits beside. Nobody opens this panel to read the death column
@@ -111,7 +128,7 @@ const DEATH_COLOUR := Color(0.78, 0.45, 0.42)
 # server ahead of this client) is drawn in the board's gold.
 const TITLE_FIRST_RARITY := 2
 
-# The gift a Donate press sends, and how long it waits for the answer. A gift
+# The gift a button sends, and how long it waits for the answer. A gift
 # is a request the player made and is watching, like a trade's accept.
 const DONATE_TIMEOUT := 6.0
 
@@ -211,9 +228,6 @@ const LUSION_ICON_PATH := "res://art/pack/currency/lusions.png"
 @onready var refresh_button: Button = %refreshbutton
 @onready var patron_label: Label = %patronlabel
 @onready var patron_bar: ProgressBar = %patronbar
-@onready var donate_input: LineEdit = %donateinput
-@onready var donate_button: Button = %donatebutton
-@onready var donate_minimum: Label = %donateminimum
 
 
 # The username the server said is ours, so the board can mark our own row. Taken
@@ -247,22 +261,18 @@ var _my_title: String = ""
 # stops responding.
 var _window: PanelWindow
 
+# THE ROWS (0.170.0): where the gold came from, and you.
+var sources_box: GridContainer
+var you_grid: GridContainer
+var patron_hint: Label
+var quick_row: HBoxContainer
+
 
 func _ready() -> void:
 	_window = PanelWindow.attach(self, "kingdom")
+	_build_rows()
 	close_button.pressed.connect(close_board)
 	refresh_button.pressed.connect(_on_refresh_pressed)
-	donate_button.pressed.connect(_on_donate_pressed)
-	donate_input.text_submitted.connect(_on_donate_submitted)
-	# THE FLOOR, SAID BEFORE ANYBODY TRIES IT, beside the box rather than in a
-	# refusal - a refusal is a worse way to learn a rule that could have been
-	# printed where the number is typed. ON THE SAME LINE as the box, because
-	# the board has no height to spare at the largest text size (see
-	# _fit_list_to_screen()).
-	donate_minimum.text = "at least %s" % _commas(GameConstants.DONATION_MINIMUM)
-	donate_minimum.tooltip_text = "The smallest gift the Crown takes is %s gold." \
-		% _commas(GameConstants.DONATION_MINIMUM)
-	donate_button.tooltip_text = "Give the Crown this much gold, for good. Every gift counts toward a patron's title, shown under your name on this board."
 	# Once, here, rather than on every render: the header never changes and
 	# rebuilding it each refresh would be a node churned thirty seconds apart
 	# for no reason.
@@ -273,6 +283,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	if _armed_left > 0.0:
+		_armed_left -= delta
+		if _armed_left <= 0.0:
+			_disarm_gift()
 
 	# FINISH THE LIST BEFORE ANYTHING ELSE. A board part-built because the last
 	# frame ran out of budget gets another slice here, and keeps getting one
@@ -299,6 +313,7 @@ func open_board() -> void:
 
 func close_board() -> void:
 	visible = false
+	_disarm_gift()
 	_clear_rows()
 
 
@@ -414,6 +429,254 @@ func _header_icon(art: Texture2D, width: int, tip: String) -> Control:
 	return box
 
 
+func _build_rows() -> void:
+	"""The two sets of rows, in the places the two sentences were: the
+	sources under the headline, you at the top of your panel. The labels they
+	replace stay, hidden, as the scene's - their words are the rows' hovers."""
+	breakdown_label.visible = false
+	# TWO TO A ROW: the board has no height to spare (_fit_list_to_screen()).
+	sources_box = GridContainer.new()
+	sources_box.name = "sources"
+	sources_box.columns = 2
+	sources_box.add_theme_constant_override("h_separation", 6)
+	sources_box.add_theme_constant_override("v_separation", 2)
+	sources_box.mouse_filter = Control.MOUSE_FILTER_PASS
+	var parent: Node = breakdown_label.get_parent()
+	parent.add_child(sources_box)
+	parent.move_child(sources_box, breakdown_label.get_index())
+	you_label.visible = false
+	you_grid = GridContainer.new()
+	you_grid.name = "yougrid"
+	you_grid.columns = 2
+	you_grid.add_theme_constant_override("h_separation", 12)
+	you_grid.add_theme_constant_override("v_separation", 0)
+	you_grid.mouse_filter = Control.MOUSE_FILTER_PASS
+	var box: Node = you_label.get_parent()
+	box.add_child(you_grid)
+	box.move_child(you_grid, you_label.get_index())
+	patron_hint = Label.new()
+	patron_hint.name = "patronhint"
+	patron_hint.text = "Gifts earn a title under your name in the ranking."
+	patron_hint.tooltip_text = titles_tooltip()
+	patron_hint.mouse_filter = Control.MOUSE_FILTER_STOP
+	patron_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	patron_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	patron_hint.add_theme_font_size_override("font_size", 11)
+	patron_hint.add_theme_color_override("font_color", RANK_COLOUR)
+	box.add_child(patron_hint)
+	box.move_child(patron_hint, patron_bar.get_index() + 1)
+	quick_row = HBoxContainer.new()
+	quick_row.name = "gifts"
+	quick_row.add_theme_constant_override("separation", 6)
+	for amount in QUICK_GIFTS:
+		var gift := Button.new()
+		gift.name = "gift%d" % amount
+		gift.text = gift_words(int(amount))
+		gift.tooltip_text = "Give the Crown %s gold, for good. Every gift counts toward a title%s." % [
+			_commas(int(amount)), " - asks twice" if int(amount) >= BIG_GIFT else ""]
+		gift.focus_mode = Control.FOCUS_NONE
+		gift.theme_type_variation = &"ButtonSocket"
+		gift.custom_minimum_size = Vector2(0, 30)
+		gift.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		gift.add_theme_font_size_override("font_size", 13)
+		gift.pressed.connect(_on_gift_pressed.bind(int(amount)))
+		quick_row.add_child(gift)
+	box.add_child(quick_row)
+	box.move_child(quick_row, patron_hint.get_index() + 1)
+
+
+static func gift_words(amount: int) -> String:
+	return "Give %s" % GameConstants.commas(amount)
+
+
+# The gift asking to be pressed again, and for how much longer.
+var _armed_gift: int = 0
+var _armed_left: float = 0.0
+
+
+func _on_gift_pressed(amount: int) -> void:
+	"""A gift button. A big one asks twice: the first press says "Sure?"."""
+	if amount >= BIG_GIFT and _armed_gift != amount:
+		_disarm_gift()
+		_armed_gift = amount
+		_armed_left = ARM_SECONDS
+		(quick_row.get_node("gift%d" % amount) as Button).text = "Sure? %s" % _commas(amount)
+		_set_notice("Press it again to give the Crown %s gold, for good." % _commas(amount), false)
+		return
+	_disarm_gift()
+	await donate(amount)
+
+
+func _disarm_gift() -> void:
+	if _armed_gift != 0 and quick_row != null:
+		var armed: Button = quick_row.get_node_or_null("gift%d" % _armed_gift) as Button
+		if armed != null:
+			armed.text = gift_words(_armed_gift)
+	_armed_gift = 0
+	_armed_left = 0.0
+
+
+func _gifts_disabled(off: bool) -> void:
+	if quick_row == null:
+		return
+	for gift in quick_row.get_children():
+		(gift as Button).disabled = off
+
+
+static func titles_tooltip() -> String:
+	"""Every title and what it takes, in lifetime gifts."""
+	var lines := PackedStringArray()
+	for entry in GameConstants.PATRON_TITLES:
+		lines.append("%s - %s gold given" % [str((entry as Dictionary).get("title", "")),
+			GameConstants.commas(int((entry as Dictionary).get("at", 0)))])
+	return "\n".join(lines)
+
+
+static func source_rows(by_reason: Dictionary) -> Array:
+	"""[[words, amount], ...] biggest first: where the realm's gold went."""
+	var rows: Array = []
+	for reason in by_reason:
+		var words: String = REASON_LABELS.get(reason, String(reason).replace("_", " "))
+		rows.append([words.left(1).to_upper() + words.substr(1), int(by_reason[reason])])
+	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
+	return rows
+
+
+static func place_words(place: int) -> String:
+	"""1st, 2nd, 3rd, 4th ... 11th, 12th, 13th, 21st."""
+	var tens: int = place % 100
+	var suffix: String = "th"
+	if tens < 11 or tens > 13:
+		match place % 10:
+			1:
+				suffix = "st"
+			2:
+				suffix = "nd"
+			3:
+				suffix = "rd"
+	return "%d%s" % [place, suffix]
+
+
+func _show_sources(by_reason: Dictionary, lusions_by_reason: Dictionary, total_lusions: int,
+		total: int, sentence: String) -> void:
+	for old in sources_box.get_children():
+		sources_box.remove_child(old)
+		old.queue_free()
+	sources_box.tooltip_text = sentence
+	for row in source_rows(by_reason):
+		sources_box.add_child(_share_row(str(row[0]), _commas(int(row[1])), GOLD_COLOUR,
+			float(row[1]) / float(total) if total > 0 else 0.0))
+	if total_lusions > 0:
+		var why := PackedStringArray()
+		for reason in lusions_by_reason:
+			why.append(str(REASON_LABELS.get(reason, String(reason).replace("_", " "))))
+		var lusion_row: Control = _share_row("Lusions", _commas(total_lusions), LUSION_COLOUR, 0.0)
+		lusion_row.tooltip_text = "Lusions: %s" % ", ".join(why)
+		lusion_row.mouse_filter = Control.MOUSE_FILTER_STOP
+		sources_box.add_child(lusion_row)
+
+
+func _share_row(words: String, amount: String, colour: Color, share: float) -> Control:
+	"""A row: the words at the left, the amount at the right, its share of the
+	total a bar behind it."""
+	var holder := MarginContainer.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_PASS
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bar := ShareBack.new()
+	bar.name = "share"
+	bar.share = clampf(share, 0.0, 1.0)
+	holder.add_child(bar)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(row)
+	var name_label := Label.new()
+	name_label.name = "words"
+	name_label.text = " " + words
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.clip_text = true
+	name_label.add_theme_font_size_override("font_size", 11)
+	name_label.add_theme_color_override("font_color", RANK_COLOUR)
+	row.add_child(name_label)
+	var amount_label := Label.new()
+	amount_label.name = "amount"
+	amount_label.text = amount + " "
+	amount_label.add_theme_font_size_override("font_size", 11)
+	amount_label.add_theme_color_override("font_color", colour)
+	row.add_child(amount_label)
+	return holder
+
+
+class ShareBack extends Control:
+	## A source's share of the total, a bar from the left behind its row.
+	var share: float = 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		if share > 0.0:
+			draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * share, size.y)), SHARE_COLOUR)
+
+
+static func you_rows(you: Dictionary, contributors: int, guild: String) -> Array:
+	"""[[words, value, colour], ...]: your place, the gold, how much of it was
+	lost, lusions, deaths, your guild - each said once."""
+	var rows: Array = []
+	var given: int = int(you.get("contributed", 0))
+	var lusions: int = int(you.get("lusions", 0))
+	var place_value: Variant = you.get("rank")
+	if place_value != null and (given > 0 or lusions > 0):
+		var place: String = place_words(int(place_value))
+		rows.append(["Your place", place + (" of %d" % contributors if contributors > 1 else ""), GOLD_COLOUR])
+	rows.append(["Gold you gave the realm", GameConstants.commas(given), GOLD_COLOUR])
+	var lost: int = int(you.get("lost", 0))
+	if lost > 0:
+		rows.append(["  of it lost when you died", GameConstants.commas(lost), DEATH_COLOUR])
+	rows.append(["Lusions", GameConstants.commas(lusions), LUSION_COLOUR])
+	var deaths: int = int(you.get("deaths", 0))
+	if deaths > 0:
+		rows.append(["Deaths", GameConstants.commas(deaths), DEATH_COLOUR])
+	if guild != "":
+		rows.append(["Guild", guild, YOU_COLOUR])
+	return rows
+
+
+func _show_you(you: Dictionary, contributors: int, guild: String, sentence: String) -> void:
+	for old in you_grid.get_children():
+		you_grid.remove_child(old)
+		old.queue_free()
+	you_grid.tooltip_text = sentence
+	for row in you_rows(you, contributors, guild):
+		var key := Label.new()
+		key.text = str(row[0])
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.add_theme_font_size_override("font_size", 13)
+		key.add_theme_color_override("font_color", RANK_COLOUR)
+		you_grid.add_child(key)
+		var value := Label.new()
+		value.text = str(row[1])
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_font_size_override("font_size", 13)
+		value.add_theme_color_override("font_color", row[2])
+		you_grid.add_child(value)
+
+
+static func guild_words(your_guild: Variant, guilds: Array) -> String:
+	"""'THE CAN: 75,141 from 5 (2nd of 3)' - or '' outside a guild."""
+	if not (your_guild is Dictionary):
+		return ""
+	var mine: Dictionary = your_guild
+	var words: String = "%s: %s" % [str(mine.get("tag", mine.get("name", "?"))),
+		GameConstants.commas(int(mine.get("contributed", 0)))]
+	var members: int = int(mine.get("members", 0))
+	if members > 1:
+		words += " from %d" % members
+	var rank: int = int(mine.get("rank", 0))
+	if rank > 0 and guilds.size() > 1:
+		words += " (%s of %d)" % [place_words(rank), guilds.size()]
+	return words
+
+
 func _resolve_headline_label() -> Label:
 	"""The scene's own %headlinelabel if it has one, otherwise a label built to
 	match the breakdown and slotted in beside it."""
@@ -505,6 +768,9 @@ func _render(data: Dictionary) -> void:
 		data.get("lusions_by_reason", {}) if data.get("lusions_by_reason", {}) is Dictionary else {},
 		int(data.get("total_lusions", 0)),
 		int(data.get("contributors", 0)))
+	_show_sources(data.get("by_reason", {}) if data.get("by_reason", {}) is Dictionary else {},
+		data.get("lusions_by_reason", {}) if data.get("lusions_by_reason", {}) is Dictionary else {},
+		int(data.get("total_lusions", 0)), total, breakdown_label.text)
 
 	# THE TAX GETS ITS OWN LINE ABOVE THE BREAKDOWN. It was already inside
 	# by_reason, which the breakdown renders as a run-on of every sink there is;
@@ -526,13 +792,14 @@ func _render(data: Dictionary) -> void:
 	# this narrow is how the deaths column nearly did not fit; this is one
 	# clause on a line that already exists, and the per-player split is on the
 	# gold cell's hover where somebody asking about one player will look.
-	if total_deaths > 0:
-		headline_label.text = "%s death%s across the realm" % [
-			_commas(total_deaths), "" if total_deaths == 1 else "s"]
-		if total_lost > 0:
-			headline_label.text += " — %s gold left behind" % _compact(total_lost)
-	else:
-		headline_label.text = "Nobody has died yet."
+	# ONE SMALL LINE (0.170.0): what the dead left is its own row below now.
+	var contributors: int = int(data.get("contributors", 0))
+	var facts := PackedStringArray()
+	facts.append("%s death%s" % [_commas(total_deaths), "" if total_deaths == 1 else "s"] if total_deaths > 0
+		else "nobody has died yet")
+	if contributors > 0:
+		facts.append("%d %s" % [contributors, "subject" if contributors == 1 else "subjects"])
+	headline_label.text = "  ·  ".join(facts)
 	headline_label.add_theme_color_override("font_color",
 		DEATH_COLOUR if total_deaths > 0 else RANK_COLOUR)
 
@@ -550,6 +817,9 @@ func _render(data: Dictionary) -> void:
 	you_label.add_theme_color_override("font_color",
 		YOU_COLOUR if (int(you.get("contributed", 0)) > 0
 			or int(you.get("lusions", 0)) > 0) else RANK_COLOUR)
+	_show_you(you, int(data.get("contributors", 0)),
+		guild_words(data.get("your_guild"), data.get("guilds", []) if data.get("guilds", []) is Array else []),
+		you_label.text)
 	_show_patron(you)
 	_fit_list_to_screen()
 
@@ -1112,29 +1382,6 @@ func _fit_list_to_screen() -> void:
 		scroll.custom_minimum_size.y = height
 
 
-static func typed_gold(text: String) -> int:
-	"""The box's text as gold: digits only, so "12,400" is twelve thousand four
-	hundred and a stray letter is not a zero. The bank's box filters as the
-	player types; this one reads the same way at the press, which is the moment
-	that matters - see "A SpinBox's typed number is not its value until Enter"
-	in CLAUDE.md for why a box is read when its button is pressed."""
-	var digits: String = ""
-	for i in range(text.length()):
-		if "0123456789".contains(text[i]):
-			digits += text[i]
-	if digits == "" or digits.length() > 15:
-		return 0
-	return int(digits)
-
-
-func _on_donate_submitted(_text: String) -> void:
-	await donate(typed_gold(donate_input.text))
-
-
-func _on_donate_pressed() -> void:
-	await donate(typed_gold(donate_input.text))
-
-
 func donate(amount: int) -> void:
 	"""Give the Crown this much gold. Awaitable."""
 	if _donating:
@@ -1155,7 +1402,7 @@ func donate(amount: int) -> void:
 		return
 
 	_donating = true
-	donate_button.disabled = true
+	_gifts_disabled(true)
 	_set_notice("The Crown's steward counts it...", false)
 	var res: Dictionary = await Api.post("/api/kingdom/donate", {
 		"slot": CharacterData.active_character_index,
@@ -1166,7 +1413,7 @@ func donate(amount: int) -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_donating = false
-	donate_button.disabled = false
+	_gifts_disabled(false)
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	if not res.get("ok", false):
@@ -1179,7 +1426,6 @@ func donate(amount: int) -> void:
 	if data.has("gold"):
 		player = get_tree().get_first_node_in_group("player")
 		CharacterData.adopt_server_gold({"carried_gold": int(data["gold"])}, player)
-	donate_input.text = ""
 	Audio.play("coin")
 	var was_title: String = _my_title
 	_show_patron(data)
