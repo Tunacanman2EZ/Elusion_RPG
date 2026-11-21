@@ -30,6 +30,12 @@
 # any land's monsters would pay, and what 20 players might earn, from the last
 # two weeks' play. Report opens the Event report window (eventreport.gd)
 # through the HUD.
+#
+# LABELLED (0.168.13, the owner: "upgrade this 1 also"): each control a name
+# at its left - What, Whose, Starts, Lasts - Now's hour and minute hidden
+# until a day is picked, and a line saying what Schedule would set before it
+# is pressed. What is on and coming is rows, name and when; what ended is a
+# small line under them. Refresh and Report share the top row with the count.
 extends VBoxContainer
 class_name EventsTab
 
@@ -86,6 +92,9 @@ var land_pick: OptionButton
 var day_pick: OptionButton
 var hour_box: SpinBox
 var minute_box: SpinBox
+# The "At" row: the hour and minute, shown once a day is picked (0.168.13).
+var time_key: Label
+var time_row: HBoxContainer
 var calendar_button: Button
 var calendar_popup: PopupPanel
 var calendar: EventCalendar
@@ -98,7 +107,11 @@ var schedule_button: Button
 var dry_run_button: Button
 var report_button: Button
 var refresh_button: Button
-var list_label: Label
+# The on-and-coming rows (name, when), and the line of the last that ended.
+var on_grid: GridContainer
+var ended_label: Label
+# What Schedule would set, said before it is pressed (0.168.13).
+var plan_label: Label
 var cancel_pick: OptionButton
 var cancel_button: Button
 var say_label: Label
@@ -114,25 +127,42 @@ func _init() -> void:
 func _build() -> void:
 	# NARROW AND SHORT, like the World tab: the GM panel is 370 wide and holds
 	# its tallest tab at its drawn size (the suite measures both).
-	add_child(heading("SCHEDULE AN EVENT"))
+	add_theme_constant_override("separation", 4)
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
+	top.add_theme_constant_override("separation", 8)
 	add_child(top)
-	status_label = _label("Events: not read yet.", HEAD, false)
-	status_label.name = "status"
-	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(status_label)
+	refresh_button = _button("Refresh", "Read the events again from the server.")
+	refresh_button.name = "refresh"
+	refresh_button.pressed.connect(refresh.bind(true))
+	top.add_child(refresh_button)
 	report_button = _button("Report", "Each event's before, during and after - XP and gold an hour, who played, who was online - and a chart of who was online this week.")
 	report_button.name = "report"
 	report_button.pressed.connect(_on_report_pressed)
 	top.add_child(report_button)
+	status_label = _label("Not read yet.", HealthTab.ROW_NAME, false)
+	status_label.name = "status"
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	top.add_child(status_label)
+
+	# EACH CONTROL NAMED AT ITS LEFT (0.168.13): "More XP", "Every monster",
+	# "Now 0 : 0" read as a row of boxes without them.
+	var form := GridContainer.new()
+	form.name = "form"
+	form.columns = 2
+	form.add_theme_constant_override("h_separation", 8)
+	form.add_theme_constant_override("v_separation", 4)
+	add_child(form)
 
 	var what := HBoxContainer.new()
 	what.add_theme_constant_override("separation", 6)
-	add_child(what)
+	what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	form.add_child(_key("What"))
+	form.add_child(what)
 	kind_pick = OptionButton.new()
 	kind_pick.name = "kind"
 	kind_pick.focus_mode = Control.FOCUS_NONE
+	kind_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for i in KINDS.size():
 		kind_pick.add_item(str(KINDS[i][1]), i)
 		kind_pick.set_item_tooltip(i, str(KINDS[i][2]))
@@ -142,11 +172,13 @@ func _build() -> void:
 	amount_box.name = "amount"
 	amount_box.value = 2.0
 	amount_box.tooltip_text = "How many times: 1.25x to 3x. Two events of one kind at once give the bigger, never both."
+	amount_box.value_changed.connect(_on_form_changed)
 	what.add_child(amount_box)
 
 	land_pick = OptionButton.new()
 	land_pick.name = "land"
 	land_pick.focus_mode = Control.FOCUS_NONE
+	land_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	land_pick.tooltip_text = "Whose monsters it covers - or, for a stir, which land stirs."
 	# THE VALUES ARE METADATA, NOT ITEM IDS: an OptionButton takes an id of -1
 	# to mean "use the index", so the stirring land's -1 would come back as 1,
@@ -157,11 +189,14 @@ func _build() -> void:
 	for entry in land_words:
 		land_pick.add_item(str(entry[0]))
 		land_pick.set_item_metadata(land_pick.item_count - 1, int(entry[1]))
-	add_child(land_pick)
+	land_pick.item_selected.connect(_on_form_changed)
+	form.add_child(_key("Whose"))
+	form.add_child(land_pick)
 
 	var when := HBoxContainer.new()
 	when.add_theme_constant_override("separation", 2)
-	add_child(when)
+	form.add_child(_key("Starts"))
+	form.add_child(when)
 	day_pick = OptionButton.new()
 	day_pick.name = "day"
 	day_pick.focus_mode = Control.FOCUS_NONE
@@ -174,17 +209,10 @@ func _build() -> void:
 	day_pick.custom_minimum_size = Vector2(DAY_WIDTH, 0)
 	day_pick.item_selected.connect(_on_day_selected)
 	when.add_child(day_pick)
-	hour_box = _spin(0.0, 23.0, 1.0, "")
-	hour_box.name = "hour"
-	_two_digits(hour_box)
-	hour_box.tooltip_text = "The hour it starts (0-23), this computer's clock."
-	when.add_child(hour_box)
-	when.add_child(_label(":", SAY_NOTE, false))
-	minute_box = _spin(0.0, 55.0, 5.0, "")
-	minute_box.name = "minute"
-	_two_digits(minute_box)
-	minute_box.tooltip_text = "The minute it starts."
-	when.add_child(minute_box)
+	var push := Control.new()
+	push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	push.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	when.add_child(push)
 	# THE CALENDAR (0.51.0): a picture, not a word - the row is the tab's
 	# widest, and "Calendar" would make the GM panel wider than 370.
 	calendar_button = _button("", "Calendar: pick the day from a month, and see which days already have events.")
@@ -195,6 +223,29 @@ func _build() -> void:
 		calendar_button.text = EventCalendar.ICON_WORD
 	calendar_button.pressed.connect(open_calendar)
 	when.add_child(calendar_button)
+	# THE HOUR AND MINUTE, A ROW OF THEIR OWN (0.168.13), shown once a day is
+	# picked: beside the day and the calendar they made the tab too wide for
+	# the names at the left.
+	time_key = _key("At")
+	form.add_child(time_key)
+	time_row = HBoxContainer.new()
+	time_row.name = "timerow"
+	time_row.add_theme_constant_override("separation", 2)
+	form.add_child(time_row)
+	hour_box = _spin(0.0, 23.0, 1.0, "")
+	hour_box.name = "hour"
+	_two_digits(hour_box)
+	hour_box.tooltip_text = "The hour it starts (0-23), this computer's clock."
+	hour_box.value_changed.connect(_on_form_changed)
+	time_row.add_child(hour_box)
+	time_row.add_child(_label(":", SAY_NOTE, false))
+	minute_box = _spin(0.0, 55.0, 5.0, "")
+	minute_box.name = "minute"
+	_two_digits(minute_box)
+	minute_box.tooltip_text = "The minute it starts."
+	minute_box.value_changed.connect(_on_form_changed)
+	time_row.add_child(minute_box)
+	time_row.add_child(_label("this computer's clock", HealthTab.ROW_NAME, false))
 	# A POPUP, so opening it changes nothing about the GM panel's size.
 	calendar_popup = PopupPanel.new()
 	calendar_popup.name = "calendarpopup"
@@ -213,20 +264,27 @@ func _build() -> void:
 
 	var length := HBoxContainer.new()
 	length.add_theme_constant_override("separation", 6)
-	add_child(length)
-	length.add_child(_label("For", SAY_NOTE, false))
+	form.add_child(_key("Lasts"))
+	form.add_child(length)
 	hours_box = _spin(1.0, 72.0, 1.0, "h")
 	hours_box.name = "hours"
 	hours_box.value = 3.0
 	hours_box.tooltip_text = "How many hours it lasts: 1 to 72."
+	hours_box.value_changed.connect(_on_form_changed)
 	length.add_child(hours_box)
 	name_edit = LineEdit.new()
 	name_edit.name = "eventname"
-	name_edit.placeholder_text = "Name (optional)"
+	name_edit.placeholder_text = "name (optional)"
 	name_edit.max_length = 40
 	name_edit.tooltip_text = "Left empty, it is named for what it does: Double XP, 1.5x Loot, The Fire Lands Stir."
 	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_edit.text_changed.connect(_on_form_changed)
 	length.add_child(name_edit)
+
+	plan_label = _label("", HealthTab.ROW_NAME)
+	plan_label.name = "plan"
+	plan_label.add_theme_font_size_override("font_size", 12)
+	add_child(plan_label)
 
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 8)
@@ -243,16 +301,14 @@ func _build() -> void:
 	dry_run_button.pressed.connect(dry_run)
 	dry_run_button.disabled = true
 	buttons.add_child(dry_run_button)
-	refresh_button = _button("Refresh", "Read the events again from the server.")
-	refresh_button.name = "refresh"
-	refresh_button.pressed.connect(refresh.bind(true))
-	buttons.add_child(refresh_button)
 
-	add_child(HSeparator.new())
 	add_child(heading("ON NOW AND COMING"))
-	list_label = _label("", SAY_NOTE)
-	list_label.name = "list"
-	add_child(list_label)
+	on_grid = GridContainer.new()
+	on_grid.name = "list"
+	on_grid.columns = 2
+	on_grid.add_theme_constant_override("h_separation", 12)
+	on_grid.add_theme_constant_override("v_separation", 2)
+	add_child(on_grid)
 
 	var off_row := HBoxContainer.new()
 	off_row.add_theme_constant_override("separation", 8)
@@ -261,6 +317,10 @@ func _build() -> void:
 	cancel_pick.name = "cancelpick"
 	cancel_pick.focus_mode = Control.FOCUS_NONE
 	cancel_pick.custom_minimum_size = Vector2(150, 0)
+	# NOT AS WIDE AS ITS LONGEST: "The Fire Lands Stir (Nov 22 20:39, 6 h)"
+	# made the panel wider than 370.
+	cancel_pick.fit_to_longest_item = false
+	cancel_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cancel_pick.clip_text = true
 	off_row.add_child(cancel_pick)
 	cancel_button = _button("Call off", "End it now, or stop it before it starts - announced to everyone.")
@@ -268,12 +328,26 @@ func _build() -> void:
 	cancel_button.pressed.connect(cancel)
 	cancel_button.disabled = true
 	off_row.add_child(cancel_button)
+	ended_label = _label("", HealthTab.ROW_NAME)
+	ended_label.name = "ended"
+	ended_label.add_theme_font_size_override("font_size", 12)
+	add_child(ended_label)
 
 	say_label = _label("", SAY_NOTE)
 	say_label.name = "say"
 	add_child(say_label)
 	_on_kind_selected(0)
 	_on_day_selected(0)
+	_show_list({})
+
+
+func _key(words: String) -> Label:
+	"""A form row's name, at its left."""
+	var key := Label.new()
+	key.text = words
+	key.add_theme_color_override("font_color", HealthTab.ROW_NAME)
+	key.add_theme_font_size_override("font_size", 13)
+	return key
 
 
 static func heading(words: String) -> Label:
@@ -376,6 +450,7 @@ func _on_kind_selected(_index: int) -> void:
 		land_pick.set_item_disabled(land_index(value), stir)
 	if stir and land() <= LAND_ANY:
 		land_pick.select(land_index(Element.Type.FIRE))
+	_show_plan()
 
 
 func _on_day_selected(_index: int) -> void:
@@ -383,6 +458,43 @@ func _on_day_selected(_index: int) -> void:
 	var now_picked: bool = day() == DAY_NOW
 	hour_box.editable = not now_picked
 	minute_box.editable = not now_picked
+	# HIDDEN FOR NOW (0.168.13): "0 : 0" beside Now read as a time it starts.
+	time_key.visible = not now_picked
+	time_row.visible = not now_picked
+	_show_plan()
+
+
+func _on_form_changed(_value: Variant = null) -> void:
+	_show_plan()
+
+
+func _show_plan() -> void:
+	if plan_label == null or hours_box == null or name_edit == null:
+		return
+	var day_words: String = day_pick.get_item_text(day_pick.selected) if day_pick.selected >= 0 else "Now"
+	plan_label.text = plan_text(kind(), amount_box.value, land(), day() == DAY_NOW, day_words,
+		int(hour_box.value), int(minute_box.value), int(hours_box.value), name_edit.text.strip_edges())
+
+
+static func plan_text(what: String, amount: float, whose: int, now_picked: bool, day_words: String,
+		hour: int, minute: int, hours: int, typed: String) -> String:
+	"""What Schedule would set, in a line: '2x XP from every monster,
+	starting now, for 3 h.'"""
+	var land_words: String = ""
+	if whose == LAND_STIRRING:
+		land_words = "the stirring land's monsters"
+	elif whose > 0:
+		land_words = "the %s lands' monsters" % Element.name_for(whose).capitalize()
+	else:
+		land_words = "every monster"
+	var does: String = ""
+	if what == "stir":
+		does = "The %s lands stir" % (Element.name_for(whose).capitalize() if whose > 0 else "?")
+	else:
+		does = "%sx %s from %s" % [_times_text(amount), "XP" if what == "xp" else "loot", land_words]
+	var starts: String = "starting now" if now_picked else "starting %s at %02d:%02d" % [
+		day_words.to_lower() if day_words in ["Today", "Tomorrow"] else day_words, hour, minute]
+	return "%s%s, %s, for %d h." % ["\"%s\": " % typed if typed != "" else "", does, starts, hours]
 
 
 func open_calendar() -> void:
@@ -698,7 +810,7 @@ func show_answer(data: Dictionary) -> void:
 	answer = data.duplicate(true)
 	answer["_read_at"] = int(Time.get_unix_time_from_system())
 	status_label.text = status_text(answer)
-	list_label.text = list_text(answer)
+	_show_list(answer)
 	# The one picked to call off stays picked through a read (0.112.1, LIVE).
 	var kept_id: int = cancel_pick.get_item_id(cancel_pick.selected) if cancel_pick.selected >= 0 else -1
 	cancel_pick.clear()
@@ -716,6 +828,43 @@ func show_answer(data: Dictionary) -> void:
 	fill_days(int(Time.get_unix_time_from_system()))
 	if calendar_popup.visible:
 		open_calendar()
+
+
+func _show_list(data: Dictionary) -> void:
+	"""What is on and coming as rows - name, and when (on in green) - and the
+	last that ended in a small line under Call off. The sentence they say is
+	the rows' tooltip."""
+	HealthTab.fill_rows(on_grid, list_rows(data), list_text(data))
+	var ended: String = ended_text(data)
+	ended_label.text = "" if ended == "" else "Ended lately: " + ended
+	ended_label.visible = ended != ""
+
+
+static func list_rows(data: Dictionary) -> Array:
+	"""[[name, when, colour], ...]: on and coming, soonest first."""
+	var now: int = int(data.get("now", 0))
+	var all: Array[Dictionary] = waiting(data)
+	var rows: Array = []
+	for event in all.slice(0, LISTED):
+		var on: bool = int(event.get("starts_at", 0)) <= now
+		rows.append([str(event.get("name", "?")), when_text(event, now), SAY_GOOD if on else HealthTab.ROW_VALUE])
+	if all.size() > LISTED:
+		rows.append(["and %d more" % (all.size() - LISTED), ""])
+	if rows.is_empty():
+		rows.append(["Nothing on or coming.", ""])
+	return rows
+
+
+static func ended_text(data: Dictionary) -> String:
+	"""'Triple Loot (over), 1.5x XP (called off)' - the last three, or ''."""
+	var ended: Array[String] = []
+	var events: Variant = data.get("events", [])
+	if events is Array:
+		for event in events:
+			if event is Dictionary and str(event.get("state", "")) in ["over", "cancelled"] and ended.size() < 3:
+				ended.append("%s (%s)" % [str(event.get("name", "?")),
+					"called off" if str(event.get("state", "")) == "cancelled" else "over"])
+	return ", ".join(ended)
 
 
 static func on_calendar(data: Dictionary) -> Array[Dictionary]:

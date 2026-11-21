@@ -1884,19 +1884,36 @@ func _test_the_gm_panel_economy_tab() -> void:
 	EconomyRules.numbers = kept_rules
 
 	# --- CANARY --------------------------------------------------------------------
-	check("the canary: the last hourly check, how long ago, and what it found",
-		tab.canary_status.text == "Every number adds up." and tab.canary_when.text.begins_with("Last hourly check: ")
-		and tab.canary_when.text.contains("12m ago") and tab.canary_checks.text.begins_with("hold  gold conservation"),
-		[tab.canary_status.text, tab.canary_when.text])
+	# AS ROWS (0.168.13, the owner: "upgrade this 1 also"): when, in a row;
+	# each check its plain name, holds or BROKEN, and its numbers with commas.
+	var check_line: HBoxContainer = tab.canary_checks.get_child(0) as HBoxContainer if tab.canary_checks.get_child_count() > 0 else null
+	check("the canary: the last hourly check, how long ago, and what it found - each check a row in plain words",
+		tab.canary_status.text == "Every number adds up."
+		and HealthTab.row_value(tab.canary_when_grid, "Last hourly check").ends_with(", 12m ago")
+		and not tab.canary_when.visible and check_line != null
+		and (check_line.get_child(0) as Label).text == "Gold adds up" and (check_line.get_child(1) as Label).text == "holds"
+		and (tab.canary_checks.get_child(1) as Label).text == "recorded 5, held 5, drift 0"
+		and tab.canary_checks.tooltip_text.begins_with("hold  gold conservation"),
+		[tab.canary_status.text, HealthTab.row_value(tab.canary_when_grid, "Last hourly check")])
+	check("  names said plainly and big numbers with commas",
+		EconomyTab.check_name("lusion conservation (ledger == held)") == "Lusions add up"
+		and EconomyTab.check_name("no skill above the cap (99)") == "No skill above 99"
+		and EconomyTab.check_name("no negative balances") == "No negative balances"
+		and EconomyTab.with_commas("recorded 274836944, held 274836944, drift 0") == "recorded 274,836,944, held 274,836,944, drift 0"
+		and EconomyTab.with_commas("cap 99, rows 1000") == "cap 99, rows 1,000",
+		EconomyTab.with_commas("recorded 274836944, held 274836944, drift 0"))
 	tab.show_canary({"checked_at": now - 3 * 3600, "ok": false, "age_seconds": 3 * 3600, "stale": true, "mail": "not configured",
 		"failures": [{"name": "gold conservation (ledger == held)", "detail": "recorded 0, held 5, drift 5"}], "checks": []})
 	check("  broken: what broke and by how much; a timer that looks stopped; no mail set up, said",
-		tab.canary_status.text == "BROKEN: gold conservation (ledger == held) (recorded 0, held 5, drift 5)."
-		and tab.canary_when.text.contains("the timer may have stopped") and tab.canary_when.text.contains("No mail is set up"),
+		tab.canary_status.text == "BROKEN: 1 check failed - Gold adds up."
+		and tab.canary_when.visible and tab.canary_when.text.begins_with("That is more than two hours - the timer may have stopped")
+		and tab.canary_when.text.contains("No mail is set up")
+		and HealthTab.row_colour(tab.canary_when_grid, "Last hourly check") == EconomyTab.SAY_WARN,
 		[tab.canary_status.text, tab.canary_when.text])
 	tab.show_canary({"checked_at": null, "ok": null, "failures": [], "checks": []})
 	check("  never run: says the timer has not run, and where it is set up",
-		tab.canary_status.text.begins_with("Never checked") and tab.canary_when.text.contains("update_server.sh"))
+		tab.canary_status.text.begins_with("Never checked") and tab.canary_when.text.contains("update_server.sh")
+		and HealthTab.row_value(tab.canary_when_grid, "Last hourly check") == "never")
 	await tab.check_now()
 	check("Check now: POSTs to the canary and says what it found",
 		sent == [["/api/owner/economy/canary", {}]] and tab.say_label.text == "Checked now: every number adds up.", sent)
@@ -1992,33 +2009,60 @@ func _test_the_gm_panel_health_tab() -> void:
 	# And, since 0.88.0, what broke in the games - its own route, after.
 	check("opened, it reads the server's health - the receipts as kept, not fresh",
 		asked == ["/api/server/health", "/api/server/client-errors"], asked)
-	check("  the players: online, in an area, the biggest crowd; the most today and this week",
-		tab.players_label.text == "12 online, 9 in an area; the biggest crowd: town, 7. Most today: 19 (big field 11). This week: 40 (big field 34).",
-		tab.players_label.text)
+	# ROWS (0.168.13, the owner: "need to fix this screen"): each page a name
+	# and its value; the sentences stay, for each grid's tooltip and Results.
+	var data_of: Dictionary = view as Dictionary
+	var players_rows: Array = [HealthTab.row_value(tab.players_grid, "Online"), HealthTab.row_value(tab.players_grid, "In an area"),
+		HealthTab.row_value(tab.players_grid, "Biggest crowd"), HealthTab.row_value(tab.players_grid, "Most today"),
+		HealthTab.row_value(tab.players_grid, "Most this week")]
+	check("  the players, as rows: online, in an area, the biggest crowd; the most today and this week (\"need to fix this screen\")",
+		players_rows == ["12", "9", "town, 7", "19 (big field 11)", "40 (big field 34)"] and not tab.players_note.visible
+		and HealthTab.players_text(data_of) == "12 online, 9 in an area; the biggest crowd: town, 7. Most today: 19 (big field 11). This week: 40 (big field 34)."
+		and tab.players_grid.tooltip_text == HealthTab.players_text(data_of), players_rows)
 	check("  the data going out: the machine's own, and the sockets' share",
-		tab.data_label.text == "Now 1.2 MB/s from the machine, 900 KB/s of it the game's sockets (before a browser's compression).",
-		tab.data_label.text)
-	check("  the month at this week's rate, against what the droplet includes",
-		tab.month_label.text == "A month at this week's rate: 520 GiB of the 1,000 included."
-		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_WARN, tab.month_label.text)
+		HealthTab.row_value(tab.data_grid, "Going out now") == "1.2 MB/s" and HealthTab.row_value(tab.data_grid, "Game sockets") == "900 KB/s"
+		and HealthTab.data_text(data_of) == "Now 1.2 MB/s from the machine, 900 KB/s of it the game's sockets (before a browser's compression).",
+		HealthTab.row_value(tab.data_grid, "Going out now"))
+	check("  the month at this week's rate, against what the droplet includes - in amber past half, and as a bar",
+		HealthTab.row_value(tab.data_grid, "Month at this rate") == "520 / 1,000 GiB"
+		and HealthTab.row_colour(tab.data_grid, "Month at this rate") == HealthTab.SAY_WARN
+		and tab.month_bar.visible and is_equal_approx(tab.month_fill.anchor_right, 0.52) and tab.month_fill.color == HealthTab.SAY_WARN
+		and HealthTab.month_text(data_of.get("month")) == "A month at this week's rate: 520 GiB of the 1,000 included.",
+		HealthTab.row_value(tab.data_grid, "Month at this rate"))
 	check("  the data guard: holding the month under the plan, the month counted, what it can still send",
-		tab.guard_label.text == "Data guard: full speed. Counted this month: 12 GiB since %s; it can send 390 KB/s to the month's end." % LocalTime.date(now - 86400 * 3)
-		and tab.guard_label.get_theme_color("font_color") == HealthTab.SAY_GOOD, tab.guard_label.text)
+		HealthTab.row_value(tab.guard_grid, "Guard") == "full speed" and HealthTab.row_colour(tab.guard_grid, "Guard") == HealthTab.SAY_GOOD
+		and HealthTab.row_value(tab.guard_grid, "Counted this month") == "12 GiB since %s" % LocalTime.date(now - 86400 * 3)
+		and HealthTab.row_value(tab.guard_grid, "Can still send") == "390 KB/s"
+		and HealthTab.guard_text(data_of.get("budget")) == "Data guard: full speed. Counted this month: 12 GiB since %s; it can send 390 KB/s to the month's end." % LocalTime.date(now - 86400 * 3),
+		HealthTab.row_value(tab.guard_grid, "Guard"))
 	check("  whether one area needs sending only what is near yet, and why",
-		tab.nearby_label.text == "Sending each game only nearby players: worth planning - an area held 32 or more this week.",
-		tab.nearby_label.text)
+		HealthTab.row_value(tab.guard_grid, "Nearby players only") == "worth planning"
+		and HealthTab.row_colour(tab.guard_grid, "Nearby players only") == HealthTab.SAY_WARN
+		and HealthTab.nearby_text(data_of.get("crowd")) == "Sending each game only nearby players: worth planning - an area held 32 or more this week.",
+		HealthTab.row_value(tab.guard_grid, "Nearby players only"))
 	check("  the tick and the machine",
-		tab.tick_label.text == "Tick: 10.0 a second, steady. Late beats today: 0."
-		and tab.machine_label.text == "Load 0.31 on 1 core, 412 MB memory free, disk 18.2 of 24.9 GB free, the database 120 MB.",
-		[tab.tick_label.text, tab.machine_label.text])
+		HealthTab.row_value(tab.tick_grid, "Tick") == "10.0 a second, steady" and HealthTab.row_value(tab.tick_grid, "Late beats today") == "0"
+		and HealthTab.row_value(tab.machine_grid, "Load") == "0.31 on 1 core" and HealthTab.row_value(tab.machine_grid, "Memory free") == "412 MB"
+		and HealthTab.row_value(tab.machine_grid, "Disk free") == "18.2 of 24.9 GB" and HealthTab.row_value(tab.machine_grid, "Database") == "120 MB"
+		and HealthTab.tick_text(data_of.get("tick")) == "Tick: 10.0 a second, steady. Late beats today: 0."
+		and HealthTab.machine_text(data_of.get("machine")) == "Load 0.31 on 1 core, 412 MB memory free, disk 18.2 of 24.9 GB free, the database 120 MB.",
+		HealthTab.row_value(tab.machine_grid, "Load"))
 	check("  the slowest three routes by p99, as words, and the errors - one worker's",
-		tab.routes_label.text == "p99: login 98 ms, combat kill 12 ms, save 9.0 ms. No server errors in 2h 00m, one worker's.",
-		tab.routes_label.text)
-	check("the receipts: the verdict, the week in a line, the monsters never seen by name",
+		HealthTab.row_value(tab.routes_grid, "Login") == "98 ms" and HealthTab.row_value(tab.routes_grid, "Combat kill") == "12 ms"
+		and HealthTab.row_value(tab.routes_grid, "Save") == "9.0 ms" and HealthTab.row_value(tab.routes_grid, "Server errors") == "none in 2h 00m"
+		and HealthTab.routes_text(data_of.get("routes")) == "p99: login 98 ms, combat kill 12 ms, save 9.0 ms. No server errors in 2h 00m, one worker's.",
+		HealthTab.row_value(tab.routes_grid, "Login"))
+	check("the receipts: the verdict, the week as rows, the monsters never seen by name",
 		tab.verdict_label.text == "Ready to switch on: a week of honest play is backed by the server's count."
-		and tab.detail_label.text == "Of 412 kills paid in the last 7 days, 405 (98.3%%) had the server's count; 2 short, 0 not due, 5 never seen (%s 3, %s 2)." % [
+		and HealthTab.row_value(tab.receipt_grid, "Kills paid, 7 days") == "412"
+		and HealthTab.row_value(tab.receipt_grid, "Backed by the server") == "405 (98.3%)"
+		and HealthTab.row_value(tab.receipt_grid, "Short / not due / never") == "2 / 0 / 5"
+		and HealthTab.row_value(tab.receipt_grid, "Never seen") == "%s 3, %s 2" % [EnemyPortraits.display_name("slime"), EnemyPortraits.display_name("bat")]
+		and HealthTab.detail_text(data_of.get("receipts")) == "Of 412 kills paid in the last 7 days, 405 (98.3%%) had the server's count; 2 short, 0 not due, 5 never seen (%s 3, %s 2)." % [
 			EnemyPortraits.display_name("slime"), EnemyPortraits.display_name("bat")]
-		and tab.verdict_label.get_theme_color("font_color") == HealthTab.SAY_GOOD, [tab.verdict_label.text, tab.detail_label.text])
+		and tab.verdict_label.get_theme_color("font_color") == HealthTab.SAY_GOOD, tab.verdict_label.text)
+	check("  read when: short enough to sit beside Refresh and Player stats, nothing cut off",
+		tab.as_of_label.text == "Read %s · every 30 s" % LocalTime.clock(now), tab.as_of_label.text)
 	check("  and, ready with the oldest build allowed in below 7, that it has to go first",
 		tab.build_label.text.begins_with("Set Old versions must update to 7 first"), tab.build_label.text)
 	check("  the switch beside them shows the server's, the owner's to throw",
@@ -2053,16 +2097,22 @@ func _test_the_gm_panel_health_tab() -> void:
 		and not tab.pages["data"].visible
 		and tab.page_buttons["receipts"].button_pressed and not tab.page_buttons["players"].button_pressed)
 	tab.show_page("players")
-	check("presence gone quiet: said, in red, with how long",
-		tab.players_label.text.begins_with("presence.py has not written for 2h 00m - is it running?")
-		and tab.players_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.players_label.text)
+	check("presence gone quiet: said, in red, with how long, above the last rows it wrote",
+		tab.players_note.visible and tab.players_note.text.begins_with("presence.py has not written for 2h 00m - is it running?")
+		and tab.players_note.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.players_note.text)
 	check("  the guard at its hardest: players alone, in red, and nothing left to send said by leaving it out",
-		tab.guard_label.text.begins_with("Data guard: the month's data is nearly spent - players do not see each other")
-		and tab.guard_label.text.ends_with("GiB since %s." % LocalTime.date(now - 86400 * 29))
-		and tab.guard_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.guard_label.text)
-	check("  a month past what is included: what it would cost, in red",
-		tab.month_label.text == "A month at this week's rate: 34,100 GiB of the 1,000 included - about $331 over."
-		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.month_label.text)
+		HealthTab.row_value(tab.guard_grid, "Guard") == "month nearly spent - players alone"
+		and HealthTab.row_colour(tab.guard_grid, "Guard") == HealthTab.SAY_BAD
+		and HealthTab.row_value(tab.guard_grid, "Can still send") == ""
+		and HealthTab.guard_text(busy.get("budget")).begins_with("Data guard: the month's data is nearly spent - players do not see each other")
+		and HealthTab.guard_text(busy.get("budget")).ends_with("GiB since %s." % LocalTime.date(now - 86400 * 29)),
+		HealthTab.row_value(tab.guard_grid, "Guard"))
+	check("  a month past what is included: what it would cost, in red, the bar full",
+		HealthTab.row_value(tab.data_grid, "Month at this rate") == "34,100 / 1,000 GiB"
+		and HealthTab.row_colour(tab.data_grid, "Month at this rate") == HealthTab.SAY_BAD
+		and HealthTab.row_value(tab.data_grid, "Over the plan") == "about $331" and is_equal_approx(tab.month_fill.anchor_right, 1.0)
+		and HealthTab.month_text(busy.get("month")) == "A month at this week's rate: 34,100 GiB of the 1,000 included - about $331 over.",
+		HealthTab.row_value(tab.data_grid, "Month at this rate"))
 	tab._say_here("")
 
 	# REFRESH, BY HAND: fresh receipts, and Results told.

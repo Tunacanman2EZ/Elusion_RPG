@@ -13,10 +13,10 @@ layout_mode = 3
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -283.0
-offset_top = 3.0
-offset_right = -9.0
-offset_bottom = 415.0
+offset_left = -400.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = 498.0
 grow_horizontal = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -50,6 +50,11 @@ theme_type_variation = &"PanelHeader"
 [node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=1325984035]
 layout_mode = 2
 
+[node name="headerspacer" type="Control" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1920055928]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+mouse_filter = 2
+
 [node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1587516618]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -77,12 +82,13 @@ theme_type_variation = &"PanelSub"
 
 [node name="currencyhbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel" unique_id=11114280]
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 8
 
 [node name="goldcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox" unique_id=1715886666]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
+theme_override_constants/separation = 8
+alignment = 1
 
 [node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=313845736]
 unique_name_in_owner = true
@@ -95,26 +101,28 @@ stretch_mode = 5
 [node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=149820312]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "Gold: 0"
 
 [node name="lusionscontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox" unique_id=774710298]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
+theme_override_constants/separation = 8
+alignment = 1
 
 [node name="lusionicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=753102347]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 texture = ExtResource("4_a8y50")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="lusionslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=91406067]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.9, 1, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "Lusions: 0"
 
 [node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617651]
@@ -135,11 +143,15 @@ size_flags_vertical = 3
 [node name="inventorycontainer" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/inventoryscroll/scrollcontent" unique_id=359467517]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 4
 size_flags_vertical = 3
 theme_override_constants/h_separation = -4
 theme_override_constants/v_separation = -4
 columns = 5
 script = ExtResource("3_x3yba")
+slot_size = Vector2(72, 72)
+icon_size = Vector2(48, 48)
+count_font_size = 14
 
 [node name="HSeparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=186729775]
 layout_mode = 2
@@ -170,5 +182,15 @@ stretch_mode = 5
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=1453206382]
 layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 4
 text = "Drag here to destroy"
+
+[node name="baglabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=304046978]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "Bag: 0 / 20"
+horizontal_alignment = 2

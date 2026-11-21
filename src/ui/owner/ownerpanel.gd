@@ -171,6 +171,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 #   a Label    with unique name "maintenancestatus"       - the switch as it is
 @onready var role_option: OptionButton = get_node_or_null("%roleoption")
 @onready var role_button: Button = get_node_or_null("%rolebutton")
+# What the rank picked can do, in a line (0.168.13): it was all three ranks in
+# shorthand at size 10 ("mod: kick, 30-day ban · dev: + permanent").
+@onready var rank_hint: Label = get_node_or_null("%rankhint")
 @onready var maintenance_message_input: LineEdit = get_node_or_null("%maintenancemessageinput")
 @onready var maintenance_button: Button = get_node_or_null("%maintenancebutton")
 @onready var maintenance_status: Label = get_node_or_null("%maintenancestatus")
@@ -188,10 +191,11 @@ var gifts_button: Button = null
 @onready var skill_pick: OptionButton = get_node_or_null("%skillpick")
 @onready var skill_input: LineEdit = get_node_or_null("%skillinput")
 @onready var skill_button: Button = get_node_or_null("%skillbutton")
-# MOVE PLAYERS. Its own name box since 0.7.4 - it used to read %usernameinput
-# at the top of the tab, a screen away, and said so in its own heading. Under it
-# the list of who is online, each with their own Bring and Go to.
-@onready var move_name_input: LineEdit = get_node_or_null("%movenameinput")
+# MOVE PLAYERS. Its own name box from 0.7.4 - %usernameinput was a screen away
+# then - and ONE NAME BOX AGAIN since 0.168.13 (the owner: "upgrade this
+# screen"): the tab is short now, and two boxes for one player read as two
+# players. Bring here and Go to sit under View account and read the one box;
+# the list of who is online, each with their own Bring and Go to, fills it.
 @onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
 @onready var tp_goto_button: Button = get_node_or_null("%tpgotobutton")
 @onready var tp_everyone_button: Button = get_node_or_null("%tpeveryonebutton")
@@ -258,6 +262,12 @@ const ARM_SECONDS := 4.0
 # ELUSION_OWNER in the environment, which is what makes it the one rank no
 # request can hand out.
 const RANKS := ["player", "mod", "dev", "coowner", "owner"]
+# What each rank on offer can do, said under the picker (0.168.13).
+const RANK_SAYS := {
+	"player": "Player: no staff powers - this takes a rank away.",
+	"mod": "Mod: kick, and ban for up to 30 days.",
+	"dev": "Dev: a mod's powers, plus permanent bans and the economy tools.",
+}
 
 var _armed_action: String = ""
 var _armed_label: String = ""
@@ -364,6 +374,8 @@ func _ready() -> void:
 
 	if role_button != null and not role_button.pressed.is_connected(_on_role_pressed):
 		role_button.pressed.connect(_on_role_pressed)
+	if role_option != null and not role_option.item_selected.is_connected(_on_rank_picked):
+		role_option.item_selected.connect(_on_rank_picked)
 
 	if maintenance_button != null:
 		if not maintenance_button.pressed.is_connected(_on_maintenance_pressed):
@@ -397,8 +409,6 @@ func _ready() -> void:
 	if tp_everyone_button != null \
 			and not tp_everyone_button.pressed.is_connected(_on_teleport_pressed):
 		tp_everyone_button.pressed.connect(_on_teleport_pressed.bind("everyone"))
-	if move_name_input != null and not move_name_input.text_submitted.is_connected(_on_move_name_submitted):
-		move_name_input.text_submitted.connect(_on_move_name_submitted)
 	if online_refresh != null and not online_refresh.pressed.is_connected(refresh_online):
 		online_refresh.pressed.connect(refresh_online)
 	_set_teleport_status("")
@@ -1201,14 +1211,23 @@ func _populate_ranks() -> void:
 		role_option.add_item(RANKS[i], i)
 
 	if role_option.item_count == 0:
+		_on_rank_picked(-1)
 		return
 	# Restore the previous pick when it is still on offer, so reopening the
 	# panel does not silently move the selection to something else.
+	var at: int = 0
 	for i in range(role_option.item_count):
 		if role_option.get_item_id(i) == keep:
-			role_option.select(i)
-			return
-	role_option.select(0)
+			at = i
+	role_option.select(at)
+	_on_rank_picked(at)
+
+
+func _on_rank_picked(_index: int) -> void:
+	if rank_hint == null:
+		return
+	var picked_rank: String = str(RANKS[role_option.get_selected_id()]) if role_option != null and role_option.selected >= 0 else ""
+	rank_hint.text = str(RANK_SAYS.get(picked_rank, "Only ranks below your own can be given."))
 
 
 func _on_role_pressed() -> void:
@@ -1543,13 +1562,8 @@ func _on_teleport_pressed(action: String) -> void:
 	await teleport(action, _move_name())
 
 
-func _on_move_name_submitted(_text: String) -> void:
-	# Enter in the name box brings them: the action a typed name is usually for.
-	await teleport("bring", _move_name())
-
-
 func _move_name() -> String:
-	return "" if move_name_input == null else move_name_input.text.strip_edges()
+	return "" if username_input == null else username_input.text.strip_edges()
 
 
 func teleport(action: String, username: String) -> void:
@@ -1727,7 +1741,7 @@ func refresh_online() -> void:
 
 func _set_online_count(n: int) -> void:
 	if online_label != null:
-		online_label.text = "MOVE PLAYERS" if n < 0 else "MOVE PLAYERS - %d ONLINE" % n
+		online_label.text = "ONLINE" if n < 0 else "ONLINE - %d" % n
 
 
 func _online_note(text: String) -> void:
@@ -1758,7 +1772,7 @@ func _online_row(entry: Dictionary) -> HBoxContainer:
 	pick.text = "%s · %s Lv %d · %s" % [who, character, int(entry.get("level", 1)), area_text]
 	# THE WHOLE LINE IN THE TOOLTIP: a long character name clips the area off
 	# the end of the row.
-	pick.tooltip_text = "%s\nClick to put %s in the name boxes." % [pick.text, who]
+	pick.tooltip_text = "%s\nClick to put %s in the name box." % [pick.text, who]
 	pick.pressed.connect(_pick_name.bind(who))
 	row.add_child(pick)
 	for spec in [["bring", "Bring", "Bring %s to where you are standing"],
@@ -1776,8 +1790,6 @@ func _online_row(entry: Dictionary) -> HBoxContainer:
 
 
 func _pick_name(who: String) -> void:
-	if move_name_input != null:
-		move_name_input.text = who
 	if username_input != null:
 		username_input.text = who
 

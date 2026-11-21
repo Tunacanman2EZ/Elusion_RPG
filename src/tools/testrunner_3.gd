@@ -949,8 +949,11 @@ func _test_world_events() -> void:
 		EventsTab.far_name(300, fixed_now) == "Nov 11 2027" and EventCalendar.reach_words(366) == "a year"
 		and EventCalendar.reach_words(60) == "60 days", EventsTab.far_name(300, fixed_now))
 	LocalTime._bias_known = false
-	check("the calendar button sits beside the minute and opens the month",
-		tab.calendar_button.get_parent() == tab.minute_box.get_parent()
+	# THE HOUR AND MINUTE, A ROW OF THEIR OWN (0.168.13): the calendar is
+	# beside the day now; "At" holds the clock, shown once a day is picked.
+	check("the calendar button sits beside the day and opens the month",
+		tab.calendar_button.get_parent() == tab.day_pick.get_parent()
+		and tab.minute_box.get_parent() == tab.hour_box.get_parent() and tab.hour_box.get_parent() == tab.time_row
 		and tab.calendar_button.tooltip_text.begins_with("Calendar")
 		and tab.calendar_popup is PopupPanel and tab.calendar.get_parent() == tab.calendar_popup)
 	# ONLY THE GAME'S OWN ART (0.54.2): the owner's art or the Clockwork pack's.
@@ -1017,8 +1020,12 @@ func _test_world_events() -> void:
 	await tab.refresh()
 	check("opened, it reads the server: what is on, what is coming, and the last that ended",
 		asked == ["/api/world/events/schedule"] and tab.status_label.text == "1 on now, 1 coming."
-		and tab.list_label.text.begins_with("Double XP - on, 50m left\nDouble Loot - ")
-		and tab.list_label.text.ends_with("\nLast: Triple Loot (over), 1.5x XP (called off)"), tab.list_label.text)
+		and HealthTab.row_value(tab.on_grid, "Double XP") == "on, 50m left"
+		and HealthTab.row_colour(tab.on_grid, "Double XP") == EventsTab.SAY_GOOD
+		and HealthTab.row_value(tab.on_grid, "Double Loot") != ""
+		and tab.ended_label.text == "Ended lately: Triple Loot (over), 1.5x XP (called off)"
+		and tab.on_grid.tooltip_text.begins_with("Double XP - on, 50m left\nDouble Loot - "),
+		[HealthTab.row_value(tab.on_grid, "Double XP"), tab.ended_label.text])
 	check("  read every time the panel opens, like the World tab - the owner may have set one from another machine",
 		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func _on_visibility_changed(").contains("await events_tab.refresh()"))
 	check("  and either of the two can be called off, soonest first",
@@ -1162,7 +1169,9 @@ func _test_world_events() -> void:
 	tab.day_pick.item_selected.emit(0)
 	tab.hours_box.value = 3.0
 	tab.name_edit.text = ""
-	check("Now has no hour or minute of its own", not tab.hour_box.editable and not tab.minute_box.editable)
+	check("Now has no hour or minute of its own - their row hidden - and the line above Schedule says what it would set",
+		not tab.hour_box.editable and not tab.minute_box.editable and not tab.time_row.visible and not tab.time_key.visible
+		and tab.plan_label.text == "2x XP from every monster, starting now, for 3 h.", tab.plan_label.text)
 	await tab.schedule()
 	var first: Dictionary = sent[0][1] if not sent.is_empty() else {}
 	check("Schedule, double XP for every monster, now, for 3 hours: sent as the server's contract asks",
@@ -1185,7 +1194,10 @@ func _test_world_events() -> void:
 	tab.minute_box.value = 30.0
 	tab.hours_box.value = 6.0
 	tab.name_edit.text = "  Fire Night "
-	check("  a day picked: its hour and minute are the owner's", tab.hour_box.editable and tab.minute_box.editable)
+	tab.name_edit.text_changed.emit(tab.name_edit.text)
+	check("  a day picked: its hour and minute are the owner's, shown - and the line says so, name and all",
+		tab.hour_box.editable and tab.minute_box.editable and tab.time_row.visible
+		and tab.plan_label.text == "\"Fire Night\": The Fire lands stir, starting tomorrow at 14:30, for 6 h.", tab.plan_label.text)
 	await tab.schedule()
 	var second: Dictionary = sent[0][1] if not sent.is_empty() else {}
 	check("  tomorrow at 14:30 on this computer's clock, for 6 hours, named: sent so",

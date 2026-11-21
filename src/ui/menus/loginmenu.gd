@@ -532,6 +532,18 @@ var google_link_line: Label = null
 var notice_box: PanelContainer = null
 var notice_label: Label = null
 var google_form: VBoxContainer = null
+# ON THE WAY IN (0.168.13, the owner: "it might just be how it slips to to
+# character select a small loading screen or something to take you directly
+# there would be nice"). While the characters load, the form gives way to a
+# card - who you are, "Loading your heroes...", a bar that moves - and the
+# game comes to the front when Google finishes in the browser; then the
+# door's own fade (SceneTransition) into character select.
+var entering_form: VBoxContainer = null
+var _entering_title: Label = null
+var _entering_bar: ColorRect = null
+var _entering_tween: Tween = null
+const ENTERING_TRACK := Vector2(240, 6)
+const ENTERING_BAR_WIDTH := 72.0
 var google_intro: Label = null
 var google_check: Label = null
 var google_name: LineEdit = null
@@ -637,6 +649,81 @@ func _build_google() -> void:
 	var column: Node = form.get_parent()
 	column.add_child(google_form)
 	column.move_child(google_form, form.get_index() + 1)
+	_build_entering_form(column, form)
+
+
+func _build_entering_form(column: Node, form: Control) -> void:
+	"""The card shown while the characters load (ON THE WAY IN)."""
+	entering_form = VBoxContainer.new()
+	entering_form.name = "enteringform"
+	entering_form.add_theme_constant_override("separation", 10)
+	entering_form.alignment = BoxContainer.ALIGNMENT_CENTER
+	entering_form.visible = false
+	_entering_title = Label.new()
+	_entering_title.name = "enteringtitle"
+	_entering_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_entering_title.add_theme_font_size_override("font_size", 22)
+	_entering_title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))
+	entering_form.add_child(_entering_title)
+	var words := Label.new()
+	words.name = "enteringwords"
+	words.text = "Loading your heroes..."
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
+	entering_form.add_child(words)
+	var holder := CenterContainer.new()
+	holder.name = "enteringholder"
+	entering_form.add_child(holder)
+	var track := ColorRect.new()
+	track.name = "enteringtrack"
+	track.color = Color(1.0, 1.0, 1.0, 0.08)
+	track.custom_minimum_size = ENTERING_TRACK
+	track.clip_contents = true
+	holder.add_child(track)
+	_entering_bar = ColorRect.new()
+	_entering_bar.name = "enteringbar"
+	_entering_bar.color = Color(0.95, 0.78, 0.38)
+	_entering_bar.size = Vector2(ENTERING_BAR_WIDTH, ENTERING_TRACK.y)
+	track.add_child(_entering_bar)
+	column.add_child(entering_form)
+	column.move_child(entering_form, form.get_index() + 1)
+
+
+func _show_entering(who: String) -> void:
+	"""The forms give way to the card; the bar slides to and fro."""
+	if entering_form == null:
+		return
+	for other: Control in [login_form, recover_form, email_form, google_form]:
+		if other != null:
+			other.visible = false
+	_entering_title.text = "Welcome, %s" % who
+	entering_form.visible = true
+	_say("", SAY_WORKING)
+	if _entering_tween != null:
+		_entering_tween.kill()
+	_entering_bar.position.x = 0.0
+	_entering_tween = create_tween().set_loops()
+	var far: float = ENTERING_TRACK.x - ENTERING_BAR_WIDTH
+	_entering_tween.tween_property(_entering_bar, "position:x", far, 0.6).set_trans(Tween.TRANS_SINE)
+	_entering_tween.tween_property(_entering_bar, "position:x", 0.0, 0.6).set_trans(Tween.TRANS_SINE)
+
+
+func _hide_entering() -> void:
+	if _entering_tween != null:
+		_entering_tween.kill()
+		_entering_tween = null
+	if entering_form != null:
+		entering_form.visible = false
+
+
+static func come_forward() -> void:
+	"""Google finished in the browser, which is in front: bring the game back
+	(a computer's own window; the browser build is already the tab), and if
+	Windows will not let a window take the front, flash it in the taskbar."""
+	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_move_to_foreground()
+	DisplayServer.window_request_attention()
 
 
 func _google_say(message: String, color: Color) -> void:
@@ -767,6 +854,7 @@ func _on_google_claim(username: String) -> void:
 
 
 func _google_signed_in(data: Dictionary) -> void:
+	come_forward()
 	Api.adopt_login(data)
 	GoogleScript.remember_link(Api.username, true)
 	google.cancel()
@@ -1411,6 +1499,7 @@ func _complete_login(typed_username: String) -> void:
 	var canonical_username: String = typed_username
 	if Api.username != "":
 		canonical_username = Api.username
+	_show_entering(canonical_username)
 
 	# await, because load_for_user() now fetches every character from the server
 	# instead of reading a local file. Without it, character select would open
@@ -1434,6 +1523,7 @@ const LOAD_FAILED_TEXT := "Your characters did not load - the server did not ans
 
 func _show_load_failed() -> void:
 	_retry_load = true
+	_hide_entering()
 	if email_form != null:
 		email_form.visible = false
 	if recover_form != null:
@@ -1451,7 +1541,8 @@ func _go_to_character_select() -> void:
 	if char_select_scene == null:
 		push_warning("LoginMenu: char_select_scene not assigned in the Inspector — cannot continue")
 		return
-	get_tree().change_scene_to_packed(char_select_scene)
+	# the door's own fade, as every door does (ON THE WAY IN)
+	SceneTransition.change_scene(char_select_scene)
 
 
 func _set_busy(busy: bool, lock_fields: bool = true) -> void:

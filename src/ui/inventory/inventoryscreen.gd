@@ -91,6 +91,7 @@ func _wire_inventory_container() -> void:
 		_container = get_node("%inventorycontainer")
 		_container.is_carry = true
 		_container.slot_right_clicked.connect(_on_slot_right_clicked)
+		_container.inventory_changed.connect(_update_bag_count)
 	else:
 		push_warning("InventoryScreen: inventorycontainer not found")
 
@@ -124,7 +125,26 @@ func set_player(p: Node) -> void:
 
 func show_inventory() -> void:
 	_update_currency_labels()
+	_update_bag_count()
 	visible = true
+
+
+func _update_bag_count() -> void:
+	"""How full the bag is, under the grid (0.168.13). Read while the window
+	is open (_process): an item can land in a slot without the grid saying
+	so (InventorySlot.set_stack() announces nothing), and twenty cells are
+	nothing to count."""
+	var label: Label = _get_label("%baglabel")
+	if label == null or _container == null:
+		return
+	var text: String = "Bag: %d / %d" % [_container.get_all_stacks().size(), int(_container.capacity)]
+	if label.text != text:
+		label.text = text
+
+
+func _process(_delta: float) -> void:
+	if visible:
+		_update_bag_count()
 
 
 func hide_inventory() -> void:

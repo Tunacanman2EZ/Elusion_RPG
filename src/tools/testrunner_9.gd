@@ -4542,10 +4542,35 @@ func _test_the_gm_panel_tidied_and_live() -> void:
 			"state": "renamed" if body.get("action") == "rename" else "disbanded", "members_removed": 5}})
 	await guilds.refresh()
 	var gpick: OptionButton = guilds.get("guild_pick")
-	check("the Guilds tab lists every guild - name, members, leader - sorted, and says what the one picked is",
-		guilds.get_parent() == tabs and gpick.item_count == 2 and gpick.get_item_text(0) == "Alpha Wolves - 5 members, led by cy"
-		and gpick.get_item_text(1) == "zeta - 1 member, led by bo"
-		and (guilds.get("about_label") as Label).text.contains("5 members, led by cy"), [gpick.get_item_text(0), (guilds.get("about_label") as Label).text])
+	# AS ROWS (0.168.13, the owner: "we need to improve ui on this"): the picker
+	# names the guild and its size; who leads it and when it began, once each.
+	var about: GridContainer = guilds.get("about_grid")
+	check("the Guilds tab lists every guild - its name and size - sorted, and says what the one picked is, as rows",
+		guilds.get_parent() == tabs and gpick.item_count == 2 and gpick.get_item_text(0) == "Alpha Wolves (5)"
+		and gpick.get_item_text(1) == "zeta (1)" and gpick.get_item_tooltip(0) == "Alpha Wolves - 5 members, led by cy"
+		and HealthTab.row_value(about, "Leader") == "cy" and HealthTab.row_value(about, "Members") == "5"
+		and HealthTab.row_value(about, "Founded") == "%s (1 h ago)" % LocalTime.date(now - 3600)
+		and HealthTab.row_value(about, "Founded by") == "cy"
+		and (guilds.get("disband_note") as Label).text == "Takes Alpha Wolves from all 5 members. Asks twice.",
+		[gpick.get_item_text(0), HealthTab.row_value(about, "Founded")])
+	# THE NEW NAME, CHECKED AS IT IS TYPED against the server's own rule
+	# (guilds/services.py GUILD_NAME_PATTERN), so a refusal is seen before it is sent.
+	var said: Array = []
+	for typed in ["", "The C@n", "-pack", "ab ", "alpha wolves", "Zeta", "Alpha Pack"]:
+		said.append(guilds.call("name_check", typed, "Alpha Wolves", ["zeta"]))
+	var name_box: LineEdit = guilds.get("name_edit")
+	var rename_button: Button = guilds.get("rename_button")
+	name_box.text = "The C@n"
+	guilds.call("_check_name")
+	var bad_off: bool = rename_button.disabled and (guilds.get("name_check_label") as Label).text.begins_with("Not allowed: \"@\"")
+	name_box.text = ""
+	guilds.call("_check_name")
+	check("  the new name is checked as it is typed - the server's rule, said before it refuses - and Rename waits for one that fits",
+		said.map(func(one: Array) -> bool: return one[2]) == [false, false, false, false, false, false, true]
+		and said[1][0] == "Not allowed: \"@\". Letters, numbers, spaces, ' and - only." and said[2][0] == "Start with a letter or a number."
+		and said[3][0] == "At least 3 characters (2 so far)." and said[4][0] == "That is its name already."
+		and said[5][0] == "Another guild is called that." and said[6][0] == "Fits: 10 of 12." and said[6][1] == Color(0.55, 0.86, 0.6)
+		and bad_off and rename_button.disabled, said)
 	await guilds.rename()
 	var asked_nothing: bool = sent.is_empty()
 	(guilds.get("name_edit") as LineEdit).text = "Alpha Pack"

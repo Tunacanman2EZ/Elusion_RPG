@@ -16785,6 +16785,106 @@ backdrop in a 1720-wide SubViewport and a 1280-wide one, the three menus
 adding it, pinball's frame at 220..1500. `_test_a_phone_on_its_side_fills_it`
 expects a computer to keep the height now.
 
+### The bag matches the HUD; on the way in (0.168.13)
+
+**The bag.** The owner: "my inventory douse not feel centered out can we
+remodel inventory to look even better?", then "the inventory is smaller the
+the hudscreen". It was 274 wide beside a 396-wide hotbar, its grid left in
+its window (a 22 px band on the right), the title centred beside the close
+button (so left of the middle), and 42 px of empty band under the grid.
+
+- inventory.tscn: the window is the hotbar's own `offset_left/right`
+  (-400..-4) and exactly as tall as it holds (498: the panel's combined
+  minimum); the grid `SHRINK_CENTER`; a `headerspacer` as wide as the close
+  button, first in the header; the gold and lusion rows centred, 16 px, the
+  lusion icon 32 like the coin; `%baglabel` ("Bag: 15 / 20") right of the
+  trash words.
+- **A grid's own slot size** (inventorycontainer.gd `slot_size`,
+  `icon_size`, `count_font_size`, set in `_size_slot()`): the bag's are 72
+  with the art at 48 - the 16 px item art at 3x, a whole multiple - and the
+  quantity at 14. Still the one slot scene (a test holds every grid to it);
+  the -4 overlap kept (the owner asked for the slots closer once).
+- The count is read in `_process` while the window is open:
+  `InventorySlot.set_stack()` announces nothing, so `inventory_changed`
+  alone missed items landing.
+- equipmentpanel.tscn moved left (-668..-408) to stay beside the bag. Its
+  squares are still 48: matching them is open.
+
+**On the way in.** The owner, of Google sign-in: "it might just be how it
+slips to to character select a small loading screen or something to take
+you directly there would be nice". loginmenu.gd:
+- `_complete_login()` shows `entering_form` (built in
+  `_build_entering_form()`) before the characters are asked for: "Welcome,
+  NAME", "Loading your heroes...", a gold bar sliding to and fro (a looping
+  tween); `_show_load_failed()` hides it and the form comes back.
+- `_google_signed_in()` calls `come_forward()` first:
+  `DisplayServer.window_move_to_foreground()` and
+  `window_request_attention()` (the taskbar flash when Windows will not let
+  a window take the front); nothing in the browser build or headless.
+- `_go_to_character_select()` goes through `SceneTransition.change_scene()`:
+  the door's 0.15 s fade each way, instead of a cut.
+
+`_test_the_bag_matches_the_hud()` and `_test_on_the_way_in()`
+(testrunner_13).
+
+### The GM panel's tabs as rows (0.168.13)
+
+The owner, of five GM panel tabs in turn: "need to fix this screen"
+(Health), "we need to improve ui on this" (Guilds), "upgrade this screen"
+(Account), "upgrade this 1 also" (Events, then Economy). One look for
+all: a name at the left, its value at the right, colour only where it
+means something (green fine, amber watch, red act), headings at 11.
+
+- **The rows helper** is `HealthTab.fill_rows(grid, rows, sentence)`:
+  each row `[name, value, colour?]`, the value right-aligned and wrapping
+  at 150 min; the sentence is the grid's tooltip. `HealthTab.row_value()`
+  and `row_colour()` read them back (the suite does). Guilds, Events and
+  Economy use it too.
+- **Health** (healthtab.gd): each page is grids (`players_grid`,
+  `tick_grid`, `data_grid`, `guard_grid`, `machine_grid`, `routes_grid`,
+  `receipt_grid`) built by static `*_rows()`; the month has a bar
+  (`month_bar`, `month_fill`, `share_colour`); presence gone quiet is
+  `players_note`, red, above the last rows. The old sentence functions stay
+  (tooltips, Results). "Read 20:20 · every 30 s" beside Refresh.
+- **Guilds** (guildstab.gd): the picker says "The Can (5)"
+  (`pick_text`); `about_grid` rows Leader, Members, Founded (date and
+  ago), Founded by. `name_check()` holds the server's GUILD_NAME_PATTERN
+  as it is typed (`name_check_label`; Rename waits for one that fits).
+  Disband has its own red part with `disband_note`; its second-press
+  line is "Press again to disband NAME."
+- **Account** (ownerpanel.tscn/.gd): ONE name box again -
+  `%movenameinput` is gone; Bring here and Go to (`moverow`) sit under
+  View account and read `%usernameinput` (`_move_name()`); Enter no
+  longer brings. Ban and Unban have no filled boxes (SB_safe is gone;
+  SB_danger stays for maintenance), their words red and green.
+  "blank days = for good" (`%sanctionhint`) beside the heading.
+  `%rankhint` says what the rank picked can do (`RANK_SAYS`,
+  `_on_rank_picked`). "ONLINE - N"; Bring everyone under the list, red.
+  The separators are 2 px gaps; `onlinescroll` 48 min, so the tab fits.
+- **Events** (eventstab.gd): Refresh and Report on the top row with the
+  count; the form is a grid with What, Whose, Starts, and "At" (the hour
+  and minute, `time_row`, shown only once a day is picked - beside the day
+  they made the panel too wide), Lasts with the name. `plan_label` says
+  what Schedule would set (`plan_text()`). On and coming is `on_grid`
+  (`list_rows()`, on in green); the last that ended is `ended_label`.
+  `cancel_pick.fit_to_longest_item = false` (a long name widened the
+  panel).
+- **Economy, Canary page** (economytab.gd): `canary_when_grid` ("Last
+  hourly check", amber when stale or never); `canary_when` is only the
+  note (`canary_note_text()`); `canary_checks` is a VBox of rows from
+  `check_rows()`: `check_name()` in plain words ("Gold adds up"), holds or
+  BROKEN, the numbers under it through `with_commas()`. A broken verdict
+  names the checks: "BROKEN: 1 check failed - Gold adds up."
+- **Everything fits 370 x its tallest tab**: each page measured busy as
+  well as quiet (the fit test only reads the busy Health state - the first
+  rows version was 385 wide there).
+
+Tests: `_test_the_gm_panel_health_tab()` (testrunner_4), the Guilds part
+of `_test_the_gm_panel_tidied_and_live()` (testrunner_9),
+`_test_move_players_from_the_list()` (testrunner_6), `_test_world_events()`
+(testrunner_3), the canary in `_test_the_gm_panel_economy_tab()`
+(testrunner_4).
+
 ### Which file owns which number
 
 | question | lives in | example |

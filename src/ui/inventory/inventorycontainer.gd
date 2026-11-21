@@ -58,6 +58,13 @@ signal transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot
 @export var grid_height: int = 4
 
 @export var inventory_slot_scene: PackedScene = preload("res://scene/ui/inventory/inventoryslot.tscn")
+# A GRID'S OWN SLOT SIZE (0.168.13, the owner: "the inventory is smaller then
+# the hudscreen"). The one slot scene is 48 with a 32 icon (16 px art at 2x);
+# a grid may draw it bigger without a slot scene of its own. Zero keeps the
+# scene's size. The icon stays a whole multiple of the 16 px art (48 = 3x).
+@export var slot_size: Vector2 = Vector2.ZERO
+@export var icon_size: Vector2 = Vector2.ZERO
+@export var count_font_size: int = 0
 
 
 # =============================================================================
@@ -140,6 +147,7 @@ func _create_slots() -> void:
 
 		slot_instance.slot_index = i
 		slot_instance.home_container = self
+		_size_slot(slot_instance)
 
 		# connect each slot's signals to this container's relay handlers.
 		#
@@ -159,6 +167,18 @@ func _create_slots() -> void:
 
 		add_child(slot_instance)
 		slots.append(slot_instance)
+
+
+func _size_slot(slot: Control) -> void:
+	"""This grid's own slot size, when it has one (`slot_size`)."""
+	if slot_size != Vector2.ZERO:
+		slot.custom_minimum_size = slot_size
+	var icon := slot.get_node_or_null("centercontainer/icon") as Control
+	if icon != null and icon_size != Vector2.ZERO:
+		icon.custom_minimum_size = icon_size
+	var count := slot.get_node_or_null("quantitylabel") as Label
+	if count != null and count_font_size > 0:
+		count.add_theme_font_size_override("font_size", count_font_size)
 
 
 func resize_grid(width: int, height: int) -> void:

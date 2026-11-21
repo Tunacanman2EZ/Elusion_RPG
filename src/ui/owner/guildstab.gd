@@ -16,6 +16,13 @@
 #     ban does - it takes the guild from every member. Rename first: it takes
 #     away the word, not the guild.
 #
+# (0.168.13, the owner: "we need to improve ui on this") rows, as the Health
+# tab has them: the picker names the guild and its size, the rows below say
+# who leads it, how many, and when and by whom it was founded - once each,
+# where it said "5 members, led by" three times. The new name is checked as
+# it is typed, against the server's own rule, so a refusal is seen before it
+# is sent. Disband has its own red part at the bottom, apart from Rename.
+#
 # Read when the panel opens, when the tab is picked and on the panel's clock
 # (OwnerPanel.refresh_tab()), and on Refresh; what each button did is said on
 # the tab and in the panel's Results box (`report`). No class_name: preloaded
@@ -27,11 +34,19 @@ const LIST_PATH := "/api/guild/list"
 const ACT_PATH := "/api/staff/guild"
 const SAY_GOOD := Color(0.55, 0.86, 0.6)
 const SAY_BAD := Color(0.95, 0.55, 0.5)
+const SAY_WARN := Color(0.95, 0.82, 0.5)
 const SAY_NOTE := Color(0.84, 0.8, 0.72)
 const HEAD := Color(0.93, 0.73, 0.3)
+# The heading over Disband: the panel's heading colour, gone red.
+const HEAD_DANGER := Color(0.9, 0.52, 0.45)
 const WIDTH := 250.0
 # Disband's second press, within this many seconds (the panel's own rule).
 const ARM_SECONDS := 4.0
+# The server's rule (the API's guilds/services.py GUILD_NAME_PATTERN and
+# MAX_GUILD_NAME): a letter or number, then 2 to 11 of those, spaces, ' and -.
+const NAME_MAX := 12
+const NAME_MIN := 3
+const NAME_RULE := "3 to 12 characters: letters, numbers, spaces, ' and -."
 
 # Where requests go; seams for the suite.
 var fetch: Callable = Callable(Api, "get_json")
@@ -43,15 +58,18 @@ var guilds: Array = []
 
 var status_label: Label
 var guild_pick: OptionButton
-var about_label: Label
+var about_grid: GridContainer
 var name_edit: LineEdit
+var name_check_label: Label
 var reason_edit: LineEdit
 var rename_button: Button
+var disband_note: Label
 var disband_button: Button
 var refresh_button: Button
 var say_label: Label
 var _busy: bool = false
 var _armed_left: float = 0.0
+var _now: int = 0
 
 
 func _init() -> void:
@@ -61,18 +79,19 @@ func _init() -> void:
 
 
 func _build() -> void:
-	add_child(_heading("EVERY GUILD"))
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
+	top.add_theme_constant_override("separation", 8)
 	add_child(top)
-	status_label = _label("Guilds: not read yet.", HEAD, false)
-	status_label.name = "status"
-	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(status_label)
 	refresh_button = _button("Refresh", "Read every guild again from the server.")
 	refresh_button.name = "refresh"
 	refresh_button.pressed.connect(refresh.bind(true))
 	top.add_child(refresh_button)
+	status_label = _label("Not read yet.", HealthTab.ROW_NAME, false)
+	status_label.name = "status"
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(status_label)
+
+	add_child(_heading("EVERY GUILD"))
 	guild_pick = OptionButton.new()
 	guild_pick.name = "pick"
 	guild_pick.focus_mode = Control.FOCUS_NONE
@@ -80,34 +99,62 @@ func _build() -> void:
 	guild_pick.custom_minimum_size = Vector2(WIDTH, 0)
 	guild_pick.item_selected.connect(_on_picked)
 	add_child(guild_pick)
-	about_label = _label("", SAY_NOTE)
-	about_label.name = "about"
-	add_child(about_label)
+	about_grid = GridContainer.new()
+	about_grid.name = "about"
+	about_grid.columns = 2
+	about_grid.add_theme_constant_override("h_separation", 12)
+	about_grid.add_theme_constant_override("v_separation", 3)
+	about_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_child(about_grid)
 
-	add_child(HSeparator.new())
-	add_child(_heading("RENAME OR DISBAND"))
-	name_edit = LineEdit.new()
-	name_edit.name = "newname"
-	name_edit.placeholder_text = "new name"
-	# The server's rule (the API's guilds/ GUILD_NAME_PATTERN).
-	name_edit.tooltip_text = "3 to 12 characters: letters, numbers, spaces, ' and -, starting with a letter or number."
-	name_edit.max_length = 12
-	add_child(name_edit)
+	add_child(_gap())
+	add_child(_heading("RENAME"))
 	reason_edit = LineEdit.new()
 	reason_edit.name = "reason"
-	reason_edit.placeholder_text = "reason (needed - it goes in the moderation log)"
+	reason_edit.placeholder_text = "reason - kept in the moderation log"
+	reason_edit.tooltip_text = "Needed for Rename and Disband. The moderation log keeps it, and who did it."
+	reason_edit.max_length = 500
 	add_child(reason_edit)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	add_child(row)
+	name_edit = LineEdit.new()
+	name_edit.name = "newname"
+	name_edit.placeholder_text = "new name"
+	name_edit.tooltip_text = NAME_RULE + " It starts with a letter or a number."
+	name_edit.max_length = NAME_MAX
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_edit.text_changed.connect(_on_name_typed)
+	row.add_child(name_edit)
 	rename_button = _button("Rename", "Give it the new name. Its members keep their guild; its history says it was renamed, not by whom.")
 	rename_button.name = "rename"
 	rename_button.pressed.connect(rename)
 	row.add_child(rename_button)
+	name_check_label = _label(NAME_RULE, HealthTab.ROW_NAME)
+	name_check_label.name = "namecheck"
+	name_check_label.add_theme_font_size_override("font_size", 12)
+	add_child(name_check_label)
+
+	add_child(_gap())
+	var danger := _heading("DISBAND")
+	danger.add_theme_color_override("font_color", HEAD_DANGER)
+	add_child(danger)
+	var last := HBoxContainer.new()
+	last.add_theme_constant_override("separation", 10)
+	add_child(last)
 	disband_button = _button("Disband", "Take the guild away from every member. Asks twice. Rename first if it is only the name.")
 	disband_button.name = "disband"
+	disband_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		disband_button.add_theme_color_override(state, SAY_BAD)
 	disband_button.pressed.connect(disband)
-	row.add_child(disband_button)
+	last.add_child(disband_button)
+	disband_note = _label("", HealthTab.ROW_NAME)
+	disband_note.name = "disbandnote"
+	disband_note.custom_minimum_size = Vector2(150, 0)
+	disband_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	disband_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	last.add_child(disband_note)
 	say_label = _label("", SAY_NOTE)
 	say_label.name = "say"
 	add_child(say_label)
@@ -120,6 +167,14 @@ static func _heading(words: String) -> Label:
 	label.add_theme_color_override("font_color", Color(0.82, 0.7, 0.45))
 	label.add_theme_font_size_override("font_size", 11)
 	return label
+
+
+static func _gap() -> Control:
+	"""Room above a heading, after rows (as the Health tab has it)."""
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 4)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return gap
 
 
 func _label(text: String, colour: Color, wraps: bool = true) -> Label:
@@ -162,8 +217,13 @@ static func refusal(res: Dictionary) -> String:
 	return "The server refused (%d): %s" % [status, words]
 
 
+static func pick_text(guild: Dictionary) -> String:
+	"""What the picker shows: 'The Can (5)'. The rest is in the rows."""
+	return "%s (%d)" % [str(guild.get("name", "?")), int(guild.get("size", 0))]
+
+
 static func line_for(guild: Dictionary) -> String:
-	"""'The First - 5 members, led by Tunacan'."""
+	"""'The First - 5 members, led by Tunacan' (the picker's tooltip)."""
 	var members: int = int(guild.get("size", 0))
 	var leader: String = str(guild.get("leader", ""))
 	return "%s - %d member%s%s" % [str(guild.get("name", "?")), members, "" if members == 1 else "s",
@@ -171,7 +231,8 @@ static func line_for(guild: Dictionary) -> String:
 
 
 static func about_text(guild: Dictionary, now: int) -> String:
-	"""'Founded by Tunacan, Oct 28 14:02. 5 members, led by Tunacan.'"""
+	"""'Founded by Tunacan, Oct 28 14:02. 5 members, led by Tunacan.' (the
+	rows' tooltip)."""
 	var founded: int = int(guild.get("created_at", 0))
 	var members: int = int(guild.get("size", 0))
 	var bits: Array[String] = []
@@ -181,6 +242,65 @@ static func about_text(guild: Dictionary, now: int) -> String:
 	bits.append("%d member%s%s." % [members, "" if members == 1 else "s",
 		", led by %s" % str(guild.get("leader", "")) if str(guild.get("leader", "")) != "" else ""])
 	return " ".join(bits)
+
+
+static func about_rows(guild: Dictionary, now: int) -> Array:
+	"""The one picked, as rows: each said once."""
+	if guild.is_empty():
+		return []
+	var leader: String = str(guild.get("leader", ""))
+	var founded: int = int(guild.get("created_at", 0))
+	var when: String = "-"
+	if founded > 0:
+		var ago: String = LocalTime.ago(founded, now)
+		when = LocalTime.date(founded) + (" (%s)" % ago if ago != "" else "")
+	var by: String = str(guild.get("founded_by", ""))
+	return [["Leader", leader if leader != "" else "nobody", HealthTab.ROW_VALUE if leader != "" else SAY_WARN],
+		["Members", str(int(guild.get("size", 0)))],
+		["Founded", when],
+		["Founded by", by if by != "" else "-"]]
+
+
+static func name_check(typed: String, current: String = "", taken: Array = []) -> Array:
+	"""[what to say, its colour, whether Rename may send it] - the server's rule,
+	said before the server has to refuse it."""
+	var wanted: String = typed.strip_edges()
+	if wanted == "":
+		return [NAME_RULE, HealthTab.ROW_NAME, false]
+	var first: String = wanted.left(1)
+	if not _name_char(first) or first == " " or first == "'" or first == "-":
+		return ["Start with a letter or a number.", SAY_BAD, false]
+	for i in wanted.length():
+		var one: String = wanted.substr(i, 1)
+		if not _name_char(one):
+			return ["Not allowed: \"%s\". Letters, numbers, spaces, ' and - only." % one, SAY_BAD, false]
+	if wanted.length() < NAME_MIN:
+		return ["At least %d characters (%d so far)." % [NAME_MIN, wanted.length()], SAY_BAD, false]
+	if wanted.length() > NAME_MAX:
+		return ["At most %d characters (%d)." % [NAME_MAX, wanted.length()], SAY_BAD, false]
+	if wanted.to_lower() == current.to_lower():
+		return ["That is its name already.", SAY_WARN, false]
+	for other: Variant in taken:
+		if str(other).to_lower() == wanted.to_lower():
+			return ["Another guild is called that.", SAY_BAD, false]
+	return ["Fits: %d of %d." % [wanted.length(), NAME_MAX], SAY_GOOD, true]
+
+
+static func _name_char(one: String) -> bool:
+	"""ASCII letters and numbers, space, ' and - (the server's [A-Za-z0-9 '\\-])."""
+	if one.length() != 1:
+		return false
+	var code: int = one.unicode_at(0)
+	return (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122) \
+		or one == " " or one == "'" or one == "-"
+
+
+static func disband_text(guild: Dictionary) -> String:
+	if guild.is_empty():
+		return "Nothing to disband."
+	var members: int = int(guild.get("size", 0))
+	return "Takes %s from %s. Asks twice." % [
+		str(guild.get("name", "?")), "its 1 member" if members == 1 else "all %d members" % members]
 
 
 # =============================================================================
@@ -197,7 +317,7 @@ func refresh(by_hand: bool = false) -> void:
 	if not is_instance_valid(self):
 		return
 	if not res.get("ok", false) or not (res.get("data") is Dictionary):
-		status_label.text = "Guilds: not read."
+		status_label.text = "Not read."
 		_say(refusal(res), SAY_BAD)
 		return
 	var data: Dictionary = res.get("data")
@@ -226,6 +346,10 @@ func rename() -> void:
 	if wanted == "":
 		_say("Type the new name first.", SAY_BAD)
 		return
+	var fits: Array = name_check(wanted, str(guild.get("name", "")))
+	if not bool(fits[2]):
+		_say(str(fits[0]), SAY_BAD)
+		return
 	if why == "":
 		_say("Give a reason - it goes in the moderation log.", SAY_BAD)
 		return
@@ -243,6 +367,7 @@ func rename() -> void:
 	_say("Renamed %s to %s - its members were not told who did it." % [str(said.get("was", guild.get("name", ""))),
 		str(said.get("guild", wanted))], SAY_GOOD)
 	name_edit.text = ""
+	_check_name()
 	await refresh()
 
 
@@ -258,8 +383,7 @@ func disband() -> void:
 	if _armed_left <= 0.0:
 		_armed_left = ARM_SECONDS
 		disband_button.text = "Sure? Disband"
-		_say("Press Disband again to take %s from its %d member%s." % [str(guild.get("name", "")),
-			int(guild.get("size", 0)), "" if int(guild.get("size", 0)) == 1 else "s"], SAY_BAD)
+		_say("Press again to disband %s." % str(guild.get("name", "")), SAY_BAD)
 		return
 	_disarm()
 	_busy = true
@@ -298,26 +422,49 @@ func _show_list(now: int = 0) -> void:
 	var kept: String = str(picked().get("name", "")) if guild_pick.item_count > 0 else ""
 	guild_pick.clear()
 	for guild in guilds:
-		guild_pick.add_item(line_for(guild))
+		guild_pick.add_item(pick_text(guild))
+		guild_pick.set_item_tooltip(guild_pick.item_count - 1, line_for(guild))
 	var index: int = 0
 	for i in guilds.size():
 		if str((guilds[i] as Dictionary).get("name", "")) == kept:
 			index = i
 	if not guilds.is_empty():
 		guild_pick.select(index)
-	status_label.text = "No guilds yet." if guilds.is_empty() else "%d guild%s." % [guilds.size(), "" if guilds.size() == 1 else "s"]
-	var none: bool = guilds.is_empty()
-	guild_pick.disabled = none
-	rename_button.disabled = none
-	disband_button.disabled = none
-	_show_about(now)
+	status_label.text = "No guilds yet." if guilds.is_empty() else "%d guild%s on the server" % [guilds.size(), "" if guilds.size() == 1 else "s"]
+	guild_pick.disabled = guilds.is_empty()
+	if now > 0:
+		_now = now
+	_show_about()
 
 
 func _on_picked(_index: int) -> void:
 	_disarm()
-	_show_about(int(Time.get_unix_time_from_system()))
+	_show_about()
 
 
-func _show_about(now: int) -> void:
+func _show_about() -> void:
 	var guild: Dictionary = picked()
-	about_label.text = "" if guild.is_empty() else about_text(guild, now if now > 0 else int(Time.get_unix_time_from_system()))
+	var now: int = _now if _now > 0 else int(Time.get_unix_time_from_system())
+	HealthTab.fill_rows(about_grid, about_rows(guild, now), "" if guild.is_empty() else about_text(guild, now))
+	guild_pick.tooltip_text = "" if guild.is_empty() else line_for(guild)
+	disband_note.text = disband_text(guild)
+	disband_button.disabled = guild.is_empty()
+	_check_name()
+
+
+func _on_name_typed(_text: String) -> void:
+	_check_name()
+
+
+func _check_name() -> void:
+	"""The new name against the server's rule, as it is typed; Rename waits
+	for one that fits."""
+	var guild: Dictionary = picked()
+	var taken: Array = []
+	for other in guilds:
+		if str((other as Dictionary).get("name", "")) != str(guild.get("name", "")):
+			taken.append(str((other as Dictionary).get("name", "")))
+	var said: Array = name_check(name_edit.text, str(guild.get("name", "")), taken)
+	name_check_label.text = str(said[0])
+	name_check_label.add_theme_color_override("font_color", said[1])
+	rename_button.disabled = guild.is_empty() or not bool(said[2])

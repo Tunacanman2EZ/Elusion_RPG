@@ -35,38 +35,6 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="SB_safe"]
-content_margin_left = 10.0
-content_margin_top = 6.0
-content_margin_right = 10.0
-content_margin_bottom = 6.0
-bg_color = Color(0.098039, 0.23529, 0.15686, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.25098, 0.52549, 0.34902, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_safe_hover"]
-content_margin_left = 10.0
-content_margin_top = 6.0
-content_margin_right = 10.0
-content_margin_bottom = 6.0
-bg_color = Color(0.14902, 0.34118, 0.22745, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.36078, 0.70196, 0.47059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
 [sub_resource type="StyleBoxFlat" id="SB_status"]
 content_margin_left = 9.0
 content_margin_top = 6.0
@@ -194,7 +162,7 @@ metadata/_tab_index = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "ACCOUNT"
+text = "PLAYER"
 
 [node name="usernameinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1354814840]
 unique_name_in_owner = true
@@ -202,7 +170,8 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.92, 0.9, 0.85, 1)
 theme_override_colors/font_placeholder_color = Color(0.55, 0.52, 0.47, 1)
 theme_override_font_sizes/font_size = 13
-placeholder_text = "username"
+tooltip_text = "Who every button on this tab is for. Type a name, or click one in the online list."
+placeholder_text = "player's name"
 
 [node name="lookrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
@@ -230,14 +199,52 @@ tooltip_text = "Their character's last snapshots, and Restore to put it back to 
 theme_override_font_sizes/font_size = 13
 text = "Save history"
 
-[node name="sep2" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112243]
+[node name="moverow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="sanctionlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112262]
+[node name="tpbringbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Move them to where you are standing - your area AND your spot, beside you. Refused by the server for anyone who outranks you."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Bring here"
+
+[node name="tpgotobutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Go to them and stand beside them, in whatever area they are playing. Moves only you - no order is queued for anybody."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Go to"
+
+[node name="sep2" type="Control" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112243]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="sanctionhead" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="sanctionlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionhead" unique_id=1900112262]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "SANCTIONS"
+
+[node name="sanctionhint" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionhead"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Kick only signs them out - they can log straight back in. A ban with the days box left blank is for good."
+mouse_filter = 0
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = "blank days = for good"
 
 [node name="reasonrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
@@ -281,8 +288,6 @@ size_flags_horizontal = 3
 tooltip_text = "Ban for the days above, or permanently if blank. Needs a reason."
 theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_danger")
-theme_override_styles/hover = SubResource("SB_danger_hover")
 text = "Ban"
 
 [node name="unbanbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionrow" unique_id=1900112242]
@@ -292,12 +297,12 @@ size_flags_horizontal = 3
 tooltip_text = "Lift an existing ban"
 theme_override_colors/font_color = Color(0.61961, 0.87843, 0.70196, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_safe")
-theme_override_styles/hover = SubResource("SB_safe_hover")
 text = "Unban"
 
-[node name="sep3" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112246]
+[node name="sep3" type="Control" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112246]
+custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
+mouse_filter = 2
 
 [node name="ranklabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112264]
 layout_mode = 2
@@ -324,15 +329,19 @@ theme_override_font_sizes/font_size = 13
 text = "Set rank"
 
 [node name="rankhint" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112268]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.55, 0.51, 0.45, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
 tooltip_text = "mod: kick, and ban for up to 30 days\ndev: everything a mod can, plus permanent bans and the economy tools\nowner: everything, plus the server switch"
 mouse_filter = 0
-text = "mod: kick, 30-day ban · dev: + permanent · owner: + server"
+autowrap_mode = 3
+text = "Player: no staff powers."
 
-[node name="sep5" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112280]
+[node name="sep5" type="Control" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112280]
+custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
+mouse_filter = 2
 
 [node name="movehead" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
@@ -344,7 +353,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "MOVE PLAYERS"
+text = "ONLINE"
 vertical_alignment = 1
 clip_text = true
 
@@ -356,51 +365,9 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 11
 text = "Refresh"
 
-[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/movehead"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(112, 0)
-layout_mode = 2
-tooltip_text = "Move EVERY account in the game to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
-focus_mode = 0
-theme_override_font_sizes/font_size = 11
-text = "Bring everyone"
-
-[node name="moverow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
-layout_mode = 2
-theme_override_constants/separation = 5
-
-[node name="movenameinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Who to move. Type a name, or click one in the list below. Enter brings them."
-theme_override_colors/font_color = Color(0.92, 0.9, 0.85, 1)
-theme_override_colors/font_placeholder_color = Color(0.55, 0.52, 0.47, 1)
-theme_override_font_sizes/font_size = 13
-placeholder_text = "player's name"
-max_length = 32
-
-[node name="tpbringbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(86, 0)
-layout_mode = 2
-tooltip_text = "Move them to where you are standing - your area AND your spot, beside you. Refused by the server for anyone who outranks you."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Bring here"
-
-[node name="tpgotobutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(64, 0)
-layout_mode = 2
-tooltip_text = "Go to them and stand beside them, in whatever area they are playing. Moves only you - no order is queued for anybody."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Go to"
-
 [node name="onlinescroll" type="ScrollContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -410,6 +377,18 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
+
+[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+tooltip_text = "Move EVERY account in the game to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
+focus_mode = 0
+theme_override_colors/font_color = Color(0.95, 0.55, 0.5, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.55, 0.5, 1)
+theme_override_colors/font_pressed_color = Color(0.95, 0.55, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "Bring everyone"
 
 [node name="testinglabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/testing" unique_id=1900112281]
 layout_mode = 2

@@ -25,6 +25,10 @@
 #
 # Built like the Economy tab (economytab.gd): made in code, read when the
 # panel opens, on Refresh and every REFRESH_SECONDS while it is on screen;
+# (0.168.13, the owner: "need to fix this screen") each page reads as rows,
+# a name and its number, coloured only where it matters, with the month's
+# data as a bar - the sentences they replaced are each grid's tooltip and
+# what Results is told;
 # what Refresh read and what the switch did go in the panel's Results box
 # too (`report`). NARROW AND SHORT: four pages that take turns, nothing
 # scrolls. The switch is here alone since 0.112.1 (it was the Testing tab's
@@ -40,6 +44,9 @@ const SAY_BAD := Color(0.95, 0.55, 0.5)
 const SAY_WARN := Color(0.95, 0.82, 0.5)
 const SAY_NOTE := Color(0.84, 0.8, 0.72)
 const HEAD := Color(0.93, 0.73, 0.3)
+# A row's name, and a value that says nothing is wrong or right (0.168.13).
+const ROW_NAME := Color(0.7, 0.66, 0.6)
+const ROW_VALUE := Color(0.93, 0.9, 0.82)
 # The GM panel's inside width, near enough (the World tab's).
 const WIDTH := 250.0
 const PAGES := [["players", "Players"], ["data", "Data"], ["machine", "Machine"], ["receipts", "Receipts"],
@@ -72,18 +79,20 @@ var refresh_button: Button
 var read_row: HBoxContainer
 var as_of_label: Label
 # Players.
-var players_label: Label
-var data_label: Label
-var month_label: Label
-var guard_label: Label
-var nearby_label: Label
+# THE ROWS (0.168.13): a name and its value, two columns a page part.
+var players_note: Label
+var players_grid: GridContainer
+var tick_grid: GridContainer
+var data_grid: GridContainer
+var month_bar: Control
+var month_fill: ColorRect
+var guard_grid: GridContainer
+var machine_grid: GridContainer
+var routes_grid: GridContainer
+var receipt_grid: GridContainer
 # Machine.
-var tick_label: Label
-var machine_label: Label
-var routes_label: Label
 # Receipts.
 var verdict_label: Label
-var detail_label: Label
 var receipts_switch: CheckButton
 var build_label: Label
 var say_label: Label
@@ -139,33 +148,46 @@ func _build() -> void:
 	# ---- PLAYERS ---------------------------------------------------------------
 	var players_page := _page("players")
 	players_page.add_child(_head("Players"))
-	players_label = _line("players")
-	players_page.add_child(players_label)
+	players_note = _line("playersnote")
+	players_note.visible = false
+	players_page.add_child(players_note)
+	players_grid = _grid(players_page, "players")
+	players_page.add_child(_gap())
 	players_page.add_child(_head("The tick"))
-	tick_label = _line("tick")
-	players_page.add_child(tick_label)
+	tick_grid = _grid(players_page, "tick")
 
 	# ---- DATA ------------------------------------------------------------------
 	var data_page := _page("data")
 	data_page.add_child(_head("Data going out"))
-	data_label = _line("data")
-	data_page.add_child(data_label)
-	month_label = _line("month")
-	data_page.add_child(month_label)
+	data_grid = _grid(data_page, "data")
+	month_bar = Control.new()
+	month_bar.name = "monthbar"
+	month_bar.custom_minimum_size = Vector2(0, 6)
+	month_bar.visible = false
+	var track := ColorRect.new()
+	track.name = "track"
+	track.color = Color(1, 1, 1, 0.08)
+	track.set_anchors_preset(Control.PRESET_FULL_RECT)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	month_bar.add_child(track)
+	month_fill = ColorRect.new()
+	month_fill.name = "fill"
+	month_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
+	month_fill.anchor_right = 0.0
+	month_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	month_bar.add_child(month_fill)
+	data_page.add_child(month_bar)
+	data_page.add_child(_gap())
 	data_page.add_child(_head("The data guard"))
-	guard_label = _line("guard")
-	data_page.add_child(guard_label)
-	nearby_label = _line("nearby")
-	data_page.add_child(nearby_label)
+	guard_grid = _grid(data_page, "guard")
 
 	# ---- MACHINE ---------------------------------------------------------------
 	var machine_page := _page("machine")
 	machine_page.add_child(_head("The machine"))
-	machine_label = _line("machine")
-	machine_page.add_child(machine_label)
-	machine_page.add_child(_head("Slowest routes"))
-	routes_label = _line("routes")
-	machine_page.add_child(routes_label)
+	machine_grid = _grid(machine_page, "machine")
+	machine_page.add_child(_gap())
+	machine_page.add_child(_head("Slowest routes (p99)"))
+	routes_grid = _grid(machine_page, "routes")
 
 	# ---- RECEIPTS --------------------------------------------------------------
 	var receipts_page := _page("receipts")
@@ -173,8 +195,7 @@ func _build() -> void:
 	verdict_label = _label("Not read yet.", SAY_NOTE)
 	verdict_label.name = "verdict"
 	receipts_page.add_child(verdict_label)
-	detail_label = _line("detail")
-	receipts_page.add_child(detail_label)
+	receipt_grid = _grid(receipts_page, "detail")
 	receipts_switch = CheckButton.new()
 	receipts_switch.name = "receiptsswitch"
 	receipts_switch.text = "Kills need the server's count"
@@ -229,6 +250,70 @@ func _line(line_name: String) -> Label:
 	label.name = line_name
 	label.add_theme_font_size_override("font_size", 12)
 	return label
+
+
+func _gap() -> Control:
+	"""Room above a page's second heading, after rows."""
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 6)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return gap
+
+
+func _grid(page_box: VBoxContainer, grid_name: String) -> GridContainer:
+	"""A page part's rows: a name, and its value at the right (0.168.13)."""
+	var grid := GridContainer.new()
+	grid.name = grid_name
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 3)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page_box.add_child(grid)
+	return grid
+
+
+static func fill_rows(grid: GridContainer, rows: Array, sentence: String = "") -> void:
+	"""The rows anew: each [name, value, colour]. The sentence they say is the
+	grid's tooltip."""
+	for old: Node in grid.get_children():
+		grid.remove_child(old)
+		old.queue_free()
+	for row: Variant in rows:
+		if not (row is Array) or (row as Array).size() < 2:
+			continue
+		var key := Label.new()
+		key.text = str(row[0])
+		key.add_theme_color_override("font_color", ROW_NAME)
+		key.add_theme_font_size_override("font_size", 13)
+		key.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		grid.add_child(key)
+		var value := Label.new()
+		value.text = str(row[1])
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		value.custom_minimum_size = Vector2(150, 0)
+		value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		value.add_theme_color_override("font_color", row[2] if (row as Array).size() > 2 and row[2] is Color else ROW_VALUE)
+		value.add_theme_font_size_override("font_size", 14)
+		grid.add_child(value)
+	grid.tooltip_text = sentence
+
+
+static func row_value(grid: GridContainer, row_name: String) -> String:
+	"""The value beside `row_name` (the suite reads them)."""
+	var cells: Array[Node] = grid.get_children()
+	for i in range(0, cells.size() - 1, 2):
+		if (cells[i] as Label).text == row_name:
+			return (cells[i + 1] as Label).text
+	return ""
+
+
+static func row_colour(grid: GridContainer, row_name: String) -> Color:
+	var cells: Array[Node] = grid.get_children()
+	for i in range(0, cells.size() - 1, 2):
+		if (cells[i] as Label).text == row_name:
+			return (cells[i + 1] as Label).get_theme_color("font_color")
+	return Color.TRANSPARENT
 
 
 func _label(text: String, colour: Color, wraps: bool = true) -> Label:
@@ -410,32 +495,31 @@ func show_switch(on: bool) -> void:
 func show_answer(data: Dictionary) -> void:
 	answer = data
 	var now: int = int(data.get("now", 0))
-	as_of_label.text = "Read at %s; again every 30 s." % LocalTime.clock(now) if now > 0 else ""
+	as_of_label.text = "Read %s · every %d s" % [LocalTime.clock(now), int(REFRESH_SECONDS)] if now > 0 else ""
 	var presence: Dictionary = _dict(data.get("presence"))
-	players_label.text = players_text(data)
-	players_label.add_theme_color_override("font_color",
-		SAY_NOTE if bool(presence.get("reporting", false)) else SAY_BAD)
-	data_label.text = data_text(data)
-	var month: Variant = data.get("month")
-	month_label.text = month_text(month)
-	month_label.add_theme_color_override("font_color", share_colour(month))
-	var budget: Dictionary = _dict(data.get("budget"))
-	guard_label.text = guard_text(budget)
-	guard_label.add_theme_color_override("font_color", guard_colour(budget))
-	var crowd: Dictionary = _dict(data.get("crowd"))
-	nearby_label.text = nearby_text(crowd)
-	nearby_label.add_theme_color_override("font_color",
-		{"now": SAY_BAD, "watch": SAY_WARN, "fine": SAY_GOOD, "on": SAY_GOOD}.get(str(crowd.get("verdict", "")), SAY_NOTE))
+	players_note.text = players_quiet_text(data)
+	players_note.visible = players_note.text != ""
+	players_note.add_theme_color_override("font_color",
+		SAY_NOTE if _dict(presence.get("last")).is_empty() else SAY_BAD)
+	fill_rows(players_grid, players_rows(data), players_text(data))
 	var tick: Dictionary = _dict(data.get("tick"))
-	tick_label.text = tick_text(tick)
-	tick_label.add_theme_color_override("font_color",
-		{"steady": SAY_GOOD, "late": SAY_WARN}.get(str(tick.get("verdict", "")), SAY_NOTE))
-	machine_label.text = machine_text(_dict(data.get("machine")))
-	routes_label.text = routes_text(_dict(data.get("routes")))
+	fill_rows(tick_grid, tick_rows(tick), tick_text(tick))
+	var month: Variant = data.get("month")
+	fill_rows(data_grid, data_rows(data), data_text(data) + " " + month_text(month))
+	month_bar.visible = month is Dictionary
+	if month is Dictionary:
+		month_fill.anchor_right = clampf(float((month as Dictionary).get("share", 0.0)), 0.0, 1.0)
+		month_fill.offset_right = 0.0
+		month_fill.color = share_colour(month)
+	var budget: Dictionary = _dict(data.get("budget"))
+	var crowd: Dictionary = _dict(data.get("crowd"))
+	fill_rows(guard_grid, guard_rows(budget, crowd), guard_text(budget) + " " + nearby_text(crowd))
+	fill_rows(machine_grid, machine_rows(_dict(data.get("machine"))), machine_text(_dict(data.get("machine"))))
+	fill_rows(routes_grid, routes_rows(_dict(data.get("routes"))), routes_text(_dict(data.get("routes"))))
 	var receipts: Dictionary = _dict(data.get("receipts"))
 	verdict_label.text = verdict_text(receipts)
 	verdict_label.add_theme_color_override("font_color", verdict_colour(receipts))
-	detail_label.text = detail_text(receipts)
+	fill_rows(receipt_grid, receipt_rows(receipts), detail_text(receipts))
 	build_label.text = build_text(receipts)
 	build_label.add_theme_color_override("font_color", SAY_WARN)
 	show_switch(bool(receipts.get("on", false)))
@@ -704,6 +788,154 @@ static func detail_text(receipts: Dictionary) -> String:
 	if not named.is_empty():
 		text += " (%s)" % ", ".join(named)
 	return text + "."
+
+
+# =============================================================================
+# THE ROWS (0.168.13): each page's numbers, a name and a value; the sentences
+# above stay for the tooltips and for Results.
+# =============================================================================
+
+static func players_quiet_text(data: Dictionary) -> String:
+	"""Said above the rows only when presence.py is not writing."""
+	var presence: Dictionary = _dict(data.get("presence"))
+	var last: Dictionary = _dict(presence.get("last"))
+	if last.is_empty():
+		return "presence.py has not written a minute yet. It writes one a minute once it runs this update."
+	if not bool(presence.get("reporting", false)):
+		return "presence.py has not written for %s - is it running? The rows are the last it wrote." % Lands.time_text(
+			int(last.get("age_seconds", 0)))
+	return ""
+
+
+static func players_rows(data: Dictionary) -> Array:
+	var presence: Dictionary = _dict(data.get("presence"))
+	var last: Dictionary = _dict(presence.get("last"))
+	if last.is_empty():
+		return []
+	var rows: Array = [["Online", str(int(last.get("connections", 0)))],
+		["In an area", str(int(last.get("players", 0)))]]
+	var crowd: Variant = last.get("crowd", [])
+	if crowd is Array and not (crowd as Array).is_empty() and (crowd as Array)[0] is Array:
+		rows.append(["Biggest crowd", "%s, %d" % [area_name(str(crowd[0][0])), int(crowd[0][1])]])
+	var day: Dictionary = _dict(presence.get("day"))
+	var week: Dictionary = _dict(presence.get("week"))
+	if int(day.get("samples", 0)) > 0:
+		rows.append(["Most today", "%d%s" % [int(day.get("peak_players", 0)), _peak_area(day)]])
+	if int(week.get("samples", 0)) > int(day.get("samples", 0)):
+		rows.append(["Most this week", "%d%s" % [int(week.get("peak_players", 0)), _peak_area(week)]])
+	return rows
+
+
+static func tick_rows(tick: Dictionary) -> Array:
+	if tick.get("per_second") == null:
+		return [["Tick", "not measured yet", SAY_NOTE]]
+	var steady: bool = str(tick.get("verdict", "")) == "steady"
+	return [["Tick", "%.1f a second, %s" % [float(tick.get("per_second", 0.0)), "steady" if steady else "falling behind"],
+			SAY_GOOD if steady else SAY_WARN],
+		["Late beats today", str(int(tick.get("late_today", 0)))]]
+
+
+static func data_rows(data: Dictionary) -> Array:
+	var rows: Array = []
+	var last: Dictionary = _dict(_dict(data.get("presence")).get("last"))
+	if last.is_empty():
+		rows.append(["Going out", "nothing measured yet", SAY_NOTE])
+	elif last.get("net_per_second") == null:
+		rows.append(["Game sockets", rate_text(float(last.get("bytes_per_second", 0.0)))])
+	else:
+		rows.append(["Going out now", rate_text(float(last.get("net_per_second", 0.0)))])
+		rows.append(["Game sockets", rate_text(float(last.get("bytes_per_second", 0.0)))])
+	var month: Variant = data.get("month")
+	if not (month is Dictionary):
+		rows.append(["This month", "not enough measured yet", SAY_NOTE])
+		return rows
+	var held: Dictionary = month
+	var gib: float = float(held.get("gib", 0.0))
+	var shown: String = ("%.1f" % gib) if gib < 10.0 else GameConstants.commas(roundi(gib))
+	rows.append(["Month at this rate", "%s / %s GiB%s" % [shown, GameConstants.commas(int(held.get("allowance_gib", 1000))),
+		" (sockets)" if str(held.get("source", "")) == "presence" else ""], share_colour(month)])
+	if float(held.get("over_cost", 0.0)) > 0.0:
+		rows.append(["Over the plan", "about $%s" % GameConstants.commas(roundi(float(held.get("over_cost", 0.0)))), SAY_BAD])
+	return rows
+
+
+static func guard_rows(budget: Dictionary, crowd: Dictionary) -> Array:
+	var rows: Array = []
+	if budget.is_empty():
+		rows.append(["Guard", "not on this server yet", SAY_NOTE])
+	elif not bool(budget.get("on", false)):
+		rows.append(["Guard", "switched off", SAY_WARN])
+	else:
+		var level: String = {"half": "holding - half rate",
+			"crowd": "holding hard - %d a room" % int(budget.get("crowd_cap", 16) if budget.get("crowd_cap") != null else 16),
+			"alone": "month nearly spent - players alone"}.get(str(budget.get("level", "full")), "full speed")
+		rows.append(["Guard", level, guard_colour(budget)])
+		if budget.get("used_gib") != null and budget.get("since") != null:
+			var used: float = float(budget.get("used_gib"))
+			rows.append(["Counted this month", "%s GiB since %s" % [("%.2f" % used) if used < 10.0 else GameConstants.commas(roundi(used)),
+				LocalTime.date(int(budget.get("since")))]])
+		if budget.get("affordable_per_second") != null and float(budget.get("affordable_per_second")) > 0.0:
+			rows.append(["Can still send", rate_text(float(budget.get("affordable_per_second")))])
+	var verdict: String = str(crowd.get("verdict", ""))
+	var nearby: String = {"on": "on", "fine": "not needed yet", "watch": "worth planning", "now": "needed now"}.get(
+		verdict, "not measured yet")
+	rows.append(["Nearby players only", nearby,
+		{"now": SAY_BAD, "watch": SAY_WARN, "fine": SAY_GOOD, "on": SAY_GOOD}.get(verdict, SAY_NOTE)])
+	return rows
+
+
+static func machine_rows(machine: Dictionary) -> Array:
+	var rows: Array = []
+	if machine.get("load1") != null:
+		var cores: int = int(machine.get("cores", 1)) if machine.get("cores") != null else 1
+		var load: float = float(machine.get("load1"))
+		rows.append(["Load", "%.2f on %d core%s" % [load, cores, "" if cores == 1 else "s"],
+			SAY_BAD if load >= cores else (SAY_WARN if load >= 0.7 * cores else ROW_VALUE)])
+	if machine.get("mem_free_mb") != null:
+		rows.append(["Memory free", "%s MB" % GameConstants.commas(int(machine.get("mem_free_mb")))])
+	if machine.get("disk_free_gb") != null:
+		rows.append(["Disk free", "%.1f of %.1f GB" % [float(machine.get("disk_free_gb")), float(machine.get("disk_total_gb", 0.0))]])
+	if machine.get("db_mb") != null:
+		rows.append(["Database", "%s MB" % GameConstants.commas(roundi(float(machine.get("db_mb"))))])
+	if rows.is_empty():
+		rows.append(["The machine", "nothing read yet", SAY_NOTE])
+	return rows
+
+
+static func routes_rows(routes: Dictionary) -> Array:
+	var rows: Array = []
+	var slowest: Variant = routes.get("slowest", [])
+	if slowest is Array:
+		for row in slowest:
+			if row is Dictionary and rows.size() < ROUTES_NAMED:
+				var named: String = route_name(str(row.get("route", "")))
+				rows.append([named.left(1).to_upper() + named.substr(1), "%s ms" % _ms(float(row.get("p99_ms", 0.0)))])
+	if rows.is_empty():
+		rows.append(["Routes", "none asked often enough yet", SAY_NOTE])
+	var errors: int = int(routes.get("errors", 0))
+	rows.append(["Server errors", "%s in %s" % ["none" if errors == 0 else str(errors),
+		Lands.time_text(maxi(60, int(routes.get("uptime_seconds", 0))))], SAY_GOOD if errors == 0 else SAY_BAD])
+	return rows
+
+
+static func receipt_rows(receipts: Dictionary) -> Array:
+	var paid: int = int(receipts.get("paid", 0))
+	var days: int = int(receipts.get("days", 7))
+	if paid == 0:
+		return [["Kills paid, %d days" % days, "none to measure by", SAY_NOTE]]
+	var rows: Array = [["Kills paid, %d days" % days, GameConstants.commas(paid)],
+		["Backed by the server", "%s (%s)" % [GameConstants.commas(int(receipts.get("backed", 0))), _percent(receipts.get("share"))]],
+		["Short / not due / never", "%d / %d / %d" % [int(receipts.get("short", 0)), int(receipts.get("not_due", 0)),
+			int(receipts.get("never", 0))]]]
+	var named: Array[String] = []
+	var never: Variant = receipts.get("never_by_enemy", [])
+	if never is Array:
+		for pair in never:
+			if pair is Array and (pair as Array).size() == 2:
+				named.append("%s %d" % [EnemyPortraits.display_name(str(pair[0])), int(pair[1])])
+	if not named.is_empty():
+		rows.append(["Never seen", ", ".join(named)])
+	return rows
 
 
 static func build_text(receipts: Dictionary) -> String:

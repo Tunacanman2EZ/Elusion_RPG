@@ -1294,10 +1294,17 @@ func _test_move_players_from_the_list() -> void:
 		return {"ok": true, "data": {"area": "field"}}
 
 	var list: VBoxContainer = gm.get_node_or_null("%onlinelist") as VBoxContainer
-	var name_box: LineEdit = gm.get_node_or_null("%movenameinput") as LineEdit
-	check("Move Players has its own name box and a list of who is online",
-		list != null and name_box != null and gm.get_node_or_null("%onlinerefresh") != null)
-	check("  and Bring everyone stays, beside the list", gm.get_node_or_null("%tpeveryonebutton") != null)
+	# ONE NAME BOX AGAIN (0.168.13, the owner: "upgrade this screen"): Bring
+	# here and Go to read the tab's own box, under View account.
+	var name_box: LineEdit = gm.get_node_or_null("%usernameinput") as LineEdit
+	check("Move Players reads the tab's one name box, and has a list of who is online",
+		list != null and name_box != null and gm.get_node_or_null("%onlinerefresh") != null
+		and gm.get_node_or_null("%movenameinput") == null
+		and (gm.get_node("%tpbringbutton") as Button).get_parent().get_index() == (gm.get_node("%viewbutton") as Button).get_parent().get_index() + 1)
+	check("  and Bring everyone stays, under the list, in red",
+		gm.get_node_or_null("%tpeveryonebutton") != null
+		and (gm.get_node("%tpeveryonebutton") as Button).get_index() == (gm.get_node("%onlinescroll") as Control).get_index() + 1
+		and (gm.get_node("%tpeveryonebutton") as Button).get_theme_color("font_color") == Color(0.95, 0.55, 0.5))
 	if list == null or name_box == null:
 		gm.queue_free()
 		Api.username = was_name
@@ -1308,7 +1315,7 @@ func _test_move_players_from_the_list() -> void:
 	await get_tree().process_frame
 	var rows: Array = list.get_children().filter(func(n: Node) -> bool: return n is HBoxContainer)
 	check("everyone online but you is listed", rows.size() == 2, rows.size())
-	check("  with a count", (gm.get_node("%onlinelabel") as Label).text == "MOVE PLAYERS - 2 ONLINE",
+	check("  with a count", (gm.get_node("%onlinelabel") as Label).text == "ONLINE - 2",
 		(gm.get_node("%onlinelabel") as Label).text)
 	var caster: Node = list.get_node_or_null("row_caster")
 	var pick: Button = caster.get_node_or_null("pick") as Button if caster != null else null
@@ -1329,8 +1336,8 @@ func _test_move_players_from_the_list() -> void:
 	await get_tree().physics_frame
 
 	pick.pressed.emit()
-	check("clicking a name puts it in the name boxes",
-		name_box.text == "caster" and (gm.get_node("%usernameinput") as LineEdit).text == "caster")
+	check("clicking a name puts it in the name box",
+		name_box.text == "caster")
 	(caster.get_node("bring") as Button).pressed.emit()
 	await get_tree().create_timer(0.1).timeout
 	check("a row's Bring asks the server to move that player",
@@ -1341,10 +1348,21 @@ func _test_move_players_from_the_list() -> void:
 	await get_tree().create_timer(0.1).timeout
 	check("Bring here with an empty box asks for a name and moves nobody", posted.size() == 1, posted)
 	name_box.text = "fighter"
-	name_box.text_submitted.emit("fighter")
+	(gm.get_node("%tpbringbutton") as Button).pressed.emit()
 	await get_tree().create_timer(0.1).timeout
-	check("Enter in the name box brings them", posted.size() == 2
+	check("Bring here brings whoever is in the name box", posted.size() == 2
 		and str(posted[1][1].get("username", "")) == "fighter", posted)
+	# WHAT THE RANK PICKED CAN DO, in a line under the picker.
+	gm._populate_ranks()
+	var rank_pick: OptionButton = gm.get_node("%roleoption") as OptionButton
+	var rank_said: Array = []
+	for i in rank_pick.item_count:
+		rank_pick.select(i)
+		rank_pick.item_selected.emit(i)
+		rank_said.append((gm.get_node("%rankhint") as Label).text)
+	check("the rank picked says what it can do, in a plain line",
+		rank_said == ["Player: no staff powers - this takes a rank away.", "Mod: kick, and ban for up to 30 days.",
+			"Dev: a mod's powers, plus permanent bans and the economy tools."], rank_said)
 	(gm.get_node("%tpeveryonebutton") as Button).pressed.emit()
 	await get_tree().create_timer(0.1).timeout
 	check("Bring everyone still asks twice first", posted.size() == 2

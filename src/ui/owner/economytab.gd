@@ -26,6 +26,11 @@
 # panel's Results box (`report`, OwnerPanel._say). NARROW AND SHORT: the panel
 # is 370 wide and holds its tallest tab at its drawn size, so the three pages
 # take turns rather than stack, and nothing here scrolls.
+#
+# THE CANARY AS ROWS (0.168.13, the owner: "upgrade this 1 also"): when it
+# last ran in a row, and each check a row - its name in plain words, "holds"
+# or "BROKEN" at the right, its numbers with commas in a small line under it.
+# It was "hold  gold conservation (ledger == held) - recorded 274836944, ..."
 extends VBoxContainer
 class_name EconomyTab
 
@@ -112,8 +117,12 @@ var rule_usual_buttons: Dictionary = {}
 var last_change_label: Label
 # Canary.
 var canary_status: Label
+# "Last hourly check" and when, as a row; anything to add (a timer that looks
+# stopped, the mail) in a small line under it.
+var canary_when_grid: GridContainer
 var canary_when: Label
-var canary_checks: Label
+# Each check: a row and its numbers (0.168.13).
+var canary_checks: VBoxContainer
 var check_button: Button
 var canary_refresh: Button
 var say_label: Label
@@ -212,11 +221,23 @@ func _build() -> void:
 	canary_status = _label("The canary: not read yet.", HEAD)
 	canary_status.name = "canarystatus"
 	canary.add_child(canary_status)
-	canary_when = _label("", SAY_NOTE)
+	canary_when_grid = GridContainer.new()
+	canary_when_grid.name = "canarywhengrid"
+	canary_when_grid.columns = 2
+	canary_when_grid.add_theme_constant_override("h_separation", 12)
+	canary.add_child(canary_when_grid)
+	canary_when = _label("", HealthTab.ROW_NAME)
 	canary_when.name = "canarywhen"
+	canary_when.add_theme_font_size_override("font_size", 12)
 	canary.add_child(canary_when)
-	canary_checks = _label("", SAY_NOTE)
+	var checks_head := Label.new()
+	checks_head.text = "THE CHECKS"
+	checks_head.add_theme_color_override("font_color", Color(0.82, 0.7, 0.45))
+	checks_head.add_theme_font_size_override("font_size", 11)
+	canary.add_child(checks_head)
+	canary_checks = VBoxContainer.new()
 	canary_checks.name = "canarychecks"
+	canary_checks.add_theme_constant_override("separation", 1)
 	canary.add_child(canary_checks)
 	var canary_row := HBoxContainer.new()
 	canary_row.add_theme_constant_override("separation", 8)
@@ -389,7 +410,7 @@ func check_now() -> void:
 		return
 	checked_now = res.get("data")
 	var broken: Array = checked_now.get("failures", []) if checked_now.get("failures") is Array else []
-	canary_checks.text = checks_text(checked_now)
+	_show_checks(checked_now)
 	if bool(checked_now.get("ok", false)):
 		_say("Checked now: every number adds up.", SAY_GOOD)
 	else:
@@ -536,8 +557,38 @@ func show_canary(data: Dictionary) -> void:
 	else:
 		colour = SAY_BAD
 	canary_status.add_theme_color_override("font_color", colour)
-	canary_when.text = canary_when_text(data, int(Time.get_unix_time_from_system()))
-	canary_checks.text = checks_text(data)
+	var now: int = int(Time.get_unix_time_from_system())
+	HealthTab.fill_rows(canary_when_grid, [when_row(data, now)], canary_when_text(data, now))
+	canary_when.text = canary_note_text(data)
+	canary_when.visible = canary_when.text != ""
+	_show_checks(data)
+
+
+func _show_checks(data: Dictionary) -> void:
+	"""Each check a row - its name, holds or BROKEN - and its numbers under
+	it. The old line of them all is the tooltip."""
+	for old: Node in canary_checks.get_children():
+		canary_checks.remove_child(old)
+		old.queue_free()
+	canary_checks.tooltip_text = checks_text(data)
+	for row: Variant in check_rows(data):
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 8)
+		canary_checks.add_child(line)
+		var what := Label.new()
+		what.text = str(row[0])
+		what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		what.add_theme_color_override("font_color", HealthTab.ROW_VALUE)
+		what.add_theme_font_size_override("font_size", 13)
+		line.add_child(what)
+		var verdict := Label.new()
+		verdict.text = str(row[1])
+		verdict.add_theme_color_override("font_color", row[2])
+		verdict.add_theme_font_size_override("font_size", 13)
+		line.add_child(verdict)
+		var numbers := _label(str(row[3]), HealthTab.ROW_NAME)
+		numbers.add_theme_font_size_override("font_size", 12)
+		canary_checks.add_child(numbers)
 
 
 func rule_row(key: String) -> Dictionary:
@@ -667,7 +718,12 @@ static func canary_text(data: Dictionary) -> String:
 	if bool(data.get("ok", false)):
 		return "Every number adds up."
 	var broken: Array = data.get("failures", []) if data.get("failures") is Array else []
-	return "BROKEN: %s." % failures_text(broken)
+	# THE NAMES ONLY (0.168.13): each check's numbers are its own row's now.
+	var names: Array[String] = []
+	for failure in broken:
+		if failure is Dictionary:
+			names.append(check_name(str(failure.get("name", ""))))
+	return "BROKEN: %d check%s failed - %s." % [names.size(), "" if names.size() == 1 else "s", ", ".join(names)]
 
 
 static func failures_text(broken: Array) -> String:
@@ -698,6 +754,70 @@ static func canary_when_text(data: Dictionary, now: int) -> String:
 	elif mail.begins_with("failed"):
 		text += " The mail %s." % mail
 	return text
+
+
+static func when_row(data: Dictionary, now: int) -> Array:
+	"""['Last hourly check', '19:41, 54m ago', colour] - amber when stale or
+	never run."""
+	if data.get("checked_at") == null:
+		return ["Last hourly check", "never", SAY_WARN]
+	var at: int = int(data.get("checked_at", 0))
+	var ago: int = int(data.get("age_seconds", maxi(0, now - at)))
+	return ["Last hourly check", "%s, %s ago" % [LocalTime.stamp(at, now), Lands.time_text(maxi(60, ago))],
+		SAY_WARN if bool(data.get("stale", false)) else HealthTab.ROW_VALUE]
+
+
+static func canary_note_text(data: Dictionary) -> String:
+	"""What canary_when_text says past the time: the timer, the mail."""
+	var full: String = canary_when_text(data, int(data.get("checked_at", 0)) if data.get("checked_at") != null else 0)
+	if data.get("checked_at") == null:
+		return full
+	var cut: int = full.find("). ")
+	return "" if cut < 0 else full.substr(cut + 3)
+
+
+static func check_name(raw: String) -> String:
+	"""A check's name in plain words: 'gold conservation (ledger == held)' is
+	'Gold adds up'; one this build does not know keeps its own, capitalised."""
+	var lower: String = raw.to_lower()
+	if lower.begins_with("gold conservation"):
+		return "Gold adds up"
+	if lower.begins_with("lusion conservation"):
+		return "Lusions add up"
+	if lower.begins_with("no skill above the cap"):
+		var opened: int = raw.find("(")
+		var cap: String = raw.substr(opened + 1, raw.find(")") - opened - 1) if opened >= 0 and raw.find(")") > opened else ""
+		return "No skill above %s" % cap if cap.is_valid_int() else "No skill above the cap"
+	return raw.left(1).to_upper() + raw.substr(1)
+
+
+static func with_commas(words: String) -> String:
+	"""Every whole number of four digits or more in `words`, with commas."""
+	var out: String = ""
+	var digits: String = ""
+	for i in words.length() + 1:
+		var one: String = words.substr(i, 1) if i < words.length() else ""
+		if one != "" and one >= "0" and one <= "9":
+			digits += one
+			continue
+		if digits != "":
+			out += GameConstants.commas(int(digits)) if digits.length() >= 4 and not digits.begins_with("0") else digits
+			digits = ""
+		out += one
+	return out
+
+
+static func check_rows(data: Dictionary) -> Array:
+	"""[[name, holds|BROKEN, colour, numbers], ...]."""
+	var rows: Array = []
+	var checks: Variant = data.get("checks", [])
+	if checks is Array:
+		for check_row in checks:
+			if check_row is Dictionary:
+				var held: bool = bool(check_row.get("ok", false))
+				rows.append([check_name(str(check_row.get("name", ""))), "holds" if held else "BROKEN",
+					SAY_GOOD if held else SAY_BAD, with_commas(str(check_row.get("detail", "")))])
+	return rows
 
 
 static func checks_text(data: Dictionary) -> String:

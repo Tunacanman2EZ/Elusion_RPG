@@ -1297,3 +1297,83 @@ func _test_a_wide_screen_fills() -> void:
 		and pin_src.contains("frame.add_child(leave_button)") and pin_src.contains("frame.add_child(count_label)")
 		and _func_body(pin_src, "func _hint(").contains("frame.add_child(label)") and pin_src.contains("on_cover.add_child(title)"),
 		[wide[3], plain[3]])
+
+
+func _test_on_the_way_in() -> void:
+	section("ON THE WAY IN (0.168.13): a card while the characters load, the game in front, the door's fade")
+	var menu: Control = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate() as Control
+	menu.set("talks_to_server", false)
+	add_child(menu)
+	await get_tree().process_frame
+	menu.call("_show_entering", "Tunacan")
+	var card: Control = menu.get("entering_form")
+	var login: Control = menu.get("login_form")
+	var title: Label = menu.get("_entering_title")
+	var shown: bool = card != null and card.visible and login != null and not login.visible \
+		and title != null and title.text == "Welcome, Tunacan"
+	menu.call("_show_load_failed")
+	var back: bool = not card.visible and login.visible
+	check("signed in, the form gives way to a card - \"Welcome, NAME\", \"Loading your heroes...\", a moving bar - and a load that fails brings the form back (\"a small loading screen or something to take you directly there would be nice\")",
+		shown and back, [shown, back])
+	var src: String = _code_src("res://src/ui/menus/loginmenu.gd")
+	var complete: String = _func_body(src, "func _complete_login(")
+	check("  the card shows before the characters are asked for, and character select comes through the door's fade (SceneTransition)",
+		complete.find("_show_entering(") != -1 and complete.find("_show_entering(") < complete.find("await CharacterData.load_for_user(")
+		and _func_body(src, "func _go_to_character_select(").contains("SceneTransition.change_scene(char_select_scene)")
+		and not _func_body(src, "func _go_to_character_select(").contains("change_scene_to_packed("))
+	check("  Google finished in the browser: the game comes to the front first (a computer's window; the browser build is the tab already)",
+		_func_body(src, "func _google_signed_in(").find("come_forward()") != -1
+		and _func_body(src, "func _google_signed_in(").find("come_forward()") < _func_body(src, "func _google_signed_in(").find("Api.adopt_login(")
+		and _func_body(src, "static func come_forward(").contains("window_move_to_foreground()")
+		and _func_body(src, "static func come_forward(").contains("OS.has_feature(\"web\")"))
+	menu.queue_free()
+	# the town the login prefetches, settled (see _test_google_sign_in)
+	var settle_until: int = Time.get_ticks_msec() + 20000
+	while (not AreaRegistry._prefetching.is_empty() or not AreaRegistry._prefetch_queue.is_empty()) \
+			and Time.get_ticks_msec() < settle_until:
+		await get_tree().process_frame
+
+
+func _test_the_bag_matches_the_hud() -> void:
+	section("THE BAG MATCHES THE HUD (0.168.13): as wide as the hotbar, its grid centred, no empty band")
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var hotbar: Control = hud.get_node("%hotbar") as Control
+	var bag: Control = (load("res://scene/ui/inventory/inventory.tscn") as PackedScene).instantiate() as Control
+	var gear: Control = (load("res://scene/ui/equipment/equipmentpanel.tscn") as PackedScene).instantiate() as Control
+	check("the bag is as wide as the hotbar and lines up with its right edge (\"the inventory is smaller then the hudscreen\")",
+		is_equal_approx(bag.anchor_left, 1.0) and is_equal_approx(bag.anchor_right, 1.0)
+		and is_equal_approx(bag.offset_left, hotbar.offset_left) and is_equal_approx(bag.offset_right, hotbar.offset_right),
+		[bag.offset_left, bag.offset_right, hotbar.offset_left, hotbar.offset_right])
+	check("  the Gear window still sits beside it, not over it",
+		is_equal_approx(gear.anchor_right, 1.0) and gear.offset_right <= bag.offset_left - 4.0, [gear.offset_right, bag.offset_left])
+	check("  the bag ends above the hotbar", bag.offset_bottom < 720.0 + hotbar.offset_top, [bag.offset_bottom, hotbar.offset_top])
+	var view := SubViewport.new()
+	view.size = Vector2i(1280, 720)
+	add_child(view)
+	view.add_child(bag)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var grid: Control = bag.get_node("%inventorycontainer") as Control
+	var column: Control = bag.get_node("mainpanel/margincontainer/vboxcontainer") as Control
+	var left: float = grid.get_global_rect().position.x - column.get_global_rect().position.x
+	var right: float = column.get_global_rect().end.x - grid.get_global_rect().end.x
+	var slot: Control = grid.get_child(0) as Control
+	var icon: Control = slot.get_node("centercontainer/icon") as Control
+	check("  the grid is centred (as much room each side), its slots 72 with the art at 3x (48), the one slot scene",
+		absf(left - right) <= 1.0 and slot.custom_minimum_size == Vector2(72, 72) and icon.custom_minimum_size == Vector2(48, 48)
+		and not FileAccess.get_file_as_string("res://scene/ui/inventory/inventory.tscn").contains("inventory_slot_scene"),
+		[left, right, slot.custom_minimum_size])
+	var header_spacer: Control = bag.find_child("headerspacer", true, false) as Control
+	var close: Control = bag.get_node("%closebutton") as Control
+	var panel: Control = bag.get_node("mainpanel") as Control
+	check("  the title is centred on the window (a spacer as wide as the close button), and the window is no taller than what it holds",
+		header_spacer != null and header_spacer.get_index() == 0 and header_spacer.custom_minimum_size.x == close.custom_minimum_size.x
+		and absf(bag.size.y - panel.get_combined_minimum_size().y) <= 1.0, [bag.size.y, panel.get_combined_minimum_size().y])
+	var label: Label = bag.get_node("%baglabel") as Label
+	bag.call("_update_bag_count")
+	check("  under the grid, how full the bag is", label != null and label.text.begins_with("Bag: ") and label.text.ends_with(" / 20"),
+		label.text if label != null else "no label")
+	view.queue_free()
+	hud.free()
+	gear.free()
+	await get_tree().process_frame
