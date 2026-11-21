@@ -55,8 +55,11 @@
 #
 # THE FIRST MEETING IS A CONVERSATION (0.171.0, talk.gd): when the hero's
 # class has a script in data/story/meet_shopkeeper/ (or an all.txt there),
-# he and the hero talk in turn instead of GREETINGS[0]. Later visits are the
-# greetings as before. `class_override` is the suite's.
+# he and the hero talk in turn instead of a greeting - ONCE A CHARACTER,
+# counted on its own (Talk.seen_key(MEETING)), so a character who met him
+# before there were conversations still has it (0.171.1, the owner: "also
+# warrior did not talk to shop keeper"). Later visits are the greetings in
+# turn as before. `class_override` is the suite's.
 extends AnimatedSprite2D
 
 const Bubble := preload("res://src/shared/speechbubble.gd")
@@ -139,23 +142,29 @@ func greet() -> void:
 	_last_greeting = now
 	var key: String = talk_key()
 	var times: int = Bubble.times_said(key)
+	# Counted whichever is said, so the greetings go on in turn after it.
 	Bubble.note_said(key)
-	if times <= 0:
-		var meeting: Node = _meeting()
-		if meeting != null:
-			bubble = meeting
-			return
+	var meeting: Node = _meeting()
+	if meeting != null:
+		bubble = meeting
+		return
 	bubble = Bubble.say(self, greeting_for(times), BUBBLE_AT)
 
 
 func _meeting() -> Node:
-	"""The first meeting as a conversation with the hero, if their class has
-	a script; null if not, and the first greeting is said instead."""
+	"""The meeting as a conversation with the hero, once a character, if
+	their class has a script; null if not (or had), and a greeting is said."""
 	var hero: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
 	if not (hero is Node2D):
 		return null
+	var met_key: String = Talk.seen_key(MEETING)
+	if Bubble.times_said(met_key) > 0:
+		return null
 	var hero_class: String = class_override if class_override != "" else str(CharacterData.active_class_id())
-	return Talk.play(self, Talk.lines_for(MEETING, hero_class), {"shopkeeper": self, "hero": hero})
+	var talk: Node = Talk.play(self, Talk.lines_for(MEETING, hero_class), {"shopkeeper": self, "hero": hero})
+	if talk != null:
+		Bubble.note_said(met_key)
+	return talk
 
 
 func talk_at() -> Vector2:

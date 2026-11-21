@@ -1809,10 +1809,15 @@ func _test_characters_talk_in_turn() -> void:
 	hero_body.free()
 	# ---- the shopkeeper's first meeting --------------------------------------
 	var key: String = Keeper.talk_key()
+	var met_key: String = Talk.seen_key(Keeper.MEETING)
 	var cfg := ConfigFile.new()
 	cfg.load(ControlsPanel.seen_path)
-	if cfg.has_section_key("talk", key.replace("/", "|")):
-		cfg.erase_section_key("talk", key.replace("/", "|"))
+	for each in [key, met_key]:
+		if cfg.has_section_key("talk", each.replace("/", "|")):
+			cfg.erase_section_key("talk", each.replace("/", "|"))
+	# MET HIM BEFORE THERE WERE CONVERSATIONS (0.171.1, the owner: "also
+	# warrior did not talk to shop keeper"): three greetings already heard.
+	cfg.set_value("talk", key.replace("/", "|"), 3)
 	cfg.save(ControlsPanel.seen_path)
 	var area := Area2D.new()
 	var keeper := AnimatedSprite2D.new()
@@ -1836,9 +1841,10 @@ func _test_characters_talk_in_turn() -> void:
 	await get_tree().process_frame
 	var opening: Node2D = meeting.get("bubble") if meeting != null else null
 	var warrior_lines: Array = Talk.lines_for(Keeper.MEETING, "warrior")
-	check("a warrior meeting him the first time: a conversation, his first line over his head, counted for the character",
+	check("a warrior who met him before there were conversations: one now, his first line over his head, counted for the character",
 		meeting != null and meeting.get("lines") == warrior_lines and opening != null and opening.get_parent() == keeper
-		and opening.position == Keeper.BUBBLE_AT and opening.get("lines") == [warrior_lines[0][1]] and Bubble.times_said(key) == 1)
+		and opening.position == Keeper.BUBBLE_AT and opening.get("lines") == [warrior_lines[0][1]]
+		and Bubble.times_said(met_key) == 1 and Bubble.times_said(key) == 4)
 	opening.call("hurry")
 	opening.call("hurry")
 	opening.call("_process", 1.0)
@@ -1846,14 +1852,15 @@ func _test_characters_talk_in_turn() -> void:
 	check("  then the hero answers, over the hero", reply != null and reply.get_parent() == visitor
 		and reply.get("lines") == [warrior_lines[1][1]], reply.get("lines") if reply != null else null)
 	keeper.call("greet")
-	check("  he does not start again while they talk", keeper.get("bubble") == meeting and Bubble.times_said(key) == 1)
+	check("  he does not start again while they talk", keeper.get("bubble") == meeting and Bubble.times_said(key) == 4)
 	meeting.free()
 	if is_instance_valid(reply):
 		reply.free()
 	keeper.set("_last_greeting", -1000.0)
 	keeper.call("greet")
 	var later: Node = keeper.get("bubble")
-	check("  the next visit is the next greeting, as before", later is Node2D and later.get("lines") == Keeper.GREETINGS[1])
+	check("  the next visit is the next greeting in turn, and the conversation is not had twice",
+		later is Node2D and later.get("lines") == Keeper.greeting_for(4) and Bubble.times_said(met_key) == 1)
 	for other in others:
 		if is_instance_valid(other):
 			other.add_to_group("player")
