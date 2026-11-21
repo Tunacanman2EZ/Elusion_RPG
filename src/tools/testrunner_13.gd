@@ -1618,15 +1618,28 @@ func _test_the_coffers_as_rows() -> void:
 	var sources: GridContainer = board.get("sources_box")
 	var first: Node = sources.get_child(0)
 	var share: Control = first.get_node("share") as Control
-	var you: GridContainer = board.get("you_grid")
+	var you: VBoxContainer = board.get("you_grid")
 	check("on the board: the sources two to a row with their share behind them, the old sentence their hover; you as rows",
 		sources.columns == 2 and sources.get_child_count() == 3
 		and (first.find_child("words", true, false) as Label).text.strip_edges() == "Lost by the dead"
 		and is_equal_approx(float(share.get("share")), 0.6) and sources.tooltip_text.contains("lost by the dead")
 		and not (board.get("breakdown_label") as Label).visible and not (board.get("you_label") as Label).visible
-		and (you.get_child(1) as Label).text == "1st of 3" and you.tooltip_text.begins_with("You have given 900 gold")
+		and (you.get_child(0).find_child("value", true, false) as Label).text == "1st of 3" and you.tooltip_text.begins_with("You have given 900 gold")
 		and (board.get("headline_label") as Label).text == "2 deaths  ·  3 subjects",
-		[(board.get("headline_label") as Label).text, (you.get_child(1) as Label).text])
+		[(board.get("headline_label") as Label).text])
+	# ROOM ROUND IT (0.170.1, "screen is off upgrade it"): the panel holds its rows
+	# YOU_INSET in, the rows are banded every other line, and the loss is a
+	# smaller line set in under the gold.
+	var frame: StyleBox = (you.get_parent().get_parent() as Control).get_theme_stylebox("panel")
+	var bands: Array = you.get_children().map(func(row: Node) -> float: return ((row as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat).bg_color.a)
+	var lost_row: Node = you.get_child(2)
+	check("  your panel has room inside it, its rows a ledger: a band every other line, the loss set in under the gold and smaller",
+		is_equal_approx(frame.content_margin_left, Board.YOU_INSET) and is_equal_approx(frame.content_margin_right, Board.YOU_INSET)
+		and bands[0] > 0.0 and bands[1] == 0.0 and bands[2] == 0.0 and bands[3] > 0.0
+		and (lost_row.find_child("words", true, false) as Label).text == "of it lost when you died"
+		and (lost_row.find_child("words", true, false) as Label).get_theme_font_size("font_size") < (you.get_child(1).find_child("words", true, false) as Label).get_theme_font_size("font_size")
+		and ((lost_row as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat).content_margin_left > ((you.get_child(1) as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat).content_margin_left,
+		bands)
 	var hint: Label = board.get("patron_hint")
 	var gifts: HBoxContainer = board.get("quick_row")
 	check("  what a title is, said under the bar, every title on its hover; under it the gifts, buttons, and no box",

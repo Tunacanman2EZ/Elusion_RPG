@@ -29,7 +29,13 @@
 # titles ("im also not sure what patron douse"): a line under the bar says
 # what one is (`patron_hint`). A GIFT IS A BUTTON ("get rid of the gold to
 # give box and only keep the buttons"): Give 100, Give 1,000, Give 10,000,
-# the last asking twice (ARM_SECONDS), as a ban does.
+# the last asking twice (ARM_SECONDS), as a ban does. AND ROOM ROUND IT
+# (0.170.1, the owner, of his own screen: "screen is off upgrade it"): the panel's
+# frame held its rows two pixels in, so the words and numbers ran into the
+# border while the buttons under them stood well clear. Now everything in it
+# keeps YOU_INSET from the frame, the rows are a ledger - a faint band every
+# other line, the loss under the gold it came from, smaller - and the bar,
+# the line and the buttons line up with them.
 extends Control
 
 
@@ -109,7 +115,12 @@ const LUSION_COLOUR := Color(0.78, 0.62, 1.0)
 
 # A source's share of the total, drawn behind its row (0.170.0).
 const SHARE_COLOUR := Color(0.85, 0.66, 0.3, 0.22)
-# The amounts the quick buttons put in the box.
+# Room inside your panel, the band behind every other line of it, and how far
+# the loss is set in under the gold it came from.
+const YOU_INSET := 8.0
+const YOU_BAND_COLOUR := Color(1.0, 0.9, 0.7, 0.05)
+const YOU_SUB_INDENT := 14.0
+# The gifts the buttons give. One at or over BIG_GIFT asks twice.
 const QUICK_GIFTS := [100, 1000, 10000]
 const BIG_GIFT := 10000
 const ARM_SECONDS := 4.0
@@ -263,7 +274,7 @@ var _window: PanelWindow
 
 # THE ROWS (0.170.0): where the gold came from, and you.
 var sources_box: GridContainer
-var you_grid: GridContainer
+var you_grid: VBoxContainer
 var patron_hint: Label
 var quick_row: HBoxContainer
 
@@ -445,15 +456,14 @@ func _build_rows() -> void:
 	parent.add_child(sources_box)
 	parent.move_child(sources_box, breakdown_label.get_index())
 	you_label.visible = false
-	you_grid = GridContainer.new()
+	you_grid = VBoxContainer.new()
 	you_grid.name = "yougrid"
-	you_grid.columns = 2
-	you_grid.add_theme_constant_override("h_separation", 12)
-	you_grid.add_theme_constant_override("v_separation", 0)
+	you_grid.add_theme_constant_override("separation", 0)
 	you_grid.mouse_filter = Control.MOUSE_FILTER_PASS
 	var box: Node = you_label.get_parent()
 	box.add_child(you_grid)
 	box.move_child(you_grid, you_label.get_index())
+	_inset_you_panel(box.get_parent() as Control)
 	patron_hint = Label.new()
 	patron_hint.name = "patronhint"
 	patron_hint.text = "Gifts earn a title under your name in the ranking."
@@ -646,19 +656,73 @@ func _show_you(you: Dictionary, contributors: int, guild: String, sentence: Stri
 		you_grid.remove_child(old)
 		old.queue_free()
 	you_grid.tooltip_text = sentence
+	# A BAND EVERY OTHER LINE, counted by the main rows: the loss shares the
+	# band of the gold it came out of, so the two read as one.
+	var band: int = -1
 	for row in you_rows(you, contributors, guild):
-		var key := Label.new()
-		key.text = str(row[0])
-		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		key.add_theme_font_size_override("font_size", 13)
-		key.add_theme_color_override("font_color", RANK_COLOUR)
-		you_grid.add_child(key)
-		var value := Label.new()
-		value.text = str(row[1])
-		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		value.add_theme_font_size_override("font_size", 13)
-		value.add_theme_color_override("font_color", row[2])
-		you_grid.add_child(value)
+		var words: String = str(row[0])
+		var sub: bool = words.begins_with("  ")
+		if not sub:
+			band += 1
+		you_grid.add_child(_you_row(words.strip_edges(), str(row[1]), row[2], band % 2 == 0, sub))
+
+
+func _you_row(words: String, value: String, colour: Color, banded: bool, sub: bool) -> PanelContainer:
+	"""One line of the ledger: its words left, its number right, on a faint
+	band every other line. A sub line (the gold lost) is smaller, dimmer and
+	set in under the line it belongs to."""
+	var row := PanelContainer.new()
+	row.name = "row"
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	var look := StyleBoxFlat.new()
+	look.bg_color = YOU_BAND_COLOUR if banded else Color(0, 0, 0, 0)
+	look.set_corner_radius_all(2)
+	look.content_margin_left = YOU_SUB_INDENT if sub else 4.0
+	look.content_margin_right = 4.0
+	# NO PADDING ABOVE OR BELOW: the board has no height to spare
+	# (_fit_list_to_screen()), and a line's own leading is room enough.
+	look.content_margin_top = 0.0
+	look.content_margin_bottom = 0.0
+	row.add_theme_stylebox_override("panel", look)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 12)
+	line.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(line)
+	var font_size: int = 11 if sub else 13
+	var key := Label.new()
+	key.name = "words"
+	key.text = words
+	key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key.add_theme_font_size_override("font_size", font_size)
+	key.add_theme_color_override("font_color", RANK_COLOUR.darkened(0.15) if sub else RANK_COLOUR)
+	line.add_child(key)
+	var amount := Label.new()
+	amount.name = "value"
+	amount.text = value
+	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	amount.add_theme_font_size_override("font_size", font_size)
+	amount.add_theme_color_override("font_color", colour.darkened(0.1) if sub else colour)
+	line.add_child(amount)
+	return row
+
+
+func _inset_you_panel(panel: Control) -> void:
+	"""The panel's own frame, with room inside it: the theme's PanelSub holds
+	its content two pixels in, which suits a single centred sentence and not
+	rows that run to both edges. Only this panel's copy changes."""
+	if panel == null:
+		return
+	var frame: StyleBox = panel.get_theme_stylebox("panel")
+	if frame == null:
+		return
+	var roomy: StyleBox = frame.duplicate()
+	roomy.content_margin_left = YOU_INSET
+	roomy.content_margin_right = YOU_INSET
+	# Less above and below than at the sides, for the same reason as the
+	# rows' padding: every pixel here is one the ranking gives up.
+	roomy.content_margin_top = YOU_INSET - 4.0
+	roomy.content_margin_bottom = YOU_INSET - 2.0
+	panel.add_theme_stylebox_override("panel", roomy)
 
 
 static func guild_words(your_guild: Variant, guilds: Array) -> String:
