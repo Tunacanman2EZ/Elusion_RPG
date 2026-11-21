@@ -330,7 +330,7 @@ static func restored_line(data: Dictionary, me: String) -> String:
 	if who.to_lower() == me.to_lower():
 		line += " You are being signed out so your game reloads it."
 	elif int(data.get("sessions_ended", 0)) > 0:
-		line += " They were signed out so their game reloads it."
+		line += " They were signed out so their game reloads it - their screen says it was rolled back."
 	else:
 		line += " They were not signed in; they get it when they next sign in."
 	if bool(data.get("pet_cleared", false)):

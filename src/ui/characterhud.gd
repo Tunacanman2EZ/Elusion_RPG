@@ -75,6 +75,11 @@ const SHOP_PANEL_SCENE    := preload("res://scene/ui/shop/shopinventory.tscn")
 const KINGDOM_PANEL_SCENE := preload("res://scene/ui/kingdom/kingdomboard.tscn")
 # Every monster killed, yours and everybody's (0.9.0). See killrecord.gd.
 const KILLS_PANEL_SCENE := preload("res://scene/ui/kills/killrecord.tscn")
+# Every minigame's top ten (0.169.0). Stats > Highscores. See highscores.gd.
+const HIGHSCORES_SCENE := preload("res://scene/ui/highscores/highscores.tscn")
+# The card a kick or a rollback puts over the game before the sign-in screen
+# (0.169.0). See signoutcard.gd.
+const SignoutCard := preload("res://src/ui/signoutcard.gd")
 # Who made the art and the sound, who supported, the engine (0.11.1). Options >
 # Credits. See creditsscreen.gd.
 const CREDITS_SCENE := preload("res://scene/ui/menus/creditsscreen.tscn")
@@ -154,6 +159,7 @@ var smith_panel:      Control         = null
 var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var kills_panel:      KillRecord      = null
+var highscores_panel: Control         = null
 var credits_panel:    CreditsScreen   = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
@@ -839,6 +845,7 @@ func _wire_nav_buttons() -> void:
 	#
 	# STATS IS A DROPDOWN TOO (0.113.0): Stats, Kills and Kingdom - the owner's
 	# "update my hudscreen buttons". C still opens the stats window at once.
+	# And Highscores under Kingdom (0.169.0): every minigame's top ten.
 	var bindings := {
 		"inventorybutton":         "_on_inventory_pressed",
 		"equipmentbutton":         "_on_equipment_pressed",
@@ -846,6 +853,7 @@ func _wire_nav_buttons() -> void:
 		"shopbutton":              "_on_shop_pressed",
 		"kingdombutton":           "_on_kingdom_pressed",
 		"killsbutton":             "_on_kills_pressed",
+		"highscoresbutton":        "_on_highscores_pressed",
 		"partybutton":             "_on_party_pressed",
 		"tradebutton":             "_on_trade_pressed",
 		"mapbutton":               "_on_map_pressed",
@@ -948,7 +956,7 @@ func _paint_key_letter(button: Button, letter: String) -> void:
 const NAV_BUTTON_NAMES := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
 	"chatbutton", "socialbutton", "minigamesbutton", "menubutton",
-	"characterbutton", "killsbutton", "kingdombutton",
+	"characterbutton", "killsbutton", "kingdombutton", "highscoresbutton",
 	"friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
@@ -989,6 +997,7 @@ const NAV_LIT_BY := {
 	"characterbutton": "stats_screen",
 	"killsbutton":     "kills_panel",
 	"kingdombutton":   "kingdom_panel",
+	"highscoresbutton": "highscores_panel",
 	"shopbutton":      "shop_panel",
 	"mapbutton":       "map_screen",
 	"chatbutton":      "chat_panel",
@@ -3178,6 +3187,11 @@ static func _maintenance_announcement(seconds: int) -> String:
 	return "The server is closed. You will be signed out."
 
 
+# Set once the game is signing out, so the heartbeat and the poll both hearing
+# the 401 sign it out once.
+var _signing_out: bool = false
+
+
 func _forced_signout(refusal: Dictionary = {}) -> void:
 	# The server has already destroyed this session - kicked, banned, the
 	# grace window on a closing server ran out, or the account signed in
@@ -3187,7 +3201,12 @@ func _forced_signout(refusal: Dictionary = {}) -> void:
 	#
 	# THE REASON COMES FROM THE 401 ITSELF - the broadcast poll's, or the one
 	# heartbeat() kept. See Api.signout_notice_for().
-	var notice: String = ApiScript.signout_notice_for(refusal if not refusal.is_empty() else Api.last_refusal)
+	if _signing_out:
+		return
+	_signing_out = true
+	var said: Dictionary = refusal if not refusal.is_empty() else Api.last_refusal
+	var notice: String = ApiScript.signout_notice_for(said)
+	var card: Dictionary = ApiScript.signout_card_for(said)
 	Api.last_refusal = {}
 	_push_message("Signed in somewhere else." if notice == Api.SIGNED_IN_ELSEWHERE_NOTICE
 		else "Signed out by the server.", Color(0.95, 0.45, 0.35))
@@ -3198,6 +3217,18 @@ func _forced_signout(refusal: Dictionary = {}) -> void:
 
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
+	# STAFF DID IT, SO IT IS SAID FIRST (0.169.0): a kick or a rollback is a
+	# card over the game, counting down, the game paused under it - then the
+	# sign-in screen, which says it again.
+	if not card.is_empty():
+		var shown: CanvasLayer = SignoutCard.new()
+		add_child(shown)
+		shown.call("show_card", card)
+		get_tree().paused = true
+		await shown.call("count_down")
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		get_tree().paused = false
 	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 
 
@@ -3668,6 +3699,7 @@ func _on_logout_pressed() -> void:
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if kills_panel:      kills_panel.queue_free()
+	if highscores_panel: highscores_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
@@ -3686,6 +3718,7 @@ func _on_logout_pressed() -> void:
 	shop_panel       = null
 	kingdom_panel    = null
 	kills_panel      = null
+	highscores_panel = null
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
@@ -3785,6 +3818,7 @@ func _on_switch_character_pressed() -> void:
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if kills_panel:      kills_panel.queue_free()
+	if highscores_panel: highscores_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
@@ -3803,6 +3837,7 @@ func _on_switch_character_pressed() -> void:
 	shop_panel       = null
 	kingdom_panel    = null
 	kills_panel      = null
+	highscores_panel = null
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
@@ -4082,6 +4117,18 @@ func toggle_kills() -> void:
 
 func _on_kills_pressed() -> void:
 	await toggle_kills()
+
+
+func toggle_highscores() -> void:
+	"""Every minigame's top ten (0.169.0), built on first use like Kills."""
+	if highscores_panel == null:
+		highscores_panel = HIGHSCORES_SCENE.instantiate() as Control
+		add_child(highscores_panel)
+	await highscores_panel.call("toggle")
+
+
+func _on_highscores_pressed() -> void:
+	await toggle_highscores()
 
 
 func _on_chat_pressed() -> void:
@@ -4417,6 +4464,7 @@ func _escape_windows() -> Array:
 		[shop_panel, "close_shop"],
 		[kingdom_panel, "close_board"],
 		[kills_panel, "close"],
+		[highscores_panel, "close"],
 		[trade_panel, "close_panel"],
 		[chat_panel, "close"],
 		[friends_panel, "close"],

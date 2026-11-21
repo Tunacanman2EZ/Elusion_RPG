@@ -1491,6 +1491,7 @@ func _test_escape_closes_every_window() -> void:
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
 		"kills_panel": "res://scene/ui/kills/killrecord.tscn",
+		"highscores_panel": "res://scene/ui/highscores/highscores.tscn",
 		"credits_panel": "res://scene/ui/menus/creditsscreen.tscn",
 		"party_panel": "res://scene/ui/party/partypanel.tscn",
 	}

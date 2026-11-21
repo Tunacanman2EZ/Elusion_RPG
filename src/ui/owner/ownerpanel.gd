@@ -1176,7 +1176,8 @@ func _on_sanction_pressed(action: String) -> void:
 	var data = res.get("data", {})
 	if action == "kick" and data is Dictionary:
 		# The count is the useful part: zero means they were already gone.
-		_say("[GM] signed '%s' out of %s place(s)." % [username, str(data.get("sessions_ended", 0))], SAY_GOOD)
+		_say("[GM] signed '%s' out of %s place(s) - their screen says staff signed them out." % [username,
+			str(data.get("sessions_ended", 0))], SAY_GOOD)
 	else:
 		_say("[GM] %s ok: %s" % [action, str(data)], SAY_GOOD)
 

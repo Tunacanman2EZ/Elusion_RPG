@@ -1377,3 +1377,208 @@ func _test_the_bag_matches_the_hud() -> void:
 	hud.free()
 	gear.free()
 	await get_tree().process_frame
+
+
+# THE HIGHSCORES (0.169.0). The owner: "i want a global highscore option here
+# for all minigames top 10 on each", and "this will help me see if anyone
+# plays my minigames". Stats > Highscores: a button a minigame, its top ten
+# from GET /api/minigames/top, your place under it when you are off the ten;
+# and the Endless sends its run's time, as the Forge does.
+func _test_the_highscores() -> void:
+	section("HIGHSCORES (0.169.0): every minigame's top ten, under Kingdom")
+	const Scores := preload("res://src/ui/highscores/highscores.gd")
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var in_stats: Array[String] = []
+	for b in hud.get_node("%statsmenu").find_children("*", "Button", true, false):
+		in_stats.append(str(b.name))
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	check("Stats holds Highscores under Kingdom, wired to its window, lit while it is open, on a phone's grid too",
+		in_stats == ["characterbutton", "killsbutton", "kingdombutton", "highscoresbutton"]
+		and hud_code.contains("\"highscoresbutton\":        \"_on_highscores_pressed\"")
+		and str(hud.get("NAV_LIT_BY").get("highscoresbutton", "")) == "highscores_panel"
+		and Array(preload("res://src/ui/touchmenu.gd").ITEMS).has("highscoresbutton"), in_stats)
+	hud.free()
+	var window: Control = (load("res://scene/ui/highscores/highscores.tscn") as PackedScene).instantiate() as Control
+	add_child(window)
+	await get_tree().process_frame
+	var asked: Array = []
+	var now: int = int(Time.get_unix_time_from_system())
+	var top: Array = []
+	for i in 10:
+		top.append({"place": i + 1, "name": "p%02d" % i, "value": 9000 - i * 100, "at": now - 60, "you": false})
+	var answer: Dictionary = {"now": now, "boards": [
+		{"id": "endless", "name": "The Endless", "counts": "seconds", "players": 0, "top": [], "you": null},
+		{"id": "healerrun", "name": "The Healer's Run", "counts": "waves", "players": 2,
+			"top": [{"place": 1, "name": "ann", "value": 24, "bosses": 3, "at": now, "you": false},
+				{"place": 2, "name": "kt_me", "value": 20, "bosses": 1, "at": now, "you": true}],
+			"you": {"place": 2, "value": 20, "bosses": 1}},
+		{"id": "forge", "name": "The Forge", "counts": "seconds", "players": 1,
+			"top": [{"place": 1, "name": "ann", "value": 3725, "at": now, "you": false}], "you": null},
+		{"id": "cloth", "name": "Cut the Cloth", "counts": "rounds", "players": 0, "top": [], "you": null},
+		{"id": "crownfall", "name": "Crownfall", "counts": "maps", "players": 1,
+			"top": [{"place": 1, "name": "bob", "value": 1, "at": now, "you": false}], "you": null},
+		{"id": "pinball", "name": "The Beholder's Table", "counts": "score", "players": 23, "top": top,
+			"you": {"place": 23, "value": 1234567}}]}
+	window.set("fetch", func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": JSON.parse_string(JSON.stringify(answer))})
+	var was_name: String = Api.username
+	Api.username = "kt_me"
+	await window.call("open")
+	var buttons: Dictionary = window.get("game_buttons")
+	var words: Array[String] = []
+	for id in window.get("order"):
+		words.append((buttons[id] as Button).text)
+	check("opened, it reads every board at once, and has a button a minigame in the server's order",
+		asked == ["/api/minigames/top"] and window.visible
+		and words == ["The Endless", "Healer's Run", "The Forge", "Cut the Cloth", "Crownfall", "Beholder's Table"]
+		and (buttons["pinball"] as Button).tooltip_text == "The Beholder's Table - 23 players", words)
+	var list: VBoxContainer = window.get("list")
+	var summary: Label = window.get("summary_label")
+	check("  the Endless first: nobody yet, said plainly", (buttons["endless"] as Button).button_pressed
+		and summary.text == "Longest run - nobody yet." and list.get_node_or_null("empty") != null, summary.text)
+	window.call("show_board", "pinball")
+	var first: Node = list.get_node_or_null("row_1")
+	var rows: int = list.get_children().filter(func(n: Node) -> bool: return str(n.name).begins_with("row_")).size()
+	var mine: Node = list.get_node_or_null("row_23")
+	check("the Beholder's Table: ten rows, the first in gold, scores with commas, and how many play it (\"see if anyone plays\")",
+		summary.text == "Best score - 23 players." and rows == 11 and first != null
+		and (first.get_node("place") as Label).text == "1st" and (first.get_node("value") as Label).text == "9,000"
+		and (first.get_node("place") as Label).get_theme_color("font_color") == Scores.PLACE_COLOURS[0], [summary.text, rows])
+	check("  you, off the ten: under it, after a gap, in green, your place and score",
+		list.get_node_or_null("gap") != null and mine != null and (mine.get_node("place") as Label).text == "23rd"
+		and (mine.get_node("name") as Label).text == "kt_me  (you)" and (mine.get_node("value") as Label).text == "1,234,567"
+		and (mine.get_node("name") as Label).get_theme_color("font_color") == Scores.YOU_COLOUR,
+		(mine.get_node("name") as Label).text if mine != null else "no row")
+	(buttons["healerrun"] as Button).pressed.emit()
+	var you_row: Node = list.get_node_or_null("row_2")
+	check("  the Healer's Run: waves and bosses; you on the ten are green there, with nothing under it",
+		window.get("board_id") == "healerrun" and (list.get_node("row_1").get_node("value") as Label).text == "24 waves, 3 bosses"
+		and you_row != null and (you_row.get_node("name") as Label).get_theme_color("font_color") == Scores.YOU_COLOUR
+		and list.get_node_or_null("gap") == null)
+	check("each board in its own words: times, waves, rounds, maps, places",
+		Scores.value_text("seconds", 272) == "4:32" and Scores.value_text("seconds", 3725) == "1:02:05"
+		and Scores.value_text("waves", 1) == "1 wave" and Scores.value_text("waves", 20, 1) == "20 waves, 1 boss"
+		and Scores.value_text("rounds", 12) == "12 rounds" and Scores.value_text("maps", 1) == "1 map"
+		and Scores.place_text(1) == "1st" and Scores.place_text(2) == "2nd" and Scores.place_text(3) == "3rd"
+		and Scores.place_text(11) == "11th" and Scores.place_text(12) == "12th" and Scores.place_text(13) == "13th"
+		and Scores.place_text(21) == "21st" and Scores.place_text(102) == "102nd")
+	window.call("close")
+	await window.call("open")
+	check("  shut and opened again: read again, on the board it was on", asked.size() == 2 and window.get("board_id") == "healerrun")
+	window.set("fetch", func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": "Not Found"})
+	await window.call("refresh")
+	var notice: Label = window.get("notice_label")
+	check("a server from before it says so", notice.visible and notice.text == "This server does not keep highscores yet.", notice.text)
+	Api.username = was_name
+	window.queue_free()
+	# THE ENDLESS SENDS ITS TIME, as the Forge does - each run, from _end_run().
+	var RunScript: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var run: Node = RunScript.new()
+	var posted: Array = []
+	run.set("best_post", func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		return {"ok": true, "data": {"best": 272, "new_best": true}})
+	await run.call("_send_time", 272.6)
+	await run.call("_send_time", 0.4)
+	check("the Endless sends a run's time to the server, which keeps the best; under a second, nothing",
+		posted == [["/api/minigames/best", {"game": "endless", "seconds": 272}]]
+		and _func_body(_code_src("res://src/world/endless/endlessrun.gd"), "func _end_run(").contains("_send_time(elapsed)"), posted)
+	run.free()
+	await get_tree().process_frame
+	print("  a button a minigame, its top ten and your place - and the Endless's time kept")
+
+
+# STAFF SAYS WHY (0.169.0). The owner: "when rolling back a account i want it
+# to let the player know by counting down on their screen or a loading screen
+# that says your account was rolled back", and "same with being kicked staff
+# kicked you". The server's 401 says kicked or rolled_back (the API's
+# _remember_ended()); the HUD puts a card over the game, counting down, then
+# the sign-in screen says it again.
+func _test_staff_says_why_you_were_signed_out() -> void:
+	section("A KICK, A BAN AND A ROLLBACK SAY SO (0.169.0): a card, counting down, then sign in")
+	var kicked := {"ok": false, "status": 401, "data": {"error": "Unauthorized", "kicked": true}}
+	var rolled := {"ok": false, "status": 401, "data": {"error": "Unauthorized", "rolled_back": true}}
+	var elsewhere := {"ok": false, "status": 401, "data": {"error": "Unauthorized", "signed_in_elsewhere": true}}
+	check("the server's reason is the sign-in screen's line: staff signed you out, staff rolled you back",
+		ApiForTests.signout_notice_for(kicked) == Api.KICKED_NOTICE
+		and ApiForTests.signout_notice_for(rolled) == Api.ROLLED_BACK_NOTICE
+		and ApiForTests.signout_notice_for(elsewhere) == Api.SIGNED_IN_ELSEWHERE_NOTICE
+		and ApiForTests.signout_notice_for({}) == Api.SIGNED_OUT_NOTICE)
+	check("  and only those two put up a card first; every other sign-out goes straight to sign in",
+		str(ApiForTests.signout_card_for(rolled).get("title", "")) == "Your character was rolled back"
+		and str(ApiForTests.signout_card_for(kicked).get("title", "")) == "Staff signed you out"
+		and ApiForTests.signout_card_for(elsewhere).is_empty() and ApiForTests.signout_card_for({}).is_empty())
+	# AND A BAN (the owner: "add one for ban and perm ban"): how long and why.
+	var now: int = int(Time.get_unix_time_from_system())
+	var banned := {"ok": false, "status": 401, "data": {"error": "Unauthorized", "banned": true,
+		"ban": {"permanent": false, "expires_at": now + 86400 + 4 * 3600 + 30, "reason": "griefing"}}}
+	var forever := {"ok": false, "status": 401, "data": {"error": "Unauthorized", "banned": true,
+		"ban": {"permanent": true, "expires_at": null, "reason": "cheating"}}}
+	var ban_card: Dictionary = ApiForTests.signout_card_for(banned)
+	var forever_card: Dictionary = ApiForTests.signout_card_for(forever)
+	check("a ban is a card too - until when, how long, and why; a permanent one says so",
+		str(ban_card.get("title")) == "You were banned"
+		and str(ban_card.get("line")) == "Staff banned this account for 1 day, 4 hours, until %s.\nReason: griefing" % LocalTime.stamp(now + 86400 + 4 * 3600 + 30, now)
+		and ApiForTests.signout_notice_for(banned).contains("(1 day, 4 hours left).")
+		and str(forever_card.get("title")) == "You were banned permanently"
+		and str(forever_card.get("line")) == "Staff banned this account permanently.\nReason: cheating"
+		and ApiForTests.signout_notice_for(forever) == "This account is banned permanently.\nReason: cheating"
+		and ApiForTests.signout_notice_for(banned).begins_with("This account is banned until"), [ban_card, forever_card])
+	check("  how long, in the largest two units that say something",
+		ApiForTests.ban_left_words(3 * 86400) == "3 days" and ApiForTests.ban_left_words(86400 + 3600) == "1 day, 1 hour"
+		and ApiForTests.ban_left_words(2 * 3600 + 20 * 60) == "2 hours, 20 minutes" and ApiForTests.ban_left_words(3600) == "1 hour"
+		and ApiForTests.ban_left_words(40) == "1 minute" and ApiForTests.ban_left_words(0) == "")
+	const Card := preload("res://src/ui/signoutcard.gd")
+	var card: CanvasLayer = Card.new()
+	add_child(card)
+	card.call("show_card", ApiForTests.signout_card_for(rolled))
+	var clock: Label = card.get("clock_label")
+	var first: String = clock.text
+	card.set("step_seconds", 0.0)
+	await card.call("count_down")
+	check("the card: what happened in a sentence, \"Back to sign in in 5...\" down to 1, over everything, running while the game is paused",
+		(card.get("title_label") as Label).text == "Your character was rolled back"
+		and (card.get("line_label") as Label).text.begins_with("Staff put your character back to an earlier save")
+		and first == "Back to sign in in 5..." and clock.text == "Back to sign in in 1..."
+		and card.layer >= 100 and card.process_mode == Node.PROCESS_MODE_ALWAYS
+		and (card.get_node("dim") as Control).mouse_filter == Control.MOUSE_FILTER_STOP, [first, clock.text])
+	get_tree().paused = true
+	remove_child(card)
+	var unpaused: bool = not get_tree().paused
+	get_tree().paused = false
+	card.free()
+	check("  gone, it never leaves the game paused", unpaused)
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	var signout: String = _func_body(hud_src, "func _forced_signout(")
+	check("the HUD's sign-out puts the card up for a kick or a rollback, pauses under it, counts down, then signs in - once",
+		signout.contains("signout_card_for(said)") and signout.contains("SignoutCard.new()")
+		and signout.contains("get_tree().paused = true") and signout.find("count_down") < signout.find("change_scene_to_file")
+		and signout.contains("if _signing_out:") and signout.contains("Api.forget_session(notice)"))
+	print("  kicked, banned and rolled back: said by the server, shown on a card, said again at sign in")
+
+
+# A BROWSER STARTS IN ITS PAGE (0.169.0). The owner: "i have to flip from
+# borderless to windowed back to borderless", "it should be defaulted
+# windowed". A browser goes fullscreen only from a click or a key, so a game
+# saved as Borderless opened in the page while Options said Borderless.
+func _test_a_browser_starts_windowed() -> void:
+	section("A BROWSER STARTS WINDOWED (0.169.0): Options says what the window is")
+	const S := preload("res://src/systems/settings.gd")
+	check("in a browser every launch is windowed, whatever was saved; a desktop game starts as it was left",
+		S.launch_window_mode("borderless", true) == "windowed" and S.launch_window_mode("exclusive", true) == "windowed"
+		and S.launch_window_mode("borderless", false) == "borderless" and S.launch_window_mode(true, false) == "borderless"
+		and S.launch_window_mode("windowed", false) == "windowed")
+	var full: int = DisplayServer.WINDOW_MODE_FULLSCREEN
+	var win: int = DisplayServer.WINDOW_MODE_WINDOWED
+	check("  Esc out of the browser's fullscreen says Windowed again; into it, Borderless; nothing changed, nothing said",
+		S.browser_window_mode("borderless", full, win) == "windowed"
+		and S.browser_window_mode("windowed", win, full) == "borderless"
+		and S.browser_window_mode("borderless", win, win) == "borderless"
+		and S.browser_window_mode("windowed", full, full) == "windowed")
+	var code: String = _code_src("res://src/systems/settings.gd")
+	check("  the file is read through it, and a browser's watch keeps Options truthful once a second",
+		_func_body(code, "func load_settings(").contains("launch_window_mode(stored, OS.has_feature(\"web\"))")
+		and _func_body(code, "func _start_window_watch(").contains("_watch_browser_window")
+		and _func_body(code, "func _watch_browser_window(").contains("browser_window_mode("))
+	print("  a browser starts windowed; picking Borderless is the click that goes fullscreen")

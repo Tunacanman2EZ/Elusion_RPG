@@ -114,7 +114,7 @@ const BUILD := 9
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.168.13"
+const DISPLAY_VERSION := "0.169.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -470,6 +470,12 @@ const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so t
 const TOKEN_STOLEN_NOTICE := "This login was used from somewhere it should not have been, so every session on the account was ended. Sign in again - and if that was not you, change your password."
 const STAFF_SESSION_ENDED_NOTICE := "A staff login lasts 12 hours, and half an hour away. Sign in again."
 const OLD_LOGIN_NOTICE := "The game was updated, and logins from before the update have ended. Sign in again."
+# A KICK AND A ROLLBACK SAY SO (0.169.0) - the owner: "a loading screen that
+# says your account was rolled back", "same with being kicked staff kicked
+# you". The server's words (app.py KICKED_MESSAGE, ROLLED_BACK_MESSAGE); the
+# HUD shows them on a card with a countdown first (signout_card_for()).
+const KICKED_NOTICE := "Staff signed you out. You can sign straight back in."
+const ROLLED_BACK_NOTICE := "Staff rolled your character back to an earlier save. Anything since then is undone - sign in to play it as it is now."
 
 
 # The rank god mode requires. ONE statement of the policy, asserted by the
@@ -1455,7 +1461,76 @@ static func signout_notice_for(res: Dictionary) -> String:
 	# Every unbound login ends when the owner sets the minimum build to 6.
 	if data is Dictionary and bool(data.get("old_login", false)):
 		return OLD_LOGIN_NOTICE
+	if data is Dictionary and bool(data.get("rolled_back", false)):
+		return ROLLED_BACK_NOTICE
+	# A BAN (0.169.0, "add one for ban and perm ban"): how long and why, as the
+	# sign-in's own 403 says it.
+	if data is Dictionary and bool(data.get("banned", false)) and data.get("ban") is Dictionary:
+		return ban_line(data.get("ban"), int(Time.get_unix_time_from_system()))
+	if data is Dictionary and bool(data.get("kicked", false)):
+		return KICKED_NOTICE
 	return SIGNED_OUT_NOTICE
+
+
+static func ban_line(ban: Dictionary, now: int, staff: bool = false) -> String:
+	"""'This account is banned until Sat Nov 21 20:00 (1 day left).' and the
+	reason under it - the sign-in screen's words (loginmenu.gd
+	describe_login_refusal()). `staff`: 'Staff banned this account ...', for
+	the card."""
+	var opening: String = "Staff banned this account" if staff else "This account is banned"
+	var line: String = "%s permanently." % opening
+	if not bool(ban.get("permanent", false)):
+		var until: int = int(ban.get("expires_at", 0))
+		var left: String = ban_left_words(until - now)
+		if staff and left != "":
+			# THE CARD SAYS HOW LONG FIRST, the day short (LocalTime.stamp()):
+			# "for 3 days, until Mon 21:32."
+			line = "%s for %s, until %s." % [opening, left, LocalTime.stamp(until, now)]
+		else:
+			line = "%s until %s" % [opening, LocalTime.full(until)]
+			line += " (%s left)." % left if left != "" else "."
+	var reason: String = str(ban.get("reason", ""))
+	if reason != "":
+		line += "\nReason: %s" % reason
+	return line
+
+
+static func ban_left_words(seconds: int) -> String:
+	"""'1 day, 4 hours', '3 hours, 20 minutes', '12 minutes', '' when run out."""
+	if seconds <= 0:
+		return ""
+	@warning_ignore("integer_division")
+	var days: int = seconds / 86400
+	@warning_ignore("integer_division")
+	var hours: int = (seconds % 86400) / 3600
+	@warning_ignore("integer_division")
+	var minutes: int = maxi(1, (seconds % 3600) / 60)
+	var plural := func(n: int, word: String) -> String: return "%d %s%s" % [n, word, "" if n == 1 else "s"]
+	if days > 0:
+		return plural.call(days, "day") + (", " + plural.call(hours, "hour") if hours > 0 else "")
+	if hours > 0:
+		return plural.call(hours, "hour") + (", " + plural.call(minutes, "minute") if (seconds % 3600) >= 60 else "")
+	return plural.call(minutes, "minute")
+
+
+static func signout_card_for(res: Dictionary) -> Dictionary:
+	"""A sign-out staff did, as a card over the game before the sign-in
+	screen (0.169.0): {title, line}, or {} for every other kind - those go
+	straight to the sign-in screen as before."""
+	var data: Variant = res.get("data", {})
+	if not (data is Dictionary):
+		return {}
+	if bool((data as Dictionary).get("banned", false)) and (data as Dictionary).get("ban") is Dictionary:
+		var ban: Dictionary = (data as Dictionary).get("ban")
+		return {"title": "You were banned permanently" if bool(ban.get("permanent", false)) else "You were banned",
+			"line": ban_line(ban, int(Time.get_unix_time_from_system()), true)}
+	if bool((data as Dictionary).get("rolled_back", false)):
+		return {"title": "Your character was rolled back",
+			"line": "Staff put your character back to an earlier save. Anything since then is undone."}
+	if bool((data as Dictionary).get("kicked", false)):
+		return {"title": "Staff signed you out",
+			"line": "This is not a ban - you can sign straight back in."}
+	return {}
 
 
 func adopt_new_token(new_token: String) -> void:

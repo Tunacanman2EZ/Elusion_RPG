@@ -16885,6 +16885,87 @@ of `_test_the_gm_panel_tidied_and_live()` (testrunner_9),
 (testrunner_3), the canary in `_test_the_gm_panel_economy_tab()`
 (testrunner_4).
 
+### Highscores: every minigame's top ten (0.169.0)
+
+The owner: "i want a global highscore option here for all minigames top 10
+on each" (the Stats dropdown), and "this will help me see if anyone plays my
+minigames".
+
+- **Stats > Highscores**, under Kingdom (`%highscoresbutton` in
+  characterhud.tscn's `statsitems`; `_on_highscores_pressed()`,
+  `toggle_highscores()`, `highscores_panel`, in `NAV_BUTTON_NAMES`,
+  `NAV_LIT_BY`, `_escape_windows()`, both free lists) and on a phone's grid
+  (touchmenu.gd `ITEMS`, after Kills).
+- **The window** (`scene/ui/highscores/highscores.tscn`,
+  `src/ui/highscores/highscores.gd`, no class_name, PanelWindow key
+  "highscores"): a button a minigame (three a row, built from the server's
+  boards - `KNOWN` until it answers; the one showing in gold), the line
+  saying what the board ranks and how many players are on it
+  (`summary()`: "Best score - 23 players."), Refresh, then the board: place
+  (1st to 3rd gold, silver, bronze), name, value (`value_text()`: m:ss or
+  h:mm:ss, "24 waves, 3 bosses", "12 rounds", "5 maps", a score with
+  commas). Your row is green with "(you)"; off the ten, a "..." and your
+  own place under it. Nothing yet: "Nobody has a score here yet - be the
+  first." A 404 says the server does not keep highscores yet. Read on every
+  open and on Refresh (`fetch` is the suite's seam), never polled; the
+  board picked is kept.
+- **The server** (the API's CLAUDE.md, "Every minigame's top ten"): `GET
+  /api/minigames/top`, every board in one answer, names are accounts'; a
+  player banned now is on no board.
+- **The Endless keeps a time now**: `endlessrun.gd _send_time(elapsed)` from
+  `_end_run()` posts `{"game": "endless", "seconds"}` to
+  `/api/minigames/best`, as the Forge does (`best_post` is the suite's
+  seam); nothing under a second, nothing on the Testing Ground. A party's
+  run is the party's time, for each player who went in. Its board is empty
+  until runs end on a 0.169.0 game against the new server.
+- **Deploy the server first.**
+
+`_test_the_highscores()` (testrunner_13); the Stats menu in
+`_test_the_first_five_minutes()` (testrunner_5); the window in
+`_test_escape_closes_every_window()` (testrunner_6).
+
+### Staff says why; a browser starts windowed (the same 0.169.0)
+
+**A kick, a ban and a rollback say so.** The owner: "when rolling back a
+account i want it to let the player know by counting down on their screen
+or a loading screen that says your account was rolled back", "same with
+being kicked staff kicked you", "add one for ban and perm ban". All three
+deleted the sessions and the game said "You were signed out by the server."
+- The server remembers why (the API's CLAUDE.md, "A kick, a ban and a
+  rollback say so"): the 401 carries `kicked`, `rolled_back`, or `banned`
+  with `ban` (permanent, expires_at, reason) as the sign-in's 403 does.
+- `Api.signout_notice_for()` gives the sign-in screen's line
+  (`KICKED_NOTICE`, `ROLLED_BACK_NOTICE`, `ban_line()`);
+  `Api.signout_card_for()` the card's title and line, {} for every other
+  sign-out (those go straight to sign in, as before). `ban_left_words()`:
+  "1 day, 4 hours"; the card says "for 3 days, until Mon 21:32"
+  (`LocalTime.stamp()`), the sign-in line keeps "until <full> (x left)".
+- `src/ui/signoutcard.gd` (no class_name): a CanvasLayer at 120,
+  PROCESS_MODE_ALWAYS, a dim that stops clicks, the title, the line,
+  "Back to sign in in 5..." (`SECONDS`, `count_down()`; `step_seconds` is
+  the suite's). `_exit_tree()` never leaves the game paused.
+- `characterhud.gd _forced_signout()`: once (`_signing_out` - the poll and
+  the heartbeat both hear the 401), the session dropped as before, then for
+  a card: `SignoutCard.new()`, `get_tree().paused = true`, `count_down()`,
+  unpaused, the sign-in screen. Within about 10 s of the staff action (the
+  broadcast poll).
+- The GM panel's kick line and Save history's rollback line say what the
+  player sees.
+
+**A browser starts windowed.** The owner: "i have to flip from borderless to
+windowed back to borderless", "it should be defaulted windowed". A browser
+goes fullscreen only from a click or a key, so a game saved as Borderless
+opened in the page while Options said Borderless, and picking it again did
+nothing. `Settings.launch_window_mode()`: in a browser every launch is
+windowed (load_settings() reads the file through it); picking Borderless is
+the click that goes fullscreen. And Esc out of the browser's fullscreen:
+`_watch_browser_window()` (the "browserwatch" timer, a second) puts Options
+back to Windowed (`browser_window_mode()`: only a change the browser made
+counts). A desktop game starts as it was left (override.cfg), as before.
+
+`_test_staff_says_why_you_were_signed_out()`,
+`_test_a_browser_starts_windowed()` (testrunner_13).
+
 ### Which file owns which number
 
 | question | lives in | example |

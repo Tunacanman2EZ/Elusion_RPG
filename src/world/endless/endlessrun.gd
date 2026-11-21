@@ -201,6 +201,12 @@ var state: int = State.WAITING
 var elapsed: float = 0.0
 var stage: int = 0
 var best: float = 0.0
+# THE TOP TEN (0.169.0, the owner: "a global highscore option ... for all
+# minigames"): each run's time goes to POST /api/minigames/best, as the
+# Forge's does, and the server keeps the account's best for the Highscores
+# window. Api.post in the game, a stand-in in the suite.
+const BEST_GAME := "endless"
+var best_post: Callable = Callable()
 var swarm: Node2D = null
 var _spawn_owed: float = 0.0
 var _elite_left: float = ELITE_GAP_START
@@ -1029,6 +1035,7 @@ func _end_run() -> void:
 			GameConstants.commas(int(swarm.get("slain")))]
 	if _hud != null:
 		_hud.call("show_result", _last_result, clock_text(best))
+	_send_time(elapsed)
 	# The shooters and what they fired go now (0.119.2, "when minigame ends
 	# bullets fly randomly"): the swarm stays as it was for CLEAR_AFTER, but
 	# an elite left standing went on firing at nobody.
@@ -1037,6 +1044,21 @@ func _end_run() -> void:
 	_clear_left = CLEAR_AFTER
 	if was_party and leading():
 		party.call("line_now")
+
+
+func _send_time(held: float) -> void:
+	"""The run's time to the server, which keeps the best (0.169.0). Not
+	awaited by _end_run(): nothing waits on the answer. A party's run is the
+	party's time, each player's own Go."""
+	if held < 1.0 or testing:
+		return
+	if not best_post.is_valid() and not Api.is_logged_in():
+		return
+	var body: Dictionary = {"game": BEST_GAME, "seconds": int(held)}
+	if best_post.is_valid():
+		await best_post.call("/api/minigames/best", body)
+	else:
+		await Api.post("/api/minigames/best", body, 6.0)
 
 
 func _free_extras() -> void:

@@ -712,6 +712,33 @@ static func window_mode_for(mode_name: String) -> int:
 		_:            return DisplayServer.WINDOW_MODE_WINDOWED
 
 
+# A BROWSER STARTS IN ITS PAGE (0.169.0). The owner: "i have to flip from
+# borderless to windowed back to borderless", and "it should be defaulted
+# windowed". A browser lets a page go fullscreen only from a click or a key,
+# so a game that starts in one cannot: it opened in the page while Options
+# said Borderless, and picking Borderless - already picked - did nothing.
+# So in a browser every launch is windowed (and says so), and picking
+# Borderless is the click that goes fullscreen. A desktop game starts as it
+# was left (override.cfg).
+static func launch_window_mode(stored: Variant, web: bool) -> String:
+	return "windowed" if web else normalise_window_mode(stored)
+
+
+# AND A BROWSER CAN LEAVE FULLSCREEN BY ITSELF - Esc - without the game
+# choosing it: the watch (_watch_browser_window()) sees the page go back to a
+# window and Options says Windowed again, and the other way. Only a change
+# the browser made counts: the mode the setting asks for and the window being
+# in it a moment later is the browser doing as it was told.
+static func browser_window_mode(setting: String, was_mode: int, now_mode: int) -> String:
+	if was_mode == now_mode:
+		return setting
+	if now_mode == DisplayServer.WINDOW_MODE_WINDOWED:
+		return "windowed"
+	if now_mode == DisplayServer.WINDOW_MODE_FULLSCREEN or now_mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		return "borderless"
+	return setting
+
+
 static func normalise_window_mode(value: Variant) -> String:
 	# THE OLD FILE STORED `fullscreen` AS A BOOL, which was borderless. A bool
 	# that reaches here means that; anything unknown is windowed.
@@ -940,8 +967,23 @@ var _window_watch_screen: int = -1
 var _window_watch_at: Vector2i = Vector2i(-1, -1)
 
 
+# The browser's window, as the watch last saw it (_watch_browser_window()).
+var _browser_mode_seen: int = DisplayServer.WINDOW_MODE_WINDOWED
+
+
 func _start_window_watch() -> void:
-	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+	if OS.has_feature("web"):
+		# IN A BROWSER, ONLY THE MODE: where a page sits is the browser's.
+		_browser_mode_seen = DisplayServer.window_get_mode()
+		var browser := Timer.new()
+		browser.name = "browserwatch"
+		browser.wait_time = WINDOW_WATCH_SECONDS
+		browser.autostart = true
+		browser.process_mode = Node.PROCESS_MODE_ALWAYS
+		browser.timeout.connect(_watch_browser_window)
+		add_child(browser)
+		return
+	if DisplayServer.get_name() == "headless":
 		return
 	_window_watch_screen = DisplayServer.window_get_current_screen()
 	var timer := Timer.new()
@@ -951,6 +993,16 @@ func _start_window_watch() -> void:
 	timer.process_mode = Node.PROCESS_MODE_ALWAYS
 	timer.timeout.connect(_watch_window)
 	add_child(timer)
+
+
+func _watch_browser_window() -> void:
+	"""Once a second in a browser: Esc out of fullscreen says Windowed in
+	Options again (browser_window_mode())."""
+	var now_mode: int = DisplayServer.window_get_mode()
+	var want: String = browser_window_mode(str(get_value("window_mode")), _browser_mode_seen, now_mode)
+	_browser_mode_seen = now_mode
+	if want != str(get_value("window_mode")):
+		set_value("window_mode", want)
 
 
 func _watch_window() -> void:
@@ -2286,7 +2338,10 @@ func load_settings() -> void:
 		push_warning("Settings: could not read %s (error %d) — using defaults." % [path, err])
 
 	for key in DEFAULTS:
-		set_value(key, stored_value(config, key))
+		var stored: Variant = stored_value(config, key)
+		if key == "window_mode":
+			stored = launch_window_mode(stored, OS.has_feature("web"))
+		set_value(key, stored)
 
 	# A PHONE'S OWN DEFAULTS, ONCE (PHONE_DEFAULTS): over what the file says
 	# the first time this build runs on a phone - an options.cfg from before

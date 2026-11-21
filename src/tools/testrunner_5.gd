@@ -2008,8 +2008,8 @@ func _test_the_first_five_minutes() -> void:
 	check("  Social holds Friends, Players, Guild, Party and Trade",
 		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton"],
 		held.call("socialmenu"))
-	check("  Stats holds Stats, Kills and Kingdom (0.113.0)",
-		held.call("statsmenu") == ["characterbutton", "killsbutton", "kingdombutton"],
+	check("  Stats holds Stats, Kills, Kingdom (0.113.0) and Highscores (0.169.0)",
+		held.call("statsmenu") == ["characterbutton", "killsbutton", "kingdombutton", "highscoresbutton"],
 		held.call("statsmenu"))
 	check("  Menu holds Controls, Options, Switch character and Log out",
 		held.call("systemmenu") == ["controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton"],

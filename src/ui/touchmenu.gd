@@ -23,10 +23,11 @@ const PadScript := preload("res://src/ui/touchpad.gd")
 
 # The bar's buttons, in the order the grid shows them: the bar's own, then
 # Social's, then Menu's. Stats is its window, not its dropdown (0.113.0): the
-# grid already holds Kills and Kingdom.
+# grid already holds Kills and Kingdom - and Highscores (0.169.0).
 const ITEMS := [
 	"inventorybutton", "equipmentbutton", "characterbutton", "shopbutton", "mapbutton", "chatbutton",
 	"minigamesbutton", "friendsbutton", "playersbutton", "partybutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
+	"highscoresbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
 const COLUMNS := 3
