@@ -16749,6 +16749,42 @@ flicker for a split second you can see them vanish in spots".
 `_test_crownfall_no_smoothing()` (testrunner_13): a plain node is smoothed,
 the run, its picture, its twin layer and a twin added under it are not.
 
+### A wide screen fills (0.168.12)
+
+The owner's monitor is 3440 x 1440, 21:9 (his PassMark baseline). He said
+"start that test", then "sure" to filling it. A computer kept the 16:9
+(`KEEP`): a quarter of his screen was black bars.
+
+- **settings.gd `aspect_for()`**: a computer keeps the height too, as a
+  phone has since 0.134.7. At 16:9 the very same picture; a 16:10 or 4:3
+  screen keeps its bars above and below; only a wider screen changes, and
+  shows more world. The HUD's corners were pinned for phones already.
+- Pictures at 1720 x 720 (`zz/widewin.gd`, the town and every HUD window,
+  the minigames; `zz/loginwide.gd`, the menus at 21:9 and 16:9): the
+  windows sit where they did (a few, laid out against 1280 - the
+  Minigames card, Staff - a little left of the middle, whole); Crownfall,
+  Cut the Cloth, the Healer's Run and the Mage's Stand stay centred on
+  their own dark backgrounds.
+- **The menus with art** (login, character choice, game over) stretched
+  their picture to the width and cut its top and bottom (the warrior's
+  head). `src/ui/menus/widefit.gd` (a ColorRect, added in each `_ready()`)
+  lays the menu out at 1280 x 720 in the middle and fills the sides dark;
+  at 16:9 or narrower nothing changes. Phones held sideways get it too.
+- **Pinball** anchored Leave, the hints and the 3-2-1 as fractions of the
+  screen, so on a wide one Leave went to the far edge. `_framed()`: an
+  AspectRatioContainer (16:9, centred) whose child is the table's own rect
+  - `frame` for those, and one on the loading cover for its words. Its
+  ratio is `float(VIEW.x) / float(VIEW.y)`: VIEW is a Vector2i, and
+  1280 / 720 in whole numbers is 1 (the first try was a square frame).
+- The quit-while-loading "Parse Error: Failed. [bigfield.tscn:101]" in the
+  menu pictures is the probe quitting during the town's background load -
+  the same with the old login.
+
+`_test_a_wide_screen_fills()` (testrunner_13): the aspect, a menu and its
+backdrop in a 1720-wide SubViewport and a 1280-wide one, the three menus
+adding it, pinball's frame at 220..1500. `_test_a_phone_on_its_side_fills_it`
+expects a computer to keep the height now.
+
 ### Which file owns which number
 
 | question | lives in | example |

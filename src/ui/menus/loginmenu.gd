@@ -46,6 +46,7 @@
 # whatever function currently has this name, with no separate stored link
 # that can go stale if a node gets renamed later.
 extends Control
+const WideFit := preload("res://src/ui/menus/widefit.gd")
 
 # Api's static helpers, called on the script and not on the autoload: a static
 # function called through an instance is a warning in the editor's debugger.
@@ -204,6 +205,8 @@ func _add_version_label() -> void:
 
 
 func _ready() -> void:
+	# laid out at 16:9 in the middle of a wider screen (widefit.gd)
+	add_child(WideFit.new())
 	# THE TOWN STARTS LOADING NOW, ON A WORKER THREAD, WHILE THE PLAYER TYPES.
 	# It used to load before this screen could appear at all - see the notes in
 	# AreaRegistry's "LOADING AHEAD". The name is characterselect.gd's

@@ -299,6 +299,7 @@ func _run_all() -> void:
 	await _test_crownfall_lighter_still()
 	await _test_cut_the_cloth_a_picture()
 	await _test_crownfall_no_smoothing()
+	await _test_a_wide_screen_fills()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

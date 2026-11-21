@@ -1249,3 +1249,51 @@ func _test_crownfall_no_smoothing() -> void:
 		[smoothed, run.is_physics_interpolated(), twin.is_physics_interpolated()])
 	run.queue_free()
 	await get_tree().process_frame
+
+
+func _test_a_wide_screen_fills() -> void:
+	section("A WIDE SCREEN FILLS (0.168.12): a computer keeps the height, a menu stays 16:9 in the middle, pinball's words stay on its table")
+	check("a computer keeps the game's height as a phone does - a 21:9 screen shows more world, no black bars (\"start that test\", the owner's 3440 x 1440)",
+		Settings.aspect_for(false) == Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT)
+	const WideFit := preload("res://src/ui/menus/widefit.gd")
+	const PinScreen := preload("res://src/world/pinball/pinballscreen.gd")
+	var seen: Array = []
+	for w in [1720, 1280]:
+		var view := SubViewport.new()
+		view.size = Vector2i(w, 720)
+		add_child(view)
+		var menu := Control.new()
+		menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+		view.add_child(menu)
+		var art := ColorRect.new()
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		menu.add_child(art)
+		var back = WideFit.new()
+		menu.add_child(back)
+		var holder := Control.new()
+		holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+		view.add_child(holder)
+		var pin = PinScreen.new()
+		var frame: Control = pin._framed(holder)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		seen.append([menu.get_global_rect(), (back as Control).get_global_rect(), back.get_index(), frame.get_global_rect()])
+		pin.free()
+		view.queue_free()
+	await get_tree().process_frame
+	var wide: Array = seen[0]
+	var plain: Array = seen[1]
+	check("  a menu with art (the login, the character choice, game over) is laid out at 1280 x 720 in the middle of a wider screen, a dark backdrop behind it to the edges - at 16:9 it fills the screen as always",
+		wide[0] == Rect2(220, 0, 1280, 720) and wide[1] == Rect2(0, 0, 1720, 720) and int(wide[2]) == 0
+		and plain[0] == Rect2(0, 0, 1280, 720) and plain[1] == Rect2(0, 0, 1280, 720), [wide, plain])
+	var src_login: String = _code_src("res://src/ui/menus/loginmenu.gd")
+	var all_three: bool = true
+	for f in ["loginmenu", "characterselect", "gameover"]:
+		all_three = all_three and _func_body(_code_src("res://src/ui/menus/%s.gd" % f), "func _ready(").contains("add_child(WideFit.new())")
+	check("  the login, the character choice and game over each add it", all_three and src_login.contains('preload("res://src/ui/menus/widefit.gd")'))
+	var pin_src: String = _code_src("res://src/world/pinball/pinballscreen.gd")
+	check("  pinball's frame is its table's picture, 16:9 in the middle (220 to 1500 on 1720) - Leave, the hints and the 3-2-1 placed in it, the cover's words in their own",
+		wide[3] == Rect2(220, 0, 1280, 720) and plain[3] == Rect2(0, 0, 1280, 720)
+		and pin_src.contains("frame.add_child(leave_button)") and pin_src.contains("frame.add_child(count_label)")
+		and _func_body(pin_src, "func _hint(").contains("frame.add_child(label)") and pin_src.contains("on_cover.add_child(title)"),
+		[wide[3], plain[3]])

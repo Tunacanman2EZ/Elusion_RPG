@@ -6,6 +6,7 @@
 # names below must match the connections in characterselect.tscn or the
 # buttons will silently fail to respond.
 extends Control
+const WideFit := preload("res://src/ui/menus/widefit.gd")
 
 # Api's static helpers, called on the script and not on the autoload: a static
 # function called through an instance is a warning in the editor's debugger.
@@ -49,6 +50,8 @@ const SLOT_CLASSES := ["warrior", "mage", "tank", "healer"]
 # =============================================================================
 
 func _ready() -> void:
+	# laid out at 16:9 in the middle of a wider screen (widefit.gd)
+	add_child(WideFit.new())
 	# CHANGED: removed the redundant CharacterData.load_data() call that
 	# used to run here. its original justification ("CharacterData also
 	# loads on autoload init") no longer applies — CharacterData._ready()

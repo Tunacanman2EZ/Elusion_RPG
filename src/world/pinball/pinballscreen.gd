@@ -118,6 +118,8 @@ var _covered: CanvasItem = null
 var _hidden_layers: Array = []
 var _held: Node = null
 var _held_mode: Node.ProcessMode = Node.PROCESS_MODE_INHERIT
+# the table's own 16:9 rect on a wider screen (_framed())
+var frame: Control = null
 var _leave_armed: float = 0.0
 var _fingers: Dictionary = {}
 var _touch_ms: int = -100000
@@ -187,7 +189,30 @@ func _ready() -> void:
 	start()
 
 
+func _framed(parent: Node) -> Control:
+	"""A WIDE SCREEN (0.168.12, the owner's 3440 x 1440): the table's
+	picture keeps its 16:9, centred, and the screen around it is wider. What
+	is placed against the 1280 x 720 table (`_place()`) goes in this frame,
+	the picture's own rect, so Leave and the hints stay on the table instead
+	of drifting to the screen's far edges."""
+	var fit := AspectRatioContainer.new()
+	fit.name = "fit"
+	fit.ratio = float(VIEW.x) / float(VIEW.y)
+	fit.stretch_mode = AspectRatioContainer.STRETCH_FIT
+	fit.alignment_horizontal = AspectRatioContainer.ALIGNMENT_CENTER
+	fit.alignment_vertical = AspectRatioContainer.ALIGNMENT_CENTER
+	fit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(fit)
+	var inner := Control.new()
+	inner.name = "frame"
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fit.add_child(inner)
+	return inner
+
+
 func _build_words() -> void:
+	frame = _framed(self)
 	leave_button = Button.new()
 	leave_button.name = "leave"
 	leave_button.text = "Leave"
@@ -203,7 +228,7 @@ func _build_words() -> void:
 	leave_button.add_theme_color_override("font_color", CREAM)
 	leave_button.add_theme_font_size_override("font_size", 15)
 	leave_button.pressed.connect(ask_to_leave)
-	add_child(leave_button)
+	frame.add_child(leave_button)
 	left_hint = _hint("lefthint", "‹  HOLD: LEFT FLIPPERS", LEFT_HINT_BOX)
 	right_hint = _hint("righthint", "RIGHT FLIPPERS: HOLD  ›", RIGHT_HINT_BOX)
 	plunger_hint = _hint("plungerhint", "HOLD ANYWHERE TO PULL  ·  LET GO TO LAUNCH", PLUNGER_HINT_BOX)
@@ -249,6 +274,7 @@ func _build_cover() -> void:
 	loading.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	loading.visible = false
 	add_child(loading)
+	var on_cover: Control = _framed(loading)
 	var eye_tex: Texture2D = load(EYE_PATH) as Texture2D if ResourceLoader.exists(EYE_PATH) else null
 	if eye_tex != null:
 		var eye := TextureRect.new()
@@ -259,17 +285,17 @@ func _build_cover() -> void:
 		eye.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		eye.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_place(eye, Rect2(576, 196, 128, 128))
-		loading.add_child(eye)
+		on_cover.add_child(eye)
 	var title := _words(GAME_NAME.to_upper(), 40, GOLD)
 	title.name = "title"
 	_place(title, Rect2(240, 338, 800, 56))
-	loading.add_child(title)
+	on_cover.add_child(title)
 	var track := ColorRect.new()
 	track.name = "track"
 	track.color = Color(1.0, 1.0, 1.0, 0.08)
 	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_place(track, Rect2(440, 420, 400, 10))
-	loading.add_child(track)
+	on_cover.add_child(track)
 	load_bar = ColorRect.new()
 	load_bar.name = "bar"
 	load_bar.color = GOLD
@@ -280,7 +306,7 @@ func _build_cover() -> void:
 	load_words = _words("", 20, HINT)
 	load_words.name = "step"
 	_place(load_words, Rect2(340, 444, 600, 36))
-	loading.add_child(load_words)
+	on_cover.add_child(load_words)
 	count_label = _words("", 120, CREAM)
 	count_label.name = "count"
 	count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -288,9 +314,9 @@ func _build_cover() -> void:
 	count_label.add_theme_constant_override("outline_size", 18)
 	_place(count_label, Rect2(340, 230, 600, 200))
 	count_label.visible = false
-	add_child(count_label)
-	# the words and Leave over the cover and the number
-	move_child(leave_button, -1)
+	frame.add_child(count_label)
+	# the words, the number and Leave over the cover (all in the frame)
+	move_child(frame.get_parent(), -1)
 	move_child(results, -1)
 
 
@@ -304,7 +330,7 @@ func _hint(id: String, text: String, box: Rect2) -> Label:
 	label.add_theme_stylebox_override("normal", pill)
 	_place(label, box)
 	label.visible = false
-	add_child(label)
+	frame.add_child(label)
 	return label
 
 

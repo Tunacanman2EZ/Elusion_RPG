@@ -1208,9 +1208,14 @@ static func on_phone() -> bool:
 # on the right is anchored to the right (the bars, the hotbar, the touch
 # pad), what sits in the middle to the middle. Held upright, a phone is
 # narrower than 16:9 and keep_height draws it as before, with bars above and
-# below. A computer keeps the aspect, so nothing there moves.
-static func aspect_for(phone: bool) -> Window.ContentScaleAspect:
-	return Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT if phone else Window.CONTENT_SCALE_ASPECT_KEEP
+# below.
+# A WIDE SCREEN FILLS TOO (0.168.12, the owner's 3440 x 1440 at 21:9, black
+# bars a quarter of it): a computer keeps the height as well. At 16:9 that
+# is exactly the old picture; a 16:10 or 4:3 screen keeps its bars above and
+# below as before; only a screen wider than 16:9 changes, and it now shows
+# more world. `phone` is kept for the callers and the test.
+static func aspect_for(_phone: bool) -> Window.ContentScaleAspect:
+	return Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT
 
 
 static func apply_physics_rate(rate: String) -> void:

@@ -28,6 +28,7 @@
 # gold and carry items are at risk every time you go adventuring. lusions
 # (premium currency) provide an out — but at a cost the player must earn.
 extends Control
+const WideFit := preload("res://src/ui/menus/widefit.gd")
 
 
 # =============================================================================
@@ -62,6 +63,8 @@ var _reviving: bool = false
 # =============================================================================
 
 func _ready() -> void:
+	# laid out at 16:9 in the middle of a wider screen (widefit.gd)
+	add_child(WideFit.new())
 	_update_display()
 	_wire_buttons()
 

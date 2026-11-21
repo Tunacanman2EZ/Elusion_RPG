@@ -6015,9 +6015,9 @@ func _test_a_phone_on_its_side_fills_it() -> void:
 	# view and no black bars; a computer keeps the 16:9 it was laid out on
 	# (settings.gd "A PHONE ON ITS SIDE FILLS ITS SCREEN").
 	section("A phone on its side fills its screen (0.134.7)")
-	check("a phone keeps the height - wider shows more - and a computer keeps the 16:9 aspect",
+	check("a phone keeps the height - wider shows more - and (0.168.12, a 21:9 screen) a computer does too",
 		Settings.aspect_for(true) == Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT
-		and Settings.aspect_for(false) == Window.CONTENT_SCALE_ASPECT_KEEP
+		and Settings.aspect_for(false) == Window.CONTENT_SCALE_ASPECT_KEEP_HEIGHT
 		and str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep")) == "keep")
 	check("  set when the game starts, from whether it is on a phone",
 		_func_body(_code_src("res://src/systems/settings.gd"), "func _ready(").contains("content_scale_aspect = aspect_for(on_phone())"))
