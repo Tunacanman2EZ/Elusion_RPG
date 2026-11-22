@@ -314,6 +314,7 @@ func _run_all() -> void:
 	await _test_multimeshes_never_wait()
 	await _test_monsters_warm_by_example()
 	await _test_the_testing_ground_clears_in_parts()
+	_test_the_count_drawn_holds()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

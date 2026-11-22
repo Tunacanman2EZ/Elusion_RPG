@@ -14,6 +14,9 @@ const PoolForTests := preload("res://src/systems/connectionpool.gd")
 const _SettingsCode := preload("res://src/systems/settings.gd")
 const _CombatCode := preload("res://src/systems/combat.gd")
 const _AreaRegistryCode := preload("res://src/systems/arearegistry.gd")
+# How many a MultiMesh drawer really draws (0.174.2: a ring's MultiMesh draws
+# every slot, the unused ones blank, so visible_instance_count no longer says).
+const _MeshRingCode := preload("res://src/shared/meshring.gd")
 
 
 # WHERE THE RESULTS GO
@@ -4432,6 +4435,11 @@ func _tip_rows(tip: Node) -> Array:
 
 func _code_src(path: String) -> String:
 	return _code_only(FileAccess.get_file_as_string(path))
+
+
+func _drawn(on: MultiMeshInstance2D) -> int:
+	"""How many instances `on` really draws (meshring.gd shown_on())."""
+	return _MeshRingCode.shown_on(on)
 
 
 func _all_gd_under(dir_path: String) -> Array[String]:

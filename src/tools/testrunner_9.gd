@@ -746,8 +746,8 @@ func _test_the_swarm_keeps_off_the_walls() -> void:
 	var front: MultiMeshInstance2D = swarm.get("_front") as MultiMeshInstance2D
 	var back: MultiMeshInstance2D = swarm.get("_mesh") as MultiMeshInstance2D
 	check("the slimes whose pictures reach over the back wall are drawn by the front layer, the rest as before",
-		front != null and front.multimesh.visible_instance_count == 3 and back.multimesh.visible_instance_count == 2,
-		[front.multimesh.visible_instance_count if front else -1, back.multimesh.visible_instance_count])
+		front != null and _drawn(front) == 3 and _drawn(back) == 2,
+		[_drawn(front) if front else -1, _drawn(back)])
 	var first_y: float = (swarm.get("_front_buffer") as PackedFloat32Array)[7]
 	check("  sorted a pixel past the wall's foot, with the world, over the wall and under anybody south of it",
 		swarm.y_sort_enabled and is_equal_approx(front.position.y, o.y + 29.0) and front.z_index == 0

@@ -820,7 +820,7 @@ func _test_the_swarm_steps_the_same_for_less() -> void:
 			if differ.is_empty():
 				differ = [k, apart]
 		most_near = maxi(most_near, (was.get("_near") as PackedInt32Array).size())
-		most_front = maxi(most_front, (was.get("_front") as MultiMeshInstance2D).multimesh.visible_instance_count)
+		most_front = maxi(most_front, _drawn(was.get("_front") as MultiMeshInstance2D))
 		saw_dying = saw_dying or (was.get("state") as PackedByteArray).has(2)
 		var held: PackedInt32Array = was.get("_held")
 		for p in range(proxies_near, held.size()):
@@ -871,8 +871,8 @@ func _swarm_twins_differ(a: Node, b: Node) -> Array:
 		if int(a.get(field)) != int(b.get(field)):
 			out.append(field)
 	for mesh in ["_mesh", "_front"]:
-		var drawn: int = (a.get(mesh) as MultiMeshInstance2D).multimesh.visible_instance_count
-		if drawn != (b.get(mesh) as MultiMeshInstance2D).multimesh.visible_instance_count:
+		var drawn: int = _drawn(a.get(mesh) as MultiMeshInstance2D)
+		if drawn != _drawn(b.get(mesh) as MultiMeshInstance2D):
 			out.append(mesh)
 		var buffer: String = "_buffer" if mesh == "_mesh" else "_front_buffer"
 		if (a.get(buffer) as PackedFloat32Array).slice(0, drawn * 16).to_byte_array() \
@@ -3112,7 +3112,7 @@ func _test_the_swarm_runs_lighter() -> void:
 	await get_tree().process_frame
 	swarm.call("_write_buffer")
 	var with_cam: int = int(swarm.get("drawn"))
-	var shown: int = (swarm.get("_mesh") as MultiMeshInstance2D).multimesh.visible_instance_count
+	var shown: int = _drawn(swarm.get("_mesh") as MultiMeshInstance2D)
 	check("with no camera every slime is drawn; with one, only those on screen",
 		bare == 2 and with_cam == 1 and shown == 1, [bare, with_cam, shown])
 	var near_moves: int = 0

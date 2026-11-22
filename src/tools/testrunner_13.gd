@@ -2381,8 +2381,9 @@ func _test_multimeshes_never_wait() -> void:
 	check("each send goes to the next MultiMesh of three, never the one on screen; the drawer is turned to it",
 		turned and ring.meshes.size() == MeshRingScript.RING and drawn[0] != multi, drawn.map(func(m: MultiMesh) -> int: return m.get_rid().get_id()))
 	var now: MultiMesh = drawer.multimesh
-	check("  it holds only the slots used, in a step (512 for 300 of 12,000), and draws the 300",
-		now.instance_count == 512 and now.visible_instance_count == 300 and ring.shown == 300, [now.instance_count, now.visible_instance_count])
+	check("  it holds only the slots used, in a step (512 for 300 of 12,000), and draws the 300 (every slot since 0.174.2, the rest blank)",
+		now.instance_count == 512 and now.visible_instance_count == -1 and ring.shown == 300 and _drawn(drawer) == 300,
+		[now.instance_count, now.visible_instance_count, _drawn(drawer)])
 	# What each holds can be read back only from a real renderer (the suite
 	# runs headless), so this asks it there.
 	var as_written: bool = DisplayServer.get_name() == "headless" \
@@ -2396,7 +2397,7 @@ func _test_multimeshes_never_wait() -> void:
 	ring.send(buffer, 0)
 	ring.send(buffer, 0)
 	check("nothing to draw: the one on screen draws none, and nothing is sent while there is nothing",
-		drawer.multimesh.visible_instance_count == 0 and ring.sends == sent and ring.shown == 0)
+		drawer.multimesh.visible_instance_count == 0 and _drawn(drawer) == 0 and ring.sends == sent and ring.shown == 0)
 	var resized: int = ring.resizes
 	for n in 6:
 		ring.send(buffer, 280 + n * 4)
@@ -2417,10 +2418,10 @@ func _test_multimeshes_never_wait() -> void:
 	field.step(1.0 / 60.0, Vector2(1.0e6, 1.0e6), 0.0, 0.0, true)
 	var bullets: MultiMeshInstance2D = field.get_node_or_null(^"bullets") as MultiMeshInstance2D
 	check("  300 bullets in flight: 512 slots sent and 300 drawn, not 12,000",
-		bullets != null and bullets.multimesh.instance_count == 512 and bullets.multimesh.visible_instance_count == 300
-		and field_ring.sends == 1, [bullets.multimesh.instance_count if bullets != null else -1])
+		bullets != null and bullets.multimesh.instance_count == 512 and _drawn(bullets) == 300
+		and field_ring.sends == 1, [bullets.multimesh.instance_count if bullets != null else -1, _drawn(bullets)])
 	field.clear()
-	check("  cleared, none drawn", bullets.multimesh.visible_instance_count == 0)
+	check("  cleared, none drawn", _drawn(bullets) == 0 and bullets.multimesh.visible_instance_count == 0)
 	field.queue_free()
 	# Every MultiMesh the game rewrites goes through the ring.
 	var direct: Array = []
@@ -2435,6 +2436,82 @@ func _test_multimeshes_never_wait() -> void:
 		and _code_src("res://src/projectiles/spikefx.gd").contains("_ring_send.send(")
 		and _code_src("res://src/world/healerrun/healerrun.gd").contains("_shot_send.send("), direct)
 	print("  multimeshes sent without waiting: a ring of three, only the slots used")
+
+
+# THE COUNT DRAWN HOLDS (0.174.2). The owner's card: 1,000 slimes filling the
+# Testing Ground gave 50 to 85 frames over 14 ms, each with about 20 ms of
+# drawing, while the horde walked on - none once it stood. The browser's
+# renderer steps an instanced draw by the number drawn
+# (glVertexAttribDivisor(..., instance_count)), and builds its drawing anew
+# for each new number; walking on, the number changed 20 times a second.
+# meshring.gd draws every slot of a MultiMesh, the ones past the count blank.
+func _test_the_count_drawn_holds() -> void:
+	section("THE COUNT DRAWN HOLDS (0.174.2)")
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_2D
+	multi.use_colors = true
+	multi.use_custom_data = true
+	multi.mesh = QuadMesh.new()
+	multi.instance_count = 0
+	var drawer := MultiMeshInstance2D.new()
+	drawer.multimesh = multi
+	add_child(drawer)
+	var ring: MeshRingScript = MeshRingScript.new()
+	ring.wear(drawer, 16)
+	var buffer := PackedFloat32Array()
+	buffer.resize(3000 * 16)
+	for k in 3000:
+		var o: int = k * 16
+		buffer[o] = 1.0
+		buffer[o + 5] = 1.0
+		buffer[o + 3] = float(k)
+		buffer[o + 7] = 2.0
+		buffer[o + 11] = 1.0
+		buffer[o + 15] = 0.5
+	# A horde walking on: ten more a send, 10 to 1,000 - a hundred numbers the
+	# old way, each one new to the browser.
+	var numbers: Dictionary = {}
+	var every_slot: bool = true
+	var says: bool = true
+	for n in 100:
+		var count: int = 10 + n * 10
+		ring.send(buffer, count)
+		var now: MultiMesh = drawer.multimesh
+		numbers[now.instance_count] = true
+		every_slot = every_slot and now.visible_instance_count == -1
+		says = says and ring.shown == count and _drawn(drawer) == count
+	check("a horde walking on, 10 to 1,000 ten more a send: every send draws every slot of its MultiMesh, so the browser sees five numbers (the powers of two), not a hundred",
+		every_slot and numbers.size() == 5 and numbers.has(64) and numbers.has(1024), numbers.keys())
+	check("  and the ring says how many it really draws (shown, shown_on())", says)
+	var blanked: PackedFloat32Array = ring._with_blanks(buffer, 300, 512, 3000)
+	var tail: PackedFloat32Array = blanked.slice(300 * 16)
+	check("  the slots past the count are sent blank - all zeros, a transform of no size, so nothing of them is drawn - and the count as written",
+		blanked.size() == 512 * 16 and blanked.slice(0, 300 * 16) == buffer.slice(0, 300 * 16)
+		and tail.size() == 212 * 16 and tail.count(0.0) == tail.size(), [blanked.size(), tail.count(0.0)])
+	var narrow: PackedFloat32Array = ring._with_blanks(buffer, 500, 512, 3000)
+	var whole: PackedFloat32Array = ring._with_blanks(buffer, 3000, 3000, 3000)
+	check("  a narrower gap after a wide one is blank too; a full one is the buffer as it is",
+		narrow.size() == 512 * 16 and narrow.slice(500 * 16).count(0.0) == 12 * 16
+		and narrow.slice(0, 500 * 16) == buffer.slice(0, 500 * 16) and whole == buffer)
+	# Read back only from a real renderer (the suite runs headless).
+	ring.send(buffer, 300)
+	var on_screen: MultiMesh = drawer.multimesh
+	var as_drawn: bool = DisplayServer.get_name() == "headless" \
+		or (on_screen.get_instance_transform_2d(299).origin == Vector2(299, 2)
+			and on_screen.get_instance_transform_2d(400).x == Vector2.ZERO
+			and on_screen.get_instance_transform_2d(400).y == Vector2.ZERO)
+	check("  on the card: the last slime where it was written, the slot after the count of no size", as_drawn)
+	drawer.queue_free()
+	# Nobody beside the ring says how many are drawn.
+	var counting: Array = []
+	for script_path in ["res://src/shared/bulletfield.gd", "res://src/world/endless/swarm.gd",
+			"res://src/projectiles/spikefx.gd", "res://src/world/healerrun/healerrun.gd"]:
+		var code: String = _code_src(script_path)
+		if code.count("visible_instance_count = ") != code.count("visible_instance_count = 0"):
+			counting.append(script_path.get_file())
+	check("  the bullets, the horde, the spikes and the healer run's shots leave the count drawn to the ring",
+		counting.is_empty(), counting)
+	print("  the count drawn holds: every slot drawn, the unused blank")
 
 
 # EVERY MONSTER DRAWN ONCE, FOR REAL, OUT OF SIGHT (0.174.0). The owner's

@@ -672,13 +672,13 @@ func _test_spikes_drawn_together() -> void:
 	var sparks: MultiMeshInstance2D = fx.get_node("sparks") as MultiMeshInstance2D
 	var placed: int = 0
 	var buf: PackedFloat32Array = fx.get("_ring_buf")
-	for i in rings.multimesh.visible_instance_count:
+	for i in _drawn(rings):
 		var origin: Vector2 = fx.to_global(Vector2(buf[i * Fx.RING_STRIDE + 3], buf[i * Fx.RING_STRIDE + 7]))
 		for spot in spots:
 			if origin.distance_to(spot) < 0.5:
 				placed += 1
 	check("  the rings are one MultiMesh, an instance a spike where it stands (placed after it was added)",
-		rings.multimesh.visible_instance_count == 4 and placed == 4, [rings.multimesh.visible_instance_count, placed])
+		_drawn(rings) == 4 and placed == 4, [_drawn(rings), placed])
 	check("  both MultiMeshes drawn as written, never blended between buffers; the sparks over everything",
 		rings.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
 		and sparks.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF and sparks.z_index == 1)
@@ -699,7 +699,7 @@ func _test_spikes_drawn_together() -> void:
 	check("  on the container's clock the warnings end and the spikes erupt (none before), a burst each",
 		not early and int(fx.call("warning_count")) == 0
 		and spikes.all(func(k): return bool((k as Node).get("_erupting")))
-		and int(fx.call("bursts_alive")) == 4 and sparks.multimesh.visible_instance_count == 4,
+		and int(fx.call("bursts_alive")) == 4 and _drawn(sparks) == 4,
 		[early, fx.call("warning_count"), fx.call("bursts_alive")])
 	var holder: Node = Fx.pool_holder(container, Element.Type.DARK)
 	check("  a spike's pool goes under the rings, beside its element's",
@@ -708,7 +708,7 @@ func _test_spikes_drawn_together() -> void:
 		and _func_body(_code_src("res://src/projectiles/bossprojectile.gd"), "func _leave_puddle(").contains("SpikeFx.pool_holder("))
 	await get_tree().create_timer(1.5).timeout
 	check("  the sparks spent, nothing is drawn and the container's clock stops",
-		int(fx.call("bursts_alive")) == 0 and sparks.multimesh.visible_instance_count == 0 and not fx.is_processing(),
+		int(fx.call("bursts_alive")) == 0 and _drawn(sparks) == 0 and not fx.is_processing(),
 		[fx.call("bursts_alive"), fx.is_processing()])
 
 	check("  AreaRegistry gives every area its own as the area arrives",
