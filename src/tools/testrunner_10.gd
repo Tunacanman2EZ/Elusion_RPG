@@ -891,7 +891,9 @@ func _swarm_twins_differ(a: Node, b: Node) -> Array:
 
 # The swarm's step, buffer and stand-ins before 0.117.0, word for word but for
 # their docstrings, the clock (_sway_msec(), once a slime as it was) and the
-# names of the helpers (_was_...), so nothing here overrides the new ones.
+# names of the helpers (_was_...), so nothing here overrides the new ones -
+# and the send to the graphics card, which is the swarm's _send() since
+# 0.173.2 (meshring.gd: only the slots drawn, to a MultiMesh not on screen).
 const _SWARM_WAS := """
 func _step(target: Vector2, chasing: bool) -> void:
 	_grid.fill(0)
@@ -1137,15 +1139,7 @@ func _write_buffer() -> void:
 			in_front += 1
 		else:
 			k += 1
-	var multi: MultiMesh = _mesh.multimesh
-	# The whole buffer, always: MultiMesh takes one of exactly its size. Past
-	# the order's end it holds old cells, and visible_instance_count draws
-	# none of them.
-	multi.buffer = back
-	multi.visible_instance_count = k
-	if _front != null:
-		_front.multimesh.buffer = front
-		_front.multimesh.visible_instance_count = in_front
+	_send(back, k, front, in_front)
 
 
 func _was_sort_order() -> void:

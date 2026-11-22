@@ -45,6 +45,7 @@ extends Node2D
 # draw only as many instances as there are.
 
 const LagTests := preload("res://src/systems/lagtests.gd")
+const MeshRing := preload("res://src/shared/meshring.gd")
 const RING_SHADER := preload("res://src/projectiles/spikerings.gdshader")
 const SPARK_SHADER := preload("res://src/projectiles/spikesparks.gdshader")
 
@@ -91,6 +92,11 @@ var _unplaced: Array = []
 var _rings_changed: bool = false
 
 var _sparks: MultiMeshInstance2D = null
+# SENT WITHOUT WAITING (0.173.2, meshring.gd): a change goes to the next
+# MultiMesh round, never the one on screen, holding only what is drawn. The
+# owner's readout: "spikes rise: 10 of 26 hitched, mostly drawing".
+var _ring_send: MeshRing = null
+var _spark_send: MeshRing = null
 var _spark_mat: ShaderMaterial = null
 var _spark_buf := PackedFloat32Array()
 var _spark_end: Array[float] = []
@@ -164,6 +170,10 @@ func _ready() -> void:
 	_sparks = _make_mesh("sparks", _spark_mesh(), SPARK_SHADER, false)
 	_sparks.z_index = 1
 	_spark_mat = _sparks.material as ShaderMaterial
+	_ring_send = MeshRing.new()
+	_ring_send.wear(_rings, RING_STRIDE)
+	_spark_send = MeshRing.new()
+	_spark_send.wear(_sparks, SPARK_STRIDE)
 	for i in ELEMENTS:
 		_motion.append(Vector4.ZERO)
 		_shape.append(Vector4.ZERO)
@@ -564,17 +574,7 @@ func _flush() -> void:
 		_rings_changed = true
 	if _rings_changed:
 		_rings_changed = false
-		var multi: MultiMesh = _rings.multimesh
-		var room: int = int(_ring_buf.size() / float(RING_STRIDE))
-		if multi.instance_count != room:
-			multi.instance_count = room
-		multi.buffer = _ring_buf
-		multi.visible_instance_count = _ring_spikes.size()
+		_ring_send.send(_ring_buf, _ring_spikes.size())
 	if _sparks_changed:
 		_sparks_changed = false
-		var multi: MultiMesh = _sparks.multimesh
-		var room: int = int(_spark_buf.size() / float(SPARK_STRIDE))
-		if multi.instance_count != room:
-			multi.instance_count = room
-		multi.buffer = _spark_buf
-		multi.visible_instance_count = _spark_end.size()
+		_spark_send.send(_spark_buf, _spark_end.size())

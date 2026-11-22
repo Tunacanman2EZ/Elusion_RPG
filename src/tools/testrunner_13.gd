@@ -2,6 +2,8 @@
 # split; part 12 passed 234 KB): _test_the_beholders_table.
 extends "res://src/tools/testrunner_12.gd"
 
+const MeshRingScript := preload("res://src/shared/meshring.gd")
+
 
 func _test_the_beholders_table() -> void:
 	section("The Beholder's Table: the pinball table in the game (0.167.0)")
@@ -2335,3 +2337,101 @@ func _test_spawns_stay_on_the_town_ground() -> void:
 	check("  an area with no ground layer places as before", Spawner.floor_layers(Node.new()).is_empty())
 	town.free()
 	print("  spawns stay on the town's ground")
+
+
+# MULTIMESHES SENT WITHOUT WAITING (0.173.2). The owner's limit sweep in his
+# browser: 20 archers took drawing from 1.3 to 17.1 ms a frame, and every kind
+# that writes a MultiMesh (the bullets, the horde, the spikes' rings) stopped
+# on slow frames of 20-25 ms. Each write went whole (12,000 bullet slots, 5,000
+# slimes) into the MultiMesh being drawn. meshring.gd: the next one round,
+# only the slots used.
+func _test_multimeshes_never_wait() -> void:
+	section("MULTIMESHES SENT WITHOUT WAITING (0.173.2)")
+	check("a mesh's slots: a power of two (64 at least), kept while it fits and is not four times too big, never past the buffer",
+		MeshRingScript.slots_for(300, 0, 12000) == 512 and MeshRingScript.slots_for(300, 512, 12000) == 512
+		and MeshRingScript.slots_for(100, 512, 12000) == 128 and MeshRingScript.slots_for(130, 128, 12000) == 256
+		and MeshRingScript.slots_for(5, 0, 12000) == MeshRingScript.LEAST and MeshRingScript.slots_for(4999, 0, 5000) == 5000
+		and MeshRingScript.slots_for(20, 64, 12000) == 64,
+		[MeshRingScript.slots_for(300, 0, 12000), MeshRingScript.slots_for(100, 512, 12000), MeshRingScript.slots_for(4999, 0, 5000)])
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_2D
+	multi.use_colors = true
+	multi.mesh = QuadMesh.new()
+	multi.instance_count = 0
+	var drawer := MultiMeshInstance2D.new()
+	drawer.multimesh = multi
+	add_child(drawer)
+	var ring: MeshRingScript = MeshRingScript.new()
+	ring.wear(drawer, 12)
+	ring.set_bounds(AABB(Vector3(-50, -50, -1), Vector3(100, 100, 2)))
+	var buffer := PackedFloat32Array()
+	buffer.resize(12000 * 12)
+	for k in 300:
+		var o: int = k * 12
+		buffer[o] = 1.0
+		buffer[o + 5] = 1.0
+		buffer[o + 3] = float(k)
+		buffer[o + 7] = float(-k)
+		buffer[o + 11] = 1.0
+	var drawn: Array = []
+	for n in 4:
+		ring.send(buffer, 300)
+		drawn.append(drawer.multimesh)
+	var turned: bool = drawn[0] != drawn[1] and drawn[1] != drawn[2] and drawn[2] != drawn[3] and drawn[3] == drawn[0]
+	check("each send goes to the next MultiMesh of three, never the one on screen; the drawer is turned to it",
+		turned and ring.meshes.size() == MeshRingScript.RING and drawn[0] != multi, drawn.map(func(m: MultiMesh) -> int: return m.get_rid().get_id()))
+	var now: MultiMesh = drawer.multimesh
+	check("  it holds only the slots used, in a step (512 for 300 of 12,000), and draws the 300",
+		now.instance_count == 512 and now.visible_instance_count == 300 and ring.shown == 300, [now.instance_count, now.visible_instance_count])
+	# What each holds can be read back only from a real renderer (the suite
+	# runs headless), so this asks it there.
+	var as_written: bool = DisplayServer.get_name() == "headless" \
+		or (now.get_instance_transform_2d(0).origin == Vector2(0, 0)
+			and now.get_instance_transform_2d(299).origin == Vector2(299, -299))
+	check("  every instance as written, and every one round has the bounds",
+		as_written and ring.meshes.all(func(m: MultiMesh) -> bool: return m.custom_aabb.size.x == 100.0),
+		ring.meshes.map(func(m: MultiMesh) -> Vector3: return m.custom_aabb.size))
+	var sent: int = ring.sends
+	ring.send(buffer, 0)
+	ring.send(buffer, 0)
+	ring.send(buffer, 0)
+	check("nothing to draw: the one on screen draws none, and nothing is sent while there is nothing",
+		drawer.multimesh.visible_instance_count == 0 and ring.sends == sent and ring.shown == 0)
+	var resized: int = ring.resizes
+	for n in 6:
+		ring.send(buffer, 280 + n * 4)
+	check("  a crowd that changes a little keeps its sizes (no reallocation)", ring.resizes == resized, ring.resizes - resized)
+	drawer.queue_free()
+	# The bullet field: none in flight sends nothing; 300 send 512, not 12,000.
+	var field := BulletField.new()
+	field.bounds = Rect2(-2000, -2000, 4000, 4000)
+	add_child(field)
+	await get_tree().process_frame
+	var field_ring: MeshRingScript = field.get("_ring")
+	for n in 3:
+		field.step(1.0 / 60.0, Vector2(1.0e6, 1.0e6), 0.0, 0.0, true)
+	check("the bullet field wears a ring, and with no bullets it sends nothing, frame after frame",
+		field_ring != null and field_ring.sends == 0)
+	for k in 300:
+		field.spawn(Vector2(k % 40, floori(k / 40.0)) * 10.0, 0.0, 5.0, Color.WHITE, false, 0.0, 0.0, 5.0, 1, 0)
+	field.step(1.0 / 60.0, Vector2(1.0e6, 1.0e6), 0.0, 0.0, true)
+	var bullets: MultiMeshInstance2D = field.get_node_or_null(^"bullets") as MultiMeshInstance2D
+	check("  300 bullets in flight: 512 slots sent and 300 drawn, not 12,000",
+		bullets != null and bullets.multimesh.instance_count == 512 and bullets.multimesh.visible_instance_count == 300
+		and field_ring.sends == 1, [bullets.multimesh.instance_count if bullets != null else -1])
+	field.clear()
+	check("  cleared, none drawn", bullets.multimesh.visible_instance_count == 0)
+	field.queue_free()
+	# Every MultiMesh the game rewrites goes through the ring.
+	var direct: Array = []
+	for script_path in _all_gd_under("res://src"):
+		if _is_suite_script(script_path) or script_path.ends_with("/meshring.gd"):
+			continue
+		var code: String = _code_src(script_path)
+		if code.contains(".buffer = ") or code.contains("multimesh_set_buffer("):
+			direct.append(script_path.get_file())
+	check("every MultiMesh the game rewrites is sent through meshring.gd (the bullets, the horde, the spikes, the healer run's shots)",
+		direct.is_empty() and _code_src("res://src/world/endless/swarm.gd").contains("_mesh_ring.send(")
+		and _code_src("res://src/projectiles/spikefx.gd").contains("_ring_send.send(")
+		and _code_src("res://src/world/healerrun/healerrun.gd").contains("_shot_send.send("), direct)
+	print("  multimeshes sent without waiting: a ring of three, only the slots used")

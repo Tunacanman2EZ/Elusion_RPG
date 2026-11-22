@@ -35,6 +35,7 @@ class_name BulletField
 extends Node2D
 
 const HitSource := preload("res://src/shared/hitsource.gd")
+const MeshRing := preload("res://src/shared/meshring.gd")
 
 
 # Floats per bullet in the MultiMesh buffer: a 2D transform is 8
@@ -153,6 +154,11 @@ var _buffer: PackedFloat32Array = PackedFloat32Array()
 # The bullets' material: Options' Projectile brightness is set on it.
 var _shading: ShaderMaterial = null
 var _multimesh: MultiMesh = null
+# SENT WITHOUT WAITING (0.173.2, meshring.gd): each frame's bullets go to the
+# next MultiMesh round, holding only the slots in use. The owner's sweep: 20
+# archers, drawing 1.3 -> 17.1 ms a frame in his browser, from 12,000 slots
+# sent every frame into the MultiMesh being drawn.
+var _ring: MeshRing = null
 
 # THE WALLS, as a grid of cells: 1 is solid. A bullet whose centre enters a
 # solid cell is gone. Built once per area by BulletZone (set_walls); empty
@@ -218,7 +224,8 @@ func _ready() -> void:
 	_multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	_multimesh.use_colors = true
 	_multimesh.mesh = quad
-	_multimesh.instance_count = capacity
+	# None yet: the ring sizes each to the bullets in flight (meshring.gd).
+	_multimesh.instance_count = 0
 	_multimesh.visible_instance_count = 0
 
 	var shader: Shader = Shader.new()
@@ -253,6 +260,8 @@ func _ready() -> void:
 	drawer.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(drawer)
 	RenderingServer.multimesh_set_physics_interpolated(_multimesh.get_rid(), false)
+	_ring = MeshRing.new()
+	_ring.wear(drawer, STRIDE)
 
 
 func _fit_culling() -> void:
@@ -261,6 +270,8 @@ func _fit_culling() -> void:
 	var box: Rect2 = bounds.grow(BIG_SIZE)
 	_multimesh.custom_aabb = AABB(Vector3(box.position.x, box.position.y, -1.0),
 		Vector3(box.size.x, box.size.y, 2.0))
+	if _ring != null:
+		_ring.set_bounds(_multimesh.custom_aabb)
 
 
 func set_walls(cells: PackedByteArray, origin: Vector2, cell: float, size: Vector2i) -> void:
@@ -537,8 +548,9 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 			_buffer[o + 11] = _alpha[i] * clampf((_life[i] - age) / FADE_SECONDS, 0.0, 1.0)
 		i += 1
 
-	_multimesh.buffer = _buffer
-	_multimesh.visible_instance_count = count
+	# Only the slots in use, to a MultiMesh the card is not drawing - and
+	# nothing at all while there is nothing to draw (meshring.gd).
+	_ring.send(_buffer, count)
 	last_step_usec = Time.get_ticks_usec() - started
 	return Vector2i(hits.size(), grazes)
 
@@ -603,8 +615,8 @@ func clear() -> void:
 	hits.clear()
 	hit_from.clear()
 	hit_source.clear()
-	if _multimesh != null:
-		_multimesh.visible_instance_count = 0
+	if _ring != null:
+		_ring.send(_buffer, 0)
 
 
 func _remove(i: int) -> void:

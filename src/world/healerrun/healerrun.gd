@@ -173,6 +173,8 @@
 # No class_name: preloaded by healerrunscreen.gd and the suite.
 extends Node2D
 
+const MeshRing := preload("res://src/shared/meshring.gd")
+
 signal finished(won: bool)
 
 enum State { READY, RUNNING, BOSS, GOAL, WON, LOST }
@@ -729,6 +731,9 @@ var _shot_pos := PackedVector2Array()
 var _shot_vel := PackedVector2Array()
 var _shot_mesh: MultiMesh = null
 var _shot_buffer := PackedFloat32Array()
+# Rewritten every frame: sent to the next MultiMesh round, never the one on
+# screen, only the shots in flight (0.173.2, meshring.gd).
+var _shot_send: MeshRing = null
 # The floor and walls are laid from just below the screen's bottom, so she
 # never stands over the dark.
 var _painted_top: int = floori((HALF.y + 64.0) / TILE) + 1
@@ -1293,7 +1298,7 @@ func _make_shots() -> void:
 	_shot_mesh.transform_format = MultiMesh.TRANSFORM_2D
 	_shot_mesh.use_colors = true
 	_shot_mesh.mesh = quad
-	_shot_mesh.instance_count = SHOT_MOST
+	_shot_mesh.instance_count = 0
 	_shot_mesh.visible_instance_count = 0
 	_shot_buffer.resize(SHOT_MOST * BulletField.STRIDE)
 	var shader := Shader.new()
@@ -1311,6 +1316,8 @@ func _make_shots() -> void:
 	drawer.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(drawer)
 	RenderingServer.multimesh_set_physics_interpolated(_shot_mesh.get_rid(), false)
+	_shot_send = MeshRing.new()
+	_shot_send.wear(drawer, BulletField.STRIDE)
 
 
 # =============================================================================
@@ -1641,8 +1648,7 @@ func _move_shots(delta: float) -> void:
 		_shot_buffer[o + 9] = SHOT_COLOUR.g
 		_shot_buffer[o + 10] = SHOT_COLOUR.b
 		_shot_buffer[o + 11] = 1.0
-	_shot_mesh.buffer = _shot_buffer
-	_shot_mesh.visible_instance_count = _shot_pos.size()
+	_shot_send.send(_shot_buffer, _shot_pos.size())
 
 
 func _strike(f: Foe, damage: float, remote: bool = false) -> void:
@@ -3022,7 +3028,7 @@ func _finish(won: bool) -> void:
 	field.clear()
 	_shot_pos.resize(0)
 	_shot_vel.resize(0)
-	_shot_mesh.visible_instance_count = 0
+	_shot_send.send(_shot_buffer, 0)
 	banner = ""
 	event = ""
 	_dark = 0.0

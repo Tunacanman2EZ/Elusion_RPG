@@ -72,6 +72,7 @@ signal struck(slot: int, batch: int, damage: int, died: bool)
 
 const SwarmProxy := preload("res://src/world/endless/swarmproxy.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
+const MeshRing := preload("res://src/shared/meshring.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SHADER := preload("res://src/world/endless/swarm.gdshader")
 const SHEET := preload("res://art/enemy/slime.png")
@@ -370,6 +371,12 @@ var front_line: float = -INF
 var _front_y: float = 0.0
 var _front: MultiMeshInstance2D = null
 var _front_buffer := PackedFloat32Array()
+# SENT WITHOUT WAITING (0.173.2, meshring.gd): each write goes to the next
+# MultiMesh round, never the one on screen, holding only the slimes drawn. It
+# sent all MOST slots twenty times a second into the MultiMesh being drawn -
+# in the owner's browser, the horde's slow frames.
+var _mesh_ring: MeshRing = null
+var _front_ring: MeshRing = null
 var _proxies: Array = []
 # The swarmlings the stand-ins stand on (_place_proxies()): the first PROXIES
 # the player's, the rest the attacks'.
@@ -460,6 +467,8 @@ func _build_mesh() -> void:
 	_mesh = _make_mesh("drawn")
 	_mesh.z_index = DRAW_Z
 	add_child(_mesh)
+	_mesh_ring = MeshRing.new()
+	_mesh_ring.wear(_mesh, 16)
 
 
 func draw_in_front_of(wall_foot: float) -> void:
@@ -482,6 +491,8 @@ func _build_front() -> void:
 	_front = _make_mesh("drawnfront")
 	_front.position = Vector2(0.0, _front_y)
 	add_child(_front)
+	_front_ring = MeshRing.new()
+	_front_ring.wear(_front, 16)
 	_front.visible = not LagTests.hide_slimes
 	set_arena(arena)
 
@@ -505,7 +516,8 @@ func _make_mesh(mesh_name: String) -> MultiMeshInstance2D:
 	multi.use_colors = true
 	multi.use_custom_data = true
 	multi.mesh = quad
-	multi.instance_count = MOST
+	# None yet: the ring sizes each to the slimes drawn (meshring.gd).
+	multi.instance_count = 0
 	multi.visible_instance_count = 0
 	if _material == null:
 		_material = ShaderMaterial.new()
@@ -539,12 +551,12 @@ func set_arena(rect: Rect2) -> void:
 	# DRAWN WHEREVER THE ARENA IS ON SCREEN. A MultiMesh filled through its
 	# buffer keeps the bounds it had, so up close the crowd was culled away
 	# while the wide view still drew it; its bounds are the arena's, always.
-	if _mesh != null:
-		_mesh.multimesh.custom_aabb = AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0, -1.0),
-			Vector3(rect.size.x + 128.0, rect.size.y + 128.0, 2.0))
-	if _front != null:
-		_front.multimesh.custom_aabb = AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0 - _front_y, -1.0),
-			Vector3(rect.size.x + 128.0, front_line - rect.position.y + 128.0, 2.0))
+	if _mesh_ring != null:
+		_mesh_ring.set_bounds(AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0, -1.0),
+			Vector3(rect.size.x + 128.0, rect.size.y + 128.0, 2.0)))
+	if _front_ring != null:
+		_front_ring.set_bounds(AABB(Vector3(rect.position.x - 64.0, rect.position.y - 64.0 - _front_y, -1.0),
+			Vector3(rect.size.x + 128.0, front_line - rect.position.y + 128.0, 2.0)))
 	_gw = maxi(1, int(ceil(rect.size.x / CELL)))
 	_gh = maxi(1, int(ceil(rect.size.y / CELL)))
 	_grid.resize(_gw * _gh)
@@ -1251,17 +1263,18 @@ func _write_buffer() -> void:
 	if to_front:
 		in_front = written
 	drawn = written
-	var multi: MultiMesh = _mesh.multimesh
-	# The whole buffer, always: MultiMesh takes one of exactly its size. Past
-	# the order's end it holds old cells, and visible_instance_count draws
-	# none of them.
-	multi.buffer = _buffer
-	multi.visible_instance_count = written - in_front
-	# The front layer only while it has, or had, slimes to draw: empty, it
-	# draws nothing whatever its buffer holds.
-	if _front != null and (in_front > 0 or _front.multimesh.visible_instance_count > 0):
-		_front.multimesh.buffer = _front_buffer
-		_front.multimesh.visible_instance_count = in_front
+	_send(_buffer, written - in_front, _front_buffer, in_front)
+
+
+func _send(back: PackedFloat32Array, shown: int, front: PackedFloat32Array, in_front: int) -> void:
+	"""The first `shown` of `back` drawn behind, the first `in_front` of `front`
+	in front of the back wall - each only the slots used, to a MultiMesh the
+	card is not drawing (meshring.gd). Past them the buffers hold old cells,
+	and nothing draws them. The front layer is sent only while it has, or
+	had, slimes to draw."""
+	_mesh_ring.send(back, shown)
+	if _front_ring != null and (in_front > 0 or _front_ring.shown > 0):
+		_front_ring.send(front, in_front)
 
 
 func _write_still_parts(buf: PackedFloat32Array) -> void:
