@@ -13,12 +13,23 @@ extends RefCounted
 # or the Endless's chest), monstersync.gd never shares it and the respawner
 # never counts it. Gone at Clear, or with the area. The panel is the owner's
 # alone, and so is this.
+#
+# ON THE FLOOR IN TOWN TOO (0.173.1, the owner: "if i spawn monsters in town
+# they go outside the map"). The town has no navigation, so a spot was any
+# point of the ring round you - near its edge, 32 of 40 off the ground and
+# some on the water. Where an area has no navigation but has a "ground"
+# TileMapLayer, a spot must be on a ground tile, not on a "water" one, and
+# not inside a wall (on_floor()).
 
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
 const FOLDER := "res://scene/enemy/"
 const GROUP := &"gm_spawned"
 # At most this many a press.
 const MOST := 200
+# Places tried for each, before that one is given up.
+const TRIES := 16
+# What a spot must not be inside: the world's walls (layer 1).
+const WALLS := 1
 static var _held: Dictionary = {}
 # Where round the owner, in px: not on top of them, on their screen.
 const NEAR := 120.0
@@ -93,9 +104,11 @@ static func spawn(tree: SceneTree, path: String, count: int, around: Vector2) ->
 	var run: Node = scene.get_node_or_null(^"endlessrun")
 	var map: RID = tree.root.world_2d.navigation_map
 	var on_map: bool = map.is_valid() and not NavigationServer2D.map_get_regions(map).is_empty()
+	var tiles: Array = [] if on_map else floor_layers(scene)
+	var space: PhysicsDirectSpaceState2D = tree.root.world_2d.direct_space_state
 	var made: int = 0
 	for n in clampi(count, 0, MOST):
-		var spot: Variant = _spot(around, map, on_map, run)
+		var spot: Variant = _spot(around, map, on_map, run, tiles, space)
 		if spot == null:
 			continue
 		var monster := packed.instantiate() as Node2D
@@ -134,10 +147,13 @@ static func scene_for(path: String) -> PackedScene:
 	return packed
 
 
-static func _spot(around: Vector2, map: RID, on_map: bool, run: Node) -> Variant:
+static func _spot(around: Vector2, map: RID, on_map: bool, run: Node,
+		tiles: Array = [], space: PhysicsDirectSpaceState2D = null) -> Variant:
 	"""A spot NEAR to FAR from `around`, on the navigation where the area has
-	one and on the Endless's floor in the Endless; null after eight tries."""
-	for attempt in 8:
+	one, on the Endless's floor in the Endless, and on the ground (not water,
+	not a wall) where there is a ground layer and no navigation; null after
+	TRIES tries."""
+	for attempt in TRIES:
 		var spot: Vector2 = around + Vector2.from_angle(randf() * TAU) * randf_range(NEAR, FAR)
 		if on_map:
 			var floor_at: Vector2 = NavigationServer2D.map_get_closest_point(map, spot)
@@ -145,8 +161,36 @@ static func _spot(around: Vector2, map: RID, on_map: bool, run: Node) -> Variant
 				continue
 		if run != null and run.has_method(&"on_floor") and not bool(run.call(&"on_floor", spot)):
 			continue
+		if not tiles.is_empty() and not on_floor(spot, tiles, space):
+			continue
 		return spot
 	return null
+
+
+static func floor_layers(scene: Node) -> Array:
+	"""[ground, water] - an area's "ground" TileMapLayer and its "water" one
+	(or null) - or [] when it has no ground layer."""
+	var ground: TileMapLayer = scene.get_node_or_null(^"ground") as TileMapLayer
+	if ground == null:
+		return []
+	return [ground, scene.get_node_or_null(^"water") as TileMapLayer]
+
+
+static func on_floor(spot: Vector2, tiles: Array, space: PhysicsDirectSpaceState2D) -> bool:
+	"""On a ground tile, not a water one, and not inside a wall."""
+	var ground: TileMapLayer = tiles[0]
+	if ground.get_cell_source_id(ground.local_to_map(ground.to_local(spot))) == -1:
+		return false
+	var water: TileMapLayer = tiles[1] if tiles.size() > 1 else null
+	if water != null and water.get_cell_source_id(water.local_to_map(water.to_local(spot))) != -1:
+		return false
+	if space != null:
+		var probe := PhysicsPointQueryParameters2D.new()
+		probe.position = spot
+		probe.collision_mask = WALLS
+		if not space.intersect_point(probe, 1).is_empty():
+			return false
+	return true
 
 
 static func alive(tree: SceneTree) -> int:

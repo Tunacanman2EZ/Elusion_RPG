@@ -2300,3 +2300,38 @@ func _test_a_newer_version_is_said() -> void:
 		and deploy.contains("[IO.File]::WriteAllText((Join-Path $web \"version.txt\"), \"$version`n\")"))
 	ApiScript.newer_web_version = was
 	print("  a newer version: version.txt, compared, said once, on the strip and at sign-in")
+
+
+# SPAWNED MONSTERS STAY ON THE TOWN'S GROUND (0.173.1). The owner: "if i
+# spawn monsters in town they go outside the map". The town has no
+# navigation, so the GM panel's Spawn put them anywhere in the ring round
+# him - off the ground, on the water. gmspawner.gd on_floor().
+func _test_spawns_stay_on_the_town_ground() -> void:
+	section("SPAWNED MONSTERS STAY ON THE TOWN'S GROUND (0.173.1)")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	var tiles: Array = Spawner.floor_layers(town)
+	check("the town has a ground layer (and a water one) to place them on",
+		tiles.size() == 2 and tiles[0] is TileMapLayer and tiles[1] is TileMapLayer)
+	if tiles.size() != 2:
+		town.free()
+		return
+	var ground: TileMapLayer = tiles[0]
+	var used: Rect2i = ground.get_used_rect()
+	# A corner of the town: most of the ring round it is off the ground.
+	var corner: Vector2 = ground.to_global(ground.map_to_local(used.position + Vector2i(2, 2)))
+	var placed: int = 0
+	var wrong: Array = []
+	for n in 60:
+		var spot: Variant = Spawner._spot(corner, RID(), false, null, tiles, null)
+		if spot == null:
+			continue
+		placed += 1
+		if not Spawner.on_floor(spot, tiles, null):
+			wrong.append(spot)
+	var outside: Vector2 = ground.to_global(ground.map_to_local(used.position - Vector2i(10, 10)))
+	check("by a corner of the town, every spot it gives is on the ground and off the water; far outside is not floor",
+		placed > 5 and wrong.is_empty() and not Spawner.on_floor(outside, tiles, null), [placed, wrong])
+	check("  an area with no ground layer places as before", Spawner.floor_layers(Node.new()).is_empty())
+	town.free()
+	print("  spawns stay on the town's ground")

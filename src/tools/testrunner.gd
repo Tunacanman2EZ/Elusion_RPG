@@ -310,6 +310,7 @@ func _run_all() -> void:
 	await _test_a_hero_speaks_on_arriving()
 	await _test_heroes_choose_what_to_say()
 	await _test_a_newer_version_is_said()
+	_test_spawns_stay_on_the_town_ground()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()
