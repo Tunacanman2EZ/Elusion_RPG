@@ -306,9 +306,9 @@ var is_attacking := false
 var _sprint_drain_accumulator: float = 0.0
 var _sprint_agility_xp_accumulator: float = 0.0
 
-# Banked in pixels, spent in thousands. Batched rather than awarded per frame
-# because gain_agility_xp() calls save_character_state() every time — a
-# per-frame award would be a save every frame.
+# Banked in pixels, spent in thousands. Batched rather than awarded per frame:
+# gain_agility_xp() saves the character (once a frame since 0.174.4, _save_soon())
+# and reports to the server every time.
 var _agility_distance_accumulator: float = 0.0
 var _is_sprinting: bool = false
 
@@ -992,9 +992,9 @@ func _accrue_agility_from_travel(distance: float) -> void:
 	if _agility_distance_accumulator < 1000.0:
 		return
 
-	# Batched. gain_agility_xp() calls save_character_state() on every call,
-	# so awarding per frame would be a save per frame — the 2 second debounce
-	# would absorb it, but only by throwing almost all of them away.
+	# Batched. gain_agility_xp() reports to the server and saves the
+	# character (once a frame, _save_soon()) on every call, so awarding per
+	# frame would be a report and a save per frame.
 	var thousands: int = int(_agility_distance_accumulator / 1000.0)
 	_agility_distance_accumulator -= float(thousands) * 1000.0
 	gain_agility_xp(thousands * agility_xp_per_1000_px)
@@ -2451,7 +2451,7 @@ func gain_attack_xp(amount: int) -> void:
 		attack_xp -= attack_xp_next
 		attack_xp_next = xp_needed_for_skill_id("attack", attack)
 		_spawn_skillup_popup("attack", attack)
-	CharacterData.save_character_state(self)
+	_save_soon()
 
 
 func gain_defense_xp(amount: int) -> void:
@@ -2476,7 +2476,7 @@ func gain_defense_xp(amount: int) -> void:
 	var tier_after: String = _get_defense_tier()["name"]
 	if tier_after != tier_before:
 		_spawn_defense_tier_popup(tier_after)
-	CharacterData.save_character_state(self)
+	_save_soon()
 
 
 func gain_agility_xp(amount: int) -> void:
@@ -2496,7 +2496,33 @@ func gain_agility_xp(amount: int) -> void:
 		agility_xp -= agility_xp_next
 		agility_xp_next = xp_needed_for_skill_id("agility", agility)
 		_spawn_skillup_popup("agility", agility)
-	CharacterData.save_character_state(self)
+	_save_soon()
+
+
+# A SAVE A FRAME, NOT A HIT (0.174.4). The owner, a warrior swinging at a
+# 5,000 horde: "getting stutters with warriors projectile". Every slime a
+# wave cut gave magic XP, and every gain saved the whole character - its
+# stats, its bag, its map, its gear - about 300 times a second; a wave into
+# a thick crowd cuts dozens in one physics tick. Timed in the container, the
+# save was most of a cut's cost. The XP is added up and reported to the
+# server on every gain as before (SkillTrainer); the character is saved at
+# the end of the frame, once, however many gains asked.
+var _save_soon_queued: bool = false
+
+
+func _save_soon() -> void:
+	"""CharacterData.save_character_state(self), once, at the end of this
+	frame."""
+	if _save_soon_queued:
+		return
+	_save_soon_queued = true
+	_save_now.call_deferred()
+
+
+func _save_now() -> void:
+	_save_soon_queued = false
+	if is_inside_tree():
+		CharacterData.save_character_state(self)
 
 
 func gain_magic_xp(amount: int) -> void:
@@ -2512,7 +2538,7 @@ func gain_magic_xp(amount: int) -> void:
 		magic_xp -= magic_xp_next
 		magic_xp_next = xp_needed_for_skill_id("magic", magic)
 		_spawn_skillup_popup("magic", magic)
-	CharacterData.save_character_state(self)
+	_save_soon()
 
 
 # =============================================================================

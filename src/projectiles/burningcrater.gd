@@ -37,6 +37,8 @@ extends Area2D
 
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
+# Its clouds drawn with every other (fxparticles.gd, 0.174.4).
+const FxEmitter := preload("res://src/shared/fxemitter.gd")
 const Targets := preload("res://src/shared/targets.gd")
 const DescentBoons := preload("res://src/world/descent/descentboons.gd")
 
@@ -82,8 +84,8 @@ var burns_dealt: int = 0
 var _age: float = 0.0
 var _bites: int = 0
 var _out: bool = false
-var _flames: CPUParticles2D = null
-var _embers: CPUParticles2D = null
+var _flames: FxEmitter = null
+var _embers: FxEmitter = null
 var _glow: Sprite2D = null
 
 
@@ -188,10 +190,10 @@ func _build() -> void:
 
 
 func _emitter(amount: int, lifetime: float, velocity: Vector2, size_min: float, size_max: float,
-		gravity_y: float, z: int) -> CPUParticles2D:
+		gravity_y: float, z: int) -> FxEmitter:
 	# A burning patch, not a burst: always emitting, from anywhere in the
 	# crater, rising. Squares, as Blast's sparks are.
-	var p := CPUParticles2D.new()
+	var p := FxEmitter.new()
 	p.amount = amount
 	p.lifetime = lifetime
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE

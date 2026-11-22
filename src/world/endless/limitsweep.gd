@@ -120,9 +120,11 @@ static func horde_target() -> Dictionary:
 
 static func counted_as(swept: Dictionary) -> String:
 	"""What a sweep's count is: monsters "out", shots "in the air", an effect
-	"a second"."""
+	"a second", a party tank's aura "lit"."""
 	if StressKinds.is_rate(swept):
 		return "a second"
+	if StressKinds.is_aura(swept):
+		return "lit"
 	return "in the air" if StressKinds.is_shot(swept) else "out"
 
 

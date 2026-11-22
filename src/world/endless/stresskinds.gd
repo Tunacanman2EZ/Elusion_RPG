@@ -10,6 +10,8 @@ extends Node
 #   flies slowly away from you and is made to last (`lifetime`), so the count
 #   holds while it is measured and none reaches you; an orb is the bullet
 #   field's. ms each is a shot in the air; fits is how many in the air.
+# - A LIT AURA (0.174.4, in effects()): more party tanks round you with
+#   theirs lit, counted like a shot - ms each is one lit, fits how many.
 # - AN EFFECT (effects()): more of it a second. Another player's attack as
 #   your screen draws it (remoteattacks.gd), a blow's sparks, a cast sparkle,
 #   a hit with its number on one of CROWD monsters already after you, and a
@@ -43,6 +45,12 @@ const ORB_STEP := 500
 const ORB_MOST := 12000
 const RATE_STEP := 10
 const RATE_MOST := 400
+# A party tank's aura (0.174.4): one more lit a step, up to AURA_MOST.
+const AURA_STEP := 1
+const AURA_MOST := 24
+const RemotePlayerScript := preload("res://src/characters/remoteplayer.gd")
+# The party tanks' made-up ids: below any real account's.
+const AURA_ID_FROM := -1000
 
 var target: Dictionary = {}
 var rate: float = 0.0
@@ -71,6 +79,10 @@ static func effects() -> Array:
 			["mage meteor", "meteor"], ["tank dynamite", "dyn"], ["healer orb", "orb"], ["healer heal", "heal"]]:
 		out.append({"label": "Effect: party %s" % str(pair[0]), "rate": str(pair[1]), "kind": -3,
 			"step": RATE_STEP, "most": RATE_MOST})
+	# A LIT AURA (0.174.4). The owner: "i didnt see tanks aura". It is not
+	# thrown so many a second but stays lit, so it is counted like a shot in
+	# the air: how many party tanks round you have theirs lit.
+	out.append({"label": "Effect: party tank aura", "aura": true, "kind": -3, "step": AURA_STEP, "most": AURA_MOST})
 	out.append({"label": "Effect: blow sparks", "rate": "sparks", "kind": -3, "step": RATE_STEP * 3, "most": RATE_MOST * 3})
 	out.append({"label": "Effect: cast sparkle", "rate": "cast", "kind": -3, "step": RATE_STEP, "most": RATE_MOST})
 	out.append({"label": "Effect: hit and its number", "rate": "hit", "kind": -3, "step": RATE_STEP * 3,
@@ -80,7 +92,13 @@ static func effects() -> Array:
 
 
 static func is_shot(swept: Dictionary) -> bool:
-	return swept.has("shot") or bool(swept.get("orb", false))
+	"""Counted by how many are out at once: a shot in the air, an orb, a lit
+	aura."""
+	return swept.has("shot") or bool(swept.get("orb", false)) or is_aura(swept)
+
+
+static func is_aura(swept: Dictionary) -> bool:
+	return bool(swept.get("aura", false))
 
 
 static func is_rate(swept: Dictionary) -> bool:
@@ -97,9 +115,12 @@ static func spot(rng: RandomNumberGenerator, around: Vector2) -> Vector2:
 
 static func make_shots(tree: SceneTree, swept: Dictionary, count: int, around: Vector2,
 		rng: RandomNumberGenerator) -> int:
-	"""`count` more of a shot round `around`, each flying slowly away from it."""
+	"""`count` more of a shot round `around`, each flying slowly away from it
+	(a lit aura: a party tank standing with it lit, make_auras())."""
 	if tree == null or tree.current_scene == null:
 		return 0
+	if is_aura(swept):
+		return make_auras(tree, count, around, rng)
 	if bool(swept.get("orb", false)):
 		var zone: BulletZone = tree.get_first_node_in_group(BulletZone.GROUP) as BulletZone
 		if zone == null or zone.field == null:
@@ -132,6 +153,32 @@ static func make_shots(tree: SceneTree, swept: Dictionary, count: int, around: V
 		if shot.has_method("shoot_vector"):
 			shot.call("shoot_vector", (at - around).normalized())
 	return count
+
+
+static func make_auras(tree: SceneTree, count: int, around: Vector2, rng: RandomNumberGenerator) -> int:
+	"""`count` more party tanks round `around`, each a picture of another
+	player (remoteplayer.gd) standing with its aura lit - the ring, the fire,
+	the glow and flames on the floor, its light where it is dark and the
+	scorch it leaves (auraburn.gd). In GROUP, so clear() takes them."""
+	var player: Node = tree.get_first_node_in_group(&"player")
+	var holder: Node = player.get_parent() if player != null and player.get_parent() != null else tree.current_scene
+	var made: int = 0
+	for _n in count:
+		var n_out: int = tree.get_nodes_in_group(GROUP).size()
+		var tank: Node2D = RemotePlayerScript.new()
+		tank.add_to_group(GROUP)
+		holder.add_child(tank)
+		tank.call("set_identity", {"id": AURA_ID_FROM - n_out, "name": "Tank %d" % (n_out + 1), "cls": "tank",
+			"lvl": 20, "v": 2})
+		var at: Vector2 = spot(rng, around)
+		tank.call("place", at)
+		tank.global_position = at
+		tank.reset_physics_interpolation()
+		tank.call("set_motion", "idledown", ["ring", "firering"], "")
+		# Standing: nothing comes from the presence server to play back.
+		tank.set_process(false)
+		made += 1
+	return made
 
 
 static func count_shots(tree: SceneTree, swept: Dictionary) -> int:

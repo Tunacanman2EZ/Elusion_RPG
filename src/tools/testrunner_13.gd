@@ -2547,6 +2547,53 @@ func _test_the_sweeps_axes_come_away() -> void:
 	print("  the sweep's axes come away")
 
 
+# A PARTY TANK'S AURA, SWEPT (0.174.4). The owner, of the Every effect sweep:
+# "i didnt see tanks aura". It stays lit, so it is counted like a shot: how
+# many party tanks round you have theirs lit.
+func _test_the_tank_aura_is_swept() -> void:
+	section("A PARTY TANK'S AURA, SWEPT (0.174.4)")
+	const Kinds := preload("res://src/world/endless/stresskinds.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	var was_shown: Variant = Settings.get_value("others_attacks")
+	Settings.set_value("others_attacks", true)
+	var auras: Array = []
+	for e in Kinds.effects():
+		if Kinds.is_aura(e):
+			auras.append(e)
+	var swept: Dictionary = auras[0] if not auras.is_empty() else {}
+	check("Every effect sweeps a party tank's aura, counted lit like a shot, one more a step",
+		auras.size() == 1 and str(swept.get("label", "")) == "Effect: party tank aura" and Kinds.is_shot(swept)
+		and not Kinds.is_rate(swept) and Sweep.counted_as(swept) == "lit" and Sweep.most_for(swept) == Kinds.AURA_MOST
+		and Sweep.targets_for(Sweep.EVERY_EFFECT, 10).has(swept), [auras.size(), Sweep.counted_as(swept)])
+	var me := Node2D.new()
+	me.add_to_group(&"player")
+	add_child(me)
+	me.global_position = Vector2(-53000, -53000)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var made: int = Kinds.make_shots(get_tree(), swept, 3, me.global_position, rng)
+	var tanks: Array = get_tree().get_nodes_in_group(Kinds.GROUP).filter(func(n: Node) -> bool: return not n.is_queued_for_deletion())
+	var lit: int = 0
+	var burning: int = 0
+	for tank in tanks:
+		var fire: CanvasItem = (tank as Node).get_node_or_null(^"firering") as CanvasItem
+		if str(tank.get("class_id")) == "tank" and fire != null and fire.visible:
+			lit += 1
+		if (tank as Node).get_node_or_null(^"auraburn") != null:
+			burning += 1
+	var near: bool = tanks.all(func(t: Node) -> bool: return (t as Node2D).global_position.distance_to(me.global_position) <= 400.0)
+	check("  three more: three party tanks round you, each with its aura lit and burning the ground, counted by the sweep",
+		made == 3 and tanks.size() == 3 and lit == 3 and burning == 3 and near
+		and Kinds.count_shots(get_tree(), swept) == 3, [made, tanks.size(), lit, burning, near])
+	var cleared: int = Kinds.clear(get_tree())
+	check("  and the ground's Clear all takes them away", cleared == 3
+		and Kinds.count_shots(get_tree(), swept) == 0)
+	me.queue_free()
+	Settings.set_value("others_attacks", was_shown)
+	await get_tree().process_frame
+	print("  a party tank's aura, swept")
+
+
 # EVERY MONSTER DRAWN ONCE, FOR REAL, OUT OF SIGHT (0.174.0). The owner's
 # browser: 23 to 38 frames of about 25 ms - all drawing - the first time a
 # kind appeared after a new build. examplewarm.gd draws one real copy of each
@@ -2669,3 +2716,123 @@ func _test_the_testing_ground_clears_in_parts() -> void:
 		and after_four == 0 and Spawner.clearing() == 0, [after_one, after_four, Spawner.clearing()])
 	holder.queue_free()
 	print("  the Testing Ground clears in parts")
+
+
+# PARTICLE CLOUDS DRAWN TOGETHER, ON THE CARD (0.174.4). The owner, of his
+# card's Every effect sweep: "we need to majorly refine mages meteor and
+# mages spike and dynamite". A meteor, a blast and a burning crater each had
+# CPUParticles2D of their own, worked out by the processor and drawn one by
+# one; fxparticles.gd draws every cloud of a layer in one draw and works out
+# each particle on the card (fxparticles.gdshader).
+func _test_particles_are_drawn_together() -> void:
+	section("PARTICLE CLOUDS DRAWN TOGETHER, ON THE CARD (0.174.4)")
+	const Fx := preload("res://src/shared/fxparticles.gd")
+	var room := Node2D.new()
+	add_child(room)
+	var far := Vector2(-41000, -41000)
+	var blast: Blast = Blast.spawn(room, far, &"dynamite", 40.0, false)
+	var clouds: Array = blast.get_children().filter(func(n: Node) -> bool: return n is _FxEmitterCode)
+	var smoke: _FxEmitterCode = clouds[0] if clouds.size() == 3 else null
+	var fire: _FxEmitterCode = clouds[1] if clouds.size() == 3 else null
+	var sparks: _FxEmitterCode = clouds[2] if clouds.size() == 3 else null
+	check("a stick's blast is three clouds, and the smoke, told to wait its beat, has let nothing out yet",
+		smoke != null and not smoke.emitting and smoke.fx_t1 < smoke.fx_t0, clouds.size())
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var drawer: Node = Fx.of(room)
+	var groups: Dictionary = drawer.get("_groups") if drawer != null else {}
+	check("  all three drawn by the one drawer: the smoke and fire's puffs in one layer, the smoke first (behind the fire, as before), the sparks in another",
+		drawer != null and fire != null and smoke.fx_drawer == drawer and fire.fx_group == smoke.fx_group
+		and smoke.fx_slot >= 0 and smoke.fx_slot < fire.fx_slot and sparks.fx_group != fire.fx_group
+		and groups.has(fire.fx_group) and (groups[fire.fx_group]["mmi"] as MultiMeshInstance2D).texture == fire.texture,
+		[smoke.fx_slot if smoke else -1, fire.fx_slot if fire else -1])
+	var rows: int = (drawer.get("_params_rows") as Dictionary).size() if drawer != null else -1
+	var again: Blast = Blast.spawn(room, far + Vector2(200, 0), &"dynamite", 40.0, false)
+	await get_tree().process_frame
+	check("  a second blast like it shares their rows of numbers: nothing new is sent to the card",
+		drawer != null and (drawer.get("_params_rows") as Dictionary).size() == rows, rows)
+
+	var crater: BurningCrater = BurningCrater.spawn(room, far + Vector2(0, 300), 10, 40.0, null)
+	crater.set_physics_process(false)
+	await get_tree().process_frame
+	var flames: _FxEmitterCode = crater.get_node_or_null(^"flames") as _FxEmitterCode
+	check("a crater's flames, given their puff once they had joined, are drawn as puffs - in the puff's layer",
+		flames != null and flames.texture != null and groups.has(flames.fx_group)
+		and (groups[flames.fx_group]["mmi"] as MultiMeshInstance2D).texture == flames.texture
+		and (groups[flames.fx_group]["mat"] as ShaderMaterial).get_shader_parameter(&"textured") == true)
+
+	var meteor: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	meteor.cosmetic = true
+	room.add_child(meteor)
+	meteor.global_position = far + Vector2(300, 300)
+	meteor.set_physics_process(false)
+	await get_tree().process_frame
+	meteor.advance(Meteor.FALL_SECONDS * 0.25)
+	await get_tree().process_frame
+	for i in 3:
+		meteor.advance(Meteor.FALL_SECONDS * 0.05)
+		await get_tree().process_frame
+	var moving: Dictionary = drawer.get("_moving")
+	check("a falling meteor's trails and sparks glide down with the stone on the card: none of them moves or is written as it falls",
+		meteor.trail.gliding() and meteor.trail.position == Vector2.ZERO and not moving.has(meteor.trail)
+		and not moving.has(meteor.smoke_trail) and not moving.has(meteor.get_node(^"whirl")),
+		[meteor.trail.position, moving.size()])
+	check("  its ring of fire narrows in steps, every meteor's the same, so its rows are shared",
+		Meteor.SWIRL_STEPS <= 16.0
+		and _func_body(_code_src("res://src/projectiles/meteor.gd"), "func _fall(").contains("floorf(t * SWIRL_STEPS) / SWIRL_STEPS"))
+
+	var frost: Blast = Blast.spawn(room, far + Vector2(0, 600), &"stalagmite", 30.0, false)
+	await get_tree().process_frame
+	var marks: Array = room.get_children().filter(func(n: Node) -> bool: return n.get_node_or_null(^"twinkles") != null)
+	var glints: _FxEmitterCode = (marks[0] as Node).get_node(^"twinkles") as _FxEmitterCode if not marks.is_empty() else null
+	if glints != null:
+		(marks[0] as CanvasItem).modulate.a = 0.5
+	for i in Fx.FADE_TURNS:
+		await get_tree().process_frame
+	check("a frost mark's glints fade with the mark, drawn unshaded as before",
+		glints != null and glints.follow_fades and is_equal_approx(glints.fx_alpha, 0.5)
+		and (groups[glints.fx_group]["mat"] as ShaderMaterial).shader == Fx.UNSHADED_SHADER, glints.fx_alpha if glints else -1.0)
+
+	# A layer of its own (a z index nothing else uses), forty clouds, every
+	# other one gone: it closes up, in the order they were made.
+	var made: Array = []
+	for i in 40:
+		var e := _FxEmitterCode.new()
+		e.z_as_relative = false
+		e.z_index = 37
+		e.set_meta(&"made", i)
+		room.add_child(e)
+		made.append(e)
+	await get_tree().process_frame
+	var layer: String = (made[0] as _FxEmitterCode).fx_group
+	for i in range(0, 40, 2):
+		(made[i] as Node).free()
+	var kept: Array = []
+	var held: Array = groups[layer]["emitters"] if groups.has(layer) else []
+	for slot in int(groups[layer]["high"]) if groups.has(layer) else 0:
+		kept.append(int((held[slot] as Node).get_meta(&"made")))
+	check("leaving frees a cloud's slot, and a layer more than half empty closes up, in the order its clouds were made",
+		groups.has(layer) and int(groups[layer]["high"]) == 20 and kept == range(1, 40, 2), kept)
+	var lone: _FxEmitterCode = made[1]
+	var started: int = int(drawer.get("rows_started_again"))
+	for i in Fx.MOST_ROWS + 1:
+		lone.spread = 1.0 + float(i) * 0.01
+		drawer.call("_write", lone, Vector2.ZERO)
+	await get_tree().process_frame
+	check("a cloud whose numbers keep changing takes a row each time, and past MOST_ROWS every row is let go and written again",
+		int(drawer.get("rows_started_again")) == started + 1
+		and (drawer.get("_params_rows") as Dictionary).size() < 64, (drawer.get("_params_rows") as Dictionary).size())
+
+	var no_cpu: Array = []
+	for path in ["res://src/projectiles/meteor.gd", "res://src/projectiles/blast.gd", "res://src/projectiles/burningcrater.gd"]:
+		if _code_src(path).contains("CPUParticles2D.new()"):
+			no_cpu.append(path.get_file())
+	if FileAccess.get_file_as_string("res://scene/projectiles/meteor.tscn").contains("type=\"CPUParticles2D\""):
+		no_cpu.append("meteor.tscn")
+	check("the meteor, its blast and its crater make no CPUParticles2D now", no_cpu.is_empty(), no_cpu)
+	room.queue_free()
+	blast.queue_free()
+	again.queue_free()
+	frost.queue_free()
+	await get_tree().process_frame
+	print("  particle clouds drawn together")

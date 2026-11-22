@@ -63,6 +63,8 @@ extends Area2D
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
 const DescentBoons := preload("res://src/world/descent/descentboons.gd")
+# Its clouds drawn with every other (fxparticles.gd, 0.174.4).
+const FxEmitter := preload("res://src/shared/fxemitter.gd")
 
 
 # How long the fall takes, from entering the screen to hitting the ground.
@@ -103,6 +105,8 @@ const VORTEX_TURNS_PER_SECOND := 3.0
 const SWIRL_FROM := 1.25
 const PULL_SWIRL_FROM := 2.0
 const SWIRL_TO := 0.55
+# How many times the ring of fire narrows and quickens on the way down.
+const SWIRL_STEPS := 16.0
 
 # THE PULL: the chance a meteor has it (rolled by mage.gd as each is called),
 # how far out it reaches (twice the hit), how close to the middle it
@@ -159,17 +163,19 @@ var _fallen: float = 0.0
 # the sky with the stone, the sparks whirling round it, and the flames
 # twisting up off the ring on the ground.
 var _sky: Node2D = null
-var _whirl: CPUParticles2D = null
-var _swirl: CPUParticles2D = null
+var _whirl: FxEmitter = null
+var _swirl: FxEmitter = null
 var _floor_glow: Sprite2D = null
+var _gliding: bool = false
+var _swirl_step: float = -1.0
 
 @onready var rock: Sprite2D = $rock
 @onready var shadow: Sprite2D = $shadow
 @onready var glow: Sprite2D = $glow
 # The trails are the rock's siblings, not its children: the rock turns as it
 # falls, and an emitter riding on it would spray in a spiral.
-@onready var trail: CPUParticles2D = $trail
-@onready var smoke_trail: CPUParticles2D = $smoketrail
+@onready var trail: FxEmitter = $trail
+@onready var smoke_trail: FxEmitter = $smoketrail
 
 
 func _ready() -> void:
@@ -178,10 +184,12 @@ func _ready() -> void:
 	rock.z_as_relative = false
 	rock.z_index = 6
 	rock.position = START_OFFSET
+	# At the landing spot, gliding down to it from the sky once the fall
+	# starts (_start_glides()).
 	for emitter in [trail, smoke_trail]:
 		emitter.z_as_relative = false
 		emitter.z_index = 5
-		emitter.position = START_OFFSET
+		emitter.relayer()
 	rock.visible = false
 	shadow.visible = false
 	glow.visible = false
@@ -216,7 +224,6 @@ func _build_vortex() -> void:
 	# Sparks whirling round the stone, carried down with it.
 	_whirl = _fire_emitter("whirl", 36, 0.35, VORTEX_RADIUS, 2.5, 3.5, Vector2.ZERO, 6)
 	_whirl.local_coords = true
-	_whirl.position = START_OFFSET
 	_whirl.scale_amount_min = 2.0
 	_whirl.scale_amount_max = 3.0
 	# The ground lighting up where it will land, under the ring of fire.
@@ -240,10 +247,10 @@ func _build_vortex() -> void:
 
 
 func _fire_emitter(id: String, amount: int, lifetime: float, radius: float, orbit_min: float, orbit_max: float,
-		pull: Vector2, z: int) -> CPUParticles2D:
+		pull: Vector2, z: int) -> FxEmitter:
 	# Squares of fire on a circle, turning round its middle: the crater's fire
 	# colours (burningcrater.gd), whole pixels.
-	var p := CPUParticles2D.new()
+	var p := FxEmitter.new()
 	p.name = id
 	p.amount = amount
 	p.lifetime = lifetime
@@ -295,10 +302,10 @@ func _fall(t: float, delta: float) -> void:
 	shadow.visible = true
 	trail.emitting = true
 	smoke_trail.emitting = true
+	if not _gliding:
+		_start_glides(t * fall_seconds)
 	# t*t: slow at the top of the screen, fastest as it lands.
 	rock.position = START_OFFSET.lerp(Vector2.ZERO, t * t).round()
-	trail.position = rock.position
-	smoke_trail.position = rock.position
 	rock.rotation += delta * 4.0
 	rock.scale = Vector2.ONE * lerpf(0.8, 1.0, t)
 	# Warm while it falls, with a burning halo behind it; _cool() brings it
@@ -318,12 +325,16 @@ func _fall(t: float, delta: float) -> void:
 		_sky.queue_redraw()
 	if _whirl != null:
 		_whirl.emitting = true
-		_whirl.position = rock.position
 	if _swirl != null:
 		_swirl.emitting = true
-		_swirl.emission_sphere_radius = HIT_RADIUS * lerpf(swirl_from(), SWIRL_TO, t)
-		_swirl.orbit_velocity_min = lerpf(1.2, 2.4, t)
-		_swirl.orbit_velocity_max = lerpf(1.8, 3.2, t)
+		# In SWIRL_STEPS, not every tick: a cloud's numbers changed are a new
+		# row on the card (fxparticles.gd), and every meteor shares these.
+		var step: float = floorf(t * SWIRL_STEPS) / SWIRL_STEPS
+		if step != _swirl_step:
+			_swirl_step = step
+			_swirl.emission_sphere_radius = HIT_RADIUS * lerpf(swirl_from(), SWIRL_TO, step)
+			_swirl.orbit_velocity_min = lerpf(1.2, 2.4, step)
+			_swirl.orbit_velocity_max = lerpf(1.8, 3.2, step)
 	if _floor_glow != null:
 		_floor_glow.visible = true
 		_floor_glow.modulate.a = lerpf(0.08, 0.5, t)
@@ -332,6 +343,18 @@ func _fall(t: float, delta: float) -> void:
 	if pulls and not cosmetic:
 		_pull(t, delta)
 	queue_redraw()
+
+
+func _start_glides(already: float) -> void:
+	"""THE TRAILS AND THE SPARKS GO DOWN WITH THE STONE, worked out on the card
+	(0.174.4): from the sky to the landing spot over the fall, t*t as the
+	stone does - so the fire left behind lies exactly along its path, and
+	nothing is written while it falls."""
+	_gliding = true
+	for emitter in [trail, smoke_trail, _whirl]:
+		if emitter != null:
+			emitter.position = Vector2.ZERO
+			emitter.glide(START_OFFSET, fall_seconds, 2.0, already)
 
 
 func _pull(t: float, delta: float) -> void:

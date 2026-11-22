@@ -488,11 +488,15 @@ func _test_the_mythic_weapons() -> void:
 		meteor.shadow.visible and inside.taken.is_empty())
 	# THE FIRE VORTEX (0.14.0). The owner: "can you add a fire vortex around the
 	# meteo when it falls to really draw out that final fantasy effect".
-	var swirl: CPUParticles2D = meteor.get_node_or_null("swirl")
-	var whirl: CPUParticles2D = meteor.get_node_or_null("whirl")
+	var swirl: _FxEmitterCode = meteor.get_node_or_null("swirl") as _FxEmitterCode
+	var whirl: _FxEmitterCode = meteor.get_node_or_null("whirl") as _FxEmitterCode
+	# The sparks go down with the stone on the card (0.174.4): gliding from
+	# the sky to the landing spot as the stone does, t*t over the fall.
 	check("  wrapped in its fire vortex: ribbons round its path, sparks round the stone, fire swirling on a glowing ground",
 		meteor.vortex_burning() and meteor.get_node_or_null("vortex") is Node2D
-		and whirl != null and whirl.position == meteor.rock.position
+		and whirl != null and whirl.gliding() and whirl.glide_from == Meteor.START_OFFSET
+		and is_equal_approx(whirl.glide_seconds, meteor.fall_seconds) and is_equal_approx(whirl.glide_power, 2.0)
+		and whirl.position == Vector2.ZERO and meteor.trail.gliding() and meteor.smoke_trail.gliding()
 		and meteor.get_node_or_null("floorglow") is Sprite2D and (meteor.get_node("floorglow") as Sprite2D).visible)
 	check("  the ground's ring of fire swirling in from past the hit toward the landing spot",
 		swirl != null and swirl.emission_sphere_radius < Meteor.HIT_RADIUS * Meteor.SWIRL_FROM
@@ -526,7 +530,7 @@ func _test_the_mythic_weapons() -> void:
 		for i in 4:
 			await get_tree().physics_frame
 		check("  with flames rising out of it and the ground glowing",
-			fire.get_node_or_null("flames") is CPUParticles2D and (fire.get_node("flames") as CPUParticles2D).emitting
+			fire.get_node_or_null("flames") is _FxEmitterCode and (fire.get_node("flames") as _FxEmitterCode).emitting
 			and fire.get_node_or_null("glow") is Sprite2D and (fire.get_node("glow") as Sprite2D).visible)
 		var stood_at: Vector2 = inside.global_position
 		fire.advance(BurningCrater.BURN_EVERY)
@@ -545,7 +549,7 @@ func _test_the_mythic_weapons() -> void:
 		fire.advance(BurningCrater.BURN_SECONDS)
 		check("it burns for BURN_SECONDS - five bites in all - then goes out",
 			inside.taken.count(10) == 5 and not fire.burning()
-			and not (fire.get_node("flames") as CPUParticles2D).emitting, inside.taken)
+			and not (fire.get_node("flames") as _FxEmitterCode).emitting, inside.taken)
 		second.advance(BurningCrater.BURN_EVERY)
 		check("  and the other crater takes over the burn once it has", inside.taken.count(10) == 6, inside.taken)
 		second.advance(BurningCrater.BURN_SECONDS)
@@ -873,7 +877,7 @@ func _test_the_mythic_weapons() -> void:
 		for i in 4:
 			await get_tree().physics_frame
 		check("  smoke and sparks rising from it, not the meteor's flames",
-			smoke.get_node_or_null("flames") is CPUParticles2D and smoke.get_node_or_null("embers") is CPUParticles2D
+			smoke.get_node_or_null("flames") is _FxEmitterCode and smoke.get_node_or_null("embers") is _FxEmitterCode
 			and smoke.name == "smoulder")
 		smoke.advance(Dynamite.FIELD_EVERY)
 		check("every half second it bites what stands in it for FIELD_SHARE of the stick's hit",

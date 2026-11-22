@@ -4436,11 +4436,14 @@ func _test_every_shot_and_effect() -> void:
 			loads = false
 	var pictures: bool = true
 	for e in effects:
+		# A party tank's aura (0.174.4) is counted lit, not fired a second.
+		if Stress.is_aura(e):
+			continue
 		var what: String = str(e["rate"])
 		if not what in ["sparks", "cast", "hit", "death"] and not what in Remote.KINDS:
 			pictures = false
 	check("every shot's scene loads and every party attack is one the game draws (%d shots, %d effects)"
-		% [shots.size(), effects.size()], shots.size() == 8 and effects.size() == 11 and loads and pictures)
+		% [shots.size(), effects.size()], shots.size() == 8 and effects.size() == 12 and loads and pictures)
 	check("  Every shot and Every effect are the sweep's lists, each with its own step and most",
 		Sweep.targets_for(Sweep.EVERY_SHOT, 10).size() == shots.size()
 			and Sweep.targets_for(Sweep.EVERY_EFFECT, 10).size() == effects.size()
@@ -4527,7 +4530,7 @@ func _test_every_shot_and_effect() -> void:
 	for k in picker.item_count:
 		names.append(picker.get_item_text(k))
 	check("  Find the limit's picker offers Every shot and Every effect",
-		names.has("Every shot (8)") and names.has("Every effect (11)"), names.slice(0, 6))
+		names.has("Every shot (8)") and names.has("Every effect (12)"), names.slice(0, 6))
 	sweep.queue_free()
 	box.queue_free()
 	stress.queue_free()

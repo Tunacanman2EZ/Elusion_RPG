@@ -54,6 +54,8 @@ const SHADER_FILES := {
 	"res://src/world/endless/swarm.gdshader": [Mode.COPIES],
 	"res://src/projectiles/spikesparks.gdshader": [Mode.COPIES],
 	"res://src/projectiles/spikerings.gdshader": [Mode.COPIES],
+	"res://src/shared/fxparticles.gdshader": [Mode.COPIES],
+	"res://src/shared/fxparticles_unshaded.gdshader": [Mode.COPIES],
 }
 
 # Shaders written in code: [script, its constant, how it is drawn].

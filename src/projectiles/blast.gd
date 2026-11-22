@@ -39,6 +39,8 @@ extends Node2D
 # How long the ground mark stays before it has faded out, in seconds. Long
 # enough to read where the hit landed, short enough that a mage's afternoon
 # does not leave the field pockmarked.
+# Its clouds drawn with every other (fxparticles.gd, 0.174.4).
+const FxEmitter := preload("res://src/shared/fxemitter.gd")
 const MARK_SECONDS := 4.0
 
 # The camera shake each kind asks for: strength in world pixels, length in
@@ -176,11 +178,11 @@ func _leave_mark() -> void:
 	t.tween_callback(mark.queue_free)
 
 
-func _twinkles() -> CPUParticles2D:
+func _twinkles() -> FxEmitter:
 	# Glints in the frost: single white pixels that wink on and off where they
 	# are, unshaded so they catch the eye in a dark area. Children of the mark,
 	# so they fade and go with it.
-	var p := CPUParticles2D.new()
+	var p := FxEmitter.new()
 	p.name = "twinkles"
 	p.amount = 5
 	p.lifetime = 0.6
@@ -196,6 +198,8 @@ func _twinkles() -> CPUParticles2D:
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	p.material = unshaded
 	p.emitting = true
+	# They fade with the mark, as they did as its children (0.174.4).
+	p.follow_fades = true
 	return p
 
 
@@ -206,7 +210,7 @@ func _burst(colours: Gradient, amount: int, lifetime: float, velocity: Vector2,
 	# above zero arcs them back down (rocks and sparks), below zero lifts them
 	# (smoke). The ground is a plane seen from above, so "down" is down the
 	# screen - the same cheat every top-down game makes.
-	var p := CPUParticles2D.new()
+	var p := FxEmitter.new()
 	p.one_shot = true
 	p.explosiveness = 0.95
 	p.amount = amount

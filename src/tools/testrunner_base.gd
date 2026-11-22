@@ -17,6 +17,9 @@ const _AreaRegistryCode := preload("res://src/systems/arearegistry.gd")
 # How many a MultiMesh drawer really draws (0.174.2: a ring's MultiMesh draws
 # every slot, the unused ones blank, so visible_instance_count no longer says).
 const _MeshRingCode := preload("res://src/shared/meshring.gd")
+# A particle cloud drawn by fxparticles.gd (0.174.4): a meteor's, a blast's
+# and a burning crater's.
+const _FxEmitterCode := preload("res://src/shared/fxemitter.gd")
 
 
 # WHERE THE RESULTS GO

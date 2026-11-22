@@ -3860,7 +3860,7 @@ func _test_the_mage_spell_effects() -> void:
 	var parts: Array[String] = []
 	if shatter != null:
 		for child in shatter.get_children():
-			parts.append(str(child.name) if not (child is CPUParticles2D) else "particles")
+			parts.append(str(child.name) if not (child is _FxEmitterCode) else "particles")
 	check("  a flash, a ring of air and three handfuls - mist, shards, glints",
 		parts.has("flash") and parts.has("ring") and parts.count("particles") == 3, parts)
 	var flash: Sprite2D = shatter.get_node_or_null(^"flash") as Sprite2D if shatter != null else null
@@ -3882,7 +3882,7 @@ func _test_the_mage_spell_effects() -> void:
 					pale += 1
 	check("frost is left on the floor - pale ice, on the floor's layer, glinting",
 		mark != null and mark.z_index == -2 and not mark.z_as_relative and pale > 20
-		and mark.get_node_or_null(^"twinkles") is CPUParticles2D, [mark, pale])
+		and mark.get_node_or_null(^"twinkles") is _FxEmitterCode, [mark, pale])
 	check("  and it melts: it fades and draws in over the last part of Blast.MARK_SECONDS",
 		_func_body(_code_src("res://src/projectiles/blast.gd"), "func _leave_mark(").contains(
 			"t.parallel().tween_property(mark, \"scale\", Vector2(0.7, 0.7), MARK_SECONDS * 0.4)"))

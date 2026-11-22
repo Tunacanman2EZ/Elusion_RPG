@@ -184,7 +184,8 @@ static func axe_of(body: Node) -> Variant:
 		return null
 	if "axe" in body:
 		return body.get("axe")
-	return body.get_meta(PICTURE_AXE, null)
+	# Asked first: get_meta() with no meta and a null default is an error.
+	return body.get_meta(PICTURE_AXE) if body.has_meta(PICTURE_AXE) else null
 
 
 static func _keep_axe(body: Node, axe: Node) -> void:
