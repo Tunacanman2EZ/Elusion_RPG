@@ -197,13 +197,53 @@ static func alive(tree: SceneTree) -> int:
 	return tree.get_nodes_in_group(GROUP).size() if tree != null else 0
 
 
+# CLEARED IN PARTS (0.174.1). Freeing 600 skeletons in one frame - 12,664
+# nodes - was the owner's worst spike, "scripts 38.1 ms, -12,664 nodes" (84 ms
+# in the container). Now Clear takes every copy out of the game at once - out
+# of its group and "enemies" (nothing counts, aims at or wakes it), gated (it
+# neither moves nor attacks), hidden - and frees CLEAR_EACH_FRAME a frame
+# after: 600 are gone in 15 frames, about 2 ms each.
+const CLEAR_EACH_FRAME := 40
+static var _clearing: Array[int] = []
+static var _clearing_waits: bool = false
+
+
 static func clear(tree: SceneTree) -> int:
-	"""Every spawned test copy gone; how many."""
+	"""Every spawned test copy out of the game now, freed over the next
+	frames (CLEARED IN PARTS); how many."""
 	if tree == null:
 		return 0
 	var gone: int = 0
 	for monster in tree.get_nodes_in_group(GROUP):
-		if not monster.is_queued_for_deletion():
-			monster.queue_free()
-			gone += 1
+		if monster.is_queued_for_deletion():
+			continue
+		monster.remove_from_group(GROUP)
+		monster.remove_from_group(&"enemies")
+		if "gated" in monster:
+			monster.set("gated", true)
+		if monster is CanvasItem:
+			(monster as CanvasItem).visible = false
+		_clearing.append(monster.get_instance_id())
+		gone += 1
+	if not _clearing.is_empty() and not _clearing_waits:
+		_clearing_waits = true
+		tree.process_frame.connect(_clear_some.bind(tree), CONNECT_ONE_SHOT)
 	return gone
+
+
+static func clearing() -> int:
+	"""Copies cleared and not freed yet."""
+	return _clearing.size()
+
+
+static func _clear_some(tree: SceneTree) -> void:
+	_clearing_waits = false
+	var freed: int = 0
+	while freed < CLEAR_EACH_FRAME and not _clearing.is_empty():
+		var monster: Node = instance_from_id(_clearing.pop_back()) as Node
+		if monster != null and not monster.is_queued_for_deletion():
+			monster.queue_free()
+			freed += 1
+	if not _clearing.is_empty() and is_instance_valid(tree):
+		_clearing_waits = true
+		tree.process_frame.connect(_clear_some.bind(tree), CONNECT_ONE_SHOT)

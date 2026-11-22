@@ -995,6 +995,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/equipment/equipmentpanel.gd", "res://scene/ui/equipment/equipmentpanel.tscn", "equipment"],
 	["res://src/ui/friends/friendspanel.gd", "res://scene/ui/friends/friendspanel.tscn", "friends"],
 	["res://src/ui/guild/guildpanel.gd", "res://scene/ui/guild/guildpanel.tscn", "guild"],
+	["res://src/ui/highscores/highscores.gd", "res://scene/ui/highscores/highscores.tscn", "highscores"],
 	["res://src/ui/inventory/inventoryscreen.gd", "res://scene/ui/inventory/inventory.tscn", "inventory"],
 	["res://src/ui/kingdom/kingdomboard.gd", "res://scene/ui/kingdom/kingdomboard.tscn", "kingdom"],
 	["res://src/ui/kills/killrecord.gd", "res://scene/ui/kills/killrecord.tscn", "kills"],

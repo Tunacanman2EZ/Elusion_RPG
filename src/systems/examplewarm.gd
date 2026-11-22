@@ -167,6 +167,10 @@ func _make(path: String) -> void:
 	# As in a fight: after somebody, its bar and number shown, its ring lit.
 	ghost.set(&"engaged", true)
 	ghost.call(&"ensure_health_readout")
+	# Its number too, which a monster shows once hurt (baseenemy.gd).
+	var number: CanvasItem = ghost.get_node_or_null(^"healthbar/healthvalue") as CanvasItem
+	if number != null:
+		number.visible = true
 	var drawn: Array = [ghost]
 	var x: float = 0.0
 	for shot in shot_scenes(ghost):

@@ -1460,8 +1460,22 @@ func _test_the_number_comes_with_the_bar() -> void:
 	await get_tree().process_frame
 	fighter.engaged = true
 	var fighter_bar: Range = fighter.get_node_or_null("healthbar") as Range
-	check("  fighting at full health, the bar shows with its number too",
-		fighter_bar.visible and fighter_bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) != null)
+	var unhurt_number: CanvasItem = fighter_bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) as CanvasItem
+	# THE NUMBER ONCE IT IS HURT (0.174.1): a full bar says it already.
+	check("  fighting at full health, the bar shows and its number waits for the first wound (0.174.1)",
+		fighter_bar.visible and (unhurt_number == null or not unhurt_number.visible))
+	fighter.hp = fighter.max_hp - 5
+	fighter._refresh_health_display()
+	var hurt_number: CanvasItem = fighter_bar.get_node_or_null(BaseEnemy.HEALTH_READOUT_NAME) as CanvasItem
+	check("  hurt, its number comes; healed to full, it goes again",
+		hurt_number != null and hurt_number.visible)
+	fighter.hp = fighter.max_hp
+	fighter._refresh_health_display()
+	check("    (gone at full health while it fights)", fighter_bar.visible and hurt_number != null and not hurt_number.visible)
+	fighter.add_to_group(&"bosses")
+	fighter._refresh_health_display()
+	check("  a boss's number shows on a full bar too: the number is the fight",
+		hurt_number != null and hurt_number.visible and fighter.numbers_always())
 	fighter.free()
 	var copied: BaseEnemy = packed.instantiate() as BaseEnemy
 	add_child(copied)
@@ -1483,11 +1497,13 @@ func _test_the_number_comes_with_the_bar() -> void:
 	BaseEnemy._readout_spent_usec = int(BaseEnemy.READOUT_BUDGET_MS * 1000.0)
 	for one in crowd:
 		(one as BaseEnemy).engaged = true
+		(one as BaseEnemy).hp = (one as BaseEnemy).max_hp - 1
+		(one as BaseEnemy)._refresh_health_display()
 	var waiting: bool = BaseEnemy.readouts_queued() == 3
 	for one in crowd:
 		waiting = waiting and ((one as Node).get_node("healthbar") as CanvasItem).visible \
 			and _labels_on((one as Node).get_node("healthbar")) == 0
-	check("  a crowd turning at once past this frame's budget: every bar shows now, the numbers wait their turn",
+	check("  a crowd hurt at once past this frame's budget: every bar shows now, the numbers wait their turn",
 		waiting, BaseEnemy.readouts_queued())
 	(crowd[1] as Node).free()
 	for k in 4:

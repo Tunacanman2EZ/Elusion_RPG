@@ -71,6 +71,9 @@ const SHADER_CODE := [
 # Written in code and drawn from the first frame, so never first in a fight.
 const NOT_WARMED := {
 	"res://src/ui/touchpad.gd": "a phone's hotbar slots, bent round (ROUND_SHADER)",
+	# 3D, not 2D: the Beholder's Table's floor and walls are spatial shaders in
+	# its own viewports, drawn from the table's first frame (0.167.0).
+	"res://src/world/pinball/pinballrun.gd": "the pinball table's 3D floor and walls (FLOOR_SHADER and one more)",
 }
 
 # The CanvasItemMaterials the game makes - [blend, light] - and the plain

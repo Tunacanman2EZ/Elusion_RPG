@@ -2121,6 +2121,14 @@ func _wire_healthbar() -> void:
 # against 6.5. Each frame builds numbers until READOUT_BUDGET_MS is spent
 # (never fewer than one from the queue); the rest wait a frame or two, the
 # bar showing meanwhile. One at a time is built at once, as before.
+#
+# THE NUMBER ONCE IT IS HURT (0.174.1). The owner's Testing Ground: 600
+# skeletons fighting at full health, every one wearing "700 / 700", 1,256 draws
+# a frame - each number its outline and its letters, two draws, never put
+# together with the next. 300 skeletons in the container: 628 draws with the
+# numbers, 28 with them only on the hurt. A full bar says what "700 / 700"
+# says, so a fighting monster shows its bar and its number comes with its
+# first wound; a boss shows it always (numbers_always()).
 const READOUT_BUDGET_MS := 1.0
 static var _readout_frame: int = -1
 static var _readout_spent_usec: int = 0
@@ -2135,10 +2143,20 @@ func _paint_bar_shown() -> void:
 	if bar == null:
 		return
 	var shown: bool = (hp < max_hp or engaged) and not LagTests.hide_health
-	if shown and not _readout_built:
+	var numbered: bool = shown and (hp < max_hp or numbers_always())
+	if numbered and not _readout_built:
 		_ask_for_readout()
 	if bar.visible != shown:
 		bar.visible = shown
+	var number: CanvasItem = bar.get_node_or_null(HEALTH_READOUT_NAME) as CanvasItem
+	if number != null and number.visible != numbered:
+		number.visible = numbered
+
+
+func numbers_always() -> bool:
+	"""Whether its number shows on a full bar too (THE NUMBER ONCE IT IS
+	HURT): a boss's, which is the fight."""
+	return is_in_group(&"bosses")
 
 
 func _ask_for_readout() -> void:
@@ -2148,6 +2166,7 @@ func _ask_for_readout() -> void:
 	if _readouts_due.is_empty() and _readout_spent_usec < int(READOUT_BUDGET_MS * 1000.0):
 		var started: int = Time.get_ticks_usec()
 		ensure_health_readout()
+		_paint_bar_shown()
 		_readout_spent_usec += Time.get_ticks_usec() - started
 		return
 	_readout_queued = true
@@ -2184,6 +2203,8 @@ static func _readouts_out(tree: SceneTree) -> void:
 		var started: int = Time.get_ticks_usec()
 		monster._readout_queued = false
 		monster.ensure_health_readout()
+		# Built a frame or two late: shown as it should be now.
+		monster._paint_bar_shown()
 		_readout_spent_usec += Time.get_ticks_usec() - started
 		built += 1
 	if not _readouts_due.is_empty() and is_instance_valid(tree):

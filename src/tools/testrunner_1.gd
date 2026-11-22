@@ -2828,7 +2828,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-seven panels are windows - the smith's (0.74.0) is the twenty-seventh", keys_seen.size() == 27, keys_seen.size())
+	check("twenty-eight panels are windows - the high scores (0.169.0) are the twenty-eighth", keys_seen.size() == 28, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then

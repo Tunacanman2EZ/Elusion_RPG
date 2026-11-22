@@ -2523,3 +2523,39 @@ func _test_monsters_warm_by_example() -> void:
 		and registry_src.find("ShaderWarm.add_to(scene)") >= 0 and listed.size() > 20, listed.size())
 	Warm.warmed = was_warmed
 	print("  monsters warm by example: one real copy a kind, drawn as an area arrives")
+
+
+# CLEARED IN PARTS (0.174.1). The owner's worst spike: "scripts 38.1 ms,
+# -12,664 nodes", 600 skeletons freed in one frame. gmspawner.gd clear()
+# takes every copy out of the game at once and frees CLEAR_EACH_FRAME a frame.
+func _test_the_testing_ground_clears_in_parts() -> void:
+	section("CLEARED IN PARTS (0.174.1)")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar gated: bool = false\n"
+	script.reload()
+	var holder := Node2D.new()
+	add_child(holder)
+	var copies: Array = []
+	for n in 90:
+		var copy: Node2D = script.new()
+		copy.add_to_group(Spawner.GROUP)
+		copy.add_to_group(&"enemies")
+		holder.add_child(copy)
+		copies.append(copy)
+	var gone: int = Spawner.clear(get_tree())
+	var out_now: bool = gone == 90 and Spawner.alive(get_tree()) == 0 and Spawner.clearing() == 90
+	for copy in copies:
+		out_now = out_now and not (copy as Node).is_in_group(&"enemies") and not (copy as Node2D).visible \
+			and bool(copy.get("gated")) and not (copy as Node).is_queued_for_deletion()
+	check("Clear takes every copy out at once - out of the groups, hidden, gated - and frees none yet", out_now, [gone, Spawner.clearing()])
+	await get_tree().process_frame
+	var after_one: int = copies.filter(func(c: Variant) -> bool: return is_instance_valid(c) and not (c as Node).is_queued_for_deletion()).size()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var after_four: int = copies.filter(func(c: Variant) -> bool: return is_instance_valid(c)).size()
+	check("  then CLEAR_EACH_FRAME a frame are freed, and soon all", after_one == 90 - Spawner.CLEAR_EACH_FRAME
+		and after_four == 0 and Spawner.clearing() == 0, [after_one, after_four, Spawner.clearing()])
+	holder.queue_free()
+	print("  the Testing Ground clears in parts")
