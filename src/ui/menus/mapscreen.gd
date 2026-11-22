@@ -59,7 +59,7 @@
 # are pins of their own, "waystone" - cyan when found, grey when not - and a
 # click on a found one (a press and release that did not drag,
 # CLICK_SLACK) starts the stand-still to it and shuts the map. A row under the
-# map, "waystonerow" (_build_waystone_row()), lists all seven wherever they
+# map, "waystonerow" (_build_waystone_row()), lists all six wherever they
 # can be reached from (Waystones.FROM: town, the Field, the Big Field), so
 # they are a click away from town too, where their pins are not on the map.
 extends Control

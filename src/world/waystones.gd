@@ -1,5 +1,5 @@
-# waystones.gd - the Big Field's waystones (0.118.0): seven stones, one in the
-# Crossroads and one where each wing begins. Walk past one once and it is lit;
+# waystones.gd - the Big Field's waystones (0.118.0): six stones, one where
+# each wing begins. Walk past one once and it is lit;
 # from the map, a lit one is a three-second stand-still away, from anywhere in
 # the Big Field, the Field or town.
 #
@@ -46,10 +46,9 @@ const FROM := ["elusion", "field", "bigfield"]
 # Each in its wing's heart (0.134.9, the chip), clear of walls and at least
 # 250 px from any monster the plan places: tools/maps/bigfield.py's
 # WAYSTONE_CELLS, which the build file's "waystones" carries in pixels.
-# The Crossroads' stands within the map's reveal (WorldMap.SEEN_RADIUS) of the
-# arrival, so it is lit the moment you arrive.
+# NONE AT THE CROSSROADS (0.171.2, the owner: "get rid of crossroads"): it
+# stood a few steps from the arrival, where the portal already brings you.
 const STONES := [
-	{"id": "crossroads", "place": "The Crossroads", "at": Vector2(4232, 3640)},
 	{"id": "courts", "place": "The Courts", "at": Vector2(1736, 2632)},
 	{"id": "chasm", "place": "The Chasm", "at": Vector2(4328, 1576)},
 	{"id": "caverns", "place": "The Caverns", "at": Vector2(6920, 2632)},

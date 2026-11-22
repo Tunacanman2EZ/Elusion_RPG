@@ -35,8 +35,12 @@
 # one is up. AFTER A DEATH (yes, the owner - "when warrior dies he could
 # arrive and say ..."): the game over screen notes who died (note_death()),
 # and that hero's next arrival says the next part of AFTER_DEATH instead, or
-# the arrival's own when that has none left. A new place to talk in is a new
-# folder, no code. data/story/README.md lists them.
+# the arrival's own when that has none left. SIGNING IN (0.171.2, the owner:
+# the line "upon entering town" was "suppose to play it in the first portal
+# to town"): a sign-in says a hero's first part at most; every part after
+# it waits for a trip into town - a portal, a ladder, leaving a minigame.
+# A new place to talk in is a new folder, no code. data/story/README.md
+# lists them.
 #
 # ONE BUBBLE A SPEAKER: a line whose speaker is already saying something (the
 # town's arrival lines while the shopkeeper's meeting begins) waits for it.
@@ -164,24 +168,26 @@ static func arrival_scene(area: Node) -> String:
 	return ARRIVE_PREFIX + area.scene_file_path.get_file().get_basename()
 
 
-static func arrive(area: Node, died: bool = false, for_class: String = "") -> Node:
+static func arrive(area: Node, died: bool = false, for_class: String = "", signed_in: bool = false) -> Node:
 	"""What the hero says arriving in `area`: after a death, the next part of
-	AFTER_DEATH if any is left; else the next part of the area's own."""
+	AFTER_DEATH if any is left; else the next part of the area's own - only
+	its first when they have just signed in."""
 	if died:
 		var after: Node = arrival(area, for_class, AFTER_DEATH)
 		if after != null:
 			return after
-	return arrival(area, for_class)
+	return arrival(area, for_class, "", signed_in)
 
 
-static func arrival(area: Node, for_class: String = "", scene: String = "") -> Node:
+static func arrival(area: Node, for_class: String = "", scene: String = "", first_only: bool = false) -> Node:
 	"""The next part of a scene the hero says on arriving in `area` (its own
-	arrive_ scene unless told); null when this hero has none left."""
+	arrive_ scene unless told); null when this hero has none left, or when
+	`first_only` and the first has been said."""
 	if scene == "":
 		scene = arrival_scene(area)
 	var hero: String = for_class if for_class != "" else str(CharacterData.active_class_id())
 	var which: int = Bubble.times_said(seen_key(scene))
-	if lines_for(scene, hero, which).is_empty():
+	if (first_only and which > 0) or lines_for(scene, hero, which).is_empty():
 		return null
 	var talk: Node = (load("res://src/shared/talk.gd") as GDScript).new()
 	talk.name = "arrivaltalk"
@@ -195,6 +201,13 @@ static func arrival(area: Node, for_class: String = "", scene: String = "") -> N
 
 static func note_death() -> void:
 	GameState.back_from_death = seen_key("")
+
+
+static func just_signed_in() -> bool:
+	"""True once after character select starts the town; cleared either way."""
+	var signed: bool = GameState.just_signed_in
+	GameState.just_signed_in = false
+	return signed
 
 
 static func came_back_from_death() -> bool:

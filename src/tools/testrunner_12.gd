@@ -439,7 +439,7 @@ func _test_a_days_minigame_gold_and_a_rollback_held_back() -> void:
 			missing.append(at)
 	var exported: Array = (load("res://src/tools/exportgamedata.gd") as GDScript).call("waystone_arrivals", stone_area)
 	check("  and where each of the %d waystones lands, in %s - the export writes them (re-export when a stone moves)" % [
-		landings.size(), stone_area], landings.size() >= 7 and missing.is_empty() and exported.size() == landings.size(),
+		landings.size(), stone_area], landings.size() >= 6 and missing.is_empty() and exported.size() == landings.size(),
 		[missing, exported.size()])
 	print("  the Leave's words, the chest's notice and the Save history's line, as the server answers")
 

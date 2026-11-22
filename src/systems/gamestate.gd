@@ -77,6 +77,13 @@ var opening_story_told: bool = false
 # over screen a player can go to character select and pick another hero.
 var back_from_death: String = ""
 
+# JUST SIGNED IN (0.171.2): character select sets it as it starts the town,
+# and the town's arrival reads it once (talk.gd just_signed_in()). Signing
+# in says a hero's first arrival lines at most; the parts after it wait for
+# a trip into town (the owner: the "entering town" line belongs "in the
+# first portal to town").
+var just_signed_in: bool = false
+
 
 # =============================================================================
 # GLOBAL STATE

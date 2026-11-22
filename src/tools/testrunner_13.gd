@@ -1887,18 +1887,19 @@ func _test_a_hero_speaks_on_arriving() -> void:
 		and str(town[0][1]).begins_with("This is not the crypt") and str(town[2][1]).contains("slashed into pieces")
 		and field.size() == 1 and str(field[0][1]).begins_with("I am so hungry"), [town, field])
 	var wired: Array = []
-	for wiring in [["res://src/world/elusion.gd", "Talk.arrive(self, Talk.came_back_from_death())"],
-			["res://src/world/field.gd", "Talk.arrive(self, Talk.came_back_from_death())"],
-			["res://src/ui/menus/gameover.gd", "Talk.note_death()"]]:
+	for wiring in [["res://src/world/elusion.gd", "Talk.arrive(self, Talk.came_back_from_death(), \"\", Talk.just_signed_in())", "func _ready"],
+			["res://src/world/field.gd", "Talk.arrive(self, Talk.came_back_from_death())", "func _ready"],
+			["res://src/ui/menus/gameover.gd", "Talk.note_death()", "func _ready"],
+			["res://src/ui/menus/characterselect.gd", "GameState.just_signed_in = true", "func _enter_world"]]:
 		var src: String = FileAccess.get_file_as_string(str(wiring[0]))
-		var ready: int = _first_code_index(src, "func _ready", 0)
+		var ready: int = _first_code_index(src, str(wiring[2]), 0)
 		var call: int = _first_code_index(src, str(wiring[1]), ready)
 		var after: int = src.find("\nfunc ", ready + 4)
 		wired.append(ready >= 0 and call > ready and (after < 0 or call < after))
 	var named := Node.new()
 	named.scene_file_path = "res://scene/bigfield.tscn"
-	check("  the town and every area on field.gd ask for it as they start, the game over screen notes a death; the Big Field's is arrive_bigfield",
-		wired == [true, true, true] and Talk.arrival_scene(named) == "arrive_bigfield", wired)
+	check("  the town and every area on field.gd ask for it as they start, the game over screen notes a death, character select a sign-in; the Big Field's is arrive_bigfield",
+		wired == [true, true, true, true] and Talk.arrival_scene(named) == "arrive_bigfield", wired)
 	named.free()
 	# ---- once, after the story, a line at a time ------------------------------
 	var area := Node2D.new()
@@ -1956,6 +1957,31 @@ func _test_a_hero_speaks_on_arriving() -> void:
 		fallback != null and fallback.get("waiting_scene") == "arrive_elusion" and int(fallback.get("part")) == 0)
 	if fallback != null:
 		fallback.free()
+	# ---- signing in says the first part at most --------------------------------
+	GameState.just_signed_in = true
+	var signed: bool = Talk.just_signed_in()
+	var signed_once: bool = not Talk.just_signed_in()
+	var mage_key: String = Talk.seen_key("arrive_elusion")
+	cfg.load(ControlsPanel.seen_path)
+	cfg.set_value("talk", mage_key.replace("/", "|"), 1)
+	cfg.save(ControlsPanel.seen_path)
+	var on_sign_in: Node = Talk.arrive(area, false, "mage", true)
+	var by_portal: Node = Talk.arrive(area, false, "mage", false)
+	var mage_two: Array = Talk.lines_for("arrive_elusion", "mage", 1)
+	check("signing in says only a hero's first part; the next waits for a trip into town (\"in the first portal to town\")",
+		signed and signed_once and on_sign_in == null and by_portal != null and int(by_portal.get("part")) == 1
+		and mage_two.size() == 1 and str(mage_two[0][1]).contains("learn new magic"),
+		[signed, signed_once, on_sign_in, mage_two])
+	if by_portal != null:
+		by_portal.free()
+	cfg.load(ControlsPanel.seen_path)
+	cfg.erase_section_key("talk", mage_key.replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var first_on_sign_in: Node = Talk.arrive(area, false, "mage", true)
+	check("  and a hero's very first arrival is said on signing in, as before",
+		first_on_sign_in != null and int(first_on_sign_in.get("part")) == 0)
+	if first_on_sign_in != null:
+		first_on_sign_in.free()
 	area.queue_free()
 	for other in others:
 		if is_instance_valid(other):

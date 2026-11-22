@@ -38,8 +38,8 @@ func _ready() -> void:
 	spawn_player_from_selection()
 	# THE HERO SAYS SOMETHING ON ARRIVING (0.171.0): the next part of
 	# data/story/arrive_elusion/ for their class, or of after_death/ when they
-	# come back from dying (talk.gd).
-	Talk.arrive(self, Talk.came_back_from_death())
+	# come back from dying (talk.gd); signing in says the first part at most.
+	Talk.arrive(self, Talk.came_back_from_death(), "", Talk.just_signed_in())
 
 
 # =============================================================================

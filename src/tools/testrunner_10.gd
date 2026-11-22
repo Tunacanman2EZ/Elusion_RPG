@@ -1570,7 +1570,7 @@ func _test_the_map_key() -> void:
 
 
 func _test_the_waystones() -> void:
-	section("THE WAYSTONES - seven in the Big Field, lit once found, three seconds still to travel, from town too (0.118.0)")
+	section("THE WAYSTONES - six in the Big Field, lit once found, three seconds still to travel, from town too (0.118.0)")
 	const Ways := preload("res://src/world/waystones.gd")
 	# ---- where they stand ---------------------------------------------------------------------
 	var plan: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tools/maps/bigfield_build.json"))
@@ -1592,13 +1592,15 @@ func _test_the_waystones() -> void:
 			nearest = minf(nearest, at.distance_to(Vector2(float(spawn["x"]), float(spawn["y"]))))
 		if not floor_ok or nearest < 250.0:
 			bad.append([stone["id"], floor_ok, roundi(nearest)])
-	check("seven waystones, each on open floor and 250 px or more from every monster the Big Field places",
-		Ways.STONES.size() == 7 and bad.is_empty() and ids.has("crossroads"), bad)
-	# Where you land, from the build file (the portal's marker stands 8 px under it).
+	check("six waystones, each on open floor and 250 px or more from every monster the Big Field places",
+		Ways.STONES.size() == 6 and bad.is_empty(), bad)
+	# NONE AT THE CROSSROADS (0.171.2, the owner: "get rid of crossroads"): no
+	# stone stands within the map's reveal of the arrival, where the portal
+	# already brings you.
 	var arrival := Vector2(float(plan["arrival"][0]), float(plan["arrival"][1]) + 8.0)
-	check("  the Crossroads' is lit as you arrive: within the map's reveal of the arrival",
-		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival) < 16.0 * WorldMap.SEEN_RADIUS - 8.0,
-		(Ways.stone_for("crossroads")["at"] as Vector2).distance_to(arrival))
+	var near_arrival: Array = Ways.STONES.filter(func(stone: Dictionary) -> bool: return (stone["at"] as Vector2).distance_to(arrival) < 16.0 * WorldMap.SEEN_RADIUS)
+	check("  none at the Crossroads, where you arrive", not ids.has("crossroads") and near_arrival.is_empty()
+		and Ways.stone_for("crossroads").is_empty(), near_arrival)
 	check("  reached from town, the Field and the Big Field - never a minigame or a boss room",
 		Ways.reachable_from("elusion") and Ways.reachable_from("field") and Ways.reachable_from("bigfield")
 		and not Ways.reachable_from("endless") and not Ways.reachable_from("descent")
@@ -1625,8 +1627,8 @@ func _test_the_waystones() -> void:
 	var stone_group: StringName = Ways.GROUP
 	var stones: Array = field.get_children().filter(func(n: Node) -> bool: return n.is_in_group(stone_group))
 	var chasm: Node = field.get_node_or_null("waystone_chasm")
-	check("the Big Field gets its seven stones, landmarks on the map; town gets none",
-		stones.size() == 7 and chasm != null and chasm.is_in_group("map_landmarks")
+	check("the Big Field gets its six stones, landmarks on the map; town gets none",
+		stones.size() == 6 and chasm != null and chasm.is_in_group("map_landmarks")
 		and town.get_children().all(func(n: Node) -> bool: return not n.is_in_group(stone_group)),
 		[stones.size(), town.get_child_count()])
 	var dark: Dictionary = chasm.call("map_landmark")
@@ -1711,8 +1713,8 @@ func _test_the_waystones() -> void:
 	map.call("refresh", "elusion")
 	var chasm_button: Button = row.get_node_or_null("chasm") as Button if row != null else null
 	var crypt_button: Button = row.get_node_or_null("crypt") as Button if row != null else null
-	check("the map has a row of the seven, shown in town; found ones pressable, the rest greyed",
-		row != null and row.visible and row.get_child_count() == 8 and chasm_button != null
+	check("the map has a row of the six, shown in town; found ones pressable, the rest greyed",
+		row != null and row.visible and row.get_child_count() == 7 and chasm_button != null
 		and not chasm_button.disabled and crypt_button.disabled and chasm_button.text == "Chasm",
 		[row != null and row.visible, row.get_child_count() if row != null else 0])
 	var hint: Label = map.get("waystone_hint")

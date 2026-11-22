@@ -355,6 +355,8 @@ func _enter_world(idx: int) -> void:
 
 	# Everything else loads behind the player now, so no door waits on the disk.
 	AreaRegistry.prefetch_all()
+	# Signing in, not a trip into town (talk.gd, 0.171.2).
+	GameState.just_signed_in = true
 	get_tree().change_scene_to_packed(world)
 
 

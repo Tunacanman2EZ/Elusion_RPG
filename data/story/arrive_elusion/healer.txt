@@ -1,5 +1,5 @@
-# A healer arriving in town. Part 1 the first time; part 2 the next time
-# the healer comes into town.
+# A healer arriving in town. Part 1 the first time; part 2 the first time
+# the healer comes into town through a portal (signing in never says it).
 # Each line is "speaker: words". hero is whoever is playing.
 # Lines starting with # are notes and are never said. --- starts a new part.
 hero: I remember everything. I will have my revenge.

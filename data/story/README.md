@@ -39,7 +39,7 @@ After the last part it says nothing, until you write more.
 | folder | when | who can speak |
 |---|---|---|
 | meet_shopkeeper | the first time this character walks up to the shopkeeper (part 1 only) | shopkeeper, hero |
-| arrive_elusion | each time this character arrives in town: the next part | hero |
+| arrive_elusion | part 1 the first time this character is in town; each later part the next time they come into town by a portal, ladder or minigame (signing in never says a later part) | hero |
 | arrive_bigfield | each time in the Big Field (after its story screen): the next part | hero |
 | after_death | each time this character arrives after dying: the next part (else the arrival's own) | hero |
 

@@ -1,5 +1,6 @@
 # A mage arriving in town. Part 1 the first time, after burning in the
-# past life; part 2 the next time the mage comes into town.
+# past life; part 2 the first time the mage comes into town through a
+# portal (signing in never says it).
 # Each line is "speaker: words". hero is whoever is playing.
 # Lines starting with # are notes and are never said. --- starts a new part.
 hero: Most interesting... I thought I was burned alive in a flash of fire.
