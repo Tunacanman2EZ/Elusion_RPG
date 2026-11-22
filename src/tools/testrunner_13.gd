@@ -2188,13 +2188,25 @@ func _test_heroes_choose_what_to_say() -> void:
 		menu.is_queued_for_deletion())
 	shop_open.free()
 	await get_tree().process_frame
+	keeper.call("greet")
+	var again: Node = keeper.get("bubble")
+	await get_tree().process_frame
+	var again_steps: Array = again.get("lines") if again != null else []
+	var again_talk: Array = again_steps[Talk.branch_where(again_steps, "talk") + 1] if not again_steps.is_empty() else []
+	check("  back in the shop straight after: no second greeting, the menu again at once (0.172.1, \"i want that box to pop up again\"), Talk with something new",
+		again != null and again.get("scene_name") == Keeper.VISIT and visitor.get_node_or_null("choicebox") != null
+		and not again_talk.is_empty() and str(again_talk[1]).contains("fire pit"), again_talk)
+	if is_instance_valid(again):
+		again.free()
+	for child in visitor.get_children():
+		child.free()
 	var next_visit: Node = Talk.visit(self, Keeper.VISIT, "warrior", {"hero": visitor})
 	var talk_line: Array = []
 	if next_visit != null:
 		var steps_now: Array = next_visit.get("lines")
 		talk_line = steps_now[Talk.branch_where(steps_now, "talk") + 1]
-	check("  each visit the next part, round again: Talk says something new",
-		next_visit != null and str(talk_line[1]).contains("fire pit"), talk_line)
+	check("  each visit the next part, round again: after the last, the first",
+		next_visit != null and str(talk_line[1]).contains("waystone"), talk_line)
 	if next_visit != null:
 		next_visit.free()
 	for child in visitor.get_children():

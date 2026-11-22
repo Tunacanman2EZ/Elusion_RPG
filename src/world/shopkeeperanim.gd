@@ -64,7 +64,9 @@
 # AND A MENU EVERY VISIT (0.172.0, the owner: "story once, menu every visit" -
 # "sounds good"): after each later greeting, the hero is offered
 # data/story/visit_shopkeeper/ (Trade, Talk, Goodbye; Quests when there are
-# quests), a part a visit, round again (Talk.visit()).
+# quests), a part a visit, round again (Talk.visit()). BACK WITHIN
+# REGREET_SECONDS (0.172.1, "if player leaves shop and renters i want that box to pop
+# up again"): no second greeting, but the menu again at once.
 extends AnimatedSprite2D
 
 const Bubble := preload("res://src/shared/speechbubble.gd")
@@ -144,6 +146,7 @@ func greet() -> void:
 	if bubble != null and is_instance_valid(bubble):
 		return
 	if now - _last_greeting < REGREET_SECONDS:
+		_offer_menu()
 		return
 	_last_greeting = now
 	var key: String = talk_key()
