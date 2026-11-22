@@ -2514,6 +2514,39 @@ func _test_the_count_drawn_holds() -> void:
 	print("  the count drawn holds: every slot drawn, the unused blank")
 
 
+# THE SWEEP'S AXES COME AWAY (0.174.3). The owner's Every effect sweep: from
+# the party axe on, every effect started at 19 ms with nothing out and none
+# was measured. The sweep fires party pictures on the player itself, whose
+# axe is warrior.gd's `_axe`: the old picture was looked for as `axe`, never
+# found, and twenty a second stayed out spinning.
+func _test_the_sweeps_axes_come_away() -> void:
+	section("THE SWEEP'S AXES COME AWAY (0.174.3)")
+	const Kinds := preload("res://src/world/endless/stresskinds.gd")
+	var was_shown: Variant = Settings.get_value("others_attacks")
+	Settings.set_value("others_attacks", true)
+	var body := Node2D.new()
+	add_child(body)
+	body.global_position = Vector2(-52000, -52000)
+	var fired: Array = []
+	for n in 3:
+		fired.append_array(RemoteAttacks.fire(body, ["axe", 0, -52000.0, -52000.0, -51900.0, -52000.0, 0, 0]))
+	var out: Array = fired.filter(func(a): return is_instance_valid(a) and not (a as Node).is_queued_for_deletion())
+	check("on a body with no axe of its own, a new party axe takes the old one's place: one out of three thrown",
+		fired.size() == 3 and out.size() == 1 and out[0] == fired[2] and RemoteAttacks.axe_of(body) == fired[2],
+		[fired.size(), out.size()])
+	var kinds: Node = Kinds.new()
+	add_child(kinds)
+	kinds.call("begin", {"label": "Effect: party warrior axe", "rate": "axe", "kind": -3}, body)
+	kinds.call("end")
+	check("  and the sweep takes the last one away when the effect ends - the next starts with nothing out",
+		(fired[2] as Node).is_queued_for_deletion() and not body.has_meta(RemoteAttacks.PICTURE_AXE))
+	kinds.queue_free()
+	body.queue_free()
+	Settings.set_value("others_attacks", was_shown)
+	await get_tree().process_frame
+	print("  the sweep's axes come away")
+
+
 # EVERY MONSTER DRAWN ONCE, FOR REAL, OUT OF SIGHT (0.174.0). The owner's
 # browser: 23 to 38 frames of about 25 ms - all drawing - the first time a
 # kind appeared after a new build. examplewarm.gd draws one real copy of each

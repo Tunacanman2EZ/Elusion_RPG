@@ -3016,7 +3016,7 @@ func _test_five_thousand_smaller_slimes() -> void:
 	check("a step moved in three parts lands every slime where the whole step does, to the bit (40 steps of 2,400)",
 		same and int(whole.get("alive")) == 2400)
 	# The game's frames: three parts at 60 a second, the whole at 30.
-	parts.set("_step_left", 0.0)
+	parts.set("_step_left", 1.0 / 60.0)
 	parts.set("_chunk_at", -1)
 	parts.call("_process", 1.0 / 60.0)
 	var under_way_60: bool = int(parts.get("_chunk_at")) > 0 and int(parts.get("_chunk_at")) < int(parts.get("_chunk_end"))
@@ -3029,13 +3029,36 @@ func _test_five_thousand_smaller_slimes() -> void:
 	var done_30: bool = int(parts.get("_chunk_at")) == -1
 	check("  at 60 a second the step is spread over three frames and the picture written after the last; at 30, one frame (never slower)",
 		under_way_60 and done_60 and done_30 and blend_before > 0.0, [under_way_60, done_60, done_30, blend_before])
+	# EVEN PARTS (0.174.3): a frame that falls behind does one more part,
+	# never the rest of the step and the next one's start besides.
+	var high: int = int(parts.get("_chunk_end"))
 	parts.set("_step_left", 0.0)
 	parts.set("_chunk_at", -1)
-	parts.call("_process", 1.0 / 60.0)
-	parts.set("_step_left", -0.01)
-	parts.call("_process", 1.0 / 60.0)
-	check("  a frame that falls behind finishes the step under way at once", int(parts.get("_chunk_at")) == -1
-		or int(parts.get("_chunk_at")) < int(parts.get("_chunk_end")))
+	parts.set("_frame_avg", 0.01)
+	parts.call("_process", 0.01)
+	var quarter: int = int(parts.get("_chunk_size"))
+	var planned: bool = quarter == ceili(float(int(parts.get("_chunk_end"))) / 4.0) and int(parts.get("_chunk_at")) == quarter
+	parts.call("_process", 0.06)
+	var one_more: bool = int(parts.get("_chunk_at")) == 2 * quarter
+	parts.call("_process", 0.01)
+	parts.call("_process", 0.01)
+	var wrote_alone: bool = int(parts.get("_chunk_at")) == -1 and is_zero_approx(float(parts.get("_since_write")))
+	parts.call("_process", 0.01)
+	var started_after: bool = int(parts.get("_chunk_at")) > 0 and is_equal_approx(float(parts.get("_step_left")), 0.04)
+	check("  EVEN PARTS (0.174.3): a step planned in quarters at 100 a second; a 60 ms frame moves one quarter more, not the rest; the last quarter is written in a frame of its own, and the next step starts in the frame after it, on a fresh clock",
+		planned and one_more and wrote_alone and started_after,
+		[planned, one_more, wrote_alone, started_after, quarter, high, int(parts.get("_chunk_at")), float(parts.get("_step_left"))])
+	parts.set("_step_left", 0.0)
+	parts.set("_chunk_at", -1)
+	parts.set("_frame_avg", 0.01)
+	parts.call("_process", 0.01)
+	var even: Array = [int(parts.get("_chunk_at"))]
+	parts.call("_process", 0.02)
+	even.append(int(parts.get("_chunk_at")))
+	var spread: bool = even[0] == ceili(float(high) / 4.0) and even[1] < high and even[1] - even[0] > even[0]
+	parts.call("_process", 0.01)
+	check("  and a 20 ms frame's catch-up is shared over the frames still left before the next step (planned on the usual frame, not the slow one), done a frame early",
+		spread and int(parts.get("_chunk_at")) == -1, [even, int(parts.get("_chunk_at")), high])
 	# ROOM IN PARTS TOO (0.150.1): the near ones' room is worked out with
 	# their part, not all in the frame that starts the step.
 	var amid := Vector2(float(parts.get("px")[0]), float(parts.get("py")[0]))

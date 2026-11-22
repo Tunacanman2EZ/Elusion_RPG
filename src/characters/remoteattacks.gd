@@ -50,6 +50,8 @@ const FLAG_CRITICAL := 128 # a mage's critical spike - it shatters wider (mage.g
 # preload here would make each scene part of the script that loads it.
 const SLASHWAVE_PATH := "res://scene/projectiles/slashwave.tscn"
 const SPINNING_AXE_PATH := "res://scene/projectiles/spinningaxe.tscn"
+# Where a body with no `axe` of its own keeps the axe picture it has out.
+const PICTURE_AXE := &"picture_axe"
 const METEOR_PATH := "res://scene/projectiles/meteor.tscn"
 const DYNAMITE_PATH := "res://scene/projectiles/dynamite.tscn"
 # How far ahead of a slash wave or an orb its aim point is put on the wire:
@@ -110,7 +112,7 @@ static func fire(body: Node2D, attack: Array) -> Array:
 		"axe":
 			made = _axe(body, origin, target, flags)
 		"recall":
-			var out: Variant = body.get("axe")
+			var out: Variant = axe_of(body)
 			if out is SpinningAxe and is_instance_valid(out):
 				(out as SpinningAxe).recall()
 		"stalag":
@@ -172,10 +174,30 @@ static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 
 	return wave
 
 
+static func axe_of(body: Node) -> Variant:
+	"""The axe picture `body` has out: its `axe` (remoteplayer.gd), or on a
+	body with none - the Testing Ground's sweep fires party pictures on your
+	own player, whose axe is warrior.gd's `_axe` - a meta (0.174.3). Every
+	sweep axe used to stay out spinning: the old one was looked for as `axe`,
+	never found, and twenty a second piled up into hundreds."""
+	if body == null:
+		return null
+	if "axe" in body:
+		return body.get("axe")
+	return body.get_meta(PICTURE_AXE, null)
+
+
+static func _keep_axe(body: Node, axe: Node) -> void:
+	if "axe" in body:
+		body.set("axe", axe)
+	else:
+		body.set_meta(PICTURE_AXE, axe)
+
+
 static func _axe(body: Node2D, origin: Vector2, target: Vector2, flags: int) -> Node:
 	# One axe out per warrior, as warrior.gd has it: a new throw takes the
 	# place of a picture that somehow never came home.
-	var old: Variant = body.get("axe")
+	var old: Variant = axe_of(body)
 	if old is Node and is_instance_valid(old):
 		(old as Node).queue_free()
 	var axe: SpinningAxe = _scene(SPINNING_AXE_PATH).instantiate()
@@ -187,7 +209,7 @@ static func _axe(body: Node2D, origin: Vector2, target: Vector2, flags: int) -> 
 	axe.bloody = flags & FLAG_BLOODY != 0
 	_parent(body, true).add_child(axe)
 	axe.throw_to(origin, target)
-	body.set("axe", axe)
+	_keep_axe(body, axe)
 	Audio.play_at("axe_throw", origin)
 	return axe
 

@@ -170,6 +170,15 @@ func begin(swept: Dictionary, player: Node2D) -> void:
 
 
 func end() -> void:
+	# The axe it threw last goes too (0.174.3): a party axe spins until its
+	# thrower calls it home, and here nobody does - the next effect would
+	# start with it costing.
+	if me != null and is_instance_valid(me):
+		var axe: Variant = RemoteAttacks.axe_of(me)
+		if axe is Node and is_instance_valid(axe):
+			(axe as Node).queue_free()
+		if me.has_meta(RemoteAttacks.PICTURE_AXE):
+			me.remove_meta(RemoteAttacks.PICTURE_AXE)
 	target = {}
 	rate = 0.0
 	_owed = 0.0

@@ -102,11 +102,24 @@ var step_seconds: float = STEP
 # frame rate, so a phone at 30 a second still moves it all in one frame and
 # the crowd never slows. The picture is written once every part has moved,
 # and the walk between steps is drawn from that write (_since_write), so it
-# looks as before, a frame or two later. A frame that falls behind finishes
-# the step at once.
+# looks as before, a frame or two later.
 # Five since 0.150.0: a computer drawing 100 a second moves a fifth a frame
 # (60 a second is still three, 30 one).
+#
+# EVEN PARTS (0.174.3). The owner, swinging at a 5,000 horde: "getting
+# stutters with warriors projectile"; his readout's spikes were 26 to 30 ms
+# frames, 16 to 19 ms of them the crowd. A frame that fell behind finished
+# the step at once - what was left of it, the picture's write and the next
+# step's start and first part, all in one frame - and every attack's frames
+# made it fall behind. Now what is left is shared again every frame over the
+# frames before the next step is due (frames_before_due()), so it is done a
+# frame early and written there; due and not done, one more part, and the
+# step runs late (on time again from the next, which starts one frame on -
+# never in the frame that wrote). The crowd is a step behind for that
+# moment instead. At 30 a second a frame is still a whole step.
 const CHUNKS_MOST := 5
+# How far the frames' usual length moves toward each frame's (_frame_avg).
+const FRAME_EASE := 0.1
 # The grid the crowd is counted on, in px.
 # TWO-THIRDS THE SIZE SINCE 0.148.0 (DRAW_SCALE): the owner, "it would be
 # more realistic if we made the slimes a bit smaller", and of two-thirds, "it
@@ -280,6 +293,8 @@ var _touching: int = 0
 var _chunk_at: int = -1
 var _chunk_end: int = 0
 var _chunk_size: int = 0
+# The frames' usual length, eased toward each one's (EVEN PARTS).
+var _frame_avg: float = 0.0
 var _st_target: Vector2 = Vector2.ZERO
 var _st_chasing: bool = false
 var _st_in_turns: bool = false
@@ -812,18 +827,30 @@ func _timed_process(delta: float) -> void:
 	_step_left -= delta
 	_since_write += delta
 	var wrote: bool = false
+	# The parts are planned on the frames' usual length, not this one's: a
+	# slow frame's catch-up is then shared over the frames left, not crammed
+	# into the next because this one was long.
+	_frame_avg = delta if _frame_avg <= 0.0 else lerpf(_frame_avg, delta, FRAME_EASE)
+	var frame: float = maxf(_frame_avg, 0.001)
 	if _chunk_at >= 0:
-		# A step under way goes on - all of what is left, if the next is due.
-		_move_some(_chunk_end - _chunk_at if _step_left <= 0.0 else _chunk_size)
+		var left: int = _chunk_end - _chunk_at
+		if _step_left > 0.0:
+			# A step under way goes on: what is left, shared over the frames
+			# before the next is due - planned again every frame (EVEN PARTS).
+			_move_some(ceili(float(left) / float(frames_before_due(frame))))
+		else:
+			# Due and not done: one more part, and this step runs late.
+			_move_some(mini(left, maxi(_chunk_size, 1)))
 		if _chunk_at >= _chunk_end:
 			_end_step()
 			wrote = true
-	if _chunk_at < 0 and _step_left <= 0.0:
-		_step_left += step_seconds
+	# Never the frame that wrote: one step's end and the next's start apart.
+	if _chunk_at < 0 and _step_left <= 0.0 and not wrote:
+		# On time, the clock is kept; more than a frame late, it starts again
+		# from now - the crowd a step behind for that moment, not a long frame.
+		_step_left = maxf(_step_left + step_seconds, step_seconds - maxf(delta, 0.001))
 		_begin_step(target, chasing)
-		# Rounded down: the parts must all fit in one STEP, or the crowd slows.
-		var parts: int = clampi(floori(step_seconds / maxf(delta, 0.001) + 0.01), 1, CHUNKS_MOST)
-		_chunk_size = ceili(float(_chunk_end) / float(parts))
+		_chunk_size = ceili(float(_chunk_end) / float(frames_before_due(frame)))
 		_move_some(_chunk_size)
 		if _chunk_at >= _chunk_end:
 			_end_step()
@@ -844,6 +871,14 @@ func _timed_process(delta: float) -> void:
 			var hit: int = touch_damage * mini(_touching, TOUCH_MOST)
 			player.call("take_damage", hit, element)
 			touch_effect_on(player, hit)
+
+
+func frames_before_due(frame: float) -> int:
+	"""How many frames of `frame` seconds (the usual, _frame_avg), this one
+	counted, are left before the next step is due - the parts what is left of
+	a step is shared over (EVEN PARTS), CHUNKS_MOST at the most, 1 at the
+	least."""
+	return clampi(ceili(_step_left / frame - 0.01), 1, CHUNKS_MOST)
 
 
 func on_floor(at: Vector2) -> bool:
