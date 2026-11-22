@@ -142,6 +142,10 @@ enum State { WAITING, COUNTDOWN, RUNNING }
 
 # ---- THE MAP (buildforge.gd writes the island from these) --------------------
 const CENTRE := Vector2(1280, 1280)
+# The anvil's face over its feet, where the hammer's sparks fly from: Ahvassa's
+# anvil on its stump (0.175.1, the owner: "replace anvil in tanks run with this
+# new 1") stands 33 px tall, its face at the top.
+const ANVIL_FACE := Vector2(0, -27)
 const RADIUS := 960.0
 const BAND := 192.0
 const TILE := 16
@@ -1191,7 +1195,7 @@ func _step_anvil(delta: float) -> void:
 	if _hammer_clock <= 0.0:
 		_hammer_clock = HAMMER_EVERY
 		if _sparks != null and is_instance_valid(_sparks):
-			_sparks.call("strike", CENTRE + Vector2(0, -6), _rng)
+			_sparks.call("strike", CENTRE + ANVIL_FACE, _rng)
 		if is_inside_tree():
 			Audio.play_at("attack_hit", CENTRE)
 	forging += delta

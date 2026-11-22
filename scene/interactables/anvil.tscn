@@ -1,13 +1,17 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://src/world/anvil.gd" id="1_anvil"]
-[ext_resource type="Texture2D" uid="uid://dwlfcyxavc2y" path="res://art/pack/smith/anvil.png" id="2_anvilart"]
+[ext_resource type="Texture2D" uid="uid://bkwh3ok4j066w" path="res://art/shophouses/smithhouse.png" id="2_sheet"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_anvil"]
+atlas = ExtResource("2_sheet")
+region = Rect2(347, 330, 27, 33)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_anvil"]
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("2_anvilart")
+"texture": SubResource("AtlasTexture_anvil")
 }],
 "loop": true,
 "name": &"idle",
@@ -15,10 +19,10 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_anvilreach"]
-radius = 26.0
+radius = 30.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_anvilbody"]
-size = Vector2(13, 5)
+size = Vector2(23, 7)
 
 [node name="anvil" type="Area2D"]
 texture_filter = 1
@@ -28,7 +32,7 @@ script = ExtResource("1_anvil")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
 texture_filter = 1
-position = Vector2(0, -6)
+position = Vector2(0.5, -14.5)
 sprite_frames = SubResource("SpriteFrames_anvil")
 animation = &"idle"
 
@@ -39,5 +43,5 @@ shape = SubResource("CircleShape2D_anvilreach")
 [node name="body" type="StaticBody2D" parent="."]
 
 [node name="collision" type="CollisionShape2D" parent="body"]
-position = Vector2(-0.5, -2.5)
+position = Vector2(0.5, -1.5)
 shape = SubResource("RectangleShape2D_anvilbody")

@@ -3074,10 +3074,15 @@ func _test_the_anvil_stands_by_the_shop() -> void:
 	var sprite: AnimatedSprite2D = anvil.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
 	var art: Texture2D = sprite.sprite_frames.get_frame_texture(sprite.animation, 0) \
 		if sprite != null and sprite.sprite_frames != null else null
-	check_needs_pack("its picture is the pack's anvil, art/pack/smith/anvil.png",
-		art != null and art.resource_path == "res://art/pack/smith/anvil.png", art.resource_path if art != null else "")
-	check_needs_pack("  a 16 px cell drawn at 1x - the world's own tile size",
-		art != null and art.get_size() == Vector2(16, 16) and sprite.scale == Vector2.ONE
+	# AHVASSA'S ANVIL ON ITS STUMP since 0.175.1 (the owner, of the Forge:
+	# "replace anvil in tanks run with this new 1"): cut from the smith's house
+	# sheet, so it needs no pack. It was the pack's 16 px anvil.
+	var cut: AtlasTexture = art as AtlasTexture
+	check("its picture is Ahvassa's anvil on its stump, cut from art/shophouses/smithhouse.png",
+		cut != null and cut.atlas != null and cut.atlas.resource_path == "res://art/shophouses/smithhouse.png"
+		and cut.region == Rect2(347, 330, 27, 33), cut.region if cut != null else null)
+	check("  drawn at 1x - the world's own size",
+		art != null and art.get_size() == Vector2(27, 33) and sprite.scale == Vector2.ONE
 		and anvil.scale == Vector2.ONE, [art.get_size() if art != null else Vector2.ZERO, sprite.scale if sprite != null else Vector2.ZERO])
 	check("  drawn nearest-neighbour, like every pixel in the world",
 		sprite != null and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
@@ -3134,7 +3139,13 @@ func _test_the_anvil_stands_by_the_shop() -> void:
 	var shop: Node = town.get_node_or_null("ysortworld/interactables/shophouse")
 	var shop_door: Node = shop.get_node_or_null("shopexterior/door") if shop != null else null
 	var door_at: Vector2 = _area_xform(shop_door, town).origin if shop_door is Node2D else Vector2.INF
-	check("  by the shop - within twelve tiles of its door", at.distance_to(door_at) < 192.0,
+	# IN THE SMITH'S HOUSE since 0.175.1 (the owner, with Ahvassa's round house
+	# and its forge: "blacksmiths house"), beside the shop.
+	var house_of: Node = placed.get_parent()
+	while house_of != null and house_of != town and str(house_of.name) != "smithhouse":
+		house_of = house_of.get_parent()
+	check("  in the smith's house, by the shop - within twenty tiles of its door",
+		house_of != null and str(house_of.name) == "smithhouse" and at.distance_to(door_at) < 320.0,
 		"%s from the door at %s" % [at, door_at])
 	# THE SHOP'S ROOF LIFTS FOR ANYBODY INSIDE ITS TRIGGER, which reaches well
 	# past the walls. Standing at the anvil - anywhere its reach can see your

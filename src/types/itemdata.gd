@@ -317,6 +317,9 @@ static func slot_names() -> Array:
 #                 on its own
 #   DYNAMITE      tank: attack throws a lit stick where you aim, in place of
 #                 the aura; one throw in ten is two sticks
+#   LASER         healer: holding attack shines a beam where you aim in place
+#                 of the orbs - the Healer's Run's red critical laser
+#                 (healerlaser.gd, 0.175.1)
 #
 # The class script asks Player.equipped_weapon_attack() and branches. Only the
 # class that can equip the weapon (required_classes) ever reads its member, so
@@ -329,6 +332,7 @@ enum WeaponAttack {
 	METEOR,
 	SPINNING_AXE,
 	DYNAMITE,
+	LASER,
 }
 
 @export var weapon_attack: WeaponAttack = WeaponAttack.NONE

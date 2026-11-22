@@ -11,10 +11,6 @@
 					2662.0
 				],
 				[
-					4232.0,
-					3670.0
-				],
-				[
 					4328.0,
 					1606.0
 				],
@@ -4827,6 +4823,7 @@
 		"weapon_attacks": {
 			"doubleaxe": "SPINNING_AXE",
 			"dynamite": "DYNAMITE",
+			"goldstaff": "LASER",
 			"meteorite": "METEOR"
 		}
 	},
@@ -7756,7 +7753,7 @@
 		},
 		"volcano_believed": 60
 	},
-	"generated_at": 1792659542,
+	"generated_at": 1795389614,
 	"items": [
 		{
 			"armor_value": 6,
@@ -11961,6 +11958,45 @@
 			"type": 6,
 			"type_name": "CURRENCY",
 			"value": 5000
+		},
+		{
+			"armor_value": 0,
+			"bait_rolls": 0,
+			"bonus_damage_percent": 15,
+			"bonus_max_hp": 0,
+			"bonus_max_mana": 0,
+			"buff_amount": 0,
+			"buff_kind": 0,
+			"buff_kind_name": "NONE",
+			"buff_seconds": 0,
+			"cook_level": 1,
+			"cook_mastery_level": 1,
+			"cook_xp": 0,
+			"cooks_into": "",
+			"damage": 11,
+			"damage_spread": 0.25,
+			"display_name": "Gold Staff",
+			"droppable": true,
+			"equip_slot": 1,
+			"equip_slot_name": "WEAPON",
+			"fishing_xp": 0,
+			"item_id": "goldstaff",
+			"max_stack": 1,
+			"recipe": {},
+			"required_classes": [
+				"healer"
+			],
+			"required_level": 1,
+			"required_skill": "",
+			"required_skill_level": 1,
+			"restore_amount": 0,
+			"restore_target": 0,
+			"restore_target_name": "NONE",
+			"stackable": false,
+			"tier": 6,
+			"type": 1,
+			"type_name": "WEAPON",
+			"value": 40000
 		},
 		{
 			"armor_value": 0,
@@ -16833,7 +16869,8 @@
 			"free": [
 				"meteorite",
 				"doubleaxe",
-				"dynamite"
+				"dynamite",
+				"goldstaff"
 			],
 			"price_multiplier": 1.0,
 			"restock_seconds": 0.0,

@@ -40,6 +40,7 @@ extends Node
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
+const WorkBar := preload("res://src/world/endless/workbar.gd")
 const HORDE := "Horde slimes"
 const EVERY_KIND := "every kind"
 const EVERY_MONSTER := "every monster"
@@ -65,10 +66,24 @@ const SHOT_CHECKS := [100, 500, 1000, 2000]
 # at the first row that stands NOISE_MS clear of the base.
 const GROWS_AT := 1.5
 const NOISE_MS := 0.5
-# Results listed on the panel, newest first.
-const SHOWN := 5
+# THE RESULTS TABLE (0.175.1): every result, newest first, ROWS_SHOWN rows
+# seen at once and the rest a scroll away (it was the newest five and "...
+# and 17 more"); its columns' widths; few fit under FEW (red), some under
+# SOME (amber).
+const ROWS_SHOWN := 8
+const ROW_HEIGHT := 18.0
+const COLUMN_EACH := 54.0
+const COLUMN_FITS := 112.0
+const COLUMN_FITS_NUMBER := 42.0
+const COLUMN_WHY := 50.0
+const FEW := 100
+const SOME := 300
 const COLOUR := Color(1.0, 0.86, 0.5)
 const COLOUR_TEXT := Color(0.92, 0.88, 0.8)
+const FAINT := Color(0.92, 0.88, 0.8, 0.55)
+const WHY_SHORT := {
+	"limit": "80%", "slow": "slow", "most": "most", "no room": "no room", "stopped": "stopped", "base": "too busy",
+}
 const WHY_WORDS := {
 	"limit": "work at 80%", "slow": "slow frames past the budget", "most": "the sweep's most",
 	"no room": "no room on the floor", "stopped": "stopped", "base": "the empty field past the limit",
@@ -95,7 +110,22 @@ var _picker: OptionButton = null
 var _step_box: SpinBox = null
 var _go: Button = null
 var _status_label: Label = null
-var _results_label: Label = null
+# The card while a sweep runs (0.175.1).
+var _card: PanelContainer = null
+var _card_name: Label = null
+var _card_of: Label = null
+var _card_count: Label = null
+var _card_work: Label = null
+var _card_doing: Label = null
+var _list_bar: Control = null
+var _card_bar: Control = null
+var _doing: String = ""
+# The results table: its rows' box, in a scroll of ROWS_SHOWN rows.
+var _table: VBoxContainer = null
+var _scroll: ScrollContainer = null
+var _results_box: VBoxContainer = null
+var _hint: Label = null
+var _table_key: String = "-"
 var _stress: Node = null
 var _rng := RandomNumberGenerator.new()
 
@@ -609,6 +639,11 @@ func copy_results() -> void:
 # ---- the panel's part ------------------------------------------------------------------
 
 func build(into: VBoxContainer, width: float) -> void:
+	"""THE PANEL'S PART, AT A GLANCE (0.175.1). The owner: "upgrade this ui".
+	The picker, +N and Find the limit (green; Stop, red, while it runs); a
+	card while it sweeps - what, how far through the list, its work climbing
+	to the 80% line, what it is doing; then every result in a table, newest
+	first, the whole sentence on a hover; Copy results."""
 	into.add_child(HSeparator.new())
 	var head := Label.new()
 	head.name = "sweephead"
@@ -656,20 +691,78 @@ func build(into: VBoxContainer, width: float) -> void:
 	_go.add_theme_font_size_override("font_size", 12)
 	_go.pressed.connect(_on_go)
 	row.add_child(_go)
-	_status_label = Label.new()
-	_status_label.name = "sweepstatus"
-	_status_label.add_theme_color_override("font_color", COLOUR)
-	_status_label.add_theme_font_size_override("font_size", 12)
+
+	# The card while it sweeps.
+	_card = PanelContainer.new()
+	_card.name = "sweepcard"
+	var card_look := StyleBoxFlat.new()
+	card_look.bg_color = Color(1.0, 1.0, 1.0, 0.05)
+	card_look.border_color = Color(COLOUR, 0.3)
+	card_look.set_border_width_all(1)
+	card_look.set_corner_radius_all(3)
+	card_look.set_content_margin_all(6.0)
+	_card.add_theme_stylebox_override("panel", card_look)
+	into.add_child(_card)
+	var card_rows := VBoxContainer.new()
+	card_rows.add_theme_constant_override("separation", 3)
+	_card.add_child(card_rows)
+	var name_row := HBoxContainer.new()
+	card_rows.add_child(name_row)
+	_card_name = _label("sweepname", 15, COLOUR)
+	_card_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_card_name.clip_text = true
+	name_row.add_child(_card_name)
+	_card_of = _label("sweepof", 12, COLOUR_TEXT)
+	name_row.add_child(_card_of)
+	_list_bar = WorkBar.make(4.0)
+	_list_bar.name = "sweeplistbar"
+	card_rows.add_child(_list_bar)
+	var work_row := HBoxContainer.new()
+	work_row.add_theme_constant_override("separation", 6)
+	card_rows.add_child(work_row)
+	_card_count = _label("sweepcount", 12, COLOUR_TEXT)
+	_card_count.custom_minimum_size = Vector2(112.0, 0.0)
+	work_row.add_child(_card_count)
+	_card_bar = WorkBar.make(8.0)
+	_card_bar.name = "sweepworkbar"
+	work_row.add_child(_card_bar)
+	_card_work = _label("sweepwork", 12, COLOUR_TEXT)
+	_card_work.custom_minimum_size = Vector2(76.0, 0.0)
+	_card_work.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	work_row.add_child(_card_work)
+	_card_doing = _label("sweepdoing", 11, FAINT)
+	card_rows.add_child(_card_doing)
+
+	# A line said once (done, stopped, copied), under the controls.
+	_status_label = _label("sweepstatus", 12, COLOUR)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status_label.custom_minimum_size = Vector2(width - 16.0, 0.0)
 	into.add_child(_status_label)
-	_results_label = Label.new()
-	_results_label.name = "sweepresults"
-	_results_label.add_theme_color_override("font_color", COLOUR_TEXT)
-	_results_label.add_theme_font_size_override("font_size", 11)
-	_results_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_results_label.custom_minimum_size = Vector2(width - 16.0, 0.0)
-	into.add_child(_results_label)
+
+	# Every result, a row each.
+	_table = VBoxContainer.new()
+	_table.name = "sweeptable"
+	_table.add_theme_constant_override("separation", 0)
+	into.add_child(_table)
+	var header := _result_row(["Swept", "ms each", "Fits", "Stopped"], -1)
+	header.name = "sweepheader"
+	_table.add_child(header)
+	_scroll = ScrollContainer.new()
+	_scroll.name = "sweepscroll"
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_table.add_child(_scroll)
+	_results_box = VBoxContainer.new()
+	_results_box.name = "sweepresults"
+	_results_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_results_box.add_theme_constant_override("separation", 0)
+	_scroll.add_child(_results_box)
+	_hint = _label("sweephint", 11, COLOUR_TEXT)
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint.custom_minimum_size = Vector2(width - 16.0, 0.0)
+	_hint.text = "Pick a monster: it comes +%d at a time round you until the work reaches %d%% of the budget." \
+		% [STEP, roundi(LIMIT_AT * 100.0)]
+	into.add_child(_hint)
 	var bottom := HBoxContainer.new()
 	into.add_child(bottom)
 	var gap := Control.new()
@@ -684,6 +777,130 @@ func build(into: VBoxContainer, width: float) -> void:
 	copy.pressed.connect(copy_results)
 	bottom.add_child(copy)
 	paint()
+
+
+static func _label(label_name: String, font_size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", colour)
+	return label
+
+
+func _result_row(cells: Array, index: int) -> Control:
+	"""A row of the table: the header (`index` -1) or result `index` (0 the
+	newest), [name, ms each, fits, stopped] - fits a number, or with a
+	result's summary a bar and the number."""
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", WorkBar.row_look(index >= 0 and index % 2 == 1))
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 6)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(line)
+	var font: int = 11
+	var colour: Color = FAINT if index < 0 else COLOUR_TEXT
+	var named := _label("name", font, colour)
+	named.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	named.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	named.clip_text = true
+	named.text = str(cells[0])
+	line.add_child(named)
+	var rise: Control = WorkBar.make(7.0, 7.0)
+	rise.name = "grows"
+	rise.set("shape", WorkBar.Shape.RISE)
+	rise.set("colour", WorkBar.AMBER)
+	rise.visible = index >= 0 and bool(cells[4]) if cells.size() > 4 else false
+	line.add_child(rise)
+	var each := _label("each", font, colour)
+	each.custom_minimum_size = Vector2(COLUMN_EACH, 0.0)
+	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	each.text = str(cells[1])
+	line.add_child(each)
+	var fits_cell := HBoxContainer.new()
+	fits_cell.custom_minimum_size = Vector2(COLUMN_FITS, 0.0)
+	fits_cell.add_theme_constant_override("separation", 4)
+	fits_cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(fits_cell)
+	var bar: Control = WorkBar.make(6.0)
+	bar.name = "fitsbar"
+	bar.visible = index >= 0
+	fits_cell.add_child(bar)
+	var fits := _label("fits", font, colour)
+	fits.custom_minimum_size = Vector2(COLUMN_FITS_NUMBER, 0.0)
+	fits.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fits.size_flags_horizontal = Control.SIZE_EXPAND_FILL if index < 0 else Control.SIZE_FILL
+	fits.text = str(cells[2])
+	fits_cell.add_child(fits)
+	var why := _label("why", font, colour)
+	why.custom_minimum_size = Vector2(COLUMN_WHY, 0.0)
+	why.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	why.text = str(cells[3])
+	line.add_child(why)
+	return row
+
+
+static func short_why(why: String) -> String:
+	"""What stopped a sweep, in a word for the table's last column."""
+	return str(WHY_SHORT.get(why, why))
+
+
+static func fits_fraction(fits: int, most: int) -> float:
+	"""How long a result's fits bar is: on a log scale against the most that
+	fit of any result, so 80 and 5,000 both show."""
+	if fits <= 0 or most <= 1:
+		return 0.0
+	return clampf(log(float(fits) + 1.0) / log(float(most) + 1.0), 0.04, 1.0)
+
+
+static func fits_colour(fits: int) -> Color:
+	"""Few fit, red; a few hundred, amber; many, green."""
+	if fits < FEW:
+		return WorkBar.RED
+	if fits < SOME:
+		return WorkBar.AMBER
+	return WorkBar.GREEN
+
+
+func _fill_table() -> void:
+	"""Every result as a row, newest first; rebuilt only when they change."""
+	if _results_box == null:
+		return
+	var key: String = "%d|%s" % [order.size(), str(order.back()) + str((results.get(order.back(), {}) as Dictionary).get("when", "")) if not order.is_empty() else ""]
+	if key == _table_key:
+		return
+	_table_key = key
+	for child in _results_box.get_children():
+		_results_box.remove_child(child)
+		child.queue_free()
+	var most: int = 1
+	for label in order:
+		most = maxi(most, int((results[label] as Dictionary).get("fits", 0)))
+	var index: int = 0
+	for k in range(order.size() - 1, -1, -1):
+		var summary: Dictionary = results[order[k]]
+		var fits: int = int(summary.get("fits", -1))
+		var why: String = str(summary.get("why", ""))
+		var row: Control = _result_row([str(summary.get("label", order[k])),
+			"-" if why == "base" else ms_text(float(summary.get("each", 0.0))),
+			GameConstants.commas(fits) if fits >= 0 else "-", short_why(why), bool(summary.get("grows", false))], index)
+		row.name = "result%d" % index
+		row.tooltip_text = summary_line(summary) + ("\n(%s)" % str(summary.get("per", "out")) if str(summary.get("per", "out")) != "out" else "")
+		var bar: Control = row.find_child("fitsbar", true, false)
+		if bar != null:
+			bar.call("show_value", fits_fraction(fits, most), fits_colour(fits))
+		_results_box.add_child(row)
+		index += 1
+	_scroll.custom_minimum_size = Vector2(0.0, ROW_HEIGHT * float(mini(order.size(), ROWS_SHOWN)))
+	# The header over the columns, not over the scroll bar's room.
+	var header: PanelContainer = _table.get_node_or_null(^"sweepheader") as PanelContainer
+	if header != null:
+		var look: StyleBoxFlat = WorkBar.row_look(false)
+		if order.size() > ROWS_SHOWN:
+			look.content_margin_right += _scroll.get_v_scroll_bar().get_combined_minimum_size().x
+		header.add_theme_stylebox_override("panel", look)
+	_table.visible = not order.is_empty()
+	_hint.visible = order.is_empty() and not running()
 
 
 func _add_pick(label: String, key: String) -> void:
@@ -715,6 +932,7 @@ func _on_go() -> void:
 
 
 func _say(doing: String) -> void:
+	_doing = doing
 	var where: String = " (%d of %d)" % [queue_size - queue.size(), queue_size] if queue_size > 1 else ""
 	var said: String = "%s%s: %s %s - %s" % [str(target.get("label", "")), where,
 		GameConstants.commas(count_now()), counted_as(target), doing]
@@ -732,15 +950,31 @@ func paint() -> void:
 	if _go == null:
 		return
 	_go.text = "Stop" if running() else "Find the limit"
+	WorkBar.dress_go(_go, running())
 	_picker.disabled = running()
 	_step_box.editable = not running()
+	# The card while it sweeps; the line said once when it does not.
+	_card.visible = running()
 	_status_label.text = status
-	_status_label.visible = status != ""
-	var lines: PackedStringArray = []
-	for k in range(order.size() - 1, maxi(-1, order.size() - 1 - SHOWN), -1):
-		lines.append(summary_line(results[order[k]]))
-	if order.size() > SHOWN:
-		lines.append("... and %d more - Copy results has them all." % (order.size() - SHOWN))
-	_results_label.text = "\n".join(lines) if not lines.is_empty() \
-		else "Pick a monster: it comes +%d at a time round you until the work reaches %d%% of the budget." \
-			% [STEP, roundi(LIMIT_AT * 100.0)]
+	_status_label.visible = status != "" and not running()
+	if running():
+		var budget: float = PerfOverlay.budget_ms()
+		var done: int = queue_size - queue.size()
+		_card_name.text = str(target.get("label", ""))
+		_card_of.text = "%d of %d" % [done, queue_size] if queue_size > 1 else ""
+		_list_bar.visible = queue_size > 1
+		_list_bar.call("show_value", float(done - 1) / float(maxi(queue_size, 1)), Color(COLOUR, 0.8))
+		_card_count.text = "%s %s" % [GameConstants.commas(count_now()), counted_as(target)]
+		if rows.is_empty() or budget <= 0.0:
+			_card_bar.call("show_value", 0.0, WorkBar.GREEN, -1.0, LIMIT_AT)
+			_card_work.text = "-"
+		else:
+			var last: Array = rows.back()
+			var median: float = float(last[1])
+			var slow: float = float(last[2])
+			_card_bar.call("show_value", median / budget, WorkBar.work_colour(median, slow, budget), slow / budget, LIMIT_AT)
+			_card_work.text = "%.1f / %.1f ms" % [median, budget * LIMIT_AT]
+		_card_doing.text = _doing
+	_fill_table()
+	if _hint != null:
+		_hint.visible = order.is_empty() and not running()

@@ -35,7 +35,7 @@ extends RefCounted
 const Targets := preload("res://src/shared/targets.gd")
 
 # The kinds, as presence.py ATTACK_KINDS has them.
-const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb", "heal"]
+const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb", "heal", "laser"]
 # What `flags` carries.
 const FLAG_PULL := 1      # a meteor that pulls (meteor.gd, THE PULL)
 const FLAG_WIDE := 2      # a wide axe (spinningaxe.gd, THE ROLL)
@@ -61,6 +61,7 @@ const AIM_AHEAD := 100.0
 # The healer's script, for its fan's ways (THE FAN). Loaded, not preloaded,
 # for the reason the scene paths above give.
 const HEALER_PATH := "res://src/characters/healer.gd"
+const LASER_PATH := "res://src/characters/healerlaser.gd"
 # And the warrior's, for its crypt orbs (THE SWORD FAN, THE FINISHER).
 const WARRIOR_PATH := "res://src/characters/warrior.gd"
 static var _scenes: Dictionary = {}
@@ -125,6 +126,8 @@ static func fire(body: Node2D, attack: Array) -> Array:
 			made = _orb(body, origin, target, flags)
 		"heal":
 			made = _heal(body, target)
+		"laser":
+			made = _laser(body, origin, target)
 	return [made] if made != null else []
 
 
@@ -281,6 +284,19 @@ static func _heal(body: Node2D, target: Vector2) -> Node:
 	if not shown():
 		aura.unseen = true
 	return aura
+
+
+static func _laser(body: Node2D, origin: Vector2, target: Vector2) -> Node:
+	# A healer's Gold Staff beam (0.175.1, healerlaser.gd): one picture each,
+	# a child of their body, shown from where it started to where it ended
+	# for a moment after each tick they tell - ten a second while they hold
+	# it, so it shines unbroken. It hits nothing here. No sound: theirs.
+	var beam: Node2D = body.get_node_or_null(^"laser") as Node2D
+	if beam == null:
+		beam = (load(LASER_PATH) as GDScript).call("make", true) as Node2D
+		body.add_child(beam)
+	beam.call("show_between", origin, target)
+	return beam
 
 
 static func fan_ways(way: Vector2) -> Array:

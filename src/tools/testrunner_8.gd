@@ -370,9 +370,10 @@ func _test_the_mythic_weapons() -> void:
 	section("MYTHIC WEAPONS - the meteor, the double axe and the dynamite")
 
 	# --- THE ITEMS -----------------------------------------------------------
-	check("the attacks are appended, never renumbered: NONE 0, METEOR 1, SPINNING_AXE 2, DYNAMITE 3",
+	check("the attacks are appended, never renumbered: NONE 0, METEOR 1, SPINNING_AXE 2, DYNAMITE 3, LASER 4",
 		ItemData.WeaponAttack.NONE == 0 and ItemData.WeaponAttack.METEOR == 1
-		and ItemData.WeaponAttack.SPINNING_AXE == 2 and ItemData.WeaponAttack.DYNAMITE == 3)
+		and ItemData.WeaponAttack.SPINNING_AXE == 2 and ItemData.WeaponAttack.DYNAMITE == 3
+		and ItemData.WeaponAttack.LASER == 4)
 	var gamedata: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
 	var exported: Dictionary = {}
 	for row in gamedata.get("items", []):
@@ -437,7 +438,7 @@ func _test_the_mythic_weapons() -> void:
 	# Which attack each weapon gives, asked of a character built outside the tree.
 	var mage: Node = (load("res://src/characters/mage.gd") as GDScript).new()
 	var asked: Array = []
-	for pair in [["", 0], ["emberstaff", 0], ["meteorite", 1], ["doubleaxe", 2], ["dynamite", 3]]:
+	for pair in [["", 0], ["emberstaff", 0], ["meteorite", 1], ["doubleaxe", 2], ["dynamite", 3], ["goldstaff", 4]]:
 		mage.equipped = {} if pair[0] == "" else {"weapon": pair[0]}
 		asked.append(mage.equipped_weapon_attack() == pair[1])
 	check("bare hands and ember keep the class attack; each mythic weapon brings its own",

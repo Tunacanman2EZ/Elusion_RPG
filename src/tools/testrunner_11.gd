@@ -3635,8 +3635,9 @@ func _test_find_the_limit() -> void:
 	check("  and after: God mode as it was, the field cleared, the controls the ground's again, the line on the panel",
 		not GameState.god_mode and not bool(sweep.call("running")) and int(run.get("swarm").get("alive")) == 0
 		and int(ground.get("horde")) == 0 and not (ground.find_child("horde0", true, false) as Button).disabled
-		and (ground.find_child("sweepresults", true, false) as Label).text.begins_with("Horde slimes: "),
-		(ground.find_child("sweepresults", true, false) as Label).text)
+		and ground.find_child("result0", true, false) is Control
+		and (ground.find_child("result0", true, false) as Control).tooltip_text.begins_with("Horde slimes: "),
+		(ground.find_child("result0", true, false) as Control).tooltip_text if ground.find_child("result0", true, false) else "")
 	sweep.call("copy_results")
 	var again: Node = Sweep.new()
 	again.set("save_path", kept_at)

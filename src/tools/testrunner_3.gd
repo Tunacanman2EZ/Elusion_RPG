@@ -17,8 +17,8 @@ func _test_the_shop_gives_the_mythics_away() -> void:
 
 	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
 	var free: Array = Array(store.free) if store != null else []
-	check("the general store gives away the Meteorite, the Double Axe and Dynamite",
-		free == ["meteorite", "doubleaxe", "dynamite"], free)
+	check("the general store gives away the Meteorite, the Double Axe, Dynamite and the Gold Staff",
+		free == ["meteorite", "doubleaxe", "dynamite", "goldstaff"], free)
 	var both: Array = free.filter(func(id: String) -> bool: return Array(store.stock).has(id))
 	check("  and sells none of them for gold: one item, one price", both.is_empty(), both)
 
@@ -41,8 +41,8 @@ func _test_the_shop_gives_the_mythics_away() -> void:
 			gated.append([id, row.get("required_level", -1), row.get("tier", -1)])
 	check("  each a mythic worn from level 1, in the server's catalogue too", gated.is_empty(), gated)
 	classes.sort()
-	check("  one for each class that has one - the healer has none yet",
-		classes == ["mage", "tank", "warrior"], classes)
+	check("  one for each class - the healer's Gold Staff since 0.175.1",
+		classes == ["healer", "mage", "tank", "warrior"], classes)
 
 	# THE PANEL, drawn from an answer in the server's shape: what it gives away
 	# first, flagged free, at no price.
@@ -62,7 +62,7 @@ func _test_the_shop_gives_the_mythics_away() -> void:
 	for child in panel.stock_list.get_children():
 		order.append(child.text if child is Label else str(child.name))
 	check("the free shelf comes first, headed with the rule, then the shop's own stock",
-		order == [panel.FREE_SHELF_TITLE, "free_meteorite", "free_doubleaxe", "free_dynamite",
+		order == [panel.FREE_SHELF_TITLE, "free_meteorite", "free_doubleaxe", "free_dynamite", "free_goldstaff",
 			"Potions and supplies", "stock_tinyhealthpotion"], order)
 	check("  and the heading says it cannot be sold or traded",
 		String(panel.FREE_SHELF_TITLE).contains("cannot be sold or traded"), panel.FREE_SHELF_TITLE)

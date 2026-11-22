@@ -116,6 +116,18 @@ const AURA_MANA_COST := 25
 const AURA_RANGE := 160.0
 const AURA_DAMAGE_SHARE := 2.0
 
+# THE GOLD STAFF (0.175.1). The owner, of Ahvassa's three staffs: "the gold
+# one is mythic it will use the red crit laser from healers run". With it in
+# hand, holding attack shines the beam (healerlaser.gd) where she aims in place
+# of the orbs, on the orbs' own clock and mana: each tick everything in it takes
+# an orb's damage, and what the red heart touches the double (DOUBLE_HIT) -
+# never more on one monster than an orb stream that doubled every shot, so the
+# server's books hold it as they are. No fan and no rolled double beside it.
+# Each tick that strikes anything pays one landed orb's magic XP, however many
+# it struck, and tells everyone else in the area ("laser", remoteattacks.gd).
+const HealerLaser := preload("res://src/characters/healerlaser.gd")
+const LASER_XP := 5
+
 
 # A cursor delta shorter than this counts as "no direction at all" — see
 # _get_direction_to_cursor(). Compared against length_squared() so the check
@@ -147,6 +159,8 @@ var _shots: int = 0
 # frame (a click is the frame it goes down).
 var aura_cooldown_left: float = 0.0
 var _right_was_down: bool = false
+# THE GOLD STAFF's beam, made the first time it shines.
+var _laser: Node2D = null
 
 
 # _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
@@ -208,6 +222,8 @@ func _physics_process(delta: float) -> void:
 
 	if is_dying:
 		_point_aim_ring(last_direction)
+		if _laser != null:
+			_laser.call("shine", false)
 		return
 
 	if _shot_timer > 0.0:
@@ -220,6 +236,11 @@ func _physics_process(delta: float) -> void:
 	_aura_click(delta, right_click_held() or touched,
 		TouchControls.skill_point(self, TouchControls.skill_fired_drag) if touched else aim_point())
 
+	if wields_laser():
+		_hold_laser()
+		return
+	if _laser != null:
+		_laser.call("shine", false)
 	if _can_fire():
 		_fire_projectile()
 		# hasten() applies agility. At ten shots a second the base cooldown is
@@ -385,6 +406,59 @@ func _fire_projectile() -> void:
 	_aim_ring_fired()
 	# Motes where the orb leaves (castsparkle.gd, 0.36.0).
 	CastSparkle.muzzle(self, AIM_FROM, aim_origin() + direction * RemoteAttacks.AIM_AHEAD)
+
+
+# =============================================================================
+# THE GOLD STAFF (0.175.1) - see the constants and healerlaser.gd
+# =============================================================================
+
+func wields_laser() -> bool:
+	return equipped_weapon_attack() == ItemData.WeaponAttack.LASER
+
+
+func laser() -> Node2D:
+	"""The beam, made once, a child of the healer so it rides with her."""
+	if _laser == null or not is_instance_valid(_laser):
+		_laser = HealerLaser.make()
+		add_child(_laser)
+	return _laser
+
+
+func _hold_laser() -> void:
+	"""One physics frame with the Gold Staff: the beam on while attack is held
+	and there is mana for a tick, aimed at the cursor; a tick when the shot
+	clock comes round."""
+	var beam: Node2D = laser()
+	if not _is_attack_input_held() or mana < mana_cost_per_shot:
+		beam.call("shine", false)
+		return
+	var direction: Vector2 = _get_direction_to_cursor()
+	last_direction = direction
+	if not beam.visible:
+		Audio.play("spell_cast")
+	beam.call("shine", true)
+	# This side of the wall she is pressed against, as an orb leaves (0.69.1).
+	beam.call("aim", reach_short_of_wall(aim_origin()), direction)
+	if _shot_timer <= 0.0:
+		_laser_tick(direction)
+		_shot_timer = hasten(shot_cooldown)
+
+
+func _laser_tick(direction: Vector2) -> int:
+	"""One tick of the beam: the mana, the cast, the damage, the XP, and the
+	word to everyone else. Returns how many it struck."""
+	_set_active()
+	mana -= mana_cost_per_shot
+	_shots += 1
+	_play_cast_animation(direction)
+	_aim_ring_fired()
+	var hit: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
+	var beam: Node2D = laser()
+	var struck: int = int(beam.call("strike", hit, hit * DOUBLE_HIT, common_forced()))
+	if struck > 0:
+		gain_magic_xp(LASER_XP)
+	Presence.tell_attack("laser", beam.global_position, beam.call("end_point"))
+	return struck
 
 
 func rolls_double_hit() -> bool:

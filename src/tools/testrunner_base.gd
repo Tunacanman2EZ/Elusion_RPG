@@ -4490,6 +4490,7 @@ const MYTHIC_WEAPONS := {
 	"meteorite": {"class": "mage", "attack": 1, "ember": "emberstaff", "icon": 32},
 	"doubleaxe": {"class": "warrior", "attack": 2, "ember": "embersword", "icon": 16},
 	"dynamite": {"class": "tank", "attack": 3, "ember": "embermaul", "icon": 16},
+	"goldstaff": {"class": "healer", "attack": 4, "ember": "emberscepter", "icon": 32},
 }
 
 

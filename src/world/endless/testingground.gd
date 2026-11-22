@@ -30,6 +30,7 @@ const GmSpawner := preload("res://src/world/gmspawner.gd")
 const LimitSweep := preload("res://src/world/endless/limitsweep.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
 const LayerPicture := preload("res://src/ui/hudpicture.gd")
+const WorkBar := preload("res://src/world/endless/workbar.gd")
 # 10,000 since 0.175.0 (the owner: "we were able to spawn 5k slimes no frame
 # loss lets try 10,000"; swarm.gd MOST).
 const HORDES := [0, 1000, 3000, 5000, 10000]
@@ -44,15 +45,18 @@ const COUNT_FRAMES := 60
 const AMBER_AT := 0.8
 const COLOUR := Color(1.0, 0.86, 0.5)
 const COLOUR_TEXT := Color(0.92, 0.88, 0.8)
-const GREEN := Color(0.55, 0.9, 0.5)
-const AMBER := Color(1.0, 0.72, 0.35)
-const RED := Color(1.0, 0.42, 0.38)
+const GREEN := WorkBar.GREEN
+const AMBER := WorkBar.AMBER
+const RED := WorkBar.RED
 const WIDTH := 460.0
 
 var run: Node = null
 var horde: int = 0
 var _layer: CanvasLayer = null
 var _work_label: Label = null
+# AT A GLANCE (0.175.1): the work as a bar under the title - the median
+# filled, the slow frames a bright line, the 80% limit a tick.
+var _work_bar: Control = null
 var _count_label: Label = null
 var _horde_buttons: Array = []
 var _clear_button: Button = null
@@ -149,6 +153,9 @@ func _build() -> void:
 	_fold_button.tooltip_text = "Fold the panel to this line, so more of the arena shows; More opens it again."
 	_fold_button.pressed.connect(toggle_folded)
 	top.add_child(_fold_button)
+	_work_bar = WorkBar.make(5.0)
+	_work_bar.name = "workbar"
+	rows.add_child(_work_bar)
 	_count_label = Label.new()
 	_count_label.name = "counts"
 	_count_label.add_theme_color_override("font_color", COLOUR_TEXT)
@@ -173,6 +180,7 @@ func _build() -> void:
 		button.button_group = group
 		button.focus_mode = Control.FOCUS_NONE
 		button.add_theme_font_size_override("font_size", 12)
+		WorkBar.dress_choice(button)
 		button.pressed.connect(set_horde.bind(int(size)))
 		controls.add_child(button)
 		_horde_buttons.append(button)
@@ -324,12 +332,7 @@ static func counts_text(alive: Dictionary) -> String:
 
 
 static func work_colour(median: float, p95: float, budget: float) -> Color:
-	var worst: float = maxf(median, p95)
-	if worst > budget:
-		return RED
-	if worst > budget * AMBER_AT:
-		return AMBER
-	return GREEN
+	return WorkBar.work_colour(median, p95, budget)
 
 
 func paint() -> void:
@@ -340,8 +343,12 @@ func paint() -> void:
 	if int(stats["frames"]) == 0:
 		_work_label.text = "work: measuring..."
 		_work_label.add_theme_color_override("font_color", COLOUR_TEXT)
+		if _work_bar != null:
+			_work_bar.call("show_value", 0.0, GREEN, -1.0, AMBER_AT)
 	else:
+		var colour: Color = work_colour(float(stats["median"]), float(stats["p95"]), budget)
 		_work_label.text = "work %.1f ms · slow %.1f ms · of %.1f" % [float(stats["median"]), float(stats["p95"]), budget]
-		_work_label.add_theme_color_override("font_color",
-			work_colour(float(stats["median"]), float(stats["p95"]), budget))
+		_work_label.add_theme_color_override("font_color", colour)
+		if _work_bar != null and budget > 0.0:
+			_work_bar.call("show_value", float(stats["median"]) / budget, colour, float(stats["p95"]) / budget, AMBER_AT)
 	_count_label.text = counts_text(counts())

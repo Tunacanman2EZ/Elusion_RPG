@@ -2891,3 +2891,428 @@ func _test_ten_thousand_in_the_testing_ground() -> void:
 	me.queue_free()
 	await get_tree().process_frame
 	print("  room for 10,000; shots held for the whole sweep")
+
+
+# THE TESTING GROUND AT A GLANCE (0.175.1). The owner, of its panel: "upgrade
+# this ui". The work a bar, the horde chosen lit, Find the limit green and
+# Stop red, a card while it sweeps, every result in a table.
+func _test_the_testing_ground_at_a_glance() -> void:
+	section("THE TESTING GROUND AT A GLANCE (0.175.1)")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Bar := preload("res://src/world/endless/workbar.gd")
+	var box := VBoxContainer.new()
+	add_child(box)
+	var sweep: Node = Sweep.new()
+	sweep.set("save_path", "")
+	add_child(sweep)
+	sweep.call("build", box, 460.0)
+	var results: Dictionary = {}
+	var order: Array = []
+	for k in 12:
+		var named: String = "Monster %d" % k
+		results[named] = {"label": named, "each": 0.01 * float(k + 1), "fits": 40 + 60 * k, "why": "limit" if k % 3 else "most",
+			"grows": k == 5, "per": "out", "stopped": 100, "base": 1.0, "budget": 16.7, "when": "t%d" % k}
+		order.append(named)
+	sweep.set("results", results)
+	sweep.set("order", order)
+	sweep.call("paint")
+	var rows_box: Node = box.find_child("sweepresults", true, false)
+	var first: Control = box.find_child("result0", true, false) as Control
+	var newest: String = str((first.find_child("name", true, false) as Label).text) if first != null else ""
+	var scroll: ScrollContainer = box.find_child("sweepscroll", true, false) as ScrollContainer
+	check("every result is a row of the table, newest first - all twelve, not five and \"... and 7 more\" - and eight show before the scroll",
+		rows_box != null and rows_box.get_child_count() == 12 and newest == "Monster 11"
+		and is_equal_approx(scroll.custom_minimum_size.y, Sweep.ROW_HEIGHT * float(Sweep.ROWS_SHOWN)),
+		[rows_box.get_child_count() if rows_box else -1, newest])
+	var row5: Control = box.find_child("result6", true, false) as Control
+	check("  a row: its name, ms each, a fits bar and number, what stopped it in a word; the whole sentence on a hover; a rising cost marked",
+		row5 != null and (row5.find_child("each", true, false) as Label).text == Sweep.ms_text(0.06)
+		and (row5.find_child("fits", true, false) as Label).text == "340" and (row5.find_child("why", true, false) as Label).text == "80%"
+		and row5.tooltip_text == Sweep.summary_line(results["Monster 5"])
+		and (row5.find_child("grows", true, false) as Control).visible
+		and not ((box.find_child("result0", true, false) as Control).find_child("grows", true, false) as Control).visible,
+		row5.tooltip_text if row5 else "")
+	check("  fits on a log scale with a colour - few red, some amber, many green; what stopped it said short",
+		is_equal_approx(Sweep.fits_fraction(5000, 5000), 1.0) and Sweep.fits_fraction(80, 5000) > 0.4
+		and Sweep.fits_fraction(80, 5000) < 0.6 and Sweep.fits_colour(79) == Bar.RED and Sweep.fits_colour(127) == Bar.AMBER
+		and Sweep.fits_colour(2500) == Bar.GREEN and Sweep.short_why("slow") == "slow" and Sweep.short_why("base") == "too busy")
+	var go: Button = box.find_child("sweepgo", true, false) as Button
+	var card: Control = box.find_child("sweepcard", true, false) as Control
+	var idle_green: bool = (go.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.g > (go.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.r
+	var idle_card: bool = card.visible
+	sweep.set("target", {"label": "Skeleton elite", "path": "x", "kind": 2})
+	sweep.set("queue", [{}, {}, {}, {}])
+	sweep.set("queue_size", 11)
+	sweep.set("phase", Sweep.Phase.MEASURING)
+	sweep.set("rows", [[0, 2.0, 2.2, 100, 0.5, 0.8, 0.7], [70, 7.9, 8.7, 100, 3.0, 2.9, 2.0]])
+	sweep.call("_say", "measuring 120 frames")
+	var work_bar: Control = box.find_child("sweepworkbar", true, false) as Control
+	var budget: float = PerfOverlay.budget_ms()
+	check("while it sweeps: Stop in red, and a card - what, 7 of 11, its work against the 80% line, what it is doing",
+		not idle_card and idle_green and go.text == "Stop"
+		and (go.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.r > (go.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.g
+		and card.visible and (box.find_child("sweepname", true, false) as Label).text == "Skeleton elite"
+		and (box.find_child("sweepof", true, false) as Label).text == "7 of 11"
+		and is_equal_approx(float(work_bar.get("fraction")), 7.9 / budget) and is_equal_approx(float(work_bar.get("tick")), Sweep.LIMIT_AT)
+		and (box.find_child("sweepdoing", true, false) as Label).text == "measuring 120 frames",
+		[go.text, card.visible])
+	sweep.set("phase", Sweep.Phase.IDLE)
+	sweep.call("paint")
+	var chosen := Button.new()
+	chosen.toggle_mode = true
+	Bar.dress_choice(chosen)
+	check("  the horde's chosen size lit gold, and the work a bar in green, amber or red as before",
+		(chosen.get_theme_stylebox("pressed") as StyleBoxFlat).bg_color.is_equal_approx(Color(Bar.GOLD, 0.9))
+		and Bar.work_colour(10.0, 12.0, 16.67) == Bar.GREEN and Bar.work_colour(10.0, 14.0, 16.67) == Bar.AMBER
+		and Bar.work_colour(10.0, 17.0, 16.67) == Bar.RED and not card.visible)
+	chosen.free()
+	sweep.queue_free()
+	box.queue_free()
+	await get_tree().process_frame
+	print("  the testing ground at a glance")
+
+
+# THE SMITH'S HOUSE (0.175.1). The owner, with Ahvassa's round house, its
+# inside and its forge: "blacksmiths house". The general store's rules: walk
+# in and the walls and roof give way to the room; its trigger is the round
+# floor (shop.gd covers() reads a polygon too).
+func _test_the_smith_has_a_house() -> void:
+	section("THE SMITH'S HOUSE (0.175.1)")
+	const ShopScript := preload("res://src/world/shop.gd")
+	var packed: PackedScene = load("res://scene/walls/smithhouse.tscn") as PackedScene
+	check("smithhouse.tscn loads", packed != null and packed.can_instantiate())
+	if packed == null:
+		return
+	var house: Node2D = packed.instantiate() as Node2D
+	var first_strip: Sprite2D = house.get_node("smithexterior/house").get_child(0) as Sprite2D
+	var sheet: Texture2D = first_strip.texture if first_strip != null else null
+	check("  drawn from Ahvassa's sheet, art/shophouses/smithhouse.png, nearest-neighbour",
+		sheet != null and sheet.resource_path == "res://art/shophouses/smithhouse.png"
+		and first_strip.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
+	var anvils: Array = []
+	_collect_by_script(house, "res://src/world/anvil.gd", anvils)
+	check("  its anvil is the smith's, beside the forge, drawn by its own picture - Ahvassa's anvil on its stump",
+		anvils.size() == 1 and ((anvils[0] as Node).get_node("animatedsprite2d") as CanvasItem).visible
+		and house.get_node_or_null("interiorfurniture/forge") is Sprite2D
+		and house.get_node_or_null("interiorfurniture/stump") == null)
+	house.position = Vector2(-63000, -63000)
+	add_child(house)
+	await get_tree().process_frame
+	var trigger: Area2D = house.get_node("trigger") as Area2D
+	var outside: bool = (house.get_node("smithexterior") as CanvasItem).visible \
+		and not (house.get_node("smithinterior") as CanvasItem).visible and not (house.get_node("interiorfurniture") as CanvasItem).visible
+	var walker := Node2D.new()
+	walker.add_to_group(&"player")
+	trigger.call("_on_body_entered", walker)
+	var inside: bool = not (house.get_node("smithexterior") as CanvasItem).visible \
+		and (house.get_node("smithinterior") as CanvasItem).visible and (house.get_node("interiorfurniture") as CanvasItem).visible
+	trigger.call("_on_body_exited", walker)
+	var out_again: bool = (house.get_node("smithexterior") as CanvasItem).visible
+	walker.free()
+	check("outside, the house; walk in and the room with its forge; walk out and the house again",
+		outside and inside and out_again, [outside, inside, out_again])
+	var floor_box: Node2D = trigger.get_node("collisionshape2d") as Node2D
+	var o: Vector2 = house.global_position
+	check("  its trigger is the round floor: the middle and by the walls are in, the doorstep and past the walls are not",
+		ShopScript.covers(floor_box, o + Vector2(0, -43)) and ShopScript.covers(floor_box, o + Vector2(-60, -43))
+		and not ShopScript.covers(floor_box, o + Vector2(0, -2)) and not ShopScript.covers(floor_box, o + Vector2(-75, -10))
+		and not ShopScript.covers(floor_box, o + Vector2(0, -95)))
+	var store_box := CollisionShape2D.new()
+	var square := RectangleShape2D.new()
+	square.size = Vector2(20, 10)
+	store_box.shape = square
+	add_child(store_box)
+	store_box.global_position = Vector2(500, 500)
+	check("  and the general store's rectangle reads as before",
+		ShopScript.covers(store_box, Vector2(509, 504)) and not ShopScript.covers(store_box, Vector2(511, 500)))
+	store_box.queue_free()
+	var ring: CollisionPolygon2D = house.get_node("walls/ring") as CollisionPolygon2D
+	var gap_open: bool = not Geometry2D.is_point_in_polygon(Vector2(0, -3), ring.polygon)
+	var wall_solid: bool = Geometry2D.is_point_in_polygon(Vector2(-40, -10), ring.polygon) \
+		and Geometry2D.is_point_in_polygon(Vector2(0, -83), ring.polygon) and Geometry2D.is_point_in_polygon(Vector2(74, -43), ring.polygon)
+	check("  its round wall is solid but for the door", gap_open and wall_solid, [gap_open, wall_solid])
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	var in_town: Node = town.get_node_or_null("ysortworld/interactables/smithhouse")
+	check("  it stands in town, beside the general store", in_town is Node2D and town.get_node_or_null("ysortworld/interactables/shophouse") != null)
+	town.free()
+	house.queue_free()
+	await get_tree().process_frame
+	print("  the smith's house")
+	_test_bodies_sort_round_the_smith()
+
+
+# EVERY BODY IS DRAWN IN FRONT OF WHAT IT STANDS IN FRONT OF (0.175.1). The
+# owner, of the smith's house and the Forge's new anvil: "fix the layering
+# also make sure everything is perfect". The house is round: drawn as one
+# picture sorted at its lowest point, anybody standing in front of its sides
+# - where the wall curves back up to y -40 - sorted north of y 0 and the whole
+# house was drawn over them; inside, its two front walls did the same. Each is
+# upright strips now, every strip sorted at the foot of the wall in it. And
+# the tank sorted 5 px above his soles (his picture at -23, his soles at -18),
+# so walked up to a short prop from the south he could still be drawn under
+# it; his picture is placed at his soles now and drawn where it was.
+# Worked out from the scenes, for every class: touching each piece from the
+# south it sorts after it, from the north (or from inside the wall) before.
+func _test_bodies_sort_round_the_smith() -> void:
+	section("LAYERING (0.175.1): every class in front of the smith's round wall, its furniture and the anvil when it stands in front, behind when behind")
+	var house: Node2D = (load("res://scene/walls/smithhouse.tscn") as PackedScene).instantiate() as Node2D
+	var sheet: Image = (load("res://art/shophouses/smithhouse.png") as Texture2D).get_image()
+	var wrong: Array = []
+	# ---- every strip sorted at the foot of the wall in it ----
+	var strips: Array = []
+	for group in ["smithexterior/house", "smithinterior"]:
+		for strip in house.get_node(group).get_children():
+			var cut := strip as Sprite2D
+			if cut == null or cut.z_index < 0:
+				continue
+			strips.append(cut)
+			var region: Rect2i = Rect2i(cut.region_rect)
+			for c in region.size.x:
+				var foot: float = INF
+				for r in range(region.size.y - 1, -1, -1):
+					if sheet.get_pixel(region.position.x + c, region.position.y + r).a > 0.0:
+						foot = cut.position.y + cut.offset.y + r + 1
+						break
+				# The sign and the eave hang off the wall at its widest (y -43).
+				var x: float = cut.position.x + c
+				if absf(x) > 77.0:
+					foot = -43.0
+				if foot < cut.position.y - 0.01:
+					wrong.append("%s sorts at %.0f, south of the wall's foot at x %.0f (%.0f)" % [cut.name, cut.position.y, x, foot])
+	check("the house and its two front walls are upright strips, each sorted at the foot of the wall in it (none south of it)",
+		strips.size() > 20 and house.get_node("smithexterior").y_sort_enabled and house.get_node("smithexterior/house").y_sort_enabled
+		and house.get_node("smithinterior").y_sort_enabled and wrong.is_empty(), wrong.slice(0, 4))
+	# ---- each class's height it sorts at, and the top and bottom of its feet ----
+	var classes: Dictionary = {}
+	for cls in ["warrior", "mage", "healer", "tank"]:
+		var hero: Node2D = (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate() as Node2D
+		var body: CollisionShape2D = hero.get_node(^"bodyshape") as CollisionShape2D
+		var picture: Node2D = hero.get_node(^"animatedsprite2d") as Node2D
+		var half: float = 0.0
+		if body.shape is CircleShape2D:
+			half = (body.shape as CircleShape2D).radius
+		elif body.shape is CapsuleShape2D:
+			half = (body.shape as CapsuleShape2D).height * 0.5
+		classes[cls] = {"sort": picture.position.y if hero.y_sort_enabled else 0.0,
+			"top": body.position.y - half, "bottom": body.position.y + half}
+		hero.free()
+	# ---- the round wall: in front of it from the street, behind it from inside ----
+	var ring: PackedVector2Array = (house.get_node("walls/ring") as CollisionPolygon2D).polygon
+	wrong = []
+	for x in range(-76, 77):
+		var crossings: Array = []
+		for i in ring.size():
+			var p: Vector2 = ring[i]
+			var q: Vector2 = ring[(i + 1) % ring.size()]
+			if (p.x - x) * (q.x - x) < 0.0 or (is_equal_approx(p.x, x) and q.x != p.x):
+				crossings.append(lerpf(p.y, q.y, (x - p.x) / (q.x - p.x)))
+		if crossings.size() < 4:
+			continue
+		crossings.sort()
+		var outer_front: float = crossings[crossings.size() - 1]
+		var inner_front: float = crossings[crossings.size() - 2]
+		for cut in strips:
+			var c: Sprite2D = cut as Sprite2D
+			if float(x) < c.position.x or float(x) >= c.position.x + c.region_rect.size.x:
+				continue
+			for cls in classes:
+				var k: Dictionary = classes[cls]
+				var in_front: float = outer_front + float(k["sort"]) - float(k["top"])
+				var inside: float = inner_front + float(k["sort"]) - float(k["bottom"])
+				if in_front <= c.position.y:
+					wrong.append("%s in front of the wall at x %d sorts at %.1f, under %s (%.0f)" % [cls, x, in_front, c.name, c.position.y])
+				if inside >= c.position.y:
+					wrong.append("%s inside at x %d sorts at %.1f, over %s (%.0f)" % [cls, x, inside, c.name, c.position.y])
+	check("  every class walked up to the round wall from the street is drawn in front of it, and from inside behind its front walls",
+		wrong.is_empty(), wrong.slice(0, 4))
+	# ---- the furniture and the anvil: in front from the south, behind from the north ----
+	var props: Array = []
+	for piece in ["forge", "workbench", "barrel", "crate"]:
+		props.append([piece, (house.get_node("interiorfurniture/" + piece) as Node2D).position.y,
+			house.get_node("walls/" + piece) as CollisionShape2D, 0.0])
+	var anvil: Node2D = house.get_node("interiorfurniture/anvil") as Node2D
+	props.append(["anvil", anvil.position.y, anvil.get_node("body/collision") as CollisionShape2D, anvil.position.y])
+	wrong = []
+	for prop in props:
+		var shape: CollisionShape2D = prop[2]
+		var half: float = 0.0
+		if shape.shape is RectangleShape2D:
+			half = (shape.shape as RectangleShape2D).size.y * 0.5
+		elif shape.shape is CircleShape2D:
+			half = (shape.shape as CircleShape2D).radius
+		var centre: float = shape.position.y + float(prop[3])
+		for cls in classes:
+			var k: Dictionary = classes[cls]
+			var south: float = centre + half + float(k["sort"]) - float(k["top"])
+			var north: float = centre - half + float(k["sort"]) - float(k["bottom"])
+			if south <= float(prop[1]) or north >= float(prop[1]):
+				wrong.append("%s by the %s: %.1f / %.1f against %.1f" % [cls, prop[0], south, north, prop[1]])
+	check("  every class is drawn in front of the forge, bench, barrel, crate and anvil from the south, behind them from the north",
+		wrong.is_empty(), wrong)
+	var tank: Node2D = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate() as Node2D
+	var tank_picture: AnimatedSprite2D = tank.get_node(^"animatedsprite2d") as AnimatedSprite2D
+	check("  the tank's picture sorts at his soles (y -18), drawn where it was (-39)",
+		is_equal_approx(float(classes["tank"]["sort"]), -18.0)
+		and is_equal_approx(tank_picture.position.y + tank_picture.offset.y, -39.0), tank_picture.position)
+	tank.free()
+	house.free()
+
+
+func _shares_material(beam: Node2D) -> bool:
+	var other: Node2D = (load("res://src/characters/healerlaser.gd") as GDScript).call("make") as Node2D
+	var same: bool = other.material == beam.material
+	other.free()
+	return same
+
+
+# THE GOLD STAFF (0.175.1). The owner, of Ahvassa's three staffs: "the gold one
+# is mythic it will use the red crit laser from healers run", then "we need to
+# optimize the laser and put the other 2 weapons on standby". The beam alone
+# in a world (a healer's _ready() is the camera, the pets and the save), the
+# healer's half by its own functions, and the picture others see.
+func _test_the_gold_staff_shines() -> void:
+	section("THE GOLD STAFF (0.175.1): the healer's mythic shines the Healer's Run's red laser - everything in it struck once a tick, the red heart double")
+	const HealerScript := preload("res://src/characters/healer.gd")
+	const Laser := preload("res://src/characters/healerlaser.gd")
+	const RunScript := preload("res://src/world/healerrun/healerrun.gd")
+	var staff: ItemData = ItemRegistry.get_item("goldstaff")
+	check("the Gold Staff: the healer's tier 6 weapon, whose attack is the LASER (appended: 4)",
+		staff != null and staff.tier == 6 and staff.required_classes == ["healer"]
+		and int(staff.weapon_attack) == ItemData.WeaponAttack.LASER and ItemData.WeaponAttack.LASER == 4,
+		[staff.tier, staff.weapon_attack] if staff != null else null)
+	var arena := Node2D.new()
+	arena.name = "lasertest"
+	add_child(arena)
+	var o := Vector2(-81000, -81000)
+	var foes: Array = []
+	var make_foe := func(at: Vector2, named_shape: bool = true, aimable: bool = true) -> Node2D:
+		var script := GDScript.new()
+		script.source_code = "extends Node2D\nvar taken: Array = []\nvar aimable: bool = true\n" \
+			+ "func take_damage(amount: int, _element: int = 0) -> void:\n\ttaken.append(amount)\n" \
+			+ "func can_be_aimed_at() -> bool:\n\treturn aimable\n"
+		script.reload()
+		var foe := Node2D.new()
+		foe.set_script(script)
+		foe.set("aimable", aimable)
+		foe.add_to_group(&"enemies")
+		var box := Area2D.new()
+		box.name = "hurtbox"
+		box.collision_layer = 8
+		box.collision_mask = 0
+		box.monitoring = false
+		var shape := CollisionShape2D.new()
+		if named_shape:
+			shape.name = "collisionshape2d"
+		var circle := CircleShape2D.new()
+		circle.radius = 8.0
+		shape.shape = circle
+		box.add_child(shape)
+		foe.add_child(box)
+		arena.add_child(foe)
+		foe.global_position = o + at
+		foes.append(foe)
+		return foe
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	var wall_shape := CollisionShape2D.new()
+	var block := RectangleShape2D.new()
+	block.size = Vector2(10, 200)
+	wall_shape.shape = block
+	wall.add_child(wall_shape)
+	arena.add_child(wall)
+	wall.global_position = o + Vector2(160, 0)
+	var on_line: Node2D = make_foe.call(Vector2(40, 0))
+	var in_red: Node2D = make_foe.call(Vector2(70, 9))
+	var beside: Node2D = make_foe.call(Vector2(100, 12.5))
+	var stand_in: Node2D = make_foe.call(Vector2(130, -2), false)
+	var wide: Node2D = make_foe.call(Vector2(60, 30))
+	var behind: Node2D = make_foe.call(Vector2(-40, 0))
+	var past_wall: Node2D = make_foe.call(Vector2(200, 0))
+	var caged: Node2D = make_foe.call(Vector2(50, -3), true, false)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var beam: Node2D = Laser.make()
+	arena.add_child(beam)
+	beam.call("shine", true)
+	beam.call("aim", o, Vector2.RIGHT)
+	check("it shines to the first wall, short of it, not through it",
+		float(beam.get("length")) > 140.0 and float(beam.get("length")) < 155.0, beam.get("length"))
+	var struck: int = int(beam.call("strike", 10, 20))
+	check("  one tick strikes everything standing in it once: the red heart double, the rest the orb's damage",
+		struck == 4 and on_line.get("taken") == [20] and in_red.get("taken") == [20] and beside.get("taken") == [10]
+		and stand_in.get("taken") == [20], [struck, on_line.get("taken"), in_red.get("taken"), beside.get("taken"), stand_in.get("taken")])
+	check("  nothing beside it, behind her, past the wall, or that may not be aimed at",
+		(wide.get("taken") as Array).is_empty() and (behind.get("taken") as Array).is_empty()
+		and (past_wall.get("taken") as Array).is_empty() and (caged.get("taken") as Array).is_empty())
+	check("  a swarm's stand-in, whose shape has no name, is read by its first shape",
+		stand_in.get("taken") == [20])
+	beam.call("strike", 10, 20, true)
+	check("  and the owner's Always roll makes every one in it double",
+		beside.get("taken") == [10, 20], beside.get("taken"))
+	var focus: Array = get_tree().get_nodes_in_group(&"swarm_focus").filter(func(n: Node) -> bool: return beam.is_ancestor_of(n))
+	var covered: bool = focus.size() == Laser.FOCUS_POINTS
+	for f in focus:
+		var spot: Vector2 = (f as Node2D).global_position - o
+		covered = covered and absf(spot.y) < 0.01 and spot.x > 0.0 and spot.x < float(beam.get("length")) \
+			and float(f.call("swarm_reach")) * 2.0 * Laser.FOCUS_POINTS >= float(beam.get("length"))
+	check("  the Endless's swarm is asked for stand-ins all along it while it shines",
+		covered, focus.size())
+	beam.call("shine", false)
+	var after: Array = get_tree().get_nodes_in_group(&"swarm_focus").filter(func(n: Node) -> bool: return beam.is_ancestor_of(n))
+	check("  and for none once it is let go", after.is_empty() and not beam.visible and int(beam.call("strike", 10, 20)) == 0)
+	check("its look is the run's: its five colours, its red heart and the fade, one unshaded material shared by every beam",
+		Laser.LAYERS == 5 and RunScript.LASER_COLOURS.size() >= 5 and is_equal_approx(Laser.RED_SHARE, RunScript.CRIT_HEART[1])
+		and beam.material is CanvasItemMaterial and (beam.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and _shares_material(beam) and beam.z_index == Laser.Z and not beam.z_as_relative)
+	var laser_src: String = _code_src("res://src/characters/healerlaser.gd")
+	check("  cheap: redrawn only when its length moves, its shimmer is its own scale, one shape query a tick",
+		_func_body(laser_src, "func _process(").contains("scale = ") and not _func_body(laser_src, "func _process(").contains("queue_redraw")
+		and _func_body(laser_src, "func _set_length(").contains("queue_redraw()")
+		and _func_body(laser_src, "func strike(").count("intersect_shape(") == 1
+		and not _func_body(laser_src, "func strike(").contains(".new("))
+
+	# ---- the healer's half ----
+	var healer: Node2D = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate() as Node2D
+	healer.set("equipped", {"weapon": "goldstaff"})
+	var wields: bool = healer.call("wields_laser")
+	healer.set("equipped", {"weapon": "emberscepter"})
+	var ember: bool = healer.call("wields_laser")
+	healer.set("equipped", {"weapon": "goldstaff"})
+	healer.set("max_mana", 50)
+	healer.set("mana", 50)
+	healer.call("_laser_tick", Vector2.RIGHT)
+	check("a healer with the Gold Staff shines it, with anything else throws orbs; a tick costs the orb's mana and makes the beam once, hers",
+		wields and not ember and int(healer.get("mana")) == 50 - int(healer.get("mana_cost_per_shot"))
+		and healer.get_node_or_null(^"laser") != null and healer.call("laser") == healer.get_node(^"laser"),
+		[wields, ember, healer.get("mana")])
+	healer.free()
+	var healer_src: String = _code_src("res://src/characters/healer.gd")
+	var physics_body: String = _func_body(healer_src, "func _physics_process(")
+	var tick_body: String = _func_body(healer_src, "func _laser_tick(")
+	check("  on the orbs' own clock in place of them, an orb's damage and the double in the red - the server's books unchanged",
+		physics_body.find("_hold_laser()") >= 0 and physics_body.find("_hold_laser()") < physics_body.find("_fire_projectile()")
+		and _func_body(healer_src, "func _hold_laser(").contains("_shot_timer = hasten(shot_cooldown)")
+		and tick_body.contains("\"strike\", hit, hit * DOUBLE_HIT") and tick_body.count("mana -=") == 1
+		and tick_body.contains("Presence.tell_attack(\"laser\""))
+
+	# ---- the picture everyone else sees ----
+	var body := Node2D.new()
+	arena.add_child(body)
+	body.global_position = o + Vector2(0, 300)
+	var made: Array = RemoteAttacks.fire(body, ["laser", 0, o.x, o.y + 300.0, o.x + 120.0, o.y + 300.0, 0, 0])
+	var picture: Node2D = body.get_node_or_null(^"laser") as Node2D
+	if RemoteAttacks.shown():
+		var again: Array = RemoteAttacks.fire(body, ["laser", 0, o.x, o.y + 300.0, o.x + 90.0, o.y + 300.0, 0, 0])
+		check("another healer's beam is drawn here: one picture, from where theirs started to where it ended, each tick they tell",
+			made.size() == 1 and picture != null and again.size() == 1 and again[0] == picture and picture.visible
+			and bool(picture.get("cosmetic")) and is_equal_approx(float(picture.get("length")), 90.0), [made, picture])
+		check("  it strikes nothing here and asks the swarm for nothing",
+			int(picture.call("strike", 10, 20)) == 0
+			and get_tree().get_nodes_in_group(&"swarm_focus").filter(func(n: Node) -> bool: return picture.is_ancestor_of(n)).is_empty())
+		picture.call("_process", Laser.SHOW_SECONDS + 0.01)
+		check("  and goes when they stop telling", not picture.visible)
+	else:
+		check("another healer's beam: attack pictures are switched off here", made.is_empty())
+	arena.queue_free()
+	await get_tree().process_frame
+	print("  the gold staff")

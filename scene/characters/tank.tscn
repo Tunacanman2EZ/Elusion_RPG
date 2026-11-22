@@ -917,10 +917,10 @@ debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1531608484]
 texture_filter = 1
-position = Vector2(-1, -23)
+position = Vector2(-1, -18)
 sprite_frames = SubResource("SpriteFrames_epri2")
 animation = &"deathdown"
-offset = Vector2(0, -16)
+offset = Vector2(0, -21)
 
 [node name="ring" type="AnimatedSprite2D" parent="." unique_id=134013425]
 scale = Vector2(0.9, 0.9)

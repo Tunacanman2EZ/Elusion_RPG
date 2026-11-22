@@ -13,9 +13,16 @@
 # house hid are shown again (_hid), and all of them when the house goes.
 extends Area2D
 
-@onready var interior = $"../shopinterior"
-@onready var exterior = $"../shopexterior"
-@onready var interior_furniture = $"../interiorfurniture"
+# THE SMITH'S HOUSE TOO (0.175.1): which nodes are the room, the walls and
+# roof, and the furniture - the general store's by default - and the trigger
+# may be a polygon (the smith's house is round).
+@export var interior_path: NodePath = ^"../shopinterior"
+@export var exterior_path: NodePath = ^"../shopexterior"
+@export var furniture_path: NodePath = ^"../interiorfurniture"
+
+@onready var interior = get_node_or_null(interior_path)
+@onready var exterior = get_node_or_null(exterior_path)
+@onready var interior_furniture = get_node_or_null(furniture_path)
 
 var me_inside: bool = false
 # Pictures this house has hidden, by instance id.
@@ -50,7 +57,7 @@ func _process(_delta: float) -> void:
 
 func hide_those_inside() -> void:
 	"""Another player inside is hidden from you outside, and shown to you in."""
-	var box: CollisionShape2D = get_node_or_null("collisionshape2d") as CollisionShape2D
+	var box: Node2D = get_node_or_null("collisionshape2d") as Node2D
 	for picture in get_tree().get_nodes_in_group(&"remoteplayers"):
 		if not (picture is Node2D) or not picture.has_method("set_hidden_indoors"):
 			continue
@@ -70,12 +77,17 @@ func hide_those_inside() -> void:
 			_hid.erase(id)
 
 
-static func covers(box: CollisionShape2D, point: Vector2) -> bool:
-	"""Whether `point` in the world is inside `box`'s rectangle."""
-	var rect := box.shape as RectangleShape2D
-	if rect == null:
+static func covers(box: Node2D, point: Vector2) -> bool:
+	"""Whether `point` in the world is inside `box`: a CollisionShape2D's
+	rectangle, or a CollisionPolygon2D's polygon."""
+	if box == null:
 		return false
 	var local: Vector2 = box.global_transform.affine_inverse() * point
+	if box is CollisionPolygon2D:
+		return Geometry2D.is_point_in_polygon(local, (box as CollisionPolygon2D).polygon)
+	var rect := (box as CollisionShape2D).shape as RectangleShape2D if box is CollisionShape2D else null
+	if rect == null:
+		return false
 	return absf(local.x) <= rect.size.x / 2.0 and absf(local.y) <= rect.size.y / 2.0
 
 

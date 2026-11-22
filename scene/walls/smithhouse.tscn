@@ -1,0 +1,592 @@
+[gd_scene format=3 uid="uid://0hm7kmeywc1l"]
+
+[ext_resource type="Texture2D" uid="uid://bkwh3ok4j066w" path="res://art/shophouses/smithhouse.png" id="1_sheet"]
+[ext_resource type="Script" uid="uid://ddwqwfk2e6blj" path="res://src/world/shop.gd" id="2_shop"]
+[ext_resource type="PackedScene" path="res://scene/interactables/anvil.tscn" id="3_anvil"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_forge"]
+size = Vector2(54, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bench"]
+size = Vector2(25, 7)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_barrel"]
+radius = 6.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_crate"]
+size = Vector2(13, 5)
+
+[node name="smithhouse" type="Node2D"]
+y_sort_enabled = true
+
+[node name="smithinterior" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="floor" type="Sprite2D" parent="smithinterior"]
+z_index = -1
+texture_filter = 1
+position = Vector2(-75, -142)
+texture = ExtResource("1_sheet")
+centered = false
+region_enabled = true
+region_rect = Rect2(239, 57, 151, 143)
+
+[node name="frontleft00" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-77, -40)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -22)
+region_enabled = true
+region_rect = Rect2(26, 303, 1, 62)
+
+[node name="frontleft01" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-76, -37)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -25)
+region_enabled = true
+region_rect = Rect2(27, 303, 2, 62)
+
+[node name="frontleft02" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-74, -33)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -29)
+region_enabled = true
+region_rect = Rect2(29, 303, 2, 62)
+
+[node name="frontleft03" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-72, -29)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -33)
+region_enabled = true
+region_rect = Rect2(31, 303, 2, 62)
+
+[node name="frontleft04" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-70, -26)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -36)
+region_enabled = true
+region_rect = Rect2(33, 303, 3, 62)
+
+[node name="frontleft05" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-67, -23)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -39)
+region_enabled = true
+region_rect = Rect2(36, 303, 3, 62)
+
+[node name="frontleft06" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-64, -20)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -42)
+region_enabled = true
+region_rect = Rect2(39, 303, 3, 62)
+
+[node name="frontleft07" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-61, -17)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -45)
+region_enabled = true
+region_rect = Rect2(42, 303, 4, 62)
+
+[node name="frontleft08" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-57, -14)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -48)
+region_enabled = true
+region_rect = Rect2(46, 303, 5, 62)
+
+[node name="frontleft09" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-52, -11)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -51)
+region_enabled = true
+region_rect = Rect2(51, 303, 7, 62)
+
+[node name="frontleft10" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-45, -8)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -54)
+region_enabled = true
+region_rect = Rect2(58, 303, 8, 62)
+
+[node name="frontleft11" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-37, -5)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -57)
+region_enabled = true
+region_rect = Rect2(66, 303, 12, 62)
+
+[node name="frontleft12" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(-25, -2)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -60)
+region_enabled = true
+region_rect = Rect2(78, 303, 12, 62)
+
+[node name="frontright00" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(14, -2)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -60)
+region_enabled = true
+region_rect = Rect2(117, 303, 12, 62)
+
+[node name="frontright01" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(26, -5)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -57)
+region_enabled = true
+region_rect = Rect2(129, 303, 12, 62)
+
+[node name="frontright02" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(38, -8)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -54)
+region_enabled = true
+region_rect = Rect2(141, 303, 8, 62)
+
+[node name="frontright03" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(46, -11)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -51)
+region_enabled = true
+region_rect = Rect2(149, 303, 7, 62)
+
+[node name="frontright04" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(53, -14)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -48)
+region_enabled = true
+region_rect = Rect2(156, 303, 5, 62)
+
+[node name="frontright05" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(58, -17)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -45)
+region_enabled = true
+region_rect = Rect2(161, 303, 4, 62)
+
+[node name="frontright06" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(62, -20)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -42)
+region_enabled = true
+region_rect = Rect2(165, 303, 3, 62)
+
+[node name="frontright07" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(65, -23)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -39)
+region_enabled = true
+region_rect = Rect2(168, 303, 3, 62)
+
+[node name="frontright08" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(68, -26)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -36)
+region_enabled = true
+region_rect = Rect2(171, 303, 3, 62)
+
+[node name="frontright09" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(71, -29)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -33)
+region_enabled = true
+region_rect = Rect2(174, 303, 2, 62)
+
+[node name="frontright10" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(73, -33)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -29)
+region_enabled = true
+region_rect = Rect2(176, 303, 2, 62)
+
+[node name="frontright11" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(75, -37)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -25)
+region_enabled = true
+region_rect = Rect2(178, 303, 2, 62)
+
+[node name="frontright12" type="Sprite2D" parent="smithinterior"]
+texture_filter = 1
+position = Vector2(77, -40)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -22)
+region_enabled = true
+region_rect = Rect2(180, 303, 1, 62)
+
+[node name="interiorfurniture" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="forge" type="Sprite2D" parent="interiorfurniture"]
+texture_filter = 1
+position = Vector2(-30, -73)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -81)
+region_enabled = true
+region_rect = Rect2(286, 254, 60, 81)
+
+[node name="workbench" type="Sprite2D" parent="interiorfurniture"]
+texture_filter = 1
+position = Vector2(-65, -47)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -39)
+region_enabled = true
+region_rect = Rect2(250, 323, 27, 39)
+
+[node name="barrel" type="Sprite2D" parent="interiorfurniture"]
+texture_filter = 1
+position = Vector2(-35, -56)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -19)
+region_enabled = true
+region_rect = Rect2(281, 336, 15, 19)
+
+[node name="crate" type="Sprite2D" parent="interiorfurniture"]
+texture_filter = 1
+position = Vector2(-39, -28)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -24)
+region_enabled = true
+region_rect = Rect2(275, 360, 15, 24)
+
+[node name="anvil" parent="interiorfurniture" instance=ExtResource("3_anvil")]
+position = Vector2(41, -49)
+
+[node name="smithexterior" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="house" type="Node2D" parent="smithexterior"]
+y_sort_enabled = true
+
+[node name="strip00" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-94, -43)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -152)
+region_enabled = true
+region_rect = Rect2(14, 4, 17, 195)
+
+[node name="strip01" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-77, -40)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -155)
+region_enabled = true
+region_rect = Rect2(31, 4, 1, 195)
+
+[node name="strip02" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-76, -37)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -158)
+region_enabled = true
+region_rect = Rect2(32, 4, 2, 195)
+
+[node name="strip03" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-74, -33)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -162)
+region_enabled = true
+region_rect = Rect2(34, 4, 2, 195)
+
+[node name="strip04" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-72, -29)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -166)
+region_enabled = true
+region_rect = Rect2(36, 4, 2, 195)
+
+[node name="strip05" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-70, -26)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -169)
+region_enabled = true
+region_rect = Rect2(38, 4, 3, 195)
+
+[node name="strip06" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-67, -23)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -172)
+region_enabled = true
+region_rect = Rect2(41, 4, 3, 195)
+
+[node name="strip07" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-64, -20)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -175)
+region_enabled = true
+region_rect = Rect2(44, 4, 3, 195)
+
+[node name="strip08" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-61, -17)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -178)
+region_enabled = true
+region_rect = Rect2(47, 4, 4, 195)
+
+[node name="strip09" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-57, -14)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -181)
+region_enabled = true
+region_rect = Rect2(51, 4, 5, 195)
+
+[node name="strip10" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-52, -11)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -184)
+region_enabled = true
+region_rect = Rect2(56, 4, 7, 195)
+
+[node name="strip11" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-45, -8)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -187)
+region_enabled = true
+region_rect = Rect2(63, 4, 8, 195)
+
+[node name="strip12" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-37, -5)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -190)
+region_enabled = true
+region_rect = Rect2(71, 4, 12, 195)
+
+[node name="strip13" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(-25, -2)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -193)
+region_enabled = true
+region_rect = Rect2(83, 4, 51, 195)
+
+[node name="strip14" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(26, -5)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -190)
+region_enabled = true
+region_rect = Rect2(134, 4, 12, 195)
+
+[node name="strip15" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(38, -8)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -187)
+region_enabled = true
+region_rect = Rect2(146, 4, 8, 195)
+
+[node name="strip16" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(46, -11)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -184)
+region_enabled = true
+region_rect = Rect2(154, 4, 7, 195)
+
+[node name="strip17" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(53, -14)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -181)
+region_enabled = true
+region_rect = Rect2(161, 4, 5, 195)
+
+[node name="strip18" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(58, -17)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -178)
+region_enabled = true
+region_rect = Rect2(166, 4, 4, 195)
+
+[node name="strip19" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(62, -20)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -175)
+region_enabled = true
+region_rect = Rect2(170, 4, 3, 195)
+
+[node name="strip20" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(65, -23)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -172)
+region_enabled = true
+region_rect = Rect2(173, 4, 3, 195)
+
+[node name="strip21" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(68, -26)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -169)
+region_enabled = true
+region_rect = Rect2(176, 4, 3, 195)
+
+[node name="strip22" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(71, -29)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -166)
+region_enabled = true
+region_rect = Rect2(179, 4, 2, 195)
+
+[node name="strip23" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(73, -33)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -162)
+region_enabled = true
+region_rect = Rect2(181, 4, 2, 195)
+
+[node name="strip24" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(75, -37)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -158)
+region_enabled = true
+region_rect = Rect2(183, 4, 2, 195)
+
+[node name="strip25" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(77, -40)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -155)
+region_enabled = true
+region_rect = Rect2(185, 4, 1, 195)
+
+[node name="strip26" type="Sprite2D" parent="smithexterior/house"]
+texture_filter = 1
+position = Vector2(78, -43)
+texture = ExtResource("1_sheet")
+centered = false
+offset = Vector2(0, -152)
+region_enabled = true
+region_rect = Rect2(186, 4, 7, 195)
+
+[node name="walls" type="StaticBody2D" parent="."]
+
+[node name="ring" type="CollisionPolygon2D" parent="walls"]
+polygon = PackedVector2Array(-12.0, -0.0, -20.1, -1.0, -28.0, -2.4, -35.6, -4.3, -42.8, -6.6, -49.5, -9.4, -55.7, -12.5, -61.2, -16.0, -66.0, -19.8, -70.0, -23.8, -73.3, -28.1, -75.7, -32.5, -77.3, -37.1, -78.0, -41.7, -77.8, -46.4, -76.7, -51.0, -74.7, -55.5, -71.9, -59.8, -68.3, -64.0, -63.9, -67.9, -58.8, -71.6, -53.0, -74.9, -46.6, -77.9, -39.7, -80.5, -32.3, -82.6, -24.5, -84.3, -16.5, -85.5, -8.3, -86.3, -0.0, -86.5, 8.3, -86.3, 16.5, -85.5, 24.5, -84.3, 32.3, -82.6, 39.7, -80.5, 46.6, -77.9, 53.0, -74.9, 58.8, -71.6, 63.9, -67.9, 68.3, -64.0, 71.9, -59.8, 74.7, -55.5, 76.7, -51.0, 77.8, -46.4, 78.0, -41.7, 77.3, -37.1, 75.7, -32.5, 73.3, -28.1, 70.0, -23.8, 66.0, -19.8, 61.2, -16.0, 55.7, -12.5, 49.5, -9.4, 42.8, -6.6, 35.6, -4.3, 28.0, -2.4, 20.1, -1.0, 12.0, -0.0, 12.0, -7.5, 19.2, -8.4, 26.2, -9.6, 33.0, -11.2, 39.3, -13.2, 45.2, -15.5, 50.6, -18.1, 55.5, -21.0, 59.7, -24.2, 63.2, -27.5, 66.0, -31.1, 68.1, -34.7, 69.4, -38.5, 70.0, -42.3, 69.7, -46.1, 68.7, -49.9, 66.9, -53.6, 64.4, -57.2, 61.1, -60.6, 57.1, -63.8, 52.5, -66.8, 47.3, -69.5, 41.6, -72.0, 35.4, -74.1, 28.8, -75.8, 21.9, -77.2, 14.7, -78.2, 7.4, -78.8, -0.0, -79.0, -7.4, -78.8, -14.7, -78.2, -21.9, -77.2, -28.8, -75.8, -35.4, -74.1, -41.6, -72.0, -47.3, -69.5, -52.5, -66.8, -57.1, -63.8, -61.1, -60.6, -64.4, -57.2, -66.9, -53.6, -68.7, -49.9, -69.7, -46.1, -70.0, -42.3, -69.4, -38.5, -68.1, -34.7, -66.0, -31.1, -63.2, -27.5, -59.7, -24.2, -55.5, -21.0, -50.6, -18.1, -45.2, -15.5, -39.3, -13.2, -33.0, -11.2, -26.2, -9.6, -19.2, -8.4, -12.0, -7.5)
+
+[node name="forge" type="CollisionShape2D" parent="walls"]
+position = Vector2(0, -81)
+shape = SubResource("RectangleShape2D_forge")
+
+[node name="workbench" type="CollisionShape2D" parent="walls"]
+position = Vector2(-51.5, -50.5)
+shape = SubResource("RectangleShape2D_bench")
+
+[node name="barrel" type="CollisionShape2D" parent="walls"]
+position = Vector2(-27.5, -59)
+shape = SubResource("CircleShape2D_barrel")
+
+[node name="crate" type="CollisionShape2D" parent="walls"]
+position = Vector2(-31.5, -30.5)
+shape = SubResource("RectangleShape2D_crate")
+
+[node name="trigger" type="Area2D" parent="."]
+collision_layer = 16
+collision_mask = 4
+script = ExtResource("2_shop")
+interior_path = NodePath("../smithinterior")
+exterior_path = NodePath("../smithexterior")
+furniture_path = NodePath("../interiorfurniture")
+
+[node name="collisionshape2d" type="CollisionPolygon2D" parent="trigger"]
+polygon = PackedVector2Array(68.0, -43.0, 67.2, -37.7, 64.7, -32.5, 60.6, -27.6, 55.0, -23.0, 48.1, -19.0, 40.0, -15.5, 30.9, -12.7, 21.0, -10.7, 10.6, -9.4, 0.0, -9.0, -10.6, -9.4, -21.0, -10.7, -30.9, -12.7, -40.0, -15.5, -48.1, -19.0, -55.0, -23.0, -60.6, -27.6, -64.7, -32.5, -67.2, -37.7, -68.0, -43.0, -67.2, -48.3, -64.7, -53.5, -60.6, -58.4, -55.0, -63.0, -48.1, -67.0, -40.0, -70.5, -30.9, -73.3, -21.0, -75.3, -10.6, -76.6, -0.0, -77.0, 10.6, -76.6, 21.0, -75.3, 30.9, -73.3, 40.0, -70.5, 48.1, -67.0, 55.0, -63.0, 60.6, -58.4, 64.7, -53.5, 67.2, -48.3)
+
+[connection signal="body_entered" from="trigger" to="trigger" method="_on_body_entered"]
+[connection signal="body_exited" from="trigger" to="trigger" method="_on_body_exited"]
