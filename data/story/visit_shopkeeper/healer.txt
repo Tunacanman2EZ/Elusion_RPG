@@ -1,0 +1,22 @@
+# Every visit after the first meeting, once his greeting is said: what a
+# healer may do. The next part each visit (--- between parts), round again.
+# Quests go here when there are quests.
+# "? words = branch" is a choice; "[branch]" starts what it leads to;
+# "= @shop" opens the shop, "= @end" just ends.
+? Trade = @shop
+? Talk = talk
+? Goodbye = @end
+
+[talk]
+shopkeeper: Lit a waystone yet? Find one out there and you can travel to it from the map.
+? Trade = @shop
+? Goodbye = @end
+---
+? Trade = @shop
+? Talk = talk
+? Goodbye = @end
+
+[talk]
+shopkeeper: Hungry? The fire pit cooks whatever you catch.
+? Trade = @shop
+? Goodbye = @end

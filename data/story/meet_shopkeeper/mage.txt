@@ -1,9 +1,29 @@
-# The first time a mage walks up to the shopkeeper.
+# The first time a mage walks up to the shopkeeper. He asks; the player
+# picks an answer (1, 2, 3 or 4 - a click, a tap or the number key).
 # Each line is "speaker: words". hero is whoever is playing.
-# Lines starting with # are notes and are never said.
+# "? words = branch" is a choice; "[branch]" starts what it leads to;
+# "= @shop" opens the shop instead, "= @end" just ends.
 shopkeeper: Are you lost?
-hero: I remember the end. My end. And now... this town.
-shopkeeper: The portal takes all kinds. Few come through with full pockets.
-shopkeeper: I make a living buying and selling gear.
-hero: Strange magic brought me here. I mean to learn it.
-shopkeeper: Learn it with coin in your purse. Welcome to Elusion!
+? Lost? I was dead. = dead
+? Just looking around. = looking
+? Do you sell food? = food
+? Trade = @shop
+
+[dead]
+hero: Lost? I remember the end. My end. And now... this town.
+shopkeeper: The portal. You're not the first it has spat out.
+shopkeeper: I make a living buying and selling gear. Welcome to Elusion!
+? Trade = @shop
+? Goodbye = @end
+
+[looking]
+hero: Just looking around.
+shopkeeper: Looking is free. Buying is not.
+? Trade = @shop
+? Goodbye = @end
+
+[food]
+hero: Do you sell food? I'm starving.
+shopkeeper: Try the fire pit. Fish don't catch themselves.
+? Trade = @shop
+? Goodbye = @end

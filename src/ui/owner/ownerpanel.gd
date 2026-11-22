@@ -95,6 +95,7 @@ const STALE_SECONDS := 10.0
 const LIVE_SECONDS := 30.0
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
 const GmSpawner := preload("res://src/world/gmspawner.gd")
+const Talk := preload("res://src/shared/talk.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 const StatusEffectsScript := preload("res://src/characters/statuseffects.gd")
 
@@ -678,6 +679,7 @@ func _dress_testing() -> void:
 			switches.append(found)
 	if switches.is_empty():
 		return
+	_add_replay_story(testing)
 	var row: Node = testing.get_node_or_null("godmoderow")
 	var at: int = row.get_index() if row != null else (switches[0] as Node).get_index()
 	var head: Label = _section_head("SWITCHES")
@@ -724,6 +726,36 @@ func _dress_testing() -> void:
 		stress.add_child(stress_head)
 		stress.move_child(stress_head, 0)
 		_add_spawner(testing, stress.get_index() + 1)
+
+
+# REPLAY STORY (0.172.0, talk.gd): the owner writes the story's lines, and
+# each plays once a character - so to hear one again, his character forgets
+# them. Beside Item catalogue..., in its row: the tab has no height to spare.
+func _add_replay_story(testing: Node) -> void:
+	if testing.get_node_or_null("cataloguerow") != null or catalogue_button == null:
+		return
+	var row := HBoxContainer.new()
+	row.name = "cataloguerow"
+	row.add_theme_constant_override("separation", 6)
+	testing.add_child(row)
+	testing.move_child(row, catalogue_button.get_index())
+	catalogue_button.reparent(row, false)
+	catalogue_button.owner = self
+	catalogue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var replay := Button.new()
+	replay.name = "replaystorybutton"
+	replay.text = "Replay story"
+	replay.tooltip_text = "Your character forgets every story line it has heard and every answer it picked, so the scenes play again from the start (on this computer)."
+	replay.focus_mode = Control.FOCUS_NONE
+	replay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	replay.add_theme_font_size_override("font_size", 13)
+	replay.pressed.connect(_on_replay_story_pressed)
+	row.add_child(replay)
+
+
+func _on_replay_story_pressed() -> void:
+	var forgot: int = Talk.forget_story()
+	_set_testing_status("[GM] Story forgotten (%d): its scenes play again from the start." % forgot)
 
 
 # SPAWN (0.151.0): gmspawner.gd. The owner: "stress test douse not work on

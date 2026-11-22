@@ -60,11 +60,17 @@
 # before there were conversations still has it (0.171.1, the owner: "also
 # warrior did not talk to shop keeper"). Later visits are the greetings in
 # turn as before. `class_override` is the suite's.
+#
+# AND A MENU EVERY VISIT (0.172.0, the owner: "story once, menu every visit" -
+# "sounds good"): after each later greeting, the hero is offered
+# data/story/visit_shopkeeper/ (Trade, Talk, Goodbye; Quests when there are
+# quests), a part a visit, round again (Talk.visit()).
 extends AnimatedSprite2D
 
 const Bubble := preload("res://src/shared/speechbubble.gd")
 const Talk := preload("res://src/shared/talk.gd")
 const MEETING := "meet_shopkeeper"
+const VISIT := "visit_shopkeeper"
 const TALK_KEY := "#shopkeeper"
 # The tail's tip: just over his head (the sheet is 64 px, drawn 7 px up).
 const BUBBLE_AT := Vector2(0, -27)
@@ -149,6 +155,17 @@ func greet() -> void:
 		bubble = meeting
 		return
 	bubble = Bubble.say(self, greeting_for(times), BUBBLE_AT)
+	bubble.finished.connect(_offer_menu)
+
+
+func _offer_menu() -> void:
+	"""After a greeting, the visit's menu for the hero at the counter."""
+	bubble = null
+	var hero: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if not (hero is Node2D):
+		return
+	var hero_class: String = class_override if class_override != "" else str(CharacterData.active_class_id())
+	bubble = Talk.visit(self, VISIT, hero_class, {"shopkeeper": self, "hero": hero})
 
 
 func _meeting() -> Node:
@@ -161,7 +178,7 @@ func _meeting() -> Node:
 	if Bubble.times_said(met_key) > 0:
 		return null
 	var hero_class: String = class_override if class_override != "" else str(CharacterData.active_class_id())
-	var talk: Node = Talk.play(self, Talk.lines_for(MEETING, hero_class), {"shopkeeper": self, "hero": hero})
+	var talk: Node = Talk.play(self, Talk.lines_for(MEETING, hero_class), {"shopkeeper": self, "hero": hero}, MEETING)
 	if talk != null:
 		Bubble.note_said(met_key)
 	return talk

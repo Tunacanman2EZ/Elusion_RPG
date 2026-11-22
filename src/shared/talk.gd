@@ -42,6 +42,23 @@
 # A new place to talk in is a new folder, no code. data/story/README.md
 # lists them.
 #
+# CHOICES (0.172.0, the owner: "a is a convo b is a convo and so is c thats
+# what makes chat branching amazing", and a choice "that says trade"). In a
+# script:
+#
+#   ? Lost? I was dead. = dead      a choice; = where it leads
+#   ? Trade = @shop                 an @ is something done, not a branch
+#   [dead]                          a branch starts
+#   > food                          go on in another branch
+#
+# Lines running into a [branch] of their own end the conversation there.
+# Choices in a row are offered together, under the hero (choicebox.gd); the
+# pick is kept a character (CHOICE_SECTION), for scenes to come. ACTIONS:
+# @shop opens the shop for a hero at its counter, @end just ends. Walking
+# more than CHOICE_REACH from where they were asked ends it too. problems()
+# says what in a script cannot be played; the suite holds every script to it.
+# The Replay story button (the GM panel's Testing tab) is forget_story().
+#
 # ONE BUBBLE A SPEAKER: a line whose speaker is already saying something (the
 # town's arrival lines while the shopkeeper's meeting begins) waits for it.
 #
@@ -58,6 +75,7 @@ extends Node
 signal finished()
 
 const Bubble := preload("res://src/shared/speechbubble.gd")
+const ChoiceBox := preload("res://src/shared/choicebox.gd")
 const STORY_DIR := "res://data/story/"
 const STORY_FILTER := "data/story/*.txt"
 # The file for any hero without one of its own.
@@ -73,6 +91,12 @@ const ARRIVE_PREFIX := "arrive_"
 const AFTER_DEATH := "after_death"
 # The line between a script's parts.
 const PART_BREAK := "---"
+# What a choice may do instead of leading to a branch.
+const ACTIONS := ["@shop", "@end"]
+# Further than this from where they were asked, and the hero has walked off.
+const CHOICE_REACH := 96.0
+# Where the picks are kept, in the seen file.
+const CHOICE_SECTION := "choices"
 
 # [[speaker, words], ...], who is who, and the line being said.
 var lines: Array = []
@@ -81,6 +105,11 @@ var index: int = -1
 var bubble: Node2D = null
 # The line at `index` waits for its speaker's other bubble to go.
 var held: bool = false
+# The choices on offer, and where the hero stood when asked.
+var choice_box: Node2D = null
+var asked_at: Vector2 = Vector2.ZERO
+# The scene these lines are from, for keeping a pick.
+var scene_name: String = ""
 # An arrival waiting to be said (arrival()): its scene, how long until it
 # may start, and the hero's class it was chosen for.
 var waiting_scene: String = ""
@@ -101,22 +130,75 @@ static func script_path(scene: String, for_class: String) -> String:
 
 
 static func read_script(text: String) -> Array:
-	"""[[speaker, words], ...] from a script's text: a line "who: words", the
-	speaker in lower case; blank lines, # notes and lines with no speaker or
-	no words are skipped. Only the first colon splits, so words may hold one."""
+	"""The steps of a script's text. [speaker, words] for "who: words" (the
+	speaker in lower case; only the first colon splits, so words may hold
+	one); ["?", [[words, where], ...]] for choices in a row; ["[", branch];
+	[">", branch]. Blank lines, # notes and lines it cannot read are skipped
+	(problems() names them)."""
 	var said: Array = []
 	for raw in text.split("\n"):
-		var line: String = raw.strip_edges()
-		if line == "" or line.begins_with("#"):
+		var step: Array = read_line(raw.strip_edges())
+		if step.is_empty():
 			continue
-		var colon: int = line.find(":")
-		if colon <= 0:
-			continue
-		var who: String = line.substr(0, colon).strip_edges().to_lower()
-		var words: String = line.substr(colon + 1).strip_edges()
-		if who != "" and words != "":
-			said.append([who, words])
+		if str(step[0]) == "?" and not said.is_empty() and str(said[-1][0]) == "?":
+			(said[-1][1] as Array).append_array(step[1])
+		else:
+			said.append(step)
 	return said
+
+
+static func read_line(line: String) -> Array:
+	"""One line's step, or [] for a blank, a note or a line it cannot read."""
+	if line == "" or line.begins_with("#"):
+		return []
+	if line.begins_with("?"):
+		var split: int = line.rfind("=")
+		if split < 0:
+			return []
+		var words: String = line.substr(1, split - 1).strip_edges()
+		var where: String = line.substr(split + 1).strip_edges().to_lower()
+		return [] if words == "" or where == "" else ["?", [[words, where]]]
+	if line.begins_with("[") and line.ends_with("]"):
+		var branch: String = line.substr(1, line.length() - 2).strip_edges().to_lower()
+		return [] if branch == "" else ["[", branch]
+	if line.begins_with(">"):
+		var to: String = line.substr(1).strip_edges().to_lower()
+		return [] if to == "" else [">", to]
+	var colon: int = line.find(":")
+	if colon <= 0:
+		return []
+	var who: String = line.substr(0, colon).strip_edges().to_lower()
+	var said: String = line.substr(colon + 1).strip_edges()
+	return [] if who == "" or said == "" else [who, said]
+
+
+static func problems(text: String) -> Array:
+	"""What in a script cannot be played: a line it cannot read, a choice or
+	a > to a branch no [line] starts, an @ it does not know. [] if none."""
+	var found: Array = []
+	for raw in text.split("\n"):
+		var line: String = raw.strip_edges()
+		if line != "" and not line.begins_with("#") and line != PART_BREAK and read_line(line).is_empty():
+			found.append("cannot read: " + line)
+	for one_part in read_parts(text):
+		var branches: Array = []
+		for step in one_part:
+			if str(step[0]) == "[":
+				branches.append(str(step[1]))
+		for step in one_part:
+			var leads: Array = []
+			if str(step[0]) == "?":
+				for choice in step[1]:
+					leads.append(str(choice[1]))
+			elif str(step[0]) == ">":
+				leads.append(str(step[1]))
+			for where in leads:
+				if where.begins_with("@"):
+					if not ACTIONS.has(where):
+						found.append("no such action: " + where)
+				elif not branches.has(where):
+					found.append("no [%s] for it to go to" % where)
+	return found
 
 
 static func read_parts(text: String) -> Array:
@@ -144,7 +226,7 @@ static func lines_for(scene: String, for_class: String, which: int = 0) -> Array
 	return parts[which] if which >= 0 and which < parts.size() else []
 
 
-static func play(parent: Node, said: Array, speakers: Dictionary) -> Node:
+static func play(parent: Node, said: Array, speakers: Dictionary, scene: String = "") -> Node:
 	"""Says `said` over `speakers` (name -> Node2D), as a child of `parent`;
 	null when there is nothing to say."""
 	if said.is_empty() or parent == null:
@@ -153,6 +235,7 @@ static func play(parent: Node, said: Array, speakers: Dictionary) -> Node:
 	talk.name = "talk"
 	talk.set("lines", said.duplicate(true))
 	talk.set("cast", speakers.duplicate())
+	talk.set("scene_name", scene)
 	parent.add_child(talk)
 	return talk
 
@@ -210,6 +293,57 @@ static func just_signed_in() -> bool:
 	return signed
 
 
+static func visit(parent: Node, scene: String, for_class: String, speakers: Dictionary) -> Node:
+	"""A scene said EVERY time, not once (a shop's menu, 0.172.0: "story once,
+	menu every visit"): the next of its parts each visit, round again. Null
+	when there is none for this hero."""
+	var path: String = script_path(scene, for_class)
+	if path == "":
+		return null
+	var parts: Array = read_parts(FileAccess.get_file_as_string(path))
+	if parts.is_empty():
+		return null
+	var key: String = seen_key(scene)
+	var which: int = Bubble.times_said(key) % parts.size()
+	Bubble.note_said(key)
+	return play(parent, parts[which], speakers, scene)
+
+
+static func forget_story() -> int:
+	"""The Replay story button: this character forgets every scene it has
+	heard and every pick it made, so they play again from the start. How
+	many it forgot."""
+	var cfg := ConfigFile.new()
+	if cfg.load(ControlsPanel.seen_path) != OK:
+		return 0
+	var mine: String = seen_key("").replace("/", "|")
+	var forgot: int = 0
+	for section in ["talk", CHOICE_SECTION]:
+		if not cfg.has_section(section):
+			continue
+		for key in cfg.get_section_keys(section):
+			if str(key).begins_with(mine):
+				cfg.erase_section_key(section, key)
+				forgot += 1
+	cfg.save(ControlsPanel.seen_path)
+	return forgot
+
+
+static func note_choice(scene: String, where: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	cfg.set_value(CHOICE_SECTION, seen_key(scene).replace("/", "|"), where)
+	cfg.save(ControlsPanel.seen_path)
+
+
+static func choice_made(scene: String) -> String:
+	"""Where this character's last pick in `scene` led, or ""."""
+	var cfg := ConfigFile.new()
+	if cfg.load(ControlsPanel.seen_path) != OK:
+		return ""
+	return str(cfg.get_value(CHOICE_SECTION, seen_key(scene).replace("/", "|"), ""))
+
+
 static func came_back_from_death() -> bool:
 	"""True once, for the hero who died, on its next arrival; cleared either way."""
 	var died: bool = GameState.back_from_death != "" and GameState.back_from_death == seen_key("")
@@ -245,6 +379,9 @@ func _process(delta: float) -> void:
 	if waiting_scene != "":
 		_wait_to_arrive(delta)
 		return
+	if choice_box != null:
+		_watch_the_choice()
+		return
 	if held:
 		_say_or_skip()
 		return
@@ -266,6 +403,7 @@ func _wait_to_arrive(delta: float) -> void:
 		return
 	lines = lines_for(scene, hero_class, part)
 	cast = {"hero": hero}
+	scene_name = scene
 	Bubble.note_said(seen_key(scene))
 	_next()
 
@@ -284,8 +422,24 @@ func _next() -> void:
 
 func _say_or_skip() -> void:
 	held = false
+	var jumps: int = 0
 	while index < lines.size():
-		var speaker: Variant = cast.get(str(lines[index][0]))
+		var step: Array = lines[index]
+		match str(step[0]):
+			"[":
+				# Ran into the next branch: this one is over.
+				break
+			">":
+				index = branch_at(str(step[1]))
+				jumps += 1
+				if index < 0 or jumps > lines.size():
+					break
+				index += 1
+				continue
+			"?":
+				_offer(step[1])
+				return
+		var speaker: Variant = cast.get(str(step[0]))
 		if is_instance_valid(speaker) and speaker is Node2D and (speaker as Node2D).is_inside_tree():
 			if (speaker as Node2D).get_children().any(func(child: Node) -> bool: return child.get_script() == Bubble):
 				held = true
@@ -295,8 +449,82 @@ func _say_or_skip() -> void:
 			bubble.finished.connect(_next)
 			return
 		index += 1
+	_finish()
+
+
+func _finish() -> void:
+	if choice_box != null and is_instance_valid(choice_box):
+		choice_box.queue_free()
+	choice_box = null
 	finished.emit()
 	queue_free()
+
+
+func branch_at(branch: String) -> int:
+	"""Where [branch] starts in these lines, or -1."""
+	return branch_where(lines, branch)
+
+
+static func branch_where(steps: Array, branch: String) -> int:
+	for i in steps.size():
+		if str(steps[i][0]) == "[" and str(steps[i][1]) == branch:
+			return i
+	return -1
+
+
+func _offer(choices: Array) -> void:
+	"""The choices under the hero, once the hero's last bubble has gone."""
+	var hero: Variant = cast.get("hero")
+	if not (is_instance_valid(hero) and hero is Node2D and (hero as Node2D).is_inside_tree()):
+		_finish()
+		return
+	if (hero as Node2D).get_children().any(func(child: Node) -> bool: return child.get_script() == Bubble):
+		held = true
+		return
+	held = false
+	var words: Array = []
+	for choice in choices:
+		words.append(str(choice[0]))
+	asked_at = (hero as Node2D).global_position
+	choice_box = ChoiceBox.offer(hero, words, FEET_AT)
+	choice_box.picked.connect(_on_picked.bind(choices))
+
+
+func _watch_the_choice() -> void:
+	# Walked off, or the shop opened another way (Interact at the counter):
+	# the answers go.
+	var hero: Variant = cast.get("hero")
+	if not is_instance_valid(choice_box) or not is_instance_valid(hero) \
+			or (hero as Node2D).global_position.distance_to(asked_at) > CHOICE_REACH \
+			or get_tree().get_first_node_in_group(&"openvendor") != null:
+		_finish()
+
+
+func _on_picked(choice: int, choices: Array) -> void:
+	var where: String = str(choices[choice][1])
+	if is_instance_valid(choice_box):
+		choice_box.queue_free()
+	choice_box = null
+	if scene_name != "":
+		note_choice(scene_name, where)
+	if where.begins_with("@"):
+		_act(where)
+		_finish()
+		return
+	index = branch_at(where)
+	if index < 0:
+		_finish()
+		return
+	_next()
+
+
+func _act(action: String) -> void:
+	match action:
+		"@shop":
+			for vendor in get_tree().get_nodes_in_group(&"vendors"):
+				if vendor.has_method("player_at_counter") and vendor.call("player_at_counter"):
+					vendor.call("open_for_player")
+					return
 
 
 func _unhandled_input(event: InputEvent) -> void:

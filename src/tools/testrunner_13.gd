@@ -1683,22 +1683,19 @@ func _test_characters_talk_in_turn() -> void:
 		var lines: Array = Talk.lines_for(Keeper.MEETING, hero)
 		var speakers: Array = []
 		for line in lines:
-			if not speakers.has(line[0]):
+			if not ["?", "[", ">"].has(str(line[0])) and not speakers.has(line[0]):
 				speakers.append(line[0])
 		said_by.append(speakers)
 		if path != "%s%s/%s.txt" % [Talk.STORY_DIR, Keeper.MEETING, hero] or lines.size() < 2 \
 				or str(lines[0][0]) != "shopkeeper" or not speakers.has("hero") or speakers.size() != 2:
 			scripts_ok = false
-		for line in lines:
-			var words: String = str(line[1])
-			for i in words.length():
-				if not ThemeDB.fallback_font.has_char(words.unicode_at(i)):
-					missing.append("%s: %s" % [hero, words[i]])
 	check("each of the four heroes has its own first meeting with the shopkeeper: he speaks first, then the two of them",
 		scripts_ok, said_by)
-	# EVERY SCRIPT THERE IS, so one the owner writes is held too: a line with
-	# no "speaker:" would be dropped without a word, and a letter the font
-	# lacks is a box on the web.
+	# EVERY SCRIPT THERE IS, so one the owner writes is held too: a line it
+	# cannot read, a choice to a branch that is not there or an @ it does not
+	# know (talk.gd problems(), 0.172.0) would be dropped or end the
+	# conversation without a word, and a letter the font lacks is a box on
+	# the web.
 	var dropped: Array = []
 	var scripts: int = 0
 	for scene in DirAccess.get_directories_at(Talk.STORY_DIR):
@@ -1707,22 +1704,21 @@ func _test_characters_talk_in_turn() -> void:
 				continue
 			scripts += 1
 			var text: String = FileAccess.get_file_as_string(Talk.STORY_DIR + scene + "/" + file)
-			var meant: int = 0
-			for raw in text.split("\n"):
-				var line: String = raw.strip_edges()
-				if line != "" and not line.begins_with("#") and line != Talk.PART_BREAK:
-					meant += 1
-			var read_back: Array = []
+			for problem in Talk.problems(text):
+				dropped.append("%s/%s: %s" % [scene, file, problem])
 			for one_part in Talk.read_parts(text):
-				read_back.append_array(one_part)
-			if read_back.size() != meant:
-				dropped.append("%s/%s" % [scene, file])
-			for line in read_back:
-				var words: String = str(line[1])
-				for i in words.length():
-					if not ThemeDB.fallback_font.has_char(words.unicode_at(i)):
-						missing.append("%s/%s: %s" % [scene, file, words[i]])
-	check("  every script in data/story: each line has a speaker, and every letter is in the game's font",
+				for step in one_part:
+					var words: Array = []
+					if str(step[0]) == "?":
+						for choice in step[1]:
+							words.append(str(choice[0]))
+					elif not ["[", ">"].has(str(step[0])):
+						words.append(str(step[1]))
+					for said in words:
+						for i in said.length():
+							if not ThemeDB.fallback_font.has_char(said.unicode_at(i)):
+								missing.append("%s/%s: %s" % [scene, file, said[i]])
+	check("  every script in data/story can be played (talk.gd problems()), and every letter is in the game's font",
 		scripts >= 6 and dropped.is_empty() and missing.is_empty(), [scripts, dropped, missing])
 	check("  a hero with no script, and no all.txt, has none", Talk.script_path(Keeper.MEETING, "nobody") == ""
 		and Talk.lines_for(Keeper.MEETING, "nobody").is_empty())
@@ -1848,9 +1844,22 @@ func _test_characters_talk_in_turn() -> void:
 	opening.call("hurry")
 	opening.call("hurry")
 	opening.call("_process", 1.0)
+	# THE HERO ANSWERS BY CHOOSING (0.172.0): four answers under the hero,
+	# the last Trade.
+	var offered: Node2D = visitor.get_node_or_null("choicebox") as Node2D
+	var rows: Array = []
+	if offered != null:
+		for row in offered.get("labels"):
+			rows.append((row as Label).text)
+	check("  then the hero picks an answer, offered under the hero: the fourth is Trade",
+		offered != null and offered.position == Talk.FEET_AT and rows.size() == 4
+		and rows[0] == "1  Lost? I was dead." and rows[3] == "4  Trade", rows)
+	if offered != null:
+		offered.call("choose", 0)
 	var reply: Node2D = meeting.get("bubble")
-	check("  then the hero answers, over the hero", reply != null and reply.get_parent() == visitor
-		and reply.get("lines") == [warrior_lines[1][1]], reply.get("lines") if reply != null else null)
+	check("  picking the first, the hero says its branch", reply != null and reply.get_parent() == visitor
+		and reply.get("lines") == [Talk.lines_for(Keeper.MEETING, "warrior")[Talk.branch_where(warrior_lines, "dead") + 1][1]]
+		and Talk.choice_made(Keeper.MEETING) == "dead", reply.get("lines") if reply != null else null)
 	keeper.call("greet")
 	check("  he does not start again while they talk", keeper.get("bubble") == meeting and Bubble.times_said(key) == 4)
 	meeting.free()
@@ -1988,3 +1997,232 @@ func _test_a_hero_speaks_on_arriving() -> void:
 			other.add_to_group("player")
 	await get_tree().process_frame
 	print("  a hero speaks on arriving: once, after the story, a line at a time")
+
+
+# HEROES CHOOSE WHAT TO SAY (0.172.0). The owner: "a is a convo b is a convo
+# and so is c thats what makes chat branching amazing", "lets add another
+# number that says trade" - "the issue was people did not know you could
+# trade the shop keep". A script's "?" lines are answers the player picks
+# (choicebox.gd); [branch], > and @shop / @end; the Replay story button.
+func _test_heroes_choose_what_to_say() -> void:
+	section("HEROES CHOOSE WHAT TO SAY (0.172.0): answers to pick, branches, Trade, Replay story")
+	const Talk := preload("res://src/shared/talk.gd")
+	const Bubble := preload("res://src/shared/speechbubble.gd")
+	var text := "a: Are you lost?\n? First = one\n? Second = two\n\n? Trade = @shop\n[one]\nhero: One.\n[two]\nhero: Two.\n> three\n[three]\na: And on.\n"
+	var steps: Array = Talk.read_script(text)
+	check("a script's answers: \"? words = branch\" lines in a row are one choice; [branch] and > read",
+		steps.size() == 9 and steps[1] == ["?", [["First", "one"], ["Second", "two"], ["Trade", "@shop"]]]
+		and steps[2] == ["[", "one"] and steps[6] == [">", "three"], steps)
+	var bad: Array = Talk.problems("a: hi\n? Go = nowhere\n? Do = @dance\nthis line has no speaker\n> lost\n")
+	check("  problems() names what cannot be played: a line it cannot read, a branch not there, an action it does not know",
+		bad.size() == 4 and str(bad[0]).begins_with("cannot read") and bad.has("no [nowhere] for it to go to")
+		and bad.has("no such action: @dance") and bad.has("no [lost] for it to go to"), bad)
+	var trades: Array = []
+	for hero in ["warrior", "mage", "tank", "healer"]:
+		var meeting: Array = Talk.lines_for("meet_shopkeeper", hero)
+		var first_choice: Array = []
+		for step in meeting:
+			if str(step[0]) == "?":
+				first_choice = step[1]
+				break
+		var menu: Array = Talk.lines_for("visit_shopkeeper", hero)
+		var menu_first: Array = menu[0][1] if not menu.is_empty() and str(menu[0][0]) == "?" else []
+		trades.append(first_choice.size() == 4 and first_choice[3] == ["Trade", "@shop"]
+			and Talk.script_path("visit_shopkeeper", hero).ends_with("/%s.txt" % hero)
+			and not menu_first.is_empty() and menu_first[0] == ["Trade", "@shop"])
+	check("  every hero has its own meeting with the shopkeeper (four answers, the fourth Trade) and its own menu each visit (Trade first)",
+		trades == [true, true, true, true], trades)
+	# ---- a conversation with a choice -----------------------------------------
+	var holder := Node2D.new()
+	add_child(holder)
+	var asker := Node2D.new()
+	var hero := Node2D.new()
+	holder.add_child(asker)
+	holder.add_child(hero)
+	hero.position = Vector2(200, 0)
+	var talk: Node = Talk.play(holder, steps, {"a": asker, "hero": hero}, "choicetest")
+	await get_tree().process_frame
+	var first: Node2D = talk.get("bubble")
+	first.call("hurry")
+	first.call("hurry")
+	first.call("_process", 1.0)
+	var box: Node2D = hero.get_node_or_null("choicebox") as Node2D
+	var row_words: Array = []
+	if box != null:
+		for row in box.get("labels"):
+			row_words.append((row as Label).text)
+	check("after the question, the answers under the hero, numbered; nothing said while they wait",
+		box != null and box.position == Talk.FEET_AT and row_words == ["1  First", "2  Second", "3  Trade"]
+		and talk.get("bubble") == null, row_words)
+	var key := InputEventKey.new()
+	key.keycode = KEY_2
+	key.physical_keycode = KEY_2
+	key.pressed = true
+	Input.parse_input_event(key)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var said: Node2D = talk.get("bubble")
+	check("  the 2 key picks the second: its branch is said, the pick kept for the character, the box gone",
+		said != null and said.get_parent() == hero and said.get("lines") == ["Two."]
+		and Talk.choice_made("choicetest") == "two" and not is_instance_valid(box), said.get("lines") if said != null else null)
+	said.call("hurry")
+	said.call("hurry")
+	said.call("_process", 1.0)
+	var jumped: Node2D = talk.get("bubble")
+	check("  > goes on in another branch", jumped != null and jumped.get_parent() == asker and jumped.get("lines") == ["And on."])
+	talk.free()
+	if is_instance_valid(jumped):
+		jumped.free()
+	# a branch ends where the next begins
+	var ended: Array = []
+	var short: Node = Talk.play(holder, steps, {"a": asker, "hero": hero}, "choicetest")
+	short.connect("finished", func() -> void: ended.append(true))
+	await get_tree().process_frame
+	var ask: Node2D = short.get("bubble")
+	ask.call("hurry")
+	ask.call("hurry")
+	ask.call("_process", 1.0)
+	(hero.get_node("choicebox") as Node2D).call("choose", 0)
+	var one: Node2D = short.get("bubble")
+	one.call("hurry")
+	one.call("hurry")
+	one.call("_process", 1.0)
+	check("  a branch ends where the next begins: \"One.\", then the conversation is over",
+		ended.size() == 1 and short.is_queued_for_deletion())
+	await get_tree().process_frame
+	# Trade, by a click on its row
+	var vendor_shape := GDScript.new()
+	vendor_shape.source_code = "extends Node\nvar opened: int = 0\nfunc player_at_counter() -> bool:\n\treturn true\nfunc open_for_player() -> void:\n\topened += 1\n"
+	vendor_shape.reload()
+	var vendor := Node.new()
+	vendor.set_script(vendor_shape)
+	vendor.add_to_group(&"vendors")
+	add_child(vendor)
+	var shop_talk: Node = Talk.play(holder, steps, {"a": asker, "hero": hero}, "choicetest")
+	await get_tree().process_frame
+	var asked: Node2D = shop_talk.get("bubble")
+	asked.call("hurry")
+	asked.call("hurry")
+	asked.call("_process", 1.0)
+	var trade_box: Node2D = hero.get_node_or_null("choicebox") as Node2D
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	# The window's pixels: the event goes in where a real click does.
+	click.position = trade_box.get_viewport().get_screen_transform() \
+		* (trade_box.get_global_transform_with_canvas() * (trade_box.call("row_rect", 2) as Rect2).get_center())
+	Input.parse_input_event(click)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  a click on Trade opens the shop for a hero at its counter (@shop), and the conversation ends",
+		vendor.get("opened") == 1 and not is_instance_valid(shop_talk) or (shop_talk != null and shop_talk.is_queued_for_deletion()),
+		vendor.get("opened"))
+	vendor.queue_free()
+	if is_instance_valid(shop_talk):
+		shop_talk.free()
+	if is_instance_valid(trade_box):
+		trade_box.free()
+	# walking off
+	var walked: Node = Talk.play(holder, steps, {"a": asker, "hero": hero}, "choicetest")
+	await get_tree().process_frame
+	var q: Node2D = walked.get("bubble")
+	q.call("hurry")
+	q.call("hurry")
+	q.call("_process", 1.0)
+	var left_box: Node2D = hero.get_node_or_null("choicebox") as Node2D
+	hero.position += Vector2(Talk.CHOICE_REACH + 20.0, 0)
+	walked.call("_process", 0.0)
+	check("  walking off ends it, the answers with it", walked.is_queued_for_deletion()
+		and (left_box == null or left_box.is_queued_for_deletion()))
+	await get_tree().process_frame
+	holder.queue_free()
+	# ---- the menu every visit -----------------------------------------------------
+	const Keeper := preload("res://src/world/shopkeeperanim.gd")
+	var cfg := ConfigFile.new()
+	cfg.load(ControlsPanel.seen_path)
+	cfg.set_value("talk", Talk.seen_key(Keeper.MEETING).replace("/", "|"), 1)
+	cfg.set_value("talk", Keeper.talk_key().replace("/", "|"), 2)
+	if cfg.has_section_key("talk", Talk.seen_key(Keeper.VISIT).replace("/", "|")):
+		cfg.erase_section_key("talk", Talk.seen_key(Keeper.VISIT).replace("/", "|"))
+	cfg.save(ControlsPanel.seen_path)
+	var area := Area2D.new()
+	var keeper := AnimatedSprite2D.new()
+	var frames := SpriteFrames.new()
+	frames.add_animation(Keeper.IDLE_ANIM)
+	frames.add_animation(Keeper.WAVE_ANIM)
+	keeper.sprite_frames = frames
+	area.add_child(keeper)
+	keeper.set_script(Keeper)
+	keeper.set("class_override", "warrior")
+	add_child(area)
+	var others: Array = get_tree().get_nodes_in_group("player")
+	for other in others:
+		other.remove_from_group("player")
+	var visitor := Node2D.new()
+	visitor.add_to_group("player")
+	visitor.position = Vector2(0, 40)
+	add_child(visitor)
+	await get_tree().process_frame
+	keeper.call("greet")
+	var greeting: Node2D = keeper.get("bubble") as Node2D
+	var greeted: bool = greeting != null and greeting.get("lines") == Keeper.greeting_for(2)
+	for step in 40:
+		if not is_instance_valid(greeting):
+			break
+		greeting.call("_process", 0.5)
+	var menu: Node = keeper.get("bubble")
+	await get_tree().process_frame
+	var menu_box: Node2D = visitor.get_node_or_null("choicebox") as Node2D
+	var menu_rows: Array = []
+	if menu_box != null:
+		for row in menu_box.get("labels"):
+			menu_rows.append((row as Label).text)
+	check("a later visit: his greeting, then the menu under the hero - Trade, Talk, Goodbye (\"story once, menu every visit\")",
+		greeted and menu != null and menu.get("scene_name") == Keeper.VISIT and menu_rows == ["1  Trade", "2  Talk", "3  Goodbye"],
+		[greeted, menu_rows])
+	var shop_open := Node.new()
+	shop_open.add_to_group(&"openvendor")
+	add_child(shop_open)
+	menu.call("_process", 0.0)
+	check("  the shop opened another way (Interact at the counter) takes the menu away",
+		menu.is_queued_for_deletion())
+	shop_open.free()
+	await get_tree().process_frame
+	var next_visit: Node = Talk.visit(self, Keeper.VISIT, "warrior", {"hero": visitor})
+	var talk_line: Array = []
+	if next_visit != null:
+		var steps_now: Array = next_visit.get("lines")
+		talk_line = steps_now[Talk.branch_where(steps_now, "talk") + 1]
+	check("  each visit the next part, round again: Talk says something new",
+		next_visit != null and str(talk_line[1]).contains("fire pit"), talk_line)
+	if next_visit != null:
+		next_visit.free()
+	for child in visitor.get_children():
+		child.free()
+	visitor.queue_free()
+	area.queue_free()
+	for other in others:
+		if is_instance_valid(other):
+			other.add_to_group("player")
+	await get_tree().process_frame
+	# ---- Replay story ------------------------------------------------------------
+	Bubble.note_said(Talk.seen_key("arrive_elusion"))
+	Bubble.note_said(Talk.seen_key("meet_shopkeeper"))
+	var forgot: int = Talk.forget_story()
+	check("Replay story: this character forgets every scene heard and every pick made",
+		forgot >= 3 and Bubble.times_said(Talk.seen_key("arrive_elusion")) == 0
+		and Bubble.times_said(Talk.seen_key("meet_shopkeeper")) == 0 and Talk.choice_made("choicetest") == "", forgot)
+	var panel: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(panel)
+	await get_tree().process_frame
+	var replay: Button = panel.find_child("replaystorybutton", true, false) as Button
+	var catalogue: Button = panel.get_node_or_null("%cataloguebutton") as Button
+	Bubble.note_said(Talk.seen_key("arrive_elusion"))
+	if replay != null:
+		replay.pressed.emit()
+	check("  the GM panel's Testing tab has it, beside Item catalogue... (no taller), and it forgets",
+		replay != null and catalogue != null and replay.get_parent() == catalogue.get_parent()
+		and str(replay.get_parent().name) == "cataloguerow" and Bubble.times_said(Talk.seen_key("arrive_elusion")) == 0)
+	panel.queue_free()
+	await get_tree().process_frame
+	print("  heroes choose: answers, branches, >, @shop, walking off, Replay story")
