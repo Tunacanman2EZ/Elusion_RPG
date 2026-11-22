@@ -73,6 +73,8 @@ var _label_by_path: Dictionary = {}
 
 
 func _ready() -> void:
+	# Every kind but the bosses drawn once as it arrives (examplewarm.gd).
+	add_to_group(&"warm_examples")
 	PerfOverlay.set_shown(true)
 	_set_slimes()
 	sweep = LimitSweep.new()
@@ -191,6 +193,17 @@ func _build() -> void:
 	# readout is: about 30 draw calls a frame for a panel that changes a few
 	# times a second.
 	_picture = LayerPicture.picture_parts(_layer, [_panel], "testingpicture", "testingpanellayer")
+
+
+func warm_examples() -> PackedStringArray:
+	"""Every monster the GM panel can spawn here but the bosses, for
+	examplewarm.gd: the Testing Ground's whole catalogue drawn once as it
+	arrives, so no sweep's first of a kind measures a build."""
+	var out := PackedStringArray()
+	for entry in GmSpawner.catalogue():
+		if int(entry["kind"]) != GmSpawner.KINDS.size() - 1:
+			out.append(str(entry["path"]))
+	return out
 
 
 func toggle_folded() -> void:

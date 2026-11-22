@@ -2435,3 +2435,91 @@ func _test_multimeshes_never_wait() -> void:
 		and _code_src("res://src/projectiles/spikefx.gd").contains("_ring_send.send(")
 		and _code_src("res://src/world/healerrun/healerrun.gd").contains("_shot_send.send("), direct)
 	print("  multimeshes sent without waiting: a ring of three, only the slots used")
+
+
+# EVERY MONSTER DRAWN ONCE, FOR REAL, OUT OF SIGHT (0.174.0). The owner's
+# browser: 23 to 38 frames of about 25 ms - all drawing - the first time a
+# kind appeared after a new build. examplewarm.gd draws one real copy of each
+# kind an area may bring as it arrives: a picture only, under everything,
+# faint, lit then unlit, with its shots, then gone.
+func _test_monsters_warm_by_example() -> void:
+	section("EVERY MONSTER DRAWN ONCE, FOR REAL, OUT OF SIGHT (0.174.0)")
+	const Warm := preload("res://src/systems/examplewarm.gd")
+	var was_warmed: Dictionary = Warm.warmed.duplicate()
+	Warm.forget()
+	var skeleton: String = "res://scene/enemy/skeleton.tscn"
+	var archer: String = "res://scene/enemy/bushsniper.tscn"
+	var boss: String = "res://scene/enemy/bossenemy.tscn"
+	var provider_script := GDScript.new()
+	provider_script.source_code = "extends Node\nvar paths := PackedStringArray()\nfunc warm_examples() -> PackedStringArray:\n\treturn paths\n"
+	provider_script.reload()
+	var provider: Node = provider_script.new()
+	provider.set("paths", PackedStringArray([skeleton, archer, boss, skeleton]))
+	provider.add_to_group(Warm.PROVIDERS)
+	var area := Node2D.new()
+	area.add_child(provider)
+	add_child(area)
+	var wanted: Array[String] = Warm.scenes_wanted(get_tree())
+	check("what an area may bring: each scene once, from the area and what its run says",
+		wanted.has(skeleton) and wanted.has(archer) and wanted.has(boss) and wanted.count(skeleton) == 1, wanted)
+	var enemies_before: int = get_tree().get_nodes_in_group(&"enemies").size()
+	var warm: Node = Warm.add_to(area)
+	var seen_ghost: Node = null
+	var ghost_ok: bool = false
+	var frames: int = 0
+	while is_instance_valid(warm) and frames < 120:
+		await get_tree().process_frame
+		frames += 1
+		var holder: Node = warm.get_node_or_null(^"ghosts") if is_instance_valid(warm) else null
+		if holder != null and seen_ghost == null:
+			for child in holder.get_children():
+				if child is BaseEnemy:
+					seen_ghost = child
+					var bar: CanvasItem = child.get_node_or_null(^"healthbar") as CanvasItem
+					ghost_ok = (child as BaseEnemy).is_warm_ghost() and child.process_mode == Node.PROCESS_MODE_DISABLED \
+						and not child.is_in_group(&"enemies") and (child as CanvasItem).z_index == RenderingServer.CANVAS_ITEM_Z_MIN \
+						and is_equal_approx((holder as CanvasItem).modulate.a, Warm.WARM_ALPHA) \
+						and bar != null and bar.visible and bar.z_index == RenderingServer.CANVAS_ITEM_Z_MIN \
+						and bar.get_node_or_null(^"healthvalue") != null
+					break
+	check("a ghost is a picture only: never processing, in no group, under everything, faint, its bar and number shown",
+		ghost_ok, [seen_ghost != null])
+	check("  all of them gone after a few frames, the warming with them; nothing counted as a monster",
+		not is_instance_valid(warm) and frames < 60 and get_tree().get_nodes_in_group(&"enemies").size() == enemies_before, frames)
+	check("  the skeleton and the archer drawn, the boss left out, and all three known this session",
+		Warm.warmed.has(skeleton) and Warm.warmed.has(archer) and Warm.warmed.has(boss), Warm.warmed.keys())
+	var again: Node = Warm.add_to(area)
+	var drew_again: int = -1
+	for n in 12:
+		await get_tree().process_frame
+		if is_instance_valid(again):
+			drew_again = int(again.get("kinds_drawn"))
+	check("  the next arrival brings nothing new: nothing drawn", not is_instance_valid(again) and drew_again <= 0)
+	area.queue_free()
+	# A shot's picture has no scripts; the archer's arrow is one.
+	var archer_ghost: Node = (load(archer) as PackedScene).instantiate()
+	var shots: Array[PackedScene] = Warm.shot_scenes(archer_ghost)
+	var picture: Node = Warm._picture_of(shots[0]) if not shots.is_empty() else null
+	check("the shots: what the monster's script holds from scene/projectiles, as pictures with no scripts",
+		not shots.is_empty() and shots.any(func(p: PackedScene) -> bool: return p.resource_path.ends_with("arrow.tscn"))
+		and picture != null and picture.get_script() == null and picture.process_mode == Node.PROCESS_MODE_DISABLED)
+	archer_ghost.free()
+	if picture != null:
+		picture.free()
+	# Who says what may come.
+	var run_script: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var elites: Dictionary = run_script.get_script_constant_map()["ELITES"]
+	var listed: Dictionary = {}
+	for land in elites:
+		for scene_name in elites[land]:
+			listed["res://scene/enemy/%s.tscn" % scene_name] = true
+	var run_src: String = _code_src("res://src/world/endless/endlessrun.gd")
+	var ground_src: String = _code_src("res://src/world/endless/testingground.gd")
+	var registry_src: String = _code_src("res://src/systems/arearegistry.gd")
+	check("the Endless names every land's elites, the Testing Ground every kind but the bosses; every arrival warms",
+		run_src.contains("add_to_group(&\"warm_examples\")") and run_src.contains("func warm_examples(")
+		and ground_src.contains("add_to_group(&\"warm_examples\")") and ground_src.contains("func warm_examples(")
+		and registry_src.find("ExampleWarm.add_to(scene)") > registry_src.find("ShaderWarm.add_to(scene)")
+		and registry_src.find("ShaderWarm.add_to(scene)") >= 0 and listed.size() > 20, listed.size())
+	Warm.warmed = was_warmed
+	print("  monsters warm by example: one real copy a kind, drawn as an area arrives")

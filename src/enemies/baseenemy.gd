@@ -492,14 +492,26 @@ var _is_fleeing: bool = false
 # NEW: see NAVIGATION section below.
 var nav_agent: NavigationAgent2D = null
 
+# A PICTURE ONLY (0.174.0, examplewarm.gd): a copy made at an area's arrival
+# and drawn a few frames, so the browser builds its drawing of this kind
+# before any fight. It never processes and is in no group.
+const WARM_GHOST := &"warm_ghost"
+
 
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
 
+func is_warm_ghost() -> bool:
+	"""Made only to be drawn once (WARM_GHOST, examplewarm.gd)."""
+	return has_meta(WARM_GHOST)
+
+
 func _ready() -> void:
+	var ghost: bool = is_warm_ghost()
 	# A crowd made at once is one of the readout's lag points (0.138.0).
-	PerfOverlay.mark(&"monsters appear")
+	if not ghost:
+		PerfOverlay.mark(&"monsters appear")
 	# FIRST, before anything reads these fields — `hp = max_hp` on the very next
 	# line would otherwise fill the health pool from BaseEnemy's default of 50
 	# rather than this enemy's real maximum.
@@ -511,7 +523,10 @@ func _ready() -> void:
 		stir_raised = true
 
 	hp = max_hp
-	add_to_group("enemies")
+	# A picture only (examplewarm.gd) is in no group: nothing counts it, aims
+	# at it, wakes it or puts it to sleep.
+	if not ghost:
+		add_to_group("enemies")
 	spawn_position = global_position
 
 	# NEW: enemies are on collision layer 4, but their mask only included

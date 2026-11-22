@@ -205,6 +205,9 @@ const MARK_LETTERS := {
 	&"loot bags": "B",
 	&"key or click": "K",
 	&"shaders warm": "H",
+	# Each kind of monster drawn once at an area's arrival (0.174.0,
+	# examplewarm.gd).
+	&"monsters warm": "&",
 	&"first draws": "!",
 	# A boss's arena (0.139.0, lightarena.gd).
 	&"flares flash": "F",

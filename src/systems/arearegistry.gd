@@ -119,6 +119,7 @@ const GroundChunks := preload("res://src/world/groundchunks.gd")
 const Waystones := preload("res://src/world/waystones.gd")
 const SpikeFx := preload("res://src/projectiles/spikefx.gd")
 const ShaderWarm := preload("res://src/systems/shaderwarm.gd")
+const ExampleWarm := preload("res://src/systems/examplewarm.gd")
 const LagTests := preload("res://src/systems/lagtests.gd")
 
 
@@ -197,6 +198,10 @@ func _on_scene_changed() -> void:
 	# once and out of sight, so no fight builds one (0.156.0); see
 	# shaderwarm.gd.
 	ShaderWarm.add_to(scene)
+	# And every area draws each kind of monster it may bring once, for real
+	# and out of sight, the first time this session (0.174.0); see
+	# examplewarm.gd.
+	ExampleWarm.add_to(scene)
 	# The GM panel's lag tests stay on through a change of area (0.138.0):
 	# the new area's lights out again; see lagtests.gd.
 	if LagTests.lights_off:

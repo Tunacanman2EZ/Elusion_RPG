@@ -243,6 +243,8 @@ var testing: bool = false
 
 func _ready() -> void:
 	add_to_group(&"endless_run")
+	# Its elites drawn once as the Endless arrives (examplewarm.gd).
+	add_to_group(&"warm_examples")
 	_spike_rng.randomize()
 	floor_wash = ColorRect.new()
 	floor_wash.name = "landwash"
@@ -919,6 +921,19 @@ func _enter_stage(number: int) -> void:
 	# NO DOOR AT A NEW STAGE (0.97.1): it opened DOOR_OPEN_SECONDS (3) at each
 	# one so the late and the fallen could walk back in. The owner: no way
 	# back - the fallen wait by the chest for the party to fall.
+
+
+func warm_examples() -> PackedStringArray:
+	"""Every land's elites, for examplewarm.gd: each drawn once as the Endless
+	arrives, so a wave's first elite of a kind builds nothing mid-fight. The
+	horde is a MultiMesh (shaderwarm.gd); bosses are left out there."""
+	var out := PackedStringArray()
+	for land in ELITES:
+		for scene_name in ELITES[land]:
+			var path: String = "res://scene/enemy/%s.tscn" % scene_name
+			if not out.has(path):
+				out.append(path)
+	return out
 
 
 func _elite_scene(stage_number: int, nth: int) -> String:
