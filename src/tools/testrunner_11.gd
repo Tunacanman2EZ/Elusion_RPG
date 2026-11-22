@@ -2970,7 +2970,8 @@ func _test_five_thousand_smaller_slimes() -> void:
 	const SwarmScript := preload("res://src/world/endless/swarm.gd")
 	const RunScript := preload("res://src/world/endless/endlessrun.gd")
 	check("the crowd reaches 5,000 on a computer; a phone, and a party with one, still holds 1,000",
-		SwarmScript.MOST == 5000 and RunScript.crowd_for(40, 4) == 5000 and RunScript.PHONE_CROWD == 1000)
+		SwarmScript.RUN_MOST == 5000 and RunScript.crowd_for(40, 4) == 5000 and RunScript.stage_crowd(40) == 5000
+		and RunScript.PHONE_CROWD == 1000)
 	check("  two-thirds the size: at the game's 3x zoom an art pixel is two screen pixels, whole",
 		is_equal_approx(SwarmScript.DRAW_SCALE * 3.0, 2.0) and is_equal_approx(SwarmScript.CELL, 16.0)
 		and is_equal_approx(SwarmScript.ROOM, 10.0) and is_equal_approx(SwarmScript.PICTURE_TOP, 28.0))

@@ -33,8 +33,15 @@ const CROWD := 40
 const MADE_AWAY := Vector2(360.0, -140.0)
 const TOUGH := 1000000
 # How slowly a monster's shot flies and how long it lasts while it is held.
-const HELD_SPEED := 6.0
-const HELD_LIFE := 120.0
+# HELD FOR THE WHOLE SWEEP (0.175.0). The owner, watching Every shot:
+# "arrows vanishing faster then they spawn". They lasted 120 s and flew 6 px
+# a second, and a shot sweep runs longer than that: past two minutes the
+# oldest went as fast as new ones came, so the ice arrows' sweep made 4,000
+# and stopped with 2,201 in the air, and the early ones had drifted off the
+# screen (drawn by nobody, so not measured). Now they outlast any sweep and
+# move a quarter of a pixel a second - still moving, still on screen.
+const HELD_SPEED := 0.25
+const HELD_LIFE := 600.0
 # Where a shot or an effect is made: on screen (the widest view is 640 x 360)
 # and never within NEAR px of you.
 const SPREAD := Vector2(300.0, 170.0)

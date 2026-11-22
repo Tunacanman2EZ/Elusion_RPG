@@ -318,6 +318,7 @@ func _run_all() -> void:
 	await _test_the_sweeps_axes_come_away()
 	await _test_the_tank_aura_is_swept()
 	await _test_particles_are_drawn_together()
+	await _test_ten_thousand_in_the_testing_ground()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

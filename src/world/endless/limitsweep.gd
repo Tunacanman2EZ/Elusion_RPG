@@ -50,7 +50,8 @@ const BOSS_STEP := 1
 const HORDE_STEP := 250
 const MOST := 600
 const BOSS_MOST := 30
-const HORDE_MOST := 5000
+# As far as the Testing Ground's biggest horde (0.175.0, swarm.gd MOST).
+const HORDE_MOST := 10000
 const CLEAR_SECONDS := 1.0
 const SETTLE_SECONDS := 3.0
 # The horde fills at the ground's rate; past this it is measured as it is.

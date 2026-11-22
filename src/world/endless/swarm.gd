@@ -80,7 +80,14 @@ const SHEET := preload("res://art/enemy/slime.png")
 # 5,000 SINCE 0.148.0 (the owner: "4 players attacking with 5000 slimes i
 # think that would be a massive showcase"). A phone, and any party with one in
 # it, is held at endlessrun.gd PHONE_CROWD (1,000) as before.
-const MOST := 5000
+#
+# ROOM FOR 10,000 (0.175.0). The owner, in the Testing Ground: "we were able
+# to spawn 5k slimes no frame loss lets try 10,000". MOST is how many the
+# swarm can hold - the Testing Ground's biggest horde - and RUN_MOST how many
+# an Endless run ever brings (endlessrun.gd stage_crowd(), crowd_for()), as
+# before: runs, parties and phones are as they were.
+const MOST := 10000
+const RUN_MOST := 5000
 const STEPS_PER_SECOND := 20.0
 const STEP := 1.0 / STEPS_PER_SECOND
 # HALF AS MANY ON A PHONE (0.155.1). The owner's phone, 1,000 slimes round

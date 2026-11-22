@@ -355,10 +355,11 @@ static func land_of(stage_number: int) -> int:
 
 static func stage_crowd(stage_number: int) -> int:
 	"""How many swarmlings the arena fills to at this stage: 60 at the first,
-	then more each stage, never past the swarm's MOST (5,000 since 0.148.0;
-	stage 18 alone, as 3,000 was stage 14)."""
+	then more each stage, never past the swarm's RUN_MOST (5,000 since
+	0.148.0; stage 18 alone, as 3,000 was stage 14). The swarm holds more
+	(MOST, 10,000 since 0.175.0) only for the Testing Ground's horde."""
 	var s: int = maxi(1, stage_number) - 1
-	return mini(SwarmScript.MOST, 60 + 90 * s + 12 * s * s)
+	return mini(SwarmScript.RUN_MOST, 60 + 90 * s + 12 * s * s)
 
 
 static func stage_health(stage_number: int) -> float:
@@ -414,7 +415,7 @@ static func floor_tint_for(land: int) -> Color:
 
 
 # A PARTY'S SCALING (0.93.3), for 1 to 4 players: the plan's table, to be tuned
-# by playing. The crowd still stops at the swarm's MOST.
+# by playing. The crowd still stops at the swarm's RUN_MOST.
 static func party_crowd(count: int) -> float:
 	return 1.0 + 0.5 * float(clampi(count, 1, 4) - 1)
 
@@ -462,7 +463,7 @@ static func schedule(stages: int = SCHEDULE_STAGES) -> Dictionary:
 
 
 static func crowd_for(stage_number: int, count: int) -> int:
-	return mini(SwarmScript.MOST, roundi(float(stage_crowd(stage_number)) * party_crowd(count)))
+	return mini(SwarmScript.RUN_MOST, roundi(float(stage_crowd(stage_number)) * party_crowd(count)))
 
 
 # PHONES HOLD THE CROWD (0.133.0) - the owner, of a phone at stage 14's 2,930

@@ -2836,3 +2836,58 @@ func _test_particles_are_drawn_together() -> void:
 	frost.queue_free()
 	await get_tree().process_frame
 	print("  particle clouds drawn together")
+
+
+# ROOM FOR 10,000, AND SHOTS HELD FOR THE WHOLE SWEEP (0.175.0). The owner,
+# in the Testing Ground: "we were able to spawn 5k slimes no frame loss lets
+# try 10,000", and of Every shot, "arrows vanishing faster then they spawn".
+func _test_ten_thousand_in_the_testing_ground() -> void:
+	section("ROOM FOR 10,000 IN THE TESTING GROUND; SHOTS HELD FOR THE WHOLE SWEEP (0.175.0)")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	const RunScript := preload("res://src/world/endless/endlessrun.gd")
+	const Ground := preload("res://src/world/endless/testingground.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Kinds := preload("res://src/world/endless/stresskinds.gd")
+	check("the swarm holds 10,000, the Testing Ground has a 10,000 horde and its sweep goes that far",
+		SwarmScript.MOST == 10000 and int(Ground.HORDES.back()) == 10000
+		and Sweep.most_for({"horde": true}) == 10000)
+	check("  an Endless run still brings 5,000 at most, a party and a phone as before",
+		SwarmScript.RUN_MOST == 5000 and RunScript.stage_crowd(60) == 5000 and RunScript.crowd_for(60, 4) == 5000
+		and RunScript.PHONE_CROWD == 1000)
+	var o := Vector2(-61000, -61000)
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("arena", Rect2(o, Vector2(1488, 1334)))
+	add_child(swarm)
+	swarm.set_process(false)
+	swarm.set_physics_process(false)
+	await get_tree().process_frame
+	var made: int = 0
+	for i in 12:
+		made += int(swarm.call("spawn", 1000, o - Vector2(500, 500)))
+	check("  10,000 slimes fit in the swarm, and no more", made == 10000 and int(swarm.get("alive")) == 10000,
+		[made, int(swarm.get("alive"))])
+	swarm.queue_free()
+	# The longest a shot sweep can run: every step's settling and its
+	# measuring, at a slow 20 frames a second.
+	var steps: int = ceili(float(Kinds.SHOT_MOST) / float(Kinds.SHOT_STEP))
+	var longest: float = float(steps) * (Sweep.SETTLE_SECONDS + float(Sweep.MEASURE_FRAMES) / 20.0)
+	check("a swept shot outlasts the longest shot sweep and drifts under 200 px in it, so none goes before it is counted",
+		Kinds.HELD_LIFE > longest and Kinds.HELD_SPEED > 0.0 and Kinds.HELD_SPEED * Kinds.HELD_LIFE <= 200.0,
+		[Kinds.HELD_LIFE, longest, Kinds.HELD_SPEED * Kinds.HELD_LIFE])
+	var me := Node2D.new()
+	add_child(me)
+	me.global_position = o + Vector2(3000, 0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var swept: Dictionary = Kinds.shots()[1]
+	Kinds.make_shots(get_tree(), swept, 5, me.global_position, rng)
+	var held: Array = get_tree().get_nodes_in_group(Kinds.GROUP).filter(func(n: Node) -> bool: return not n.is_queued_for_deletion())
+	var right: int = 0
+	for shot in held:
+		if is_equal_approx(float(shot.get("lifetime")), Kinds.HELD_LIFE) and is_equal_approx(float(shot.get("speed")), Kinds.HELD_SPEED):
+			right += 1
+	check("  an ice arrow swept is made to last HELD_LIFE at HELD_SPEED", held.size() == 5 and right == 5, [held.size(), right])
+	Kinds.clear(get_tree())
+	me.queue_free()
+	await get_tree().process_frame
+	print("  room for 10,000; shots held for the whole sweep")

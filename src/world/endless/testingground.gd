@@ -30,7 +30,9 @@ const GmSpawner := preload("res://src/world/gmspawner.gd")
 const LimitSweep := preload("res://src/world/endless/limitsweep.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
 const LayerPicture := preload("res://src/ui/hudpicture.gd")
-const HORDES := [0, 1000, 3000, 5000]
+# 10,000 since 0.175.0 (the owner: "we were able to spawn 5k slimes no frame
+# loss lets try 10,000"; swarm.gd MOST).
+const HORDES := [0, 1000, 3000, 5000, 10000]
 # Slimes made a frame while the horde fills (the swarm's own fill is a rate).
 const FILL_A_FRAME := 250
 # The slimes' strength: a mid run's (endlessrun.gd stage 10).
