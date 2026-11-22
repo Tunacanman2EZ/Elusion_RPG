@@ -114,7 +114,7 @@ const BUILD := 9
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.172.1"
+const DISPLAY_VERSION := "0.173.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -125,6 +125,12 @@ const BUILD_HEADER := "X-Elusion-Build"
 # The game's own error reports (0.88.0): see errorreporter.gd.
 const ErrorReporterScript := preload("res://src/systems/errorreporter.gd")
 var error_reporter: Node = null
+# IS A NEWER VERSION LIVE (0.173.0): versioncheck.gd asks the page for
+# version.txt and keeps what is newer here; the HUD's strip and the login
+# screen say it. "" until something newer is heard of.
+const VersionCheckScript := preload("res://src/systems/versioncheck.gd")
+var version_check: Node = null
+static var newer_web_version: String = ""
 # TOKEN LIFECYCLE (0.44.0, app.py): which copy of the game, on every request.
 const INSTALL_HEADER := "X-Elusion-Install"
 const CONFIRM_PATH := "/api/auth/confirm"
@@ -198,6 +204,8 @@ static func build_notice() -> String:
 		return "This version of the game is too old to connect. " + how
 	if build_is_outdated():
 		return "A newer version of the game is out. " + how.replace("to keep playing", "when you can")
+	if newer_web_version != "":
+		return VersionCheckScript.line(newer_web_version)
 	return ""
 
 
@@ -652,6 +660,10 @@ func _ready() -> void:
 	error_reporter = ErrorReporterScript.new()
 	error_reporter.name = "errorreporter"
 	add_child(error_reporter)
+	# The same, for "a newer version is out": asks only in a browser.
+	version_check = VersionCheckScript.new()
+	version_check.name = "versioncheck"
+	add_child(version_check)
 
 	# deliberately NOT awaited. _ready() stays an ordinary function and no
 	# other autoload's initialisation waits on a network round trip; the log

@@ -190,6 +190,13 @@ if (-not $DryRun) {
     }
     Say ("2. builds\web is ready: {0:N1} MB, exported {1}" -f `
         ((Get-ChildItem $web -File | Measure-Object Length -Sum).Sum / 1MB), $pck.LastWriteTime) "Cyan"
+    # THE VERSION, FOR THE GAMES ALREADY OPEN (game 0.173.0): versioncheck.gd
+    # asks the page for version.txt every five minutes and, when it is newer
+    # than its own, says "An update has been made. Refresh your browser."
+    # Written into the build, so it goes live in the same swap as the build
+    # it names.
+    [IO.File]::WriteAllText((Join-Path $web "version.txt"), "$version`n")
+    Say "   version.txt says $version" "DarkGray"
 }
 
 # --- 3. UPLOAD UNDER A NEW NAME - ONLY WHAT CHANGED ---------------------------

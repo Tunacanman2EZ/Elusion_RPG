@@ -674,14 +674,21 @@ func _scan_unused_params(dir_path: String, offenders: Array[String], funcs: Arra
 				if arglist.strip_edges() == "":
 					continue
 
-				# The body: every following line that is blank or indented.
+				# The body: every following line that is blank or indented -
+				# AND EVERY LINE OF A TRIPLE-QUOTED STRING IN IT, which may start
+				# at the left edge (0.173.0: pinballrun.gd's _eye_dome() writes a
+				# shader that way, and its `base`, read after the shader, was
+				# called unused - renaming it broke the script).
 				var body: String = ""
+				var in_text: bool = false
 				for j in range(i + 1, lines.size()):
 					var raw: String = lines[j]
-					if raw.strip_edges() != "" and not raw.begins_with("\t"):
+					if not in_text and raw.strip_edges() != "" and not raw.begins_with("\t"):
 						break
-					if not raw.strip_edges().begins_with("#"):
+					if in_text or not raw.strip_edges().begins_with("#"):
 						body += raw + "\n"
+					if raw.count("\"\"\"") % 2 == 1:
+						in_text = not in_text
 
 				# SPLIT AT TOP-LEVEL COMMAS ONLY. A plain split(",") breaks on
 				# any default value that contains one -

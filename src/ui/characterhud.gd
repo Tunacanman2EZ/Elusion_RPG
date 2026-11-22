@@ -13,6 +13,7 @@ extends CanvasLayer
 # Api's static helpers, called on the script and not on the autoload: a static
 # function called through an instance is a warning in the editor's debugger.
 const ApiScript := preload("res://src/systems/api.gd")
+const VersionCheck := preload("res://src/systems/versioncheck.gd")
 # The menu bar under a thumb (0.91.0): Menu alone, opening every window.
 const TouchMenu := preload("res://src/ui/touchmenu.gd")
 const MinigamesCard := preload("res://src/ui/minigames/minigamescard.gd")
@@ -319,6 +320,7 @@ func _ready() -> void:
 	if _asks_said_by == Api.username:
 		_paint_ask_buttons()
 	_build_status_strip()
+	_watch_for_a_newer_version()
 	_build_world_chip()
 	_build_event_chip()
 	_build_food_chip()
@@ -1741,7 +1743,11 @@ func _build_message_box() -> void:
 # "trade" SITS ABOVE "pvp" ON PURPOSE. PvP is a state of the world that lasts
 # hours; a trade request is somebody waiting for you right now, and it goes
 # away the moment you answer it. The one you can act on wins the strip.
-const STATUS_PRIORITY := ["connection", "maintenance", "trade", "pvp"]
+# "update" (0.173.0): a newer version is live - "An update has been made.
+# Refresh your browser."
+# Under the trade (somebody waiting now), over PvP (which can last all day).
+const STATUS_PRIORITY := ["connection", "maintenance", "trade", "update", "pvp"]
+const UPDATE_COLOUR := Color(0.95, 0.82, 0.45)
 
 # HOW LONG WITHOUT THE SERVER BEFORE THE PLAYER IS TOLD.
 #
@@ -1822,6 +1828,20 @@ func _build_status_strip() -> void:
 	add_child(frame)
 	status_strip = frame
 	status_label = label
+
+
+func _watch_for_a_newer_version() -> void:
+	"""A newer version live (versioncheck.gd): on the strip until the page is
+	refreshed - already heard of, or heard of while this HUD is up."""
+	var check: Node = Api.version_check
+	if check != null and not check.is_connected("newer_version", _on_newer_version):
+		check.connect("newer_version", _on_newer_version)
+	if ApiScript.newer_web_version != "":
+		_on_newer_version(ApiScript.newer_web_version)
+
+
+func _on_newer_version(version: String) -> void:
+	set_world_status("update", VersionCheck.line(version), UPDATE_COLOUR)
 
 
 func set_world_status(key: String, text: String, colour: Color = Color(0.95, 0.45, 0.35)) -> void:

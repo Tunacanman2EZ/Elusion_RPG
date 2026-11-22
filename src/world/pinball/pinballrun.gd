@@ -1584,7 +1584,7 @@ func _aim_shot(ball: Dictionary, f: Dictionary) -> void:
 	ball["v"] = v.rotated(turn) * maxf(1.0, 1900.0 / v.length())
 
 
-func _goal(f: Dictionary, at: Vector2) -> Vector2:
+func _goal(f: Dictionary, _at: Vector2) -> Vector2:
 	var fresh: Vector2 = _goal_new(f, float(f["side"]) > 0.0)
 	if fresh != Vector2.INF:
 		return fresh

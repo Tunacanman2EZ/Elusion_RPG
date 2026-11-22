@@ -1313,7 +1313,7 @@ func _free_minion(m: Dictionary) -> void:
 
 # ---------------------------------------------------------------- drawing --
 
-func draw(c: CanvasItem, colour: Color, ink: Color) -> void:
+func draw(c: CanvasItem, colour: Color, _ink: Color) -> void:
 	"""Its shots, a body for a build with no art, its minions' shadows, and
 	its health over the hall."""
 	if hp > 0 and (sprite == null or not is_instance_valid(sprite)):

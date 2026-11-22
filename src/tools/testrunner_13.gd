@@ -2238,3 +2238,65 @@ func _test_heroes_choose_what_to_say() -> void:
 	panel.queue_free()
 	await get_tree().process_frame
 	print("  heroes choose: answers, branches, >, @shop, walking off, Replay story")
+
+
+# A NEWER VERSION IS SAID (0.173.0). The owner: "the update game is not
+# popping up for pc", "pc is on browser also no need for anyone to download
+# anything really". The web deploy writes version.txt; versioncheck.gd asks
+# for it and the HUD's strip says "Refresh the page to update".
+func _test_a_newer_version_is_said() -> void:
+	section("A NEWER VERSION IS SAID (0.173.0): version.txt, asked every five minutes, on the strip")
+	const Check := preload("res://src/systems/versioncheck.gd")
+	const ApiScript := preload("res://src/systems/api.gd")
+	check("versions compare as numbers, three of them: 0.172.10 is after 0.172.9, 1.0.0 after 0.999.0; anything else is never newer",
+		Check.is_newer("0.172.10", "0.172.9") and Check.is_newer("1.0.0", "0.999.0") and not Check.is_newer("0.172.1", "0.172.1")
+		and not Check.is_newer("0.99.0", "0.172.1") and not Check.is_newer("<html>", "0.1.0") and not Check.is_newer("1.2", "0.1.0"))
+	var was: String = ApiScript.newer_web_version
+	ApiScript.newer_web_version = ""
+	var checker: Node = Check.new()
+	add_child(checker)
+	var heard: Array = []
+	checker.connect("newer_version", func(version: String) -> void: heard.append(version))
+	check("  off the web it asks nowhere (a game run from the editor has no page)", str(checker.get("url")) == "")
+	checker.call("note", ApiScript.DISPLAY_VERSION)
+	checker.call("note", "0.0.1")
+	checker.call("note", "99.0.0\n")
+	checker.call("note", "99.0.0")
+	check("  this version or an older one says nothing; a newer one is kept and said once",
+		heard == ["99.0.0"] and ApiScript.newer_web_version == "99.0.0", heard)
+	check("  the line, the owner's words: \"An update has been made. Refresh your browser.\" - and the login screen says it too",
+		Check.line("99.0.0") == "An update has been made. Refresh your browser."
+		and ApiScript.build_notice() == Check.line("99.0.0"), ApiScript.build_notice())
+	var fresh: Node = Check.new()
+	add_child(fresh)
+	fresh.set("url", "https://example.invalid/version.txt")
+	var asked: Array = []
+	fresh.set("fetch", func(where: String) -> String:
+		asked.append(where)
+		return "99.1.0")
+	fresh.set("_left", 0.0)
+	fresh.call("_process", 0.016)
+	await get_tree().process_frame
+	check("  it asks when its time comes, and again EVERY_SECONDS later", asked == ["https://example.invalid/version.txt"]
+		and str(fresh.get("newest")) == "99.1.0" and float(fresh.get("_left")) > Check.EVERY_SECONDS - 1.0, [asked, fresh.get("newest"), fresh.get("_left")])
+	fresh.call("_notification", Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	check("  and soon after the game is looked at again", float(fresh.get("_left")) <= Check.BACK_SECONDS)
+	fresh.queue_free()
+	checker.queue_free()
+	var hud: Node = (load("res://src/ui/characterhud.gd") as GDScript).new()
+	hud.call("_on_newer_version", "99.0.0")
+	var states: Dictionary = hud.get("_status_states")
+	var order: Array = hud.get("STATUS_PRIORITY")
+	check("the HUD's strip says it, under a trade, over PvP",
+		states.has("update") and str(states["update"]["text"]) == Check.line("99.0.0")
+		and order.find("update") > order.find("trade") and order.find("update") < order.find("pvp"), states)
+	hud.free()
+	var src: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	var ready: int = _first_code_index(src, "func _ready", 0)
+	var watch: int = _first_code_index(src, "_watch_for_a_newer_version()", ready)
+	var deploy: String = FileAccess.get_file_as_string("res://tools/deploy_web.ps1")
+	check("  the HUD watches from its start; Api has the check; the web deploy writes version.txt into the build",
+		watch > ready and watch < src.find("\nfunc ", ready + 4) and Api.version_check != null
+		and deploy.contains("[IO.File]::WriteAllText((Join-Path $web \"version.txt\"), \"$version`n\")"))
+	ApiScript.newer_web_version = was
+	print("  a newer version: version.txt, compared, said once, on the strip and at sign-in")
