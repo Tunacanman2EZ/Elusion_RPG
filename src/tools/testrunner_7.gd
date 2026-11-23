@@ -296,6 +296,10 @@ func _test_attacks_stop_at_walls() -> void:
 	var seeker: Area2D = (healer.get("projectile_scene") as PackedScene).instantiate()
 	arena.add_child(seeker)
 	seeker.global_position = Vector2(thin_x + 1300.0, base.y + 20.0)
+	# Homing asks the physics server (0.175.1): the dummies just placed are in
+	# its world after the next step.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	check("  and one homing picks the nearest monster it can see",
 		seeker.call("_find_nearest_enemy") == seek_here, seeker.call("_find_nearest_enemy"))
 	seeker.queue_free()

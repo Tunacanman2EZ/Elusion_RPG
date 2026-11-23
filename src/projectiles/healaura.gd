@@ -89,6 +89,12 @@ const RING_FROM_MIDDLE := Vector2(0.0, 17.0)
 # The ring's half-width and half-height.
 const RADII := Vector2(22.0, 9.0)
 const REACH_PAD := 4.0
+# What a tick asks the physics server about (0.175.1): the hurt layer, round
+# the ring past its widest by ROUND_MARGIN (a hurtbox stands above its feet),
+# at most BURN_MOST things (a body and a hurtbox each).
+const HURT_LAYER := 8
+const ROUND_MARGIN := 20.0
+const BURN_MOST := 128
 # The pillar lands on this frame.
 const LANDS_ON := 4
 const TICK_FRAMES: Array[int] = [4, 6, 8, 10]
@@ -158,6 +164,10 @@ var sparkles: CPUParticles2D = null
 var _picture: AnimatedSprite2D = null
 var _last_ticked: int = -1
 var _landed: bool = false
+# A tick's question to the physics server, and who it has burnt this tick
+# (a monster's body and its hurtbox are found apart).
+var _query: PhysicsShapeQueryParameters2D = null
+var _seen: Dictionary = {}
 # Whether this game's own player was inside the ring as the beam landed: the
 # ring heals them, not the blobs.
 var _me_inside: bool = false
@@ -510,11 +520,40 @@ func tick() -> void:
 			DescentBoons.warding_light(amount)
 	if cosmetic or damage <= 0 or not is_inside_tree():
 		return
-	for monster in get_tree().get_nodes_in_group(&"enemies"):
+	# ASKED OF THE PHYSICS SERVER (0.175.1): what stands round the ring - its
+	# bodies and hurtboxes on the hurt layer - not every monster in the area.
+	# The owner's 16x Big Field had 8,723, nearly all asleep rooms away, and
+	# each tick read them all.
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	if space == null:
+		return
+	_seen.clear()
+	for row in space.intersect_shape(_round_query(), BURN_MOST):
+		var thing: Node = row.get("collider") as Node
+		var monster: Node = thing if thing != null and thing.is_in_group(&"enemies") \
+			else (thing.get_parent() if thing != null else null)
+		if monster == null or not monster.is_in_group(&"enemies") or _seen.has(monster.get_instance_id()):
+			continue
+		_seen[monster.get_instance_id()] = true
 		if monster is Node2D and monster.has_method(&"take_damage") and inside(feet_of(monster as Node2D)) \
 				and Targets.can_reach(self, global_position, monster):
 			# Not past a wall from the ring's middle (0.69.1, Targets).
 			monster.call("take_damage", damage, element)
+
+
+func _round_query() -> PhysicsShapeQueryParameters2D:
+	"""A circle round the ring, past its widest by a hurtbox's height, on the
+	hurt layer: everything whose feet could be inside it."""
+	if _query == null:
+		var circle := CircleShape2D.new()
+		circle.radius = maxf(RADII.x, RADII.y) + REACH_PAD + ROUND_MARGIN
+		_query = PhysicsShapeQueryParameters2D.new()
+		_query.shape = circle
+		_query.collision_mask = HURT_LAYER
+		_query.collide_with_areas = true
+		_query.collide_with_bodies = true
+	_query.transform = Transform2D(0.0, global_position)
+	return _query
 
 
 func inside(point: Vector2) -> bool:

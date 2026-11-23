@@ -271,7 +271,7 @@ func _run_all() -> void:
 	await _test_the_forge_sorts_its_slices_ahead()
 	await _test_less_in_the_way()
 	await _test_what_a_sweep_leaves()
-	await _test_the_orbs_share_a_list()
+	await _test_the_orbs_ask_the_physics_server()
 	await _test_every_shot_and_effect()
 	await _test_drawn_together()
 	await _test_the_bar_drawn_once()

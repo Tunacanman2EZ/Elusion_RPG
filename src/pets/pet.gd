@@ -403,18 +403,60 @@ func _find_nearest_enemy() -> Node:
 	# nearest, through walls - into the next crypt room, through a door. The
 	# ones in range are put in order and the first with a clear line wins, so
 	# a crowd costs a ray or two a tick, not one each.
-	var in_range: Array = []
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if not is_instance_valid(enemy) or not can_shoot_at(enemy):
-			continue
-		var d: float = global_position.distance_to(enemy.global_position)
-		if d <= aggro_range:
-			in_range.append([d, enemy])
-	in_range.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
-	for pair in in_range:
-		if sees(pair[1]):
-			return pair[1]
+	#
+	# ASKED OF THE PHYSICS SERVER, IN RINGS (0.175.1). This runs every tick the
+	# pet holds nothing, and it read every monster in the area: in the Big
+	# Field's 16x stress test 8,723, nearly all asleep rooms away (the owner:
+	# "healers bullets ate that budget", and the pet's search was the same
+	# walk). Now what stands within aggro_range is asked for - the hurt layer's
+	# bodies and hurtboxes - nearest ring first, so a crowd fills a ring
+	# before the next is asked.
+	if not is_inside_tree():
+		return null
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	if space == null:
+		return null
+	for share in SEEK_RING_SHARES:
+		var in_range: Array = []
+		var seen: Dictionary = {}
+		for row in space.intersect_shape(_seek_query(aggro_range * float(share)), SEEK_MOST):
+			var thing: Node = row.get("collider") as Node
+			var enemy: Node = thing if thing != null and thing.is_in_group(&"enemies") \
+				else (thing.get_parent() if thing != null else null)
+			if enemy == null or not (enemy is Node2D) or not enemy.is_in_group(&"enemies") \
+					or seen.has(enemy.get_instance_id()) or not can_shoot_at(enemy):
+				continue
+			seen[enemy.get_instance_id()] = true
+			var d: float = global_position.distance_to((enemy as Node2D).global_position)
+			if d <= aggro_range:
+				in_range.append([d, enemy])
+		in_range.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		for pair in in_range:
+			if sees(pair[1]):
+				return pair[1]
 	return null
+
+
+# The search's rings, as shares of aggro_range, and the most a ring reads.
+const SEEK_RING_SHARES := [0.35, 0.7, 1.0]
+const SEEK_MOST := 64
+# The monsters' layer - their bodies and their hurtboxes.
+const HURT_LAYER := 8
+var _seek_circle: CircleShape2D = null
+var _seek: PhysicsShapeQueryParameters2D = null
+
+
+func _seek_query(radius: float) -> PhysicsShapeQueryParameters2D:
+	if _seek == null:
+		_seek_circle = CircleShape2D.new()
+		_seek = PhysicsShapeQueryParameters2D.new()
+		_seek.shape = _seek_circle
+		_seek.collision_mask = HURT_LAYER
+		_seek.collide_with_areas = true
+		_seek.collide_with_bodies = true
+	_seek_circle.radius = maxf(radius, 1.0)
+	_seek.transform = Transform2D(0.0, global_position)
+	return _seek
 
 
 func sees(enemy: Node) -> bool:

@@ -4384,44 +4384,88 @@ func _test_what_a_sweep_leaves() -> void:
 	print("  (what a sweep leaves: done)")
 
 
-func _test_the_orbs_share_a_list() -> void:
-	section("THE ORBS SHARE A LIST (0.153.0): what the healer's orbs can hit, made once a tick")
+func _test_the_orbs_ask_the_physics_server() -> void:
+	section("THE ORBS ASK THE PHYSICS SERVER (0.175.1): what an orb touches, and what it curves toward, without reading every monster")
+	# The owner, at the Big Field's 16x stress test: "healers bullets ate that
+	# budget on my x16 test i fired a few shots and i climbed to max budget".
+	# 0.153.0's shared list read all 8,723 monsters every tick an orb flew.
 	const Orb := preload("res://src/projectiles/turretprojectile.gd")
 	var stand_in := GDScript.new()
-	stand_in.source_code = "extends Node2D\nvar aimable: bool = true\nfunc take_damage(_a: int, _e: int = 0) -> void:\n\tpass\nfunc can_be_aimed_at() -> bool:\n\treturn aimable\n"
+	stand_in.source_code = "extends Node2D\nvar aimable: bool = true\nvar taken: Array = []\n" \
+		+ "func take_damage(a: int, _e: int = 0) -> void:\n\ttaken.append(a)\nfunc can_be_aimed_at() -> bool:\n\treturn aimable\n"
 	stand_in.reload()
-	await get_tree().physics_frame
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-86000, -86000)
 	var made: Array = []
-	for i in 3:
+	for i in 4:
 		var monster := Node2D.new()
 		monster.set_script(stand_in)
 		monster.add_to_group(&"enemies")
-		add_child(monster)
-		monster.global_position = Vector2(100 + 40 * i, 100)
+		var box := Area2D.new()
+		box.name = "hurtbox"
+		box.collision_layer = Orb.HURT_LAYER
+		box.collision_mask = 0
+		box.monitoring = false
+		var shape := CollisionShape2D.new()
+		shape.name = "collisionshape2d"
+		var circle := CircleShape2D.new()
+		circle.radius = 8.0
+		shape.shape = circle
+		shape.position = Vector2(0, -10)
+		box.add_child(shape)
+		monster.add_child(box)
+		arena.add_child(monster)
+		monster.global_position = o + Vector2(100 * i, 0)
 		made.append(monster)
 	(made[1] as Node).set("aimable", false)
 	(made[2] as Node).add_to_group(&"player")
-	Orb._targets_tick = -1
-	var first: Array = Orb.targets_now(get_tree(), "player")
-	var second: Array = Orb.targets_now(get_tree(), "player")
-	var listed: bool = first.size() == 3 and first[0] == made[0] and (first[1] as Vector2).is_equal_approx(Vector2(100, 100)) \
-		and is_equal_approx(float(first[2]), Orb.DEFAULT_ENEMY_RADIUS)
+	var body_only: CharacterBody2D = _weapon_dummy(arena, o + Vector2(400, 0))
+	var orb: Area2D = (load("res://scene/projectiles/turretprojectile.tscn") as PackedScene).instantiate() as Area2D
+	orb.set("owner_group", "player")
+	orb.set("fan", true)
+	arena.add_child(orb)
+	orb.set_physics_process(false)
+	var pad: float = float(orb.get("hit_pad"))
+	var touching := func(at: Vector2) -> Variant:
+		orb.global_position = o + at
+		return orb.call("_enemy_in_reach")
 	await get_tree().physics_frame
-	var next: Array = Orb.targets_now(get_tree(), "player")
-	check("one list a tick for every orb: what can be hit (not one that cannot be aimed at, not the shooter's side), its middle and radius; made again next tick",
-		listed and is_same(first, second) and not is_same(first, next),
-		[first.size(), is_same(first, second), is_same(first, next)])
-	var reach: String = _func_body(_code_src("res://src/projectiles/turretprojectile.gd"), "func _enemy_in_reach(")
-	# _func_body() runs to the next "func": the static list that follows is not this one's.
-	if reach.find("\nstatic ") != -1:
-		reach = reach.substr(0, reach.find("\nstatic "))
-	check("  each orb reads it, and asks again before it hits (an orb before it this tick may have finished it)",
-		reach.contains("targets_now(") and reach.contains("can_be_aimed_at") and reach.contains("is_instance_valid")
-		and not reach.contains("get_nodes_in_group"))
-	for monster in made:
-		(monster as Node).queue_free()
+	await get_tree().physics_frame
+	check("an orb touching a hurtbox (its radius and hit_pad) strikes its monster, a hair past it nothing",
+		touching.call(Vector2(0, -10 - 8 - pad + 1)) == made[0] and touching.call(Vector2(0, -10 - 8 - pad - 2)) == null,
+		[touching.call(Vector2(0, -10 - 8 - pad + 1)), touching.call(Vector2(0, -10 - 8 - pad - 2))])
+	check("  not one that may not be aimed at, nor the shooter's own side",
+		touching.call(Vector2(100, -10)) == null and touching.call(Vector2(200, -10)) == null)
+	check("  a monster with no hurtbox is struck by its body",
+		touching.call(Vector2(400, 0)) == body_only)
+	orb.global_position = o + Vector2(300, -200)
+	check("homing finds the nearest it can see, out to the rings' last",
+		orb.call("_find_nearest_enemy") == made[3] and float(Orb.SEEK_RINGS[-1]) >= 400.0)
+	orb.global_position = o + Vector2(300, -1000)
+	check("  and nothing past them", orb.call("_find_nearest_enemy") == null)
+	var pet: Node2D = (load("res://scene/pets/petsniper.tscn") as PackedScene).instantiate() as Node2D
+	arena.add_child(pet)
+	pet.set_physics_process(false)
+	pet.set_process(false)
+	pet.global_position = o + Vector2(0, 150)
+	var pet_picks: Variant = pet.call("_find_nearest_enemy")
+	pet.global_position = o + Vector2(0, 900)
+	var pet_far: Variant = pet.call("_find_nearest_enemy")
+	check("a pet with nothing held asks the same, out to its aggro range: the nearest it may shoot, nothing past it",
+		pet_picks == made[0] and pet_far == null, [pet_picks, pet_far])
+	var src: String = _code_src("res://src/projectiles/turretprojectile.gd")
+	var aura_src: String = _code_src("res://src/projectiles/healaura.gd")
+	check("no orb, homing search, aura tick or pet's search reads every monster in the area",
+		not _func_body(src, "func _enemy_in_reach(").contains("get_nodes_in_group")
+		and not _func_body(src, "func _find_nearest_enemy(").contains("get_nodes_in_group")
+		and _func_body(src, "func _enemy_in_reach(").contains("intersect_shape(")
+		and not _func_body(aura_src, "func tick(").contains("get_nodes_in_group")
+		and _func_body(aura_src, "func tick(").contains("intersect_shape(")
+		and not _func_body(_code_src("res://src/pets/pet.gd"), "func _find_nearest_enemy(").contains("get_nodes_in_group"))
+	arena.queue_free()
 	await get_tree().process_frame
-	print("  (the orbs share a list: done)")
+	print("  (the orbs ask the physics server: done)")
 
 
 func _test_every_shot_and_effect() -> void:

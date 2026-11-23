@@ -745,7 +745,8 @@ func _test_fights_hit_what_they_aim_at() -> void:
 	check("a healer's orb looks for its enemy from where it is, on its first frame - from the world's origin it could swing off",
 		not _func_body(orb_code, "func _ready(").contains("_homing_target = _find_nearest_enemy()")
 		and _func_body(orb_code, "func _physics_process(").contains("_homing_target = _find_nearest_enemy()")
-		and _func_body(orb_code, "func _enemy_in_reach(").contains("can_be_aimed_at"))
+		and _func_body(orb_code, "func _enemy_in_reach(").contains("enemy_of(")
+		and _func_body(orb_code, "static func enemy_of(").contains("can_be_aimed_at"))
 	var tank_code := _func_body(_code_src("res://src/characters/tank.gd"), "func _activate_aura(")
 	check("the tank's aura pays its first tick on the way in - switching it off and on burned for free",
 		tank_code.contains("if mana < mana_drain_cost:") and tank_code.contains("mana = clamp(mana - mana_drain_cost, 0, max_mana)"))
@@ -4681,6 +4682,10 @@ func _test_the_healer_aura() -> void:
 	# ---- the burn -----------------------------------------------------------------------------
 	var in_ring: CharacterBody2D = _weapon_dummy(arena, Vector2(2000, 404))
 	var out_ring: CharacterBody2D = _weapon_dummy(arena, Vector2(2000, 470))
+	# The ring asks the physics server who stands in it (0.175.1): a body
+	# placed this frame is in its world after the next step.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	var burning: HealAura = HealAura.drop(arena, Vector2(2000, 400), 7)
 	(burning.get_node(^"picture") as AnimatedSprite2D).stop()
 	burning.heal_target = _aura_patient(arena, Vector2(2600, 2600))

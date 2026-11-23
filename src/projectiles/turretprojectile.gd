@@ -25,9 +25,10 @@
 # enemy and does nothing / vanishes."
 #
 # The fix is the system RotMG and Darza's Dominion use: forget the physics
-# engine. Every physics frame we measure the orb's distance to each live enemy's
-# HURTBOX centre and, the moment it's within `hurtbox radius + hit_pad`, we deal
-# the damage and despawn. No collision layers, no monitoring flags, no signal
+# engine's signals. Every physics frame we ask what HURTBOX is within hit_pad
+# of the orb (since 0.175.1 the physics server is asked - HIT DETECTION below;
+# it was every monster's distance, measured here) and, the moment one is, we
+# deal the damage and despawn. No collision layers, no monitoring flags, no signal
 # timing — just geometry we control. `collision_mask` is zeroed and monitoring is
 # turned off so the physics engine can NEVER despawn this orb early; the only
 # things that end it are a hit or its lifetime.
@@ -169,10 +170,6 @@ var doubled: bool = false
 # =============================================================================
 # STATE
 # =============================================================================
-
-# fallback reach (px) when an enemy exposes no readable hurtbox shape — a slime's
-# hurtbox is radius 8, so this covers a body of roughly that size on its own.
-const DEFAULT_ENEMY_RADIUS: float = 10.0
 
 # accumulated lifetime — triggers queue_free at max_lifetime.
 var _lifetime: float = 0.0
@@ -341,70 +338,88 @@ func _home(delta: float, heading: Vector2) -> Vector2:
 
 
 # =============================================================================
-# HIT DETECTION  (pure geometry — no physics engine)
+# HIT DETECTION  (the hurtboxes' own shapes, found by the physics server)
 # =============================================================================
+# ASKED OF THE PHYSICS SERVER, NOT EVERY MONSTER (0.175.1). The owner, at the
+# Big Field's 16x stress test: "healers bullets ate that budget on my x16 test
+# i fired a few shots and i climbed to max budget" - physics 28 ms a tick
+# against 16.67. The first orb of a tick listed every monster in the area to
+# test against (0.153.0's shared list), and every new orb walked them all
+# again for its homing target: 8,723 monsters, 8,182 of them asleep a room or
+# more away, read every tick. Now each orb asks the physics server what stands
+# where it is - one small query, whatever the crowd - and homing asks it in
+# rings out from the orb. The rule is the same: touching a hurtbox (or a
+# monster's own body, for one with none) within hit_pad. The engine still
+# never detects or despawns the orb itself; this is a question it is asked.
+# A sleeper or a dozer far off the screen is out of the physics world
+# (enemysleeper.gd), so nothing flies into one and wakes it from out of sight.
+
+# The hurt layer: every monster's hurtbox (and a stand-in body) is on it.
+const HURT_LAYER := 8
+# Rings an orb looks out in for something to curve toward, nearest first;
+# the last is about as far as it flies.
+const SEEK_RINGS := [96.0, 240.0, 480.0]
+const SEEK_MOST := 48
+static var _reach_shape: CircleShape2D = null
+static var _reach_query: PhysicsShapeQueryParameters2D = null
+
+
+static func _query(at: Vector2, radius: float) -> PhysicsShapeQueryParameters2D:
+	"""The one query every orb shares: a circle at `at`, against the hurt
+	layer's hurtboxes and bodies."""
+	if _reach_query == null:
+		_reach_shape = CircleShape2D.new()
+		_reach_query = PhysicsShapeQueryParameters2D.new()
+		_reach_query.shape = _reach_shape
+		_reach_query.collision_mask = HURT_LAYER
+		_reach_query.collide_with_areas = true
+		_reach_query.collide_with_bodies = true
+	_reach_shape.radius = maxf(radius, 0.5)
+	_reach_query.transform = Transform2D(0.0, at)
+	return _reach_query
+
+
+static func enemy_of(thing: Object, not_in: String) -> Node2D:
+	"""The monster a hurtbox or body the physics server found belongs to -
+	itself if it is in "enemies", else its parent if that is - or null when it
+	is nobody's an orb fired by `not_in` may hit."""
+	var node: Node = thing as Node
+	if node == null:
+		return null
+	if not node.is_in_group(&"enemies"):
+		node = node.get_parent()
+	if node == null or not (node is Node2D) or not node.is_in_group(&"enemies"):
+		return null
+	# never damage our own team (defensive - enemies are not in "player").
+	if node.is_in_group(not_in) or not node.has_method("take_damage") or node.is_queued_for_deletion():
+		return null
+	# A CAGED BOSS OR A CORPSE IS NOT IN REACH (0.56.0): its take_damage()
+	# refuses, and the orb was spent on it.
+	if node.has_method("can_be_aimed_at") and not node.call("can_be_aimed_at"):
+		return null
+	return node as Node2D
+
 
 func _enemy_in_reach() -> Node2D:
-	# the first live enemy whose hurtbox the orb is now touching. checks EVERY
-	# enemy, not just the latched one, so a weaving orb still connects with a slime
-	# that drifts into its path. distance is measured to the enemy's real hurtbox
-	# centre and compared against that hurtbox's radius plus hit_pad.
-	#
-	# ONE LIST A TICK FOR EVERY ORB (0.153.0, targets_now()). Each orb went
-	# through every monster in the area on every tick - ten orbs a second, 35
-	# in the air, and in the Endless 256 swarm stand-ins in "enemies" - for 4.4
-	# ms of physics a frame with nothing to hit (the container; 0.6 with the
-	# healer not shooting). Now the first orb of a tick lists what can be hit,
-	# with each one's hurtbox centre and radius, and the rest read the list.
-	var list: Array = targets_now(get_tree(), owner_group)
-	for i in range(0, list.size(), 3):
-		var enemy: Node2D = list[i]
-		var reach: float = float(list[i + 2]) + hit_pad
-		if global_position.distance_squared_to(list[i + 1]) <= reach * reach:
-			# Still there and still aimable: an orb earlier this tick may
-			# have finished it.
-			if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
-				continue
-			if enemy.has_method("can_be_aimed_at") and not enemy.call("can_be_aimed_at"):
-				continue
-			return enemy
+	# the first live enemy whose hurtbox the orb is now touching - any, not just
+	# the latched one, so a weaving orb still connects with a slime that drifts
+	# into its path. Its hurtbox's own shape within hit_pad of the orb.
+	if not is_inside_tree():
+		return null
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	if space == null:
+		return null
+	for row in space.intersect_shape(_query(global_position, hit_pad), 8):
+		var thing: Object = row.get("collider")
+		var enemy: Node2D = enemy_of(thing, owner_group)
+		if enemy == null:
+			continue
+		# A monster's own body counts only for one with no hurtbox: the
+		# hurtbox is where it is hit (its feet are lower).
+		if thing is PhysicsBody2D and enemy.has_node(^"hurtbox"):
+			continue
+		return enemy
 	return null
-
-
-static var _targets_tick: int = -1
-static var _targets_for: String = ""
-static var _targets: Array = []
-
-
-static func targets_now(tree: SceneTree, not_in: String) -> Array:
-	"""What an orb fired by `not_in` can hit this physics tick: a flat list,
-	three entries a target - the node, its hurtbox centre, its hurtbox radius -
-	made once a tick and shared by every orb."""
-	var tick: int = Engine.get_physics_frames()
-	if tick == _targets_tick and not_in == _targets_for:
-		return _targets
-	_targets_tick = tick
-	_targets_for = not_in
-	_targets = []
-	if tree == null:
-		return _targets
-	for node in tree.get_nodes_in_group("enemies"):
-		if not (node is Node2D) or not is_instance_valid(node):
-			continue
-		var enemy: Node2D = node as Node2D
-		# never damage our own team (defensive — enemies aren't in "player").
-		if enemy.is_in_group(not_in):
-			continue
-		if not enemy.has_method("take_damage"):
-			continue
-		# A CAGED BOSS OR A CORPSE IS NOT IN REACH (0.56.0): its take_damage()
-		# refuses, and the orb was spent on it.
-		if enemy.has_method("can_be_aimed_at") and not enemy.call("can_be_aimed_at"):
-			continue
-		_targets.append(enemy)
-		_targets.append(_enemy_hit_point(enemy))
-		_targets.append(_enemy_radius(enemy))
-	return _targets
 
 
 static func _enemy_hit_point(enemy: Node2D) -> Vector2:
@@ -417,39 +432,31 @@ static func _enemy_hit_point(enemy: Node2D) -> Vector2:
 	return enemy.global_position
 
 
-static func _enemy_radius(enemy: Node2D) -> float:
-	# the enemy's hurtbox radius in world pixels, read live from its shape and
-	# scaled by the node's global scale. Circle and Capsule shapes both expose a
-	# `radius`. anything without one falls back to DEFAULT_ENEMY_RADIUS.
-	var shape_node: Node = enemy.get_node_or_null("hurtbox/collisionshape2d")
-	if shape_node is CollisionShape2D:
-		var shape: Shape2D = (shape_node as CollisionShape2D).shape
-		if shape != null and "radius" in shape:
-			var scale_x: float = absf((shape_node as Node2D).global_scale.x)
-			return float(shape.radius) * scale_x
-	return DEFAULT_ENEMY_RADIUS
-
-
 func _find_nearest_enemy() -> Node2D:
-	# nearest live enemy by squared distance to its hurtbox, chosen once on spawn.
-	# no aggro-range gate (unlike the pet's version) — the player already aimed the
-	# shot, so the orb just needs something to curve toward.
-	var nearest: Node2D = null
-	var nearest_d: float = INF
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if not (node is Node2D) or not is_instance_valid(node):
-			continue
-		var enemy: Node2D = node as Node2D
-		var d: float = global_position.distance_squared_to(_enemy_hit_point(enemy))
-		if d >= nearest_d:
-			continue
-		# NOT ONE BEHIND A WALL, or asleep and unseen in another room (0.69.1):
-		# the orb would curve off into the masonry after it.
-		if not enemy.is_visible_in_tree() or not Targets.can_reach(self, global_position, enemy):
-			continue
-		nearest_d = d
-		nearest = enemy
-	return nearest
+	# nearest live enemy by distance to its hurtbox, chosen once on spawn. no
+	# aggro-range gate (unlike the pet's version) - the player already aimed
+	# the shot, so the orb just needs something to curve toward: the nearest
+	# in the first of SEEK_RINGS that holds one it can see.
+	if not is_inside_tree():
+		return null
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	if space == null:
+		return null
+	for ring in SEEK_RINGS:
+		var found: Array = []
+		for row in space.intersect_shape(_query(global_position, float(ring)), SEEK_MOST):
+			var enemy: Node2D = enemy_of(row.get("collider"), owner_group)
+			# Asleep and unseen in another room (0.69.1).
+			if enemy == null or not enemy.is_visible_in_tree():
+				continue
+			found.append([global_position.distance_squared_to(_enemy_hit_point(enemy)), enemy])
+		found.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		for pair in found:
+			# NOT ONE BEHIND A WALL (0.69.1): the orb would curve off into the
+			# masonry after it.
+			if Targets.can_reach(self, global_position, pair[1]):
+				return pair[1]
+	return null
 
 
 # =============================================================================
