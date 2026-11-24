@@ -574,6 +574,33 @@ var _unpainted: Array = []
 var _map_painting: bool = false
 var brick_layer: Node2D = null   # the still bricks, inside brick_cache
 var brick_cache: SubViewport = null
+# ONLY WHAT CHANGED IS DRAWN AGAIN (0.176.0, the owner: "lets fix" - every
+# minigame measured, zz/mgmeasure): a struck or broken brick drew the whole
+# picture again, every brick in it - about 1,050 draws in that frame on a
+# map of 460 bricks, near three times that on the biggest (1,350). Now the
+# picture is kept between draws (CLEAR_MODE_NEVER) and only the box round
+# what changed (`_dirty_box`, each brick's place grown by DIRTY_MARGIN for
+# its shadow and glows) is drawn again: `brick_eraser` clears the box, and
+# the bricks that reach into it - put on PATCH_LAYER for that draw, the
+# picture drawing only that layer - draw again inside it (brick_layer clips
+# to the box), in their order, so the box comes out as the whole picture
+# would. A new map, or a picture let go, draws it all (`_dirty_whole`).
+const PATCH_LAYER := 2
+const DIRTY_MARGIN := 8.0
+# The eraser writes nothing at all - not even alpha - over the box.
+const ERASER_SHADER := """shader_type canvas_item;
+render_mode blend_disabled, unshaded;
+void fragment() {
+	COLOR = vec4(0.0);
+}
+"""
+var brick_eraser: Node2D = null
+var _dirty_box := Rect2()
+var _dirty_whole: bool = false
+var _erase_box := Rect2()
+var _patched: Array = []
+# How many bricks the last drawing of the picture drew again (for the suite).
+var patched_last: int = 0
 var brick_pic: Sprite2D = null
 var brick_live: Node2D = null
 # the stone the bricks are set in, drawn once a map (0.166.2), and the floor
@@ -744,10 +771,22 @@ func _ready() -> void:
 	brick_cache.world_2d = World2D.new()
 	brick_cache.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+	brick_cache.render_target_clear_mode = SubViewport.CLEAR_MODE_NEVER
 	add_child(brick_cache)
+	brick_eraser = Node2D.new()
+	brick_eraser.name = "brick_eraser"
+	brick_eraser.visibility_layer = 1 | PATCH_LAYER
+	var clear_it := ShaderMaterial.new()
+	clear_it.shader = Shader.new()
+	clear_it.shader.code = ERASER_SHADER
+	brick_eraser.material = clear_it
+	brick_eraser.draw.connect(_paint_eraser)
+	brick_cache.add_child(brick_eraser)
 	brick_layer = Node2D.new()
 	brick_layer.name = "brick_layer"
+	brick_layer.visibility_layer = 1 | PATCH_LAYER
 	brick_cache.add_child(brick_layer)
+	_dirty_whole = true
 	brick_pic = Sprite2D.new()
 	brick_pic.name = "brick_pic"
 	brick_pic.centered = false
@@ -4268,11 +4307,12 @@ func sync_bricks() -> void:
 	seen), hidden once broken, drawn again only when _brick_look() says its
 	look has changed. A brick struck is drawn again at once; the rest are
 	looked at half each frame, so a kind always moving is drawn every other
-	frame. What moves (drifters, kites, buoys) is put in place every frame.
-	Pictures whose bricks have gone (a new map, the blight's dead) are let
-	go. THE STILL BRICKS ARE ONE PICTURE: the cache is drawn again only on
-	a frame one of its bricks changed; a brick drawn every look shows its
-	twin (k["twin"], in brick_live) instead."""
+	frame (a still one, a quarter each frame). What moves (drifters, kites,
+	buoys) is put in place every frame. Pictures whose bricks have gone (a
+	new map, the blight's dead) are let go. THE STILL BRICKS ARE ONE
+	PICTURE: the cache is drawn again only on a frame one of its bricks
+	changed (only where it changed, _draw_bricks_again()); a brick drawn
+	every look shows its twin (k["twin"], in brick_live) instead."""
 	redrawn = 0
 	if brick_layer == null:
 		return
@@ -4285,6 +4325,7 @@ func sync_bricks() -> void:
 	var glow: bool = pulling or _glow_last
 	var seen: int = 0
 	var half: int = _sync_n % 2
+	var quarter: int = _sync_n % 4
 	var dirty: bool = false
 	for k in bricks:
 		var node: Node2D = k.get("node")
@@ -4299,9 +4340,11 @@ func sync_bricks() -> void:
 			k["node"] = node
 			k["look"] = -2
 			k["half"] = seen % 2
+			k["quarter"] = seen % 4
 			k["shown"] = true
 			k["live"] = false
 			dirty = true
+			_dirty_whole = true
 		seen += 1
 		if not k["shown"] and k["hp"] <= 0:
 			# long gone: nothing to look at
@@ -4309,14 +4352,18 @@ func sync_bricks() -> void:
 		if k["hp"] <= 0 and not NEVER_BREAKS.has(k["kind"]):
 			if k["shown"]:
 				k["shown"] = false
-				dirty = dirty or node.visible
+				if node.visible:
+					dirty = true
+					_mark(k, node)
 				node.visible = false
 				if k.has("twin"):
 					(k["twin"] as Node2D).visible = false
 			continue
 		if not k["shown"]:
 			k["shown"] = true
-			dirty = _show_brick(k, node) or dirty
+			if _show_brick(k, node):
+				dirty = true
+				_mark(k, node)
 		if k["flash"] > 0.0:
 			# struck: its twin flashes over it; the picture keeps it under
 			k["look"] = -1
@@ -4325,17 +4372,25 @@ func sync_bricks() -> void:
 			(k["twin"] as Node2D).queue_redraw()
 			redrawn += 1
 			continue
-		if k["half"] != half and k["look"] != -2:
+		# A brick drawn every look (its twin) is looked at every other frame;
+		# a still one every fourth (0.176.0: the bricks' turn was 1.3 ms of
+		# each frame here, nearly all of it still bricks found unchanged).
+		if k["look"] != -2 and (k["half"] != half if k["live"] else k["quarter"] != quarter):
 			continue
 		var at: Vector2 = (k["rect"] as Rect2).position
 		if node.position != at:
+			if not k["live"]:
+				dirty = true
+				_mark(k, node)
 			node.position = at
-			dirty = dirty or not k["live"]
+			if not k["live"]:
+				_mark(k, node)
 		var look: int = _brick_look(k, glow)
 		var live: bool = look == -1 or _whole_twin(k)
 		if live and not k["live"]:
 			_brick_live(k, node, true, false)
 			dirty = true
+			_mark(k, node)
 		elif live and k.get("under", false):
 			# drawn every look for longer than a blow: only its shadow stays
 			# in the picture
@@ -4344,8 +4399,11 @@ func sync_bricks() -> void:
 			node.queue_redraw()
 			(k["twin"] as Node2D).queue_redraw()
 			dirty = true
+			_mark(k, node)
 		elif not live and k["live"]:
-			dirty = _brick_still(k, node) or dirty
+			if _brick_still(k, node):
+				dirty = true
+				_mark(k, node)
 		if look == -1 or look != k["look"]:
 			k["look"] = look
 			if live:
@@ -4355,6 +4413,7 @@ func sync_bricks() -> void:
 				k["cached"] = look
 				node.queue_redraw()
 				dirty = true
+				_mark(k, node)
 				redrawn += 1
 	for list in [movers, buoys]:
 		for k in list:
@@ -4368,6 +4427,7 @@ func sync_bricks() -> void:
 				if not k["live"]:
 					_brick_live(k, node, true, false)
 				k["under"] = false
+				_mark(k, node)
 				node.visible = false
 				(k["twin"] as Node2D).queue_redraw()
 				dirty = true
@@ -4387,7 +4447,9 @@ func sync_bricks() -> void:
 			for n in (layer as Node).get_children():
 				if not keep.has(n) and not n.is_queued_for_deletion():
 					n.queue_free()
-					dirty = dirty or layer == brick_layer
+					if layer == brick_layer:
+						dirty = true
+						_dirty_whole = true
 	if not _unpainted.is_empty():
 		# A MAP'S BRICKS ARE PAINTED A FEW AT A TIME: the next FIRST_PAINTS
 		var n: int = mini(FIRST_PAINTS, _unpainted.size())
@@ -4399,13 +4461,63 @@ func sync_bricks() -> void:
 				node.queue_redraw()
 		_unpainted = _unpainted.slice(n)
 		dirty = true
+		_dirty_whole = true
 	if _map_painting:
 		# a map's first picture is shown whole, once all its bricks are in
 		_map_painting = not _unpainted.is_empty()
 		brick_pic.visible = brick_pic.visible and not _map_painting
 		brick_live.visible = brick_pic.visible
 	if dirty and not _map_painting:
-		brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_draw_bricks_again()
+
+
+func _mark(k: Dictionary, node: Node2D) -> void:
+	"""What `k`'s picture covers where its node stands, into the box to draw
+	again (ONLY WHAT CHANGED IS DRAWN AGAIN)."""
+	var box := Rect2(node.position, (k["rect"] as Rect2).size).grow(DIRTY_MARGIN)
+	_dirty_box = box if _dirty_box.size == Vector2.ZERO else _dirty_box.merge(box)
+
+
+func _draw_bricks_again() -> void:
+	"""The picture drawn again this frame: all of it, or only the box round
+	what changed, with only the bricks that reach into it."""
+	for node in _patched:
+		if is_instance_valid(node):
+			(node as Node2D).visibility_layer = 1
+	_patched.clear()
+	var whole_view := Rect2(Vector2.ZERO, VIEW)
+	# On whole pixels, so the eraser clears exactly what the clip lets draw.
+	var from: Vector2 = _dirty_box.position.floor()
+	var box: Rect2 = Rect2(from, (_dirty_box.end.ceil() - from)).intersection(whole_view)
+	var whole: bool = _dirty_whole or box.size == Vector2.ZERO
+	if whole:
+		box = whole_view
+		patched_last = brick_layer.get_child_count()
+		brick_cache.canvas_cull_mask = 0xFFFFFFFF
+	else:
+		for k in bricks:
+			var node: Node2D = k.get("node")
+			if node == null or not node.visible:
+				continue
+			if Rect2(node.position, (k["rect"] as Rect2).size).grow(DIRTY_MARGIN).intersects(box):
+				node.visibility_layer = 1 | PATCH_LAYER
+				_patched.append(node)
+		patched_last = _patched.size()
+		brick_cache.canvas_cull_mask = PATCH_LAYER
+	var layer_item: RID = brick_layer.get_canvas_item()
+	RenderingServer.canvas_item_set_custom_rect(layer_item, true, box)
+	RenderingServer.canvas_item_set_clip(layer_item, true)
+	_erase_box = box
+	brick_eraser.queue_redraw()
+	_dirty_box = Rect2()
+	_dirty_whole = false
+	brick_cache.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+func _paint_eraser() -> void:
+	"""The box about to be drawn again, cleared to nothing first."""
+	if _erase_box.size != Vector2.ZERO:
+		brick_eraser.draw_rect(_erase_box, Color(0, 0, 0, 0))
 
 
 func _show_brick(k: Dictionary, node: Node2D) -> bool:

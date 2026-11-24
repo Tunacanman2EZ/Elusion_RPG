@@ -11,7 +11,11 @@ extends Node
 #   holds while it is measured and none reaches you; an orb is the bullet
 #   field's. ms each is a shot in the air; fits is how many in the air.
 # - A LIT AURA (0.174.4, in effects()): more party tanks round you with
-#   theirs lit, counted like a shot - ms each is one lit, fits how many.
+#   theirs lit, counted like a shot - ms each is one lit, fits how many. And
+#   since 0.176.0 a LIT BEAM the same way: party healers holding the Gold
+#   Staff's laser (remoteattacks.gd "laser"), each shining for the sweep.
+# - A PET'S SHOT (0.176.0, in shots()): each pet's own, held in the air as a
+#   monster's is - they look for monsters as they fly (turretprojectile.gd).
 # - AN EFFECT (effects()): more of it a second. Another player's attack as
 #   your screen draws it (remoteattacks.gd), a blow's sparks, a cast sparkle,
 #   a hit with its number on one of CROWD monsters already after you, and a
@@ -26,6 +30,7 @@ const GmSpawner := preload("res://src/world/gmspawner.gd")
 const StrikeFx := preload("res://src/shared/strikefx.gd")
 const GROUP := &"stress_shot"
 const P := "res://scene/projectiles/"
+const PET_SHOTS := "res://scene/pets/petprojectiles/"
 # The crowd a hit or a death is done to: the plain archer, a monster of the
 # middle of the sheet.
 const CROWD_PATH := "res://scene/enemy/bushsniper.tscn"
@@ -58,6 +63,8 @@ const AURA_MOST := 24
 const RemotePlayerScript := preload("res://src/characters/remoteplayer.gd")
 # The party tanks' made-up ids: below any real account's.
 const AURA_ID_FROM := -1000
+# How far a party healer's beam shines out (healerlaser.gd REACH).
+const BEAM_REACH := 280.0
 
 var target: Dictionary = {}
 var rate: float = 0.0
@@ -73,6 +80,10 @@ static func shots() -> Array:
 			["Small slime arrow", "poisonarrow"], ["Large slime acid ball", "poisonball"],
 			["Fire sprite orb", "fireprojectile"], ["Electric sprite orb", "magicprojectile"]]:
 		out.append({"label": "Shot: " + str(pair[0]), "shot": P + str(pair[1]) + ".tscn", "kind": -2,
+			"step": SHOT_STEP, "most": SHOT_MOST})
+	for pair in [["Pet arrow (the archer's)", "petarrow"], ["Pet fire orb", "petfireprojectile"],
+			["Pet electric orb", "petmagicprojectile"], ["Pet acid ball (the slimes')", "petpoisonball"]]:
+		out.append({"label": "Shot: " + str(pair[0]), "shot": PET_SHOTS + str(pair[1]) + ".tscn", "kind": -2,
 			"step": SHOT_STEP, "most": SHOT_MOST})
 	out.append({"label": "Shot: bullet orb", "orb": true, "big": false, "kind": -2, "step": ORB_STEP, "most": ORB_MOST})
 	out.append({"label": "Shot: big bullet orb", "orb": true, "big": true, "kind": -2, "step": ORB_STEP, "most": ORB_MOST})
@@ -90,6 +101,8 @@ static func effects() -> Array:
 	# thrown so many a second but stays lit, so it is counted like a shot in
 	# the air: how many party tanks round you have theirs lit.
 	out.append({"label": "Effect: party tank aura", "aura": true, "kind": -3, "step": AURA_STEP, "most": AURA_MOST})
+	# A LIT BEAM (0.176.0): a party healer's Gold Staff laser, held.
+	out.append({"label": "Effect: party healer laser", "beam": true, "kind": -3, "step": AURA_STEP, "most": AURA_MOST})
 	out.append({"label": "Effect: blow sparks", "rate": "sparks", "kind": -3, "step": RATE_STEP * 3, "most": RATE_MOST * 3})
 	out.append({"label": "Effect: cast sparkle", "rate": "cast", "kind": -3, "step": RATE_STEP, "most": RATE_MOST})
 	out.append({"label": "Effect: hit and its number", "rate": "hit", "kind": -3, "step": RATE_STEP * 3,
@@ -101,11 +114,15 @@ static func effects() -> Array:
 static func is_shot(swept: Dictionary) -> bool:
 	"""Counted by how many are out at once: a shot in the air, an orb, a lit
 	aura."""
-	return swept.has("shot") or bool(swept.get("orb", false)) or is_aura(swept)
+	return swept.has("shot") or bool(swept.get("orb", false)) or is_aura(swept) or is_beam(swept)
 
 
 static func is_aura(swept: Dictionary) -> bool:
 	return bool(swept.get("aura", false))
+
+
+static func is_beam(swept: Dictionary) -> bool:
+	return bool(swept.get("beam", false))
 
 
 static func is_rate(swept: Dictionary) -> bool:
@@ -128,6 +145,8 @@ static func make_shots(tree: SceneTree, swept: Dictionary, count: int, around: V
 		return 0
 	if is_aura(swept):
 		return make_auras(tree, count, around, rng)
+	if is_beam(swept):
+		return make_beams(tree, count, around, rng)
 	if bool(swept.get("orb", false)):
 		var zone: BulletZone = tree.get_first_node_in_group(BulletZone.GROUP) as BulletZone
 		if zone == null or zone.field == null:
@@ -184,6 +203,38 @@ static func make_auras(tree: SceneTree, count: int, around: Vector2, rng: Random
 		tank.call("set_motion", "idledown", ["ring", "firering"], "")
 		# Standing: nothing comes from the presence server to play back.
 		tank.set_process(false)
+		made += 1
+	return made
+
+
+static func make_beams(tree: SceneTree, count: int, around: Vector2, rng: RandomNumberGenerator) -> int:
+	"""`count` more party healers round `around`, each a picture of another
+	player shining the Gold Staff's beam across the floor (remoteattacks.gd
+	"laser", healerlaser.gd), held lit for the sweep - its picture would go
+	SHOW_SECONDS after the last tick its healer told. In GROUP, so clear()
+	takes them. None where attack pictures are switched off."""
+	var player: Node = tree.get_first_node_in_group(&"player")
+	var holder: Node = player.get_parent() if player != null and player.get_parent() != null else tree.current_scene
+	var made: int = 0
+	for _n in count:
+		var n_out: int = tree.get_nodes_in_group(GROUP).size()
+		var healer: Node2D = RemotePlayerScript.new()
+		healer.add_to_group(GROUP)
+		holder.add_child(healer)
+		healer.call("set_identity", {"id": AURA_ID_FROM - n_out, "name": "Healer %d" % (n_out + 1), "cls": "healer",
+			"lvl": 20, "v": 2})
+		var at: Vector2 = spot(rng, around)
+		healer.call("place", at)
+		healer.global_position = at
+		healer.reset_physics_interpolation()
+		healer.call("set_motion", "idledown", [], "")
+		healer.set_process(false)
+		var to: Vector2 = at + (at - around).normalized() * BEAM_REACH
+		var shone: Array = RemoteAttacks.fire(healer, ["laser", 0, at.x, at.y, to.x, to.y, 0, 0])
+		if shone.is_empty():
+			healer.queue_free()
+			continue
+		(shone[0] as Node).set("_show_left", HELD_LIFE)
 		made += 1
 	return made
 

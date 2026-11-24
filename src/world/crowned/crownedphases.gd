@@ -55,6 +55,7 @@ const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SwarmScript := preload("res://src/world/endless/swarm.gd")
 const EndlessRunScript := preload("res://src/world/endless/endlessrun.gd")
 const LandsScript := preload("res://src/world/descent/descentlands.gd")
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 
 const SEALING_FROM := 0.75
 const TRAP_FROM := 0.5
@@ -105,6 +106,7 @@ const HORDE_HP := 90.0
 const HORDE_SPEED := 85.0
 const HORDE_TOUCH := 9
 const HORDE_RECOLOUR := 4.0
+const HORDE_STAND_INS_A_TICK := 24
 const TRAP_LASER_GAP := 5.0
 const TRAP_LASER_FIRST := 2.0
 const LASER_SHAPES := ["wheel", "sweep", "cage", "pulse"]
@@ -181,6 +183,8 @@ var lava_depth: int = 0
 var _taken: Dictionary = {}
 var _flooded: Dictionary = {}
 var swarm: Node2D = null
+# The Tear's shapes, drawn in one call (_draw()).
+var _tear_batch: QuadBatch = null
 # Tear pieces: Vector2i -> {"t": seconds, "open": bool}.
 var tears: Dictionary = {}
 var falls: int = 0
@@ -251,7 +255,16 @@ func step(delta: float, share: float) -> void:
 	var rift: Node = fight.get("rift") if fight != null else null
 	if rift != null:
 		rift.set("solid", solid_floor())
-	queue_redraw()
+	redraw_floor()
+
+
+func redraw_floor() -> void:
+	"""Drawn again - the Tear's pieces every FLOOR_EVERY frames: they lie on
+	the floor, as the arenas' floors do (quadbatch.gd turn(); 0.176.0: up to
+	twenty pieces were about a millisecond a frame in the container, every
+	frame)."""
+	if phase != 4 or tears.is_empty() or QuadBatch.turn(self, QuadBatch.FLOOR_EVERY):
+		queue_redraw()
 
 
 func solid_floor() -> Rect2:
@@ -790,6 +803,9 @@ func _make_horde() -> void:
 	swarm.set("touch_damage", HORDE_TOUCH)
 	swarm.set("element", Element.Type.DARK)
 	swarm.call("draw_in_front_of", room.position.y - BACK_WALL_GAP)
+	# Its stand-ins a few a tick (0.176.0, swarm.gd proxies_a_tick): all 256
+	# made as the Trap began were most of the fight's worst frame.
+	swarm.set("proxies_a_tick", HORDE_STAND_INS_A_TICK)
 	var holder: Node = null
 	if fight != null and fight.get_parent() != null:
 		holder = fight.get_parent().get_node_or_null("ysortworld/groundeffects")
@@ -1028,6 +1044,16 @@ func _draw() -> void:
 				continue
 			var inner: Rect2 = dry_rect(ring_depth)
 			draw_rect(inner, Color(1.0, 0.45, 0.1, (0.35 + 0.4 * pulse) if warn else 0.5), false, 4.0 if warn else 3.0)
+	if tears.is_empty():
+		return
+	# THE TEAR IN ONE CALL (0.176.0, quadbatch.gd): every crack, rim and
+	# star of every piece - each was a draw of its own, up to twelve a piece
+	# and twenty pieces, the fight's most draws (214 in the container's
+	# measure, zz/crownedmeasure). The same shapes, in one triangle list.
+	if _tear_batch == null:
+		_tear_batch = QuadBatch.new()
+	var batch: QuadBatch = _tear_batch
+	batch.begin()
 	for piece in tears.keys():
 		var held: Dictionary = tears[piece]
 		var area: Rect2 = piece_rect(piece)
@@ -1036,27 +1062,55 @@ func _draw() -> void:
 			var k: float = clampf(t / TEAR_WARN, 0.0, 1.0)
 			var shake := Vector2(sin(t * 40.0), cos(t * 37.0)) * 1.5 * k
 			var pulse: float = 0.5 + 0.5 * sin(t * 14.0)
-			draw_rect(Rect2(area.position + shake, area.size), Color(0.6, 0.3, 1.0, 0.1 + 0.15 * k), true)
-			draw_rect(Rect2(area.position + shake, area.size), Color(0.75, 0.5, 1.0, 0.3 + 0.5 * k * pulse), false, 2.0)
-			_paint_rng_cracks(area, int(held["seed"]), k, shake)
+			var shaken := Rect2(area.position + shake, area.size)
+			_fill(batch, shaken, Color(0.6, 0.3, 1.0, 0.1 + 0.15 * k))
+			_outline(batch, shaken, Color(0.75, 0.5, 1.0, 0.3 + 0.5 * k * pulse), 2.0)
+			_paint_rng_cracks(batch, area, int(held["seed"]), k, shake)
 		else:
 			var drop: float = clampf((t - TEAR_WARN) / TEAR_DROP, 0.0, 1.0)
 			if drop < 1.0:
 				var shrink: float = 1.0 - drop
-				var falling := Rect2(area.get_center() - area.size * shrink / 2.0, area.size * shrink)
-				draw_rect(falling, Color(0.16, 0.13, 0.2, 1.0 - drop * 0.8))
+				_fill(batch, Rect2(area.get_center() - area.size * shrink / 2.0, area.size * shrink),
+					Color(0.16, 0.13, 0.2, 1.0 - drop * 0.8))
 			# The rift's light at the rim, and its stars inside.
 			for ring in 4:
-				draw_rect(area.grow(-2.0 - 3.0 * float(ring)), Color(0.7, 0.45, 1.0, 0.4 - 0.09 * float(ring)), false, 3.0)
-			draw_rect(area, Color(0.9, 0.75, 1.0, 0.95), false, 2.0)
+				_outline(batch, area.grow(-2.0 - 3.0 * float(ring)), Color(0.7, 0.45, 1.0, 0.4 - 0.09 * float(ring)), 3.0)
+			_outline(batch, area, Color(0.9, 0.75, 1.0, 0.95), 2.0)
 			var seed_value: int = int(held["seed"])
 			for k in 6:
 				var spot := Vector2(fmod(float((seed_value >> k) % 61) + t * (6.0 + float(k)), area.size.x - 8.0) + 4.0,
 					fmod(float((seed_value >> (k + 3)) % 59) + float(k) * 9.0, area.size.y - 8.0) + 4.0)
-				draw_circle(area.position + spot, 1.4, Color(1.0, 0.9, 1.0, 0.5 + 0.5 * sin(t * 5.0 + float(k))))
+				batch.oval(area.position + spot, 1.4, 1.4, Color(1.0, 0.9, 1.0, 0.5 + 0.5 * sin(t * 5.0 + float(k))))
+	batch.end(self)
 
 
-func _paint_rng_cracks(area: Rect2, seed_value: int, k: float, shake: Vector2) -> void:
+static func _fill(batch: QuadBatch, area: Rect2, colour: Color) -> void:
+	"""draw_rect(area, colour), into `batch`."""
+	batch.quad(area.position, Vector2(area.end.x, area.position.y), area.end, Vector2(area.position.x, area.end.y), colour)
+
+
+static func _outline(batch: QuadBatch, area: Rect2, colour: Color, width: float) -> void:
+	"""draw_rect(area, colour, false, width) into `batch`: four bands on the
+	edges, `width` wide across them, the corners covered once."""
+	var h: float = width * 0.5
+	var outer: Rect2 = area.grow(h)
+	var inner: Rect2 = area.grow(-h)
+	_fill(batch, Rect2(outer.position, Vector2(outer.size.x, width)), colour)
+	_fill(batch, Rect2(Vector2(outer.position.x, inner.end.y), Vector2(outer.size.x, width)), colour)
+	_fill(batch, Rect2(Vector2(outer.position.x, inner.position.y), Vector2(width, inner.size.y)), colour)
+	_fill(batch, Rect2(Vector2(inner.end.x, inner.position.y), Vector2(width, inner.size.y)), colour)
+
+
+static func _line(batch: QuadBatch, from: Vector2, to: Vector2, colour: Color, width: float) -> void:
+	"""draw_line(from, to, colour, width) into `batch`."""
+	var along: Vector2 = to - from
+	if along.length_squared() < 0.0001:
+		return
+	var side: Vector2 = along.normalized().orthogonal() * (width * 0.5)
+	batch.quad(from + side, to + side, to - side, from - side, colour)
+
+
+func _paint_rng_cracks(batch: QuadBatch, area: Rect2, seed_value: int, k: float, shake: Vector2) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var middle: Vector2 = area.get_center() + shake
@@ -1068,5 +1122,7 @@ func _paint_rng_cracks(area: Rect2, seed_value: int, k: float, shake: Vector2) -
 		for q in steps:
 			heading += rng.randf_range(-0.6, 0.6)
 			line.append(line[q] + Vector2.from_angle(heading) * reach / float(steps))
-		draw_polyline(line, Color(0.05, 0.02, 0.08, 0.9), 3.0)
-		draw_polyline(line, Color(0.85, 0.6, 1.0, 0.85 * k), 1.5)
+		for q in steps:
+			_line(batch, line[q], line[q + 1], Color(0.05, 0.02, 0.08, 0.9), 3.0)
+		for q in steps:
+			_line(batch, line[q], line[q + 1], Color(0.85, 0.6, 1.0, 0.85 * k), 1.5)

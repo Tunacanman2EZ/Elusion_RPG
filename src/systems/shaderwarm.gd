@@ -68,6 +68,7 @@ const SHADER_CODE := [
 	["res://src/enemies/icearena.gd", "SNOW_SHADER", [Mode.QUAD, Mode.COPIES]],
 	["res://src/world/healerrun/healerrun.gd", "DARK_SHADER", [Mode.QUAD]],
 	["res://src/ui/menus/mapscreen.gd", "FOG_SHADER", [Mode.QUAD, Mode.SHAPE]],
+	["res://src/world/crownfall/crownfallrun.gd", "ERASER_SHADER", [Mode.QUAD]],
 ]
 
 # Written in code and drawn from the first frame, so never first in a fight.

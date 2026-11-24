@@ -36,16 +36,21 @@ extends Node
 # monster - more shots in the air, or more of an effect a second - from
 # stresskinds.gd, which says how each is made. A result says what it counted
 # ("per": out, in the air, a second).
+# EVERY BOSS ATTACK AND THE CROWNED'S PHASES (0.176.0): the Crowned's attacks
+# one by one, and its fight part by part, from bossbench.gd, which says how.
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
+const BossBench := preload("res://src/world/endless/bossbench.gd")
 const WorkBar := preload("res://src/world/endless/workbar.gd")
 const HORDE := "Horde slimes"
 const EVERY_KIND := "every kind"
 const EVERY_MONSTER := "every monster"
 const EVERY_SHOT := "every shot"
 const EVERY_EFFECT := "every effect"
+const EVERY_BOSS := "every boss attack"
+const BOSS_PHASES := "the crowned's phases"
 const STEP := 10
 const BOSS_STEP := 1
 const HORDE_STEP := 250
@@ -62,6 +67,7 @@ const LIMIT_AT := 0.8
 const CHECKS := [10, 50, 100, 200]
 const HORDE_CHECKS := [250, 1000, 2500, 5000]
 const SHOT_CHECKS := [100, 500, 1000, 2000]
+const BOSS_CHECKS := [1, 5, 10, 20]
 # A cost that grows with the crowd: each at the last row this many times each
 # at the first row that stands NOISE_MS clear of the base.
 const GROWS_AT := 1.5
@@ -127,6 +133,7 @@ var _results_box: VBoxContainer = null
 var _hint: Label = null
 var _table_key: String = "-"
 var _stress: Node = null
+var _bench: Node = null
 var _rng := RandomNumberGenerator.new()
 
 
@@ -151,10 +158,12 @@ static func horde_target() -> Dictionary:
 
 static func counted_as(swept: Dictionary) -> String:
 	"""What a sweep's count is: monsters "out", shots "in the air", an effect
-	"a second", a party tank's aura "lit"."""
+	"a second", a party tank's aura "lit" - a boss attack says its own."""
+	if BossBench.is_boss(swept):
+		return str(swept.get("per", "out"))
 	if StressKinds.is_rate(swept):
 		return "a second"
-	if StressKinds.is_aura(swept):
+	if StressKinds.is_aura(swept) or StressKinds.is_beam(swept):
 		return "lit"
 	return "in the air" if StressKinds.is_shot(swept) else "out"
 
@@ -188,6 +197,10 @@ static func targets_for(choice: String, chosen: int) -> Array:
 		return StressKinds.shots()
 	if choice == EVERY_EFFECT:
 		return StressKinds.effects()
+	if choice == EVERY_BOSS:
+		return BossBench.attacks()
+	if choice == BOSS_PHASES:
+		return BossBench.phases()
 	if choice == EVERY_KIND or choice == EVERY_MONSTER:
 		var kinds_seen: Dictionary = {}
 		for entry in GmSpawner.catalogue():
@@ -242,6 +255,8 @@ func _end(said: String) -> void:
 	phase = Phase.IDLE
 	if _stress != null:
 		_stress.call("end")
+	if _bench != null:
+		_bench.call("end")
 	target = {}
 	rows = []
 	GameState.god_mode = _was_god
@@ -265,7 +280,17 @@ func _next() -> void:
 	_place_player()
 	if _stress != null:
 		_stress.call("end")
-	if StressKinds.is_rate(target):
+	if _bench != null:
+		_bench.call("end")
+	if BossBench.is_boss(target):
+		if _bench == null:
+			_bench = BossBench.new()
+			_bench.name = "bossbench"
+			add_child(_bench)
+		var host_run: Node = _run()
+		_bench.call("begin", target, host_run.call("_player") if host_run != null and host_run.has_method("_player") else null,
+			host_run.get_parent() if host_run != null else null, centre())
+	elif StressKinds.is_rate(target):
 		if _stress == null:
 			_stress = StressKinds.new()
 			_stress.name = "stress"
@@ -323,6 +348,19 @@ func _measured(stats: Dictionary) -> void:
 func _more() -> void:
 	var most: int = most_for(target)
 	var more: int = mini(int(target.get("step", STEP)), most - _wanted)
+	if BossBench.is_boss(target):
+		if BossBench.is_rate(target):
+			_wanted += more
+			_bench.call("set_rate", float(_wanted))
+		else:
+			var made_out: int = int(_bench.call("make", more))
+			if made_out <= 0:
+				_keep(summarise(rows, str(target["label"]), "no room", PerfOverlay.budget_ms(), _checks()))
+				_next()
+				return
+			_wanted += made_out
+		_settle()
+		return
 	if StressKinds.is_rate(target):
 		_wanted += more
 		if _stress != null:
@@ -373,6 +411,8 @@ static func judge(row: Array, budget: float, wanted: int, most: int) -> String:
 
 
 func _checks() -> Array:
+	if BossBench.is_boss(target):
+		return BOSS_CHECKS
 	if StressKinds.is_shot(target):
 		return SHOT_CHECKS
 	return HORDE_CHECKS if bool(target.get("horde", false)) else CHECKS
@@ -381,6 +421,8 @@ func _checks() -> Array:
 func count_now() -> int:
 	"""How many of what is being swept are on the field (an effect: how many
 	a second)."""
+	if BossBench.is_boss(target):
+		return _wanted if BossBench.is_rate(target) else (int(_bench.call("count")) if _bench != null else 0)
 	if StressKinds.is_rate(target):
 		return _wanted
 	if StressKinds.is_shot(target):
@@ -651,7 +693,7 @@ func build(into: VBoxContainer, width: float) -> void:
 	head.add_theme_color_override("font_color", COLOUR)
 	head.add_theme_font_size_override("font_size", 12)
 	head.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too.\nEvery shot and Every effect do the same with shots in the air and effects a second." \
+	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too.\nEvery shot and Every effect do the same with shots in the air and effects a second;\nEvery boss attack the Crowned's attacks one by one, and The Crowned's phases its fight part by part." \
 		% roundi(LIMIT_AT * 100.0)
 	into.add_child(head)
 	var row := HBoxContainer.new()
@@ -672,6 +714,8 @@ func build(into: VBoxContainer, width: float) -> void:
 	_add_pick(HORDE, HORDE)
 	_add_pick("Every shot (%d)" % StressKinds.shots().size(), EVERY_SHOT)
 	_add_pick("Every effect (%d)" % StressKinds.effects().size(), EVERY_EFFECT)
+	_add_pick("Every boss attack (%d)" % BossBench.attacks().size(), EVERY_BOSS)
+	_add_pick("The Crowned's phases (%d)" % BossBench.phases().size(), BOSS_PHASES)
 	for entry in listed:
 		_add_pick(str(entry["label"]), str(entry["path"]))
 	_picker.item_selected.connect(_on_picked)

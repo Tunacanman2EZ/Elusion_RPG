@@ -40,10 +40,24 @@
 # grey) was drawn at 0.17. The Big Field's ground is untinted, so nothing
 # there changes. The Boss Arena's floor too (0.137.4).
 #
-# NOT A FLOOR THE GAME EDITS. The chunks are copies of the ground's cells as
-# it arrived: a cell set or erased on the ground later reaches no chunk. The
-# Crowned's room (its lava takes floor cells out and puts them back,
-# crownedphases.gd) and the Forge (forgerun.gd) stay whole for that reason.
+# A FLOOR THE GAME EDITS (0.176.0). The chunks are copies of the ground's
+# cells as it arrived, so a cell set or erased on the ground itself reaches no
+# chunk - which kept the Forge (forgerun.gd: the lava takes the island, the
+# tank's ring lays it back) and the Crowned's room (crownedphases.gd: its lava
+# and the Tear's holes) whole. The owner: "we need to reduce that forge time"
+# - its floor was 21 ms and its lava 6.5 ms of the arrival frame, built whole.
+# Now a game that edits a floor goes through put() and erase(): the layer
+# keeps every cell as before (what reads it reads the truth), and the chunk
+# that draws the cell is changed too - or, not made yet, is changed as it is
+# made (`_edits`); a cell where no chunk had any is given a chunk of its own.
+# The Forge's lava is a layer that comes in chunks too (LAYERS).
+#
+# WHAT IS SEEN, THEN WHAT IS NEAR (0.176.0). The arrival and the look just
+# before each frame is drawn make what the view shows and SEEN_MARGIN more,
+# so nothing seen is ever missing; each frame's budget makes what is within
+# VIEW_MARGIN of the view first, then the rest nearest the arrival. Arriving
+# at the Forge made 12 of its 60 floor chunks and 6 of its 25 lava chunks
+# (9 ms) where the view and VIEW_MARGIN reached; now about half that.
 extends Node
 
 const NODE_NAME := "groundchunks"
@@ -51,14 +65,18 @@ const NODE_NAME := "groundchunks"
 const CHUNK_CELLS := 64
 const CHUNK_CELLS_SMALL := 16
 # The root layers that may come in chunks.
-const LAYERS: Array[StringName] = [&"ground", &"water"]
+const LAYERS: Array[StringName] = [&"ground", &"water", &"lava"]
 # On the ground, from the builder: the side used, and the ranges.
 const SIZE_META := &"chunk_size"
 const RANGES_META := &"chunk_ranges"
 # On each chunk layer: its chunk.
 const CHUNK_META := &"ground_chunk"
+# On a layer in chunks: its helper (put(), erase()).
+const HELPER_META := &"ground_chunks_helper"
 const BUDGET_MS := 2.0
-# Made while within this of the view.
+# Made just before a frame is drawn: what it shows and this much more.
+const SEEN_MARGIN := 16.0
+# Made first in each frame's budget: whatever is within this of the view.
 const VIEW_MARGIN := 128.0
 # What the ground draws and collides with, given to each chunk.
 const COPIED := ["texture_filter", "texture_repeat", "material", "use_parent_material",
@@ -77,6 +95,11 @@ var _made: Dictionary = {}
 # chunks still to make, nearest the arrival first
 var _queue: Array[Vector2i] = []
 var _seen: Rect2i = Rect2i()
+# A FLOOR THE GAME EDITS: chunk -> {cell: [source, atlas, alternative]}, each
+# edit since the layer was taken, for the chunks not made yet; and the data's
+# header, for a chunk made where the ground had no cells.
+var _edits: Dictionary = {}
+var _header: PackedByteArray = PackedByteArray()
 
 
 static func add_to(scene: Node) -> Node:
@@ -98,6 +121,23 @@ static func add_to(scene: Node) -> Node:
 		if first == null:
 			first = helper
 	return first
+
+
+static func put(layer: TileMapLayer, cell: Vector2i, source: int, atlas: Vector2i = Vector2i(-1, -1),
+		alternative: int = 0) -> void:
+	"""set_cell() on a floor that may be in chunks: on `layer` itself - which
+	keeps every cell - and on the chunk that draws it. Source -1 erases."""
+	if layer == null:
+		return
+	layer.set_cell(cell, source, atlas, alternative)
+	var helper: Object = layer.get_meta(HELPER_META, null)
+	if helper != null and is_instance_valid(helper):
+		helper.call("edit", cell, source, atlas, alternative)
+
+
+static func erase(layer: TileMapLayer, cell: Vector2i) -> void:
+	"""erase_cell() on a floor that may be in chunks (put())."""
+	put(layer, cell, -1)
 
 
 static func helper_name(layer_name: StringName) -> String:
@@ -168,17 +208,19 @@ func take(layer: TileMapLayer) -> bool:
 		return false
 	ground = layer
 	_data = data
+	_header = data.slice(0, 2)
 	_size = int(layer.get_meta(SIZE_META, CHUNK_CELLS))
 	for i in range(0, ranges.size(), 4):
 		_ranges[Vector2i(ranges[i], ranges[i + 1])] = [ranges[i + 2], ranges[i + 3]]
 	ground.enabled = false
+	ground.set_meta(HELPER_META, self)
 	var arrival: Vector2 = _arrival()
 	var keys: Array = _ranges.keys()
 	var middle := Vector2(_world_to_chunks(Rect2(arrival, Vector2.ZERO)).position)
 	keys.sort_custom(_nearer.bind(middle))
 	_queue.assign(keys)
 	var at_arrival := Rect2(arrival - _view_size() * 0.5, _view_size())
-	make_in(at_arrival.grow(VIEW_MARGIN))
+	make_in(at_arrival.grow(SEEN_MARGIN))
 	return true
 
 
@@ -196,12 +238,36 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if RenderingServer.frame_pre_draw.is_connected(_on_pre_draw):
 		RenderingServer.frame_pre_draw.disconnect(_on_pre_draw)
+	if ground != null and is_instance_valid(ground) and ground.get_meta(HELPER_META, null) == self:
+		ground.remove_meta(HELPER_META)
+
+
+func edit(cell: Vector2i, source: int, atlas: Vector2i, alternative: int) -> void:
+	"""A cell of the layer set (or erased, source -1) since it was taken: on
+	its chunk now, or as the chunk is made."""
+	if ground == null:
+		return
+	var key: Vector2i = chunk_of(cell, _size)
+	var chunk: TileMapLayer = _made.get(key) as TileMapLayer
+	if chunk != null and is_instance_valid(chunk):
+		chunk.set_cell(cell, source, atlas, alternative)
+		return
+	if not _ranges.has(key):
+		# Where the ground had no cells: a chunk of its own, made with the
+		# rest (or now, when they are all made).
+		_ranges[key] = [2, 2]
+		_queue.append(key)
+	if not _edits.has(key):
+		_edits[key] = {}
+	(_edits[key] as Dictionary)[cell] = [source, atlas, alternative]
+	if _data.is_empty():
+		_make(key)
 
 
 func _process(_delta: float) -> void:
 	_make_seen()
 	var started: int = Time.get_ticks_usec()
-	var made: int = 0
+	var made: int = _make_near(started)
 	while not _queue.is_empty() and (made == 0 or Time.get_ticks_usec() - started < int(BUDGET_MS * 1000.0)):
 		var key: Vector2i = _queue.pop_front()
 		if not _made.has(key):
@@ -221,7 +287,28 @@ func _make_seen() -> void:
 	var view: Rect2 = _view_rect()
 	if view.size == Vector2.ZERO:
 		return
-	make_in(view.grow(VIEW_MARGIN))
+	make_in(view.grow(SEEN_MARGIN))
+
+
+func _make_near(started: int) -> int:
+	"""Chunks within VIEW_MARGIN of the view not made yet, until the budget
+	is spent. How many."""
+	if ground == null or not is_inside_tree() or not ground.is_inside_tree():
+		return 0
+	var view: Rect2 = _view_rect()
+	if view.size == Vector2.ZERO:
+		return 0
+	var span: Rect2i = _world_to_chunks(view.grow(VIEW_MARGIN))
+	var made: int = 0
+	for y in range(span.position.y, span.end.y):
+		for x in range(span.position.x, span.end.x):
+			if Time.get_ticks_usec() - started >= int(BUDGET_MS * 1000.0):
+				return made
+			var key := Vector2i(x, y)
+			if _ranges.has(key) and not _made.has(key):
+				_make(key)
+				made += 1
+	return made
 
 
 func make_in(world: Rect2) -> int:
@@ -262,7 +349,13 @@ func _make(key: Vector2i) -> void:
 		if property in ground:
 			layer.set(property, ground.get(property))
 	layer.tile_set = ground.tile_set
-	layer.tile_map_data = _data.slice(0, 2) + _data.slice(int(range_of[0]), int(range_of[1]))
+	layer.tile_map_data = _header + _data.slice(int(range_of[0]), int(range_of[1]))
+	# What the game changed in it before it was made.
+	var changed: Dictionary = _edits.get(key, {})
+	for cell: Vector2i in changed:
+		var tile: Array = changed[cell]
+		layer.set_cell(cell, int(tile[0]), tile[1], int(tile[2]))
+	_edits.erase(key)
 	ground.add_child(layer)
 	# Ahead of the ground's own children, as its own tiles were.
 	ground.move_child(layer, _made.size())

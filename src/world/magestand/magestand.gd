@@ -268,6 +268,7 @@ const STRUCK_SECONDS := 0.4
 # The ground's marks under the monsters, over the floor.
 const MARKS_Z := -1
 const SKY_Z := 30
+const QuadBatch := preload("res://src/enemies/quadbatch.gd")
 
 
 class Monster extends Node2D:
@@ -328,22 +329,29 @@ class WallBars extends Node2D:
 			draw_rect(Rect2(at + Vector2(1, 1), Vector2(46.0 * share, 3.0)), colour)
 
 # The ground's marks and the sky's trails, drawn from the run's lists each
-# frame: one node each, not one a meteor.
+# frame: one node each, not one a meteor. IN ONE CALL EACH (0.176.0, the
+# owner: "lets fix" - every minigame measured, zz/mgmeasure): the craters,
+# the falls' shadows and rings, the trails and the arrow were a draw call a
+# shape, 78 of the Stand's 150 a frame in a wave; now they are one triangle
+# list each (quadbatch.gd), the star's rarer shapes after it as before.
 class Marks extends Node2D:
 	var run: Node2D = null
 	var sky: bool = false
+	var _batch = QuadBatch.new()
 
 	func _draw() -> void:
 		if run == null:
 			return
 		if sky:
+			_batch.begin()
 			for fall in run.get("falling"):
 				var done: float = 1.0 - clampf(float(fall["left"]) / FALL_SECONDS, 0.0, 1.0)
 				var at: Vector2 = fall["at"]
 				var stone: Vector2 = (at + SKY).lerp(at, done * done)
 				for k in 8:
 					var t: float = float(k) / 8.0
-					draw_circle(stone + (SKY.normalized() * 10.0 * k), 7.0 - k * 0.7,
+					var round_r: float = 7.0 - k * 0.7
+					_batch.oval(stone + (SKY.normalized() * 10.0 * k), round_r, round_r,
 						Color(1.0, 0.45 + t * 0.3, 0.1, (0.75 - t * 0.7)))
 			if bool(run.call("arrow_showing")):
 				var ax: float = float(run.get("next_x"))
@@ -351,8 +359,14 @@ class Marks extends Node2D:
 				var tip := Vector2(ax, -HALF.y + 88.0 + bob)
 				for k in 2:
 					var y: float = tip.y - 12.0 * k
-					draw_colored_polygon(PackedVector2Array([Vector2(ax - 11.0, y - 10.0), Vector2(ax, y),
-						Vector2(ax + 11.0, y - 10.0), Vector2(ax, y - 5.0)]), Color(1.0, 0.45, 0.25, 0.85 - 0.3 * k))
+					# the chevron: its two halves, either side of the notch
+					var left := Vector2(ax - 11.0, y - 10.0)
+					var point := Vector2(ax, y)
+					var notch := Vector2(ax, y - 5.0)
+					var colour := Color(1.0, 0.45, 0.25, 0.85 - 0.3 * k)
+					_batch.quad(left, point, notch, notch, colour)
+					_batch.quad(notch, point, Vector2(ax + 11.0, y - 10.0), Vector2(ax + 11.0, y - 10.0), colour)
+			_batch.end(self)
 			_draw_star_sky()
 			if bool(run.get("showing_aim")):
 				var aim: Vector2 = run.get("aim")
@@ -360,28 +374,30 @@ class Marks extends Node2D:
 				draw_line(aim + Vector2(-6, 0), aim + Vector2(6, 0), Color(1.0, 0.85, 0.5, 0.9), 1.0)
 				draw_line(aim + Vector2(0, -6), aim + Vector2(0, 6), Color(1.0, 0.85, 0.5, 0.9), 1.0)
 			return
+		_batch.begin()
+		var burn_reach: float = float(run.call("burn_reach"))
 		for crater in run.get("craters"):
 			var at: Vector2 = crater["at"]
 			var fade: float = clampf(float(crater["left"]) / BURN_SECONDS, 0.0, 1.0)
-			draw_set_transform(at, 0.0, Vector2(1.0, 0.55))
-			var burn_reach: float = float(run.call("burn_reach"))
-			draw_circle(Vector2.ZERO, burn_reach, Color(1.0, 0.35, 0.05, 0.25 * fade))
-			draw_circle(Vector2.ZERO, burn_reach * 0.6, Color(1.0, 0.55, 0.15, 0.4 * fade))
-			draw_circle(Vector2.ZERO, 9.0, Color(0.2, 0.12, 0.1, 0.9 * fade))
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			_batch.oval(at, burn_reach, burn_reach * 0.55, Color(1.0, 0.35, 0.05, 0.25 * fade))
+			_batch.oval(at, burn_reach * 0.6, burn_reach * 0.6 * 0.55, Color(1.0, 0.55, 0.15, 0.4 * fade))
+			_batch.oval(at, 9.0, 9.0 * 0.55, Color(0.2, 0.12, 0.1, 0.9 * fade))
 			var flick: float = float(crater["seed"]) + float(crater["left"]) * 9.0
 			for k in 7:
 				var p := at + Vector2(sin(flick * 1.3 + k * 2.1) * 20.0, cos(k * 1.7) * 6.0)
 				var tall: float = (6.0 + 5.0 * absf(sin(flick + k))) * fade
-				draw_colored_polygon(PackedVector2Array([p + Vector2(-3, 0), p + Vector2(3, 0), p + Vector2(0, -tall)]),
+				var top: Vector2 = p + Vector2(0, -tall)
+				_batch.quad(p + Vector2(-3, 0), p + Vector2(3, 0), top, top,
 					Color(1.0, 0.6 + 0.3 * absf(sin(k + flick)), 0.15, 0.85 * fade))
+		var blast: float = float(run.call("blast_reach"))
 		for fall in run.get("falling"):
 			var done: float = 1.0 - clampf(float(fall["left"]) / FALL_SECONDS, 0.0, 1.0)
 			var at: Vector2 = fall["at"]
-			draw_set_transform(at, 0.0, Vector2(1.0, 0.5))
-			draw_circle(Vector2.ZERO, 8.0 + 14.0 * done, Color(0.0, 0.0, 0.0, 0.2 + 0.25 * done))
-			draw_arc(Vector2.ZERO, float(run.call("blast_reach")), 0.0, TAU, 40, Color(FIRE, 0.4 + 0.4 * done), 2.0)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var shadow: float = 8.0 + 14.0 * done
+			_batch.oval(at, shadow, shadow * 0.5, Color(0.0, 0.0, 0.0, 0.2 + 0.25 * done))
+			# the blast's reach: a ring 2 wide, on the ground's slant
+			_batch.band(at, blast + 1.0, (blast + 1.0) * 0.5, (blast - 1.0) / (blast + 1.0), Color(FIRE, 0.4 + 0.4 * done))
+		_batch.end(self)
 		_draw_star_ground()
 
 	func _draw_star_ground() -> void:

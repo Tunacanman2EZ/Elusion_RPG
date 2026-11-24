@@ -3968,13 +3968,14 @@ func _test_crownfall_draws_less() -> void:
 	run.sync_bricks()
 	run.sync_bricks()
 	struck = struck and int(plain["look"]) >= 0
+	# a still brick is looked at every fourth frame (0.176.0)
 	plain["frozen"] = true
-	run.sync_bricks()
-	run.sync_bricks()
+	for i in 4:
+		run.sync_bricks()
 	var coat: int = int(plain["look"])
 	plain.erase("frozen")
-	run.sync_bricks()
-	run.sync_bricks()
+	for i in 4:
+		run.sync_bricks()
 	var thawed: bool = coat != int(plain["look"])
 	plain["hp"] = 0
 	run.sync_bricks()

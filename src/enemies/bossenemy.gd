@@ -2595,14 +2595,19 @@ func _set_cast_cooldown(seconds: float) -> void:
 
 
 func _cast_stalagmites_from_cast() -> void:
+	var pool: Array[StringName] = stalagmite_pool(_current_phase())
+	cast_shape(pool[randi() % pool.size()])
+
+
+func cast_shape(choice: StringName) -> void:
+	"""Raise the shape `choice` (a name _pattern_by_name() knows) at the
+	player now - a cast's, and Find the limit's (bossbench.gd)."""
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene
 	if container == null or eruption_scene == null:
 		return
 	PerfOverlay.mark(&"boss casts")
-	var pool: Array[StringName] = stalagmite_pool(_current_phase())
-	var choice: StringName = pool[randi() % pool.size()]
 	var pattern: Array[Dictionary] = _lead_pattern(_pattern_by_name(choice, _aim_point()), choice)
 	_apply_pattern_cooldown(pattern)
 	var scene: PackedScene = eruption_scene if choice in PILLAR_SHAPES else gate_scene

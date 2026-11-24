@@ -27,6 +27,7 @@ extends Node
 const Run := preload("res://src/world/forge/forgerun.gd")
 const OUT := "res://scene/forge.tscn"
 const TILESET := "res://scene/world/underground.tres"
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 const LAVA_SHEET := "res://art/tiles/propsandterrain.png"
 const FALL_SHEET := "res://art/tiles/lavafall.png"
 # The island's numbers are the run's (forgerun.gd, THE MAP), so the map and
@@ -77,6 +78,10 @@ func build() -> int:
 			var cell := middle + Vector2i(x, y)
 			if Run.floor_cell_mid(cell).distance_to(Run.CENTRE) <= Run.RADIUS:
 				ground.set_cell(cell, 1, Vector2i(rng.randi_range(1, 4), rng.randi_range(1, 3)))
+	# The island and the lake chunk by chunk, each chunk's range kept on its
+	# layer: the game draws them a chunk at a time (groundchunks.gd, 0.176.0).
+	GroundChunks.order_by_chunks(lava, GroundChunks.CHUNK_CELLS_SMALL)
+	GroundChunks.order_by_chunks(ground, GroundChunks.CHUNK_CELLS_SMALL)
 	var nav := NavigationRegion2D.new()
 	nav.name = "navigationregion2d"
 	nav.navigation_polygon = _nav_polygon()

@@ -797,7 +797,7 @@ func _test_the_lag_points() -> void:
 
 	# ---- where the game marks -----------------------------------------------------
 	var marked: Array = [
-		["res://src/enemies/bossenemy.gd", "func _cast_stalagmites_from_cast(", "boss casts"],
+		["res://src/enemies/bossenemy.gd", "func cast_shape(", "boss casts"],
 		["res://src/enemies/bossenemy.gd", "func fire_volley(", "boss volleys"],
 		["res://src/projectiles/bossprojectile.gd", "func _ready(", "spikes appear"],
 		["res://src/projectiles/bossprojectile.gd", "func _erupt(", "spikes rise"],
@@ -3597,8 +3597,8 @@ func _test_find_the_limit() -> void:
 	sweep.call("_on_picked", 2)
 	var horde_box: int = int(step_box.value)
 	sweep.call("_on_picked", 0)
-	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde, every shot, every effect and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
-		pick.item_count == Spawner.catalogue().size() + 5 and str(pick.get_item_metadata(2)) == Sweep.HORDE
+	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde, every shot, every effect, every boss attack, the Crowned's phases and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
+		pick.item_count == Spawner.catalogue().size() + 7 and str(pick.get_item_metadata(2)) == Sweep.HORDE
 		and ground.find_child("sweepgo", true, false) is Button and ground.find_child("sweepcopy", true, false) is Button
 		and boss_box == 1 and horde_box == 250 and int(step_box.value) == 10, [pick.item_count, boss_box, horde_box])
 	var budget: float = PerfOverlay.budget_ms()
@@ -4482,14 +4482,15 @@ func _test_every_shot_and_effect() -> void:
 			loads = false
 	var pictures: bool = true
 	for e in effects:
-		# A party tank's aura (0.174.4) is counted lit, not fired a second.
-		if Stress.is_aura(e):
+		# A party tank's aura (0.174.4) and a healer's beam (0.176.0) are
+		# counted lit, not fired a second.
+		if Stress.is_aura(e) or Stress.is_beam(e):
 			continue
 		var what: String = str(e["rate"])
 		if not what in ["sparks", "cast", "hit", "death"] and not what in Remote.KINDS:
 			pictures = false
 	check("every shot's scene loads and every party attack is one the game draws (%d shots, %d effects)"
-		% [shots.size(), effects.size()], shots.size() == 8 and effects.size() == 12 and loads and pictures)
+		% [shots.size(), effects.size()], shots.size() == 12 and effects.size() == 13 and loads and pictures)
 	check("  Every shot and Every effect are the sweep's lists, each with its own step and most",
 		Sweep.targets_for(Sweep.EVERY_SHOT, 10).size() == shots.size()
 			and Sweep.targets_for(Sweep.EVERY_EFFECT, 10).size() == effects.size()
@@ -4576,7 +4577,7 @@ func _test_every_shot_and_effect() -> void:
 	for k in picker.item_count:
 		names.append(picker.get_item_text(k))
 	check("  Find the limit's picker offers Every shot and Every effect",
-		names.has("Every shot (8)") and names.has("Every effect (12)"), names.slice(0, 6))
+		names.has("Every shot (12)") and names.has("Every effect (13)"), names.slice(0, 6))
 	sweep.queue_free()
 	box.queue_free()
 	stress.queue_free()

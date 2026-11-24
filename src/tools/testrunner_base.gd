@@ -4584,3 +4584,41 @@ static func _is_suite_script(path: String) -> bool:
 	"""Whether `path` is one of the suite's own scripts (testrunner.gd and its
 	parts, testrunner_*.gd), which a scan of the game's code leaves out."""
 	return path.begins_with("res://src/tools/") and path.get_file().begins_with("testrunner")
+
+
+func _crowned_test_room() -> Dictionary:
+	"""The Crowned's room with nothing of its own running - no fight, no boss,
+	no HUD - and a bullet zone and a player's body in it: a world for a
+	bench of its attacks."""
+	var room: Node2D = (load("res://scene/boss.tscn") as PackedScene).instantiate() as Node2D
+	room.set_script(null)
+	var floor_rect: Rect2 = room.get_node("crownedfight").get("room_rect")
+	# Its navigation too: the monsters spawned in it go where gmspawner.gd
+	# puts them on no map, not on a navigation the suite never bakes.
+	for gone in ["hudcontrol", "enemyrespawner", "crownedfight", "ysortworld/enemies/bossenemy", "ground/navigationregion2d"]:
+		room.get_node(gone).free()
+	add_child(room)
+	var zone := BulletZone.new()
+	room.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = floor_rect.grow(40.0)
+	var body_script := GDScript.new()
+	body_script.source_code = "extends CharacterBody2D\nvar hp: int = 400\nvar max_hp: int = 400\nvar is_dying: bool = false\n" \
+		+ "func take_damage(_a: Variant = 0, _b: Variant = 0, _c: Variant = null) -> void:\n\tpass\n"
+	body_script.reload()
+	var body := CharacterBody2D.new()
+	body.set_script(body_script)
+	body.collision_layer = 0
+	body.collision_mask = 0
+	room.get_node("ysortworld").add_child(body)
+	body.global_position = floor_rect.get_center() + Vector2(0, 150)
+	body.reset_physics_interpolation()
+	return {"room": room, "floor": floor_rect, "zone": zone, "body": body}
+
+
+func _ground_effects_count() -> int:
+	"""Everything lying in every "groundeffects" layer: spikes, scorches."""
+	var n: int = 0
+	for layer in get_tree().get_nodes_in_group(&"groundeffects"):
+		n += (layer as Node).get_child_count()
+	return n

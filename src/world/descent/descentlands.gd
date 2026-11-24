@@ -1422,7 +1422,11 @@ func _draw_design(element: int, line: PackedVector2Array, t: float, fade: float,
 				for q in 6:
 					wisp.append(tendril[k] + out * float(q) * 4.0 + out.orthogonal() * sin(float(q) * 1.2 + t * 6.0) * 4.0)
 				_air.draw_polyline(wisp, Color(0.65, 0.35, 1.0, 0.6 * fade), 1.4)
-			for eye in 4:
+			# Its eyes along it - none on a beam too short to hold them (a
+			# cage's side begun past the wall: 0.176.0, an index past its end
+			# every frame, and the rest of the air left undrawn).
+			var eyes: int = 4 if tendril.size() >= 9 else 0
+			for eye in eyes:
 				var k: int = 4 + int(float(eye) * float(tendril.size() - 8) / 4.0)
 				var blink: float = clampf(absf(sin(t * 2.0 + float(eye) * 1.7)) * 1.6, 0.15, 1.0)
 				_air.draw_set_transform(tendril[k], 0.0, Vector2(1.0, blink))

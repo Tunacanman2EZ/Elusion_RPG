@@ -134,9 +134,16 @@ extends Node
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const SceneWarmer := preload("res://src/systems/scenewarmer.gd")
 const SpawnBudget := preload("res://src/systems/spawnbudget.gd")
+# The island and its lava in chunks (0.176.0, groundchunks.gd): every edit to
+# them goes through its put() and erase().
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 # THE SLICES SORTED AHEAD (0.152.0): cells a frame while the floor is
 # sorted into its slices (_step_scan()).
 const SCAN_A_FRAME := 1500
+# furthest_first()'s keys: a distance in millionths of a pixel (2^20), then
+# a slice's place for each of up to INDEX_SPAN entries.
+const KEY_SCALE := 1048576.0
+const INDEX_SPAN := 65536
 
 enum State { WAITING, COUNTDOWN, RUNNING }
 
@@ -387,6 +394,10 @@ var _flood_lava: Array = []
 # floor ([distance, cell], furthest first) and lava; a flood takes its
 # slice's lists, as they stand (a cell already gone is passed over). Before
 # that is done a flood goes through the island itself, as it always did.
+# The scan also keeps each floor cell as built (`_ground_saved`, for the
+# reset) - that copy was 9 ms of the arrival frame in _ready() - and sorts
+# its slices with Godot's own sort (furthest_first(), 0.176.0): its last
+# frame was 25 ms.
 var _scan_cells: Array = []
 var _scan_lava: Array = []
 var _scan_at: int = 0
@@ -457,9 +468,8 @@ func _ready() -> void:
 	if area != null:
 		_ground = area.get_node_or_null("ground") as TileMapLayer
 		_lava = area.get_node_or_null("lava") as TileMapLayer
-	if _ground != null:
-		for cell in _ground.get_used_cells():
-			_ground_saved[cell] = [_ground.get_cell_source_id(cell), _ground.get_cell_atlas_coords(cell)]
+	# The island as built is kept as the scan goes through it (_step_scan()),
+	# not here: 11,304 cells read in one go were 9-11 ms of the arrival frame.
 	_begin_scan()
 	# READY BEFORE THEY COME (0.152.0, scenewarmer.gd): the fire sprite,
 	# loaded before the forge is lit.
@@ -864,6 +874,7 @@ func _step_scan() -> void:
 	while _scan_at < stop:
 		if _scan_at < _scan_cells.size():
 			var cell: Vector2i = _scan_cells[_scan_at]
+			_ground_saved[cell] = [_ground.get_cell_source_id(cell), _ground.get_cell_atlas_coords(cell)]
 			var mid: Vector2 = floor_cell_mid(cell)
 			(_slice_floor[slice_of(mid)] as Array).append([mid.distance_to(CENTRE), cell])
 		else:
@@ -878,11 +889,39 @@ func _step_scan() -> void:
 				(_slice_lava[slice] as Array).append([lava_mid.distance_to(CENTRE), lava_cell])
 		_scan_at += 1
 	if _scan_at >= total:
-		for each in _slice_floor:
-			(each as Array).sort_custom(func(a, b): return float(a[0]) > float(b[0]))
+		for i in _slice_floor.size():
+			_slice_floor[i] = furthest_first(_slice_floor[i])
 		_scan_cells = []
 		_scan_lava = []
 		scanned = true
+
+
+static func furthest_first(entries: Array) -> Array:
+	"""`entries` ([distance, cell]) furthest first, by whole-number keys
+	Godot sorts itself: a millionth of a pixel of the distance, then the
+	entry's place. A sort_custom of the island's 11,304 cells, a GDScript
+	call for each comparison, was a 25 ms frame as the scan ended."""
+	var n: int = entries.size()
+	if n >= INDEX_SPAN:
+		var slow: Array = entries.duplicate()
+		slow.sort_custom(func(a, b): return float(a[0]) > float(b[0]))
+		return slow
+	var keys := PackedInt64Array()
+	keys.resize(n)
+	for i in n:
+		keys[i] = int(float(entries[i][0]) * KEY_SCALE) * INDEX_SPAN + i
+	keys.sort()
+	var out: Array = []
+	out.resize(n)
+	for k in n:
+		out[n - 1 - k] = entries[keys[k] % INDEX_SPAN]
+	return out
+
+
+func _finish_scan() -> void:
+	"""The scan done now, if it is not (the island as built is wanted)."""
+	while not scanned:
+		_step_scan()
 
 
 func _flood_next() -> void:
@@ -931,16 +970,14 @@ func _step_flood(delta: float) -> void:
 	front = maxf(safe, front - (RADIUS - safe) / FLOOD_SECONDS * delta)
 	while not _flood_floor.is_empty() and float(_flood_floor[0][0]) > front:
 		var entry: Array = _flood_floor.pop_front()
-		if _ground != null:
-			_ground.erase_cell(entry[1])
+		GroundChunks.erase(_ground, entry[1])
 	_front_clock -= delta
 	if _front_clock <= 0.0:
 		_front_clock = FRONT_REPAINT
 		_repaint(_flood_lava, front - 64.0, front + 140.0)
 	if front <= safe:
 		for entry in _flood_floor:
-			if _ground != null:
-				_ground.erase_cell(entry[1])
+			GroundChunks.erase(_ground, entry[1])
 		_flood_floor = []
 		flooded[flooding] = true
 		var done: int = flooding
@@ -969,21 +1006,22 @@ func _repaint(entries: Array, from_d: float = -INF, to_d: float = INF) -> void:
 		var cell: Vector2i = entry[1]
 		var want: int = BUBBLING if bubbles(cell, flooded, safe, flooding, front) else STILL
 		if _lava.get_cell_source_id(cell) != want:
-			_lava.set_cell(cell, want, LAVA_CELL)
+			GroundChunks.put(_lava, cell, want, LAVA_CELL)
 
 
 func _reset_map() -> void:
 	"""The island back as built, and its lava with it."""
+	_finish_scan()
 	if _ground != null:
 		for cell in _cooled:
 			if not _ground_saved.has(cell):
-				_ground.erase_cell(cell)
+				GroundChunks.erase(_ground, cell)
 	_cooled = {}
 	if _ground != null:
 		for cell in _ground_saved:
 			if _ground.get_cell_source_id(cell) == -1:
 				var saved: Array = _ground_saved[cell]
-				_ground.set_cell(cell, int(saved[0]), saved[1])
+				GroundChunks.put(_ground, cell, int(saved[0]), saved[1])
 	flooded = {}
 	flooding = -1
 	front = RADIUS
@@ -1039,7 +1077,7 @@ func _step_walkways(delta: float) -> void:
 	for cell in melted:
 		_cooled.erase(cell)
 		if _ground != null and not floor_at(floor_cell_mid(cell), flooded, safe, flooding, front):
-			_ground.erase_cell(cell)
+			GroundChunks.erase(_ground, cell)
 
 
 func _cool(ellipse: Array) -> void:
@@ -1062,7 +1100,7 @@ func _cool(ellipse: Array) -> void:
 				continue
 			if not _cooled.has(cell) and _ground != null:
 				var tile: Array = _ground_saved.get(cell, [1, Vector2i(1 + posmod(x * 7 + y * 3, 4), 1 + posmod(x * 5 + y * 11, 3))])
-				_ground.set_cell(cell, int(tile[0]), tile[1])
+				GroundChunks.put(_ground, cell, int(tile[0]), tile[1])
 			_cooled[cell] = elapsed + WALK_LINGER
 
 

@@ -3316,3 +3316,752 @@ func _test_the_gold_staff_shines() -> void:
 	arena.queue_free()
 	await get_tree().process_frame
 	print("  the gold staff")
+
+
+func _test_the_crowned_costs_less() -> void:
+	section("THE CROWNED, MEASURED AND CHEAPER (0.176.0): the Trap's stand-ins a few a tick, the Tear in one draw on the floor's turn, the eyes made ahead")
+	const SwarmScript := preload("res://src/world/endless/swarm.gd")
+	const Phases := preload("res://src/world/crowned/crownedphases.gd")
+	const Fight := preload("res://src/world/crowned/crownedfight.gd")
+	const QuadBatch := preload("res://src/enemies/quadbatch.gd")
+	# ---- the swarm's stand-ins ----------------------------------------------------
+	var by_loop := PackedFloat32Array()
+	by_loop.resize(3 * 16)
+	for at in range(0, by_loop.size(), 16):
+		by_loop[at] = 1.0
+		by_loop[at + 5] = 1.0
+		by_loop[at + 11] = 1.0
+	check("the swarm's still parts, made by doubling one instance, are the old loop's number for number - and a whole swarm's worth",
+		SwarmScript.still_parts(3) == by_loop and SwarmScript.still_parts(SwarmScript.MOST).size() == SwarmScript.MOST * 16)
+	var full: int = SwarmScript.PROXIES + SwarmScript.FOCUS_PROXIES
+	var at_once: Node2D = SwarmScript.new()
+	at_once.set("arena", Rect2(-90000, -90000, 800, 800))
+	add_child(at_once)
+	var gradual: Node2D = SwarmScript.new()
+	gradual.set("arena", Rect2(-90000, -90000, 800, 800))
+	gradual.set("proxies_a_tick", 24)
+	add_child(gradual)
+	gradual.set_physics_process(false)
+	var first: int = (gradual.get("_proxies") as Array).size()
+	gradual.call("_physics_process", 0.0125)
+	var second: int = (gradual.get("_proxies") as Array).size()
+	for _k in 20:
+		gradual.call("_physics_process", 0.0125)
+	check("  stand-ins: all %d as the swarm comes, or with proxies_a_tick 24 at first and 24 more a tick until all are made" % full,
+		(at_once.get("_proxies") as Array).size() == full and first == 24 and second == 48
+		and (gradual.get("_proxies") as Array).size() == full and (gradual.get("_shown") as Array).size() == full,
+		[first, second, (gradual.get("_proxies") as Array).size()])
+	at_once.queue_free()
+	gradual.queue_free()
+	var phases_alone: Node2D = Phases.new()
+	phases_alone.set("room", Rect2(-90000, -90000, 800, 800))
+	add_child(phases_alone)
+	phases_alone.call("_make_horde")
+	var horde: Node = phases_alone.get("swarm")
+	check("  the Trap's horde makes them %d a tick (its slimes come in at %d a second)" % [Phases.HORDE_STAND_INS_A_TICK, int(Phases.HORDE_RATE)],
+		horde != null and int(horde.get("proxies_a_tick")) == Phases.HORDE_STAND_INS_A_TICK and Phases.HORDE_STAND_INS_A_TICK > 0)
+	phases_alone.call("_clear_horde")
+	phases_alone.queue_free()
+	# ---- the Tear ---------------------------------------------------------------------
+	var batch := QuadBatch.new()
+	batch.begin()
+	var area := Rect2(10, 20, 128, 128)
+	Phases._outline(batch, area, Color.WHITE, 3.0)
+	var covered: float = 0.0
+	var points: PackedVector2Array = batch.points
+	for q in int(batch.size() / 2.0):
+		var a: Vector2 = points[q * 4]
+		var c: Vector2 = points[q * 4 + 2]
+		covered += absf((c.x - a.x) * (c.y - a.y))
+	var outer: Rect2 = area.grow(1.5)
+	var inner: Rect2 = area.grow(-1.5)
+	check("the Tear's outline in the batch is four bands, the corners once - the same ground a 3 px draw_rect outline covers",
+		batch.size() == 8 and is_equal_approx(covered, outer.get_area() - inner.get_area()), [batch.size(), covered])
+	var draw_body: String = _func_body(_code_src("res://src/world/crowned/crownedphases.gd"), "func _draw(")
+	var tear_from: int = draw_body.find("tears.is_empty()")
+	var tear_to: int = draw_body.find("batch.end(self)")
+	var tear_part: String = draw_body.substr(tear_from, tear_to - tear_from) if tear_from != -1 and tear_to > tear_from else ""
+	check("  every piece drawn into one triangle list (no draw call of its own), handed over once at the end",
+		tear_part.contains("batch.begin()") and draw_body.count("batch.end(") == 1 and not tear_part.contains("batch.end(")
+		and not tear_part.contains("draw_rect(") and not tear_part.contains("draw_circle(") and not tear_part.contains("draw_polyline("),
+		[tear_from, tear_to])
+	var step_body: String = _func_body(_code_src("res://src/world/crowned/crownedphases.gd"), "func step(")
+	var redraw_body: String = _func_body(_code_src("res://src/world/crowned/crownedphases.gd"), "func redraw_floor(")
+	check("  and drawn on the floor's turn while the Tear is open (every %d frames, as the arenas' floors), every frame otherwise" % QuadBatch.FLOOR_EVERY,
+		step_body.contains("redraw_floor()") and not step_body.contains("queue_redraw()")
+		and redraw_body.contains("phase != 4 or tears.is_empty() or QuadBatch.turn(self, QuadBatch.FLOOR_EVERY)"))
+	# ---- the eyes, made ahead ----------------------------------------------------------
+	var made: Dictionary = _crowned_test_room()
+	var room: Node2D = made["room"]
+	var floor_rect: Rect2 = made["floor"]
+	var fight: Node2D = Fight.new()
+	fight.set("room_rect", floor_rect)
+	fight.set("player_override", made["body"])
+	room.add_child(fight)
+	var boss: Node2D = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate() as Node2D
+	boss.position = floor_rect.get_center()
+	room.get_node("ysortworld/enemies").add_child(boss)
+	boss.process_mode = Node.PROCESS_MODE_DISABLED
+	fight.set_process(false)
+	fight.set("boss", boss)
+	fight.set("_decoy_left", Fight.DECOY_AHEAD + 0.2)
+	fight.call("_step_decoys", 0.15)
+	var before_due: int = (fight.get("decoys_ahead") as Array).size()
+	for _k in 3:
+		fight.call("_step_decoys", 0.2)
+	var held: Array = (fight.get("decoys_ahead") as Array).duplicate()
+	var hidden: bool = held.size() == Fight.DECOY_COUNT
+	for decoy in held:
+		hidden = hidden and not (decoy as Node2D).visible and not (decoy as Node).is_in_group(&"enemies") \
+			and (decoy as Node).process_mode == Node.PROCESS_MODE_DISABLED and bool((decoy as Node).get("held"))
+	check("the eyes: made in the second before they come, one a frame, each held - unseen, out of \"enemies\", nothing of it running",
+		before_due == 0 and hidden, [before_due, held.size()])
+	fight.call("_step_decoys", 1.0)
+	var out: Array = fight.get("decoys")
+	var woken: bool = out.size() == Fight.DECOY_COUNT
+	for decoy in out:
+		woken = woken and held.has(decoy) and (decoy as Node2D).visible and (decoy as Node).is_in_group(&"enemies") \
+			and (decoy as Node).process_mode == Node.PROCESS_MODE_INHERIT and is_equal_approx(float((decoy as Node).get("life")), Fight.DECOY_SECONDS)
+	check("  when they come they are those ones woken - seen, in \"enemies\", for %d s - and none made in that frame" % int(Fight.DECOY_SECONDS),
+		woken and (fight.get("decoys_ahead") as Array).is_empty(), out.size())
+	fight.set("_decoy_left", Fight.DECOY_AHEAD - 0.1)
+	fight.call("_step_decoys", 0.01)
+	var spare: Node = (fight.get("decoys_ahead") as Array)[0] if not (fight.get("decoys_ahead") as Array).is_empty() else null
+	var had_spare: bool = spare != null and bool(spare.get("held"))
+	fight.call("finish", false)
+	await get_tree().process_frame
+	check("  and one held when the fight ends goes with it", had_spare and not is_instance_valid(spare)
+		and (fight.get("decoys_ahead") as Array).is_empty(), [had_spare, is_instance_valid(spare)])
+	room.queue_free()
+	await get_tree().process_frame
+	# ---- a shape by its name ---------------------------------------------------------
+	var boss_src: String = _code_src("res://src/enemies/bossenemy.gd")
+	check("a boss's cast raises its shape through cast_shape(), which Find the limit asks by name",
+		_func_body(boss_src, "func _cast_stalagmites_from_cast(").contains("cast_shape(pool[randi() % pool.size()])")
+		and _func_body(boss_src, "func cast_shape(").contains("_pattern_by_name(choice, _aim_point())"))
+	print("  the Crowned costs less")
+
+
+func _test_every_boss_attack() -> void:
+	section("EVERY BOSS ATTACK (0.176.0): Find the limit sweeps the Crowned's attacks one by one, and its fight part by part, made by its own fight's code")
+	const Bench := preload("res://src/world/endless/bossbench.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Phases := preload("res://src/world/crowned/crownedphases.gd")
+	const Fight := preload("res://src/world/crowned/crownedfight.gd")
+	const Spawner := preload("res://src/world/gmspawner.gd")
+	var attacks: Array = Bench.attacks()
+	var parts: Array = Bench.phases()
+	var labels: Dictionary = {}
+	var by_what: Dictionary = {}
+	for entry in attacks + parts:
+		labels[str(entry["label"])] = true
+		by_what[str(entry["boss"])] = int(by_what.get(str(entry["boss"]), 0)) + 1
+	var kit_shapes: Dictionary = {}
+	for land in BossEnemy.KITS:
+		for shape in BossEnemy.KITS[land]["shapes"]:
+			kit_shapes[shape] = true
+	var shapes_known: bool = Bench.SHAPES.size() == kit_shapes.size()
+	for shape in Bench.SHAPES:
+		shapes_known = shapes_known and kit_shapes.has(shape) \
+			and (BossEnemy.KITS[Bench.shape_land(shape)]["shapes"] as Array).has(shape)
+	var volleys_known: bool = Bench.VOLLEY_LAND.size() == BossEnemy.VOLLEYS.size()
+	for volley in BossEnemy.VOLLEYS:
+		volleys_known = volleys_known and Bench.VOLLEY_LAND.has(volley) \
+			and (BossEnemy.KITS[int(Bench.VOLLEY_LAND[volley])]["volleys"] as Array).any(func(pool: Array) -> bool: return pool.has(volley))
+	check("the attacks: every volley (each in a land whose kit throws it), every shape any kit raises, the floor's hazards, three lasers and the wheel, decoy eyes, the seven weathers, the lava, the holes, the rift and the horde - each named once",
+		labels.size() == attacks.size() + parts.size() and volleys_known and shapes_known
+		and int(by_what.get("volley", 0)) == 7 and int(by_what.get("shape", 0)) == 14 and int(by_what.get("hazard", 0)) == 9
+		and int(by_what.get("laser", 0)) == 3 and int(by_what.get("weather", 0)) == 7 and int(by_what.get("wheel", 0)) == 1
+		and int(by_what.get("decoys", 0)) == 1 and int(by_what.get("lava", 0)) == 1 and int(by_what.get("holes", 0)) == 1
+		and int(by_what.get("rift", 0)) == 1 and int(by_what.get("horde", 0)) == 1, by_what)
+	var party_of: Array = parts.map(func(entry: Dictionary) -> int: return int(entry["party"]))
+	check("  and the fight's four parts - the crowns, the Sealing, the Trap, the Tear - alone and with three more players",
+		parts.size() == 8 and party_of.count(0) == 4 and party_of.count(Bench.PARTY) == 4 and Bench.PARTY == 3
+		and parts.all(func(entry: Dictionary) -> bool: return int(entry["most"]) == 1)
+		and Phases.phase_for(float(parts[2]["share"])) == 2 and Phases.phase_for(float(parts[4]["share"])) == 3
+		and Phases.phase_for(float(parts[6]["share"])) == 4 and float(parts[0]["share"]) > Fight.CROWNS_UNTIL)
+	var lava_entry: Dictionary = attacks.filter(func(entry: Dictionary) -> bool: return str(entry["boss"]) == "lava")[0]
+	check("  Find the limit offers both, each counted in its own words (a second, rings, on...)",
+		Sweep.targets_for(Sweep.EVERY_BOSS, 10) == attacks and Sweep.targets_for(Sweep.BOSS_PHASES, 10) == parts
+		and Sweep.counted_as(attacks[0]) == "a second" and Sweep.counted_as(lava_entry) == "rings"
+		and Sweep.counted_as(parts[0]) == "on" and Bench.is_rate(attacks[0]) and not Bench.is_rate(lava_entry))
+	var box := VBoxContainer.new()
+	add_child(box)
+	var picking: Node = Sweep.new()
+	picking.set("save_path", "")
+	add_child(picking)
+	picking.call("build", box, 460.0)
+	var picker: OptionButton = box.find_child("sweeppick", true, false) as OptionButton
+	var names: Array = []
+	for k in picker.item_count:
+		names.append(picker.get_item_text(k))
+	check("  on its picker: Every boss attack (%d) and The Crowned's phases (%d)" % [attacks.size(), parts.size()],
+		names.has("Every boss attack (%d)" % attacks.size()) and names.has("The Crowned's phases (%d)" % parts.size())
+		and attacks.size() == 46, names.slice(0, 8))
+	picking.queue_free()
+	box.queue_free()
+	# ---- a sweep of them on the Testing Ground ------------------------------------------
+	const Run := preload("res://src/world/endless/endlessrun.gd")
+	var was_god: bool = GameState.god_mode
+	var was_shown: bool = PerfOverlay.is_shown()
+	GameState.testing_ground = true
+	var run: Node = Run.new()
+	add_child(run)
+	await get_tree().process_frame
+	var sweep: Node = run.get_node("testingground").get("sweep")
+	sweep.set("save_path", "")
+	sweep.set("places_path", "user://test_limitplaces_none.json")
+	var standing := Node2D.new()
+	add_child(standing)
+	run.set("player_override", standing)
+	sweep.call("begin", Sweep.EVERY_BOSS, 10)
+	var bench_node: Node = sweep.get("_bench")
+	var hosted: Node = bench_node.get("host") if bench_node != null else null
+	var hosted_here: bool = hosted != null and hosted.get_parent() == self
+	var first_up: String = str((sweep.get("target") as Dictionary).get("label", ""))
+	sweep.call("_process", Sweep.CLEAR_SECONDS + 0.1)
+	sweep.call("_process", Sweep.SETTLE_SECONDS + 0.1)
+	_feed_work(Sweep.MEASURE_FRAMES, 2.0)
+	sweep.call("_process", 0.016)
+	var a_second: int = int(sweep.call("count_now"))
+	var rate_now: float = float(bench_node.get("rate")) if bench_node != null else 0.0
+	sweep.call("stop")
+	await get_tree().process_frame
+	check("  a sweep of them: each made by the bench on the Testing Ground's floor, the first volley swept +2 a second; Stop takes it all away",
+		hosted_here and first_up == "Boss: prism volley" and a_second == 2
+		and is_equal_approx(rate_now, 2.0) and not is_instance_valid(hosted) and bench_node.get("host") == null,
+		[first_up, a_second, rate_now])
+	run.queue_free()
+	standing.queue_free()
+	await get_tree().process_frame
+	GameState.god_mode = was_god
+	PerfOverlay.forget_work()
+	PerfOverlay.set_shown(was_shown)
+	# ---- on the Crowned's own floor -----------------------------------------------------
+	var made: Dictionary = _crowned_test_room()
+	var room: Node2D = made["room"]
+	var floor_rect: Rect2 = made["floor"]
+	var zone: BulletZone = made["zone"]
+	var body: Node2D = made["body"]
+	var ground: TileMapLayer = room.get_node("ground") as TileMapLayer
+	var cells_whole: int = ground.get_used_cells().size()
+	var middle: Vector2 = floor_rect.get_center()
+	var bench: Node = Bench.new()
+	add_child(bench)
+	var entry_of := func(label: String) -> Dictionary:
+		for entry in attacks + parts:
+			if str(entry["label"]) == label:
+				return entry
+		return {}
+	bench.call("begin", entry_of.call("Boss: gale volley"), body, room, middle)
+	var host: Node2D = bench.get("host")
+	var caster: Node2D = bench.get("caster")
+	var lights: int = 0
+	for child in host.get_children():
+		if str(child.name).begins_with("crownlight"):
+			lights += 1
+	var rift_layer: CanvasLayer = host.get_node_or_null("riftlayer") as CanvasLayer
+	check("the host: the Crowned's own fight, its floor the room's size round the middle, its seven lights, the rift hidden, no minigame of its own",
+		host != null and host.get_parent() == room and (host.get("room_rect") as Rect2).size == Bench.ROOM_SIZE
+		and (host.get("room_rect") as Rect2).get_center().is_equal_approx(middle) and lights == 7
+		and rift_layer != null and not rift_layer.visible and not host.is_in_group(&"minigame_run"))
+	check("  and the volleys' and shapes' caster: the Crowned hidden, in the volley's land, out of \"enemies\", aimed at you",
+		caster != null and not caster.visible and int(caster.get("crown_land")) == Element.Type.WIND
+		and not caster.is_in_group(&"enemies") and caster.get("player") == body)
+	var orbs_before: int = zone.field.count
+	bench.call("_one")
+	check("  a volley: the Crowned's own, its orbs in the bullet zone", zone.field.count > orbs_before, [orbs_before, zone.field.count])
+	bench.call("begin", entry_of.call("Boss: ring shape"), body, room, middle)
+	var spikes_before: int = _ground_effects_count()
+	bench.call("_one")
+	check("  a shape: its spikes rise round you", _ground_effects_count() > spikes_before + 5,
+		[spikes_before, _ground_effects_count()])
+	bench.call("begin", entry_of.call("Boss: floor meteor"), body, room, middle)
+	var lands: Node2D = bench.get("host").get("lands")
+	bench.call("set_rate", 4.0)
+	bench.call("_physics_process", 0.5)
+	var meteors: int = (lands.get("hazards") as Array).filter(func(hz: Dictionary) -> bool: return str(hz["k"]) == "meteor").size()
+	check("  a hazard so many a second: 4 a second for half a second is two meteors on the floor", meteors == 2, meteors)
+	bench.call("begin", entry_of.call("Boss: cage laser"), body, room, middle)
+	lands = bench.get("host").get("lands")
+	bench.call("_one")
+	var beams: int = (lands.get("hazards") as Array).filter(func(hz: Dictionary) -> bool: return str(hz["k"]) == "laser").size()
+	check("  a laser: the cage's four beams", beams == 4, beams)
+	body.global_position = floor_rect.position - Vector2(200, 200)
+	bench.call("_physics_process", 0.0)
+	check("  and you are kept on its floor, as its walls would keep you", floor_rect.grow(-Bench.HOLD_IN + 1.0).has_point(body.global_position),
+		body.global_position)
+	body.global_position = middle + Vector2(0, 150)
+	# ---- held out -------------------------------------------------------------------
+	var held: Dictionary = {}
+	for pair in [["Boss: the Trap's wheel", 1], ["Boss: decoy eyes", 3], ["Boss: fire weather", 1], ["Boss: the Sealing's lava", 2],
+			["Boss: the Tear's holes", 2], ["Boss: the rift", 1], ["Boss: the Trap's horde", 50]]:
+		bench.call("begin", entry_of.call(str(pair[0])), body, room, middle)
+		var got: int = int(bench.call("make", int(pair[1])))
+		var cells: int = ground.get_used_cells().size()
+		bench.call("_process", 0.016)
+		held[str(pair[0])] = [got, int(bench.call("count")), cells < cells_whole]
+	check("held out: the wheel lit, three eyes, the weather falling, two rings of lava, two holes open and the rift under them, fifty of the horde - each counted",
+		held["Boss: the Trap's wheel"] == [1, 1, false] and held["Boss: decoy eyes"] == [3, 3, false]
+		and held["Boss: fire weather"] == [1, 1, false] and held["Boss: the Sealing's lava"] == [2, 2, true]
+		and held["Boss: the Tear's holes"] == [2, 2, true] and held["Boss: the rift"] == [1, 1, false]
+		and held["Boss: the Trap's horde"] == [50, 50, false], held)
+	bench.call("begin", entry_of.call("Boss: decoy eyes"), body, room, middle)
+	bench.call("make", 3)
+	var eye: Node = (bench.get("host").get("decoys") as Array)[0]
+	eye.call("shatter")
+	bench.call("_process", 0.016)
+	check("  an eye broken (or gone with its time) is made again", int(bench.call("count")) == 3)
+	bench.call("begin", entry_of.call("Boss: the Trap's wheel"), body, room, middle)
+	bench.call("make", 1)
+	var wheel_phases: Node2D = bench.get("host").get("phases")
+	bench.call("_process", Phases.WHEEL_WARN + Phases.WHEEL_SECONDS + 0.1)
+	check("  the wheel lit again as one burns out", int(bench.call("count")) == 1 and int(wheel_phases.get("wheels")) == 2)
+	bench.call("end")
+	await get_tree().process_frame
+	check("  and after: the host, its caster and all it made gone, the floor whole again",
+		bench.get("host") == null and room.find_child("benchcrowned", true, false) == null
+		and room.find_child("crownlava", true, false) == null and room.find_child("crownhorde", true, false) == null
+		and ground.get_used_cells().size() == cells_whole, [ground.get_used_cells().size(), cells_whole])
+	# ---- a part of the fight -----------------------------------------------------------
+	body.add_to_group(&"player")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	bench.call("begin", entry_of.call("Crowned: the Sealing, 4 players"), body, room, middle)
+	var on: int = int(bench.call("make", 1))
+	var crowned: Node2D = bench.get("boss")
+	var fight_host: Node2D = bench.get("host")
+	if crowned != null:
+		crowned.process_mode = Node.PROCESS_MODE_DISABLED
+	for _k in 3:
+		bench.call("_process", 0.016)
+		fight_host.call("_timed_process", 0.016)
+	var targets: Array = crowned.call("fight_targets") if crowned != null else []
+	var fighters: int = targets.size()
+	var counted: bool = targets.has(body)
+	for picture in bench.get("party"):
+		counted = counted and targets.has(picture)
+	var share: float = float(crowned.get("hp")) / float(maxi(1, int(crowned.get("max_hp")))) if crowned != null else 0.0
+	check("a part: the Crowned (a test copy) fights you at its share - the Sealing - with three more players it counts as fighters",
+		on == 1 and crowned != null and crowned.has_meta(&"stress_copy") and bool(fight_host.get("fighting"))
+		and int(fight_host.get("phases").get("phase")) == 2 and absf(share - 0.7) < 0.01 and counted and fighters >= 4
+		and (bench.get("party") as Array).size() == 3, [on, fighters, share])
+	bench.call("end")
+	body.remove_from_group(&"player")
+	Spawner.clear(get_tree())
+	await get_tree().process_frame
+	check("  and after: the Crowned and the party gone", not is_instance_valid(crowned) and (bench.get("party") as Array).is_empty())
+	bench.queue_free()
+	room.queue_free()
+	await get_tree().process_frame
+	# ---- and what Every shot and Every effect lacked ------------------------------------
+	const Stress := preload("res://src/world/endless/stresskinds.gd")
+	var pet_shots: Array = Stress.shots().filter(func(swept: Dictionary) -> bool: return str(swept.get("shot", "")).contains("/pets/"))
+	var pet_scenes: Dictionary = {}
+	for path in ["res://scene/pets/petsniper.tscn", "res://scene/pets/petfiresprite.tscn", "res://scene/pets/petelectricsprite.tscn",
+			"res://scene/pets/petpoisonslimelarge.tscn"]:
+		var pet_scene: PackedScene = (load(path) as PackedScene).instantiate().get("projectile_scene")
+		pet_scenes[pet_scene.resource_path if pet_scene != null else path] = true
+	var listed: bool = pet_shots.size() == 4
+	for swept in pet_shots:
+		listed = listed and pet_scenes.has(str(swept["shot"]))
+	check("Every shot has the pets' shots too - the archer's arrow, the sprites' orbs, the slimes' acid ball - each the pet's own scene",
+		listed, pet_shots.map(func(swept: Dictionary) -> String: return str(swept["shot"])))
+	var beam_entry: Array = []
+	for swept in Stress.effects():
+		if Stress.is_beam(swept):
+			beam_entry.append(swept)
+	var beams_at := Node2D.new()
+	add_child(beams_at)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var lit: int = Stress.make_beams(get_tree(), 2, Vector2(-70000, -70000), rng)
+	var shining: bool = true
+	for healer in get_tree().get_nodes_in_group(Stress.GROUP):
+		var beam: Node2D = (healer as Node).get_node_or_null(^"laser") as Node2D
+		shining = shining and beam != null and beam.visible and float(beam.get("_show_left")) > 60.0
+	if RemoteAttacks.shown():
+		check("  and Every effect a party healer's Gold Staff beam, counted lit: each shining for the whole sweep",
+			beam_entry.size() == 1 and Sweep.counted_as(beam_entry[0]) == "lit" and lit == 2 and shining
+			and Stress.count_shots(get_tree(), beam_entry[0]) == 2, [lit, shining])
+	else:
+		check("  a party healer's beam: attack pictures are switched off here", lit == 0)
+	Stress.clear(get_tree())
+	beams_at.queue_free()
+	await get_tree().process_frame
+	print("  every boss attack")
+
+
+# =============================================================================
+# A FLOOR THE GAME EDITS (0.176.0)
+# =============================================================================
+# The owner: "we need to reduce that forge time". The Forge's island (21 ms)
+# and lava (6.5 ms) were built whole in its arrival frame and its _ready()
+# copied the island (9 ms); its slices' last sort was a 25 ms frame. Now both
+# come in chunks (groundchunks.gd), the run edits them through put() and
+# erase(), the scan keeps the copy, and Godot sorts the slices itself.
+func _test_a_floor_the_game_edits() -> void:
+	section("A FLOOR THE GAME EDITS - the Forge in chunks, its edits on them (0.176.0)")
+	const Ground := preload("res://src/world/groundchunks.gd")
+	const ForgeRun := preload("res://src/world/forge/forgerun.gd")
+
+	# ---- a small floor in chunks, live ------------------------------------------------
+	var world := Node2D.new()
+	var layer := TileMapLayer.new()
+	layer.name = "ground"
+	layer.tile_set = load("res://scene/world/underground.tres")
+	for x in 64:
+		for y in 16:
+			layer.set_cell(Vector2i(x, y), 1, Vector2i(1 + (x + y) % 4, 1 + x % 3))
+	Ground.order_by_chunks(layer, 16)
+	world.add_child(layer)
+	var kept_canvas: Transform2D = get_viewport().canvas_transform
+	var zoom_was: Variant = Settings.get_value("camera_zoom")
+	Settings.set_value("camera_zoom", 3.0)
+	var camera := Camera2D.new()
+	world.add_child(camera)
+	add_child(world)
+	camera.make_current()
+	var tile: float = float(layer.tile_set.tile_size.x)
+	_aim(camera, Vector2(tile * 8.0, tile * 8.0))
+	var helper: Node = Ground.add_to(world)
+	if helper == null:
+		check("a small floor in chunks gets its helper", false)
+		world.free()
+		get_viewport().canvas_transform = kept_canvas
+		Settings.set_value("camera_zoom", zoom_was)
+		return
+	var far := Vector2i(3, 0)
+	var made_at_arrival: int = int(helper.call("made_count"))
+	check("as it arrives only what is seen is made (%d of %d chunks), the far end waiting"
+		% [made_at_arrival, helper.call("chunk_count")],
+		_chunk_made(helper, Vector2i(0, 0)) and not _chunk_made(helper, far) and Ground.SEEN_MARGIN < Ground.VIEW_MARGIN
+		and layer.get_meta(Ground.HELPER_META, null) == helper, made_at_arrival)
+	# A made chunk's cell erased, and one set to another tile.
+	Ground.erase(layer, Vector2i(2, 2))
+	Ground.put(layer, Vector2i(3, 3), 1, Vector2i(4, 3))
+	var first_chunk: TileMapLayer = _chunk_layer(helper, Vector2i(0, 0))
+	check("an edit to a made chunk's cell is on the chunk at once, and on the ground",
+		first_chunk != null and first_chunk.get_cell_source_id(Vector2i(2, 2)) == -1
+		and first_chunk.get_cell_atlas_coords(Vector2i(3, 3)) == Vector2i(4, 3)
+		and layer.get_cell_source_id(Vector2i(2, 2)) == -1 and layer.get_cell_atlas_coords(Vector2i(3, 3)) == Vector2i(4, 3))
+	# The far chunk, not made yet: a cell set and one erased.
+	Ground.put(layer, Vector2i(60, 5), 1, Vector2i(4, 3))
+	Ground.erase(layer, Vector2i(61, 6))
+	# Where the ground had no cells at all.
+	var lonely := Vector2i(5, 40)
+	Ground.put(layer, lonely, 1, Vector2i(2, 2))
+	var waiting: bool = not _chunk_made(helper, far)
+	_aim(camera, Vector2(tile * 56.0, tile * 8.0))
+	helper.call("_on_pre_draw")
+	var far_chunk: TileMapLayer = _chunk_layer(helper, far)
+	check("  one to a chunk not made yet is on it as it is made - a cell set, a cell gone",
+		waiting and far_chunk != null and far_chunk.get_cell_atlas_coords(Vector2i(60, 5)) == Vector2i(4, 3)
+		and far_chunk.get_cell_source_id(Vector2i(61, 6)) == -1 and far_chunk.get_cell_source_id(Vector2i(62, 6)) != -1,
+		[waiting, far_chunk != null])
+	var frames: int = 0
+	while int(helper.call("made_count")) < int(helper.call("chunk_count")) and frames < 200:
+		await get_tree().process_frame
+		frames += 1
+	await get_tree().process_frame
+	var lonely_chunk: TileMapLayer = _chunk_layer(helper, Ground.chunk_of(lonely, 16))
+	check("  a cell where the ground had none gets a chunk of its own, made with the rest",
+		lonely_chunk != null and lonely_chunk.get_cell_atlas_coords(lonely) == Vector2i(2, 2)
+		and lonely_chunk.get_used_cells().size() == 1)
+	# Every chunk made: an edit where there is none makes one now.
+	var later := Vector2i(100, 100)
+	Ground.put(layer, later, 1, Vector2i(1, 1))
+	var later_chunk: TileMapLayer = _chunk_layer(helper, Ground.chunk_of(later, 16))
+	var drawn: int = 0
+	var differ: int = 0
+	for chunk: TileMapLayer in helper.call("chunk_layers"):
+		for cell in chunk.get_used_cells():
+			drawn += 1
+			if chunk.get_cell_atlas_coords(cell) != layer.get_cell_atlas_coords(cell):
+				differ += 1
+	check("  and once all are made, at once - the chunks then draw the ground's %d cells exactly" % layer.get_used_cells().size(),
+		later_chunk != null and later_chunk.get_cell_source_id(later) == 1 and drawn == layer.get_used_cells().size()
+		and differ == 0, [later_chunk != null, drawn, differ])
+	camera.free()
+	world.free()
+	get_viewport().canvas_transform = kept_canvas
+	Settings.set_value("camera_zoom", zoom_was)
+	var plain := TileMapLayer.new()
+	plain.tile_set = load("res://scene/world/underground.tres")
+	Ground.put(plain, Vector2i(1, 1), 1, Vector2i(2, 2))
+	Ground.erase(plain, Vector2i(1, 1))
+	Ground.put(plain, Vector2i(2, 2), 1, Vector2i(3, 3))
+	check("  a layer with no chunks is simply edited", plain.get_cell_source_id(Vector2i(1, 1)) == -1
+		and plain.get_cell_atlas_coords(Vector2i(2, 2)) == Vector2i(3, 3))
+	plain.free()
+
+	# ---- the Forge ---------------------------------------------------------------------
+	var area: Node = (load(str(AreaRegistry.AREAS.get("forge", ""))) as PackedScene).instantiate()
+	var fits: bool = true
+	for name_of in ["ground", "lava"]:
+		var each: TileMapLayer = area.get_node(name_of)
+		var ranges: PackedInt32Array = each.get_meta(Ground.RANGES_META, PackedInt32Array())
+		fits = fits and int(each.get_meta(Ground.SIZE_META, 0)) == Ground.CHUNK_CELLS_SMALL \
+			and Ground.ranges_fit(ranges, each.tile_map_data.size()) and _strays(each.tile_map_data, ranges, Ground.CHUNK_CELLS_SMALL) == 0
+	check("the Forge's island and lava come in chunks of %d, every cell in its own" % Ground.CHUNK_CELLS_SMALL, fits)
+	var build: String = _func_body(_code_src("res://src/tools/buildforge.gd"), "func build(")
+	var run_src: String = _code_src("res://src/world/forge/forgerun.gd")
+	check("  buildforge.gd lays them out so once they are painted, and the run edits them only through put() and erase()",
+		build.find("GroundChunks.order_by_chunks(ground") > build.find("ground.set_cell(")
+		and build.contains("GroundChunks.order_by_chunks(lava")
+		and run_src.contains("GroundChunks.erase(_ground") and run_src.contains("GroundChunks.put(_lava")
+		and not run_src.contains("_ground.erase_cell(") and not run_src.contains("_ground.set_cell(")
+		and not run_src.contains("_lava.set_cell(") and not run_src.contains("_lava.erase_cell("))
+	var ground: TileMapLayer = area.get_node("ground")
+	var lava: TileMapLayer = area.get_node("lava")
+	var island := Node2D.new()
+	area.remove_child(ground)
+	area.remove_child(lava)
+	island.add_child(ground)
+	island.add_child(lava)
+	area.free()
+	var body := Node2D.new()
+	body.set_script(_forge_body_script())
+	island.add_child(body)
+	body.global_position = Vector2(-90000, -90000)
+	add_child(island)
+	var run: Node = ForgeRun.new()
+	run.name = "forgerun"
+	run.set("player_override", body)
+	run.set("class_override", "tank")
+	island.add_child(run)
+	run.set_process(false)
+	var copied_at_ready: int = (run.get("_ground_saved") as Dictionary).size()
+	run.call("_finish_scan")
+	var saved: Dictionary = run.get("_ground_saved")
+	var saved_right: bool = saved.size() == ground.get_used_cells().size()
+	for cell in ground.get_used_cells():
+		var kept: Array = saved.get(cell, [])
+		saved_right = saved_right and kept.size() == 2 and int(kept[0]) == ground.get_cell_source_id(cell) \
+			and kept[1] == ground.get_cell_atlas_coords(cell)
+	check("  the island as built is kept by the scan, not copied in _ready() (%d cells)" % saved.size(),
+		copied_at_ready == 0 and saved_right, [copied_at_ready, saved.size()])
+	island.queue_free()
+	# Godot's own sort, the same order as a sort by distance.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 176
+	var entries: Array = []
+	for i in 3000:
+		entries.append([snappedf(rng.randf_range(0.0, 1400.0), 0.25), Vector2i(i, -i)])
+	var quick: Array = ForgeRun.furthest_first(entries)
+	var slow: Array = entries.duplicate()
+	slow.sort_custom(func(a, b): return float(a[0]) > float(b[0]))
+	var same_order: bool = quick.size() == slow.size()
+	var seen: Dictionary = {}
+	for i in quick.size():
+		same_order = same_order and is_equal_approx(float(quick[i][0]), float(slow[i][0]))
+		seen[quick[i][1]] = true
+	var scan: String = _func_body(run_src, "func _step_scan(")
+	if scan.find("\nstatic func ") != -1:
+		scan = scan.substr(0, scan.find("\nstatic func "))
+	check("  its slices furthest first by Godot's own sort: the order a sort by distance gives, every entry once",
+		same_order and seen.size() == entries.size() and ForgeRun.furthest_first([]).is_empty()
+		and scan.contains("furthest_first(") and not scan.contains("sort_custom("), [same_order, seen.size()])
+	await get_tree().process_frame
+	print("  (a floor the game edits: done)")
+
+
+func _chunk_layer(helper: Node, key: Vector2i) -> TileMapLayer:
+	"""The chunk layer `helper` made for `key`, or null."""
+	for chunk: TileMapLayer in helper.call("chunk_layers"):
+		if chunk.get_meta(&"ground_chunk", Vector2i(-99999, -99999)) == key:
+			return chunk
+	return null
+
+
+# =============================================================================
+# CROWNFALL DRAWS ONLY WHAT CHANGED (0.176.0)
+# =============================================================================
+# The owner, of every minigame measured: "lets fix". A struck or broken brick
+# drew Crownfall's whole brick picture again - about 1,050 draws in that
+# frame on a map of 460 bricks. Now only the box round what changed is
+# cleared and drawn again, by the bricks that reach into it. (Drawn by xvfb in
+# the sandbox, zz/cfpatch: the picture so kept is the same, pixel for pixel,
+# as the whole picture drawn again, on maps of 450, 665 and 1,339 bricks.)
+func _test_crownfall_draws_only_what_changed() -> void:
+	section("Crownfall draws only what changed - a brick broken draws a box of the picture again, not all of it (0.176.0)")
+	const Run := preload("res://src/world/crownfall/crownfallrun.gd")
+	var run: Node2D = Run.new()
+	run.set("running_by_clock", false)
+	add_child(run)
+	run.begin(0)
+	var frames: int = 0
+	while (not run._unpainted.is_empty() or run._map_painting) and frames < 60:
+		run.sync_bricks()
+		frames += 1
+	run.sync_bricks()
+	var whole_first: int = int(run.patched_last)
+	var bricks_in: int = run.brick_layer.get_child_count()
+	check("a map's picture is drawn whole once its bricks are in (%d), kept between draws, its eraser ahead of the bricks"
+		% whole_first, whole_first == bricks_in and bricks_in > 100
+		and run.brick_cache.render_target_clear_mode == SubViewport.CLEAR_MODE_NEVER
+		and run.brick_eraser.get_parent() == run.brick_cache and run.brick_eraser.get_index() < run.brick_layer.get_index()
+		and (run.brick_eraser.visibility_layer & Run.PATCH_LAYER) != 0 and (run.brick_layer.visibility_layer & Run.PATCH_LAYER) != 0,
+		[whole_first, bricks_in])
+	# One plain brick in the middle of the others, broken.
+	var target: Dictionary = {}
+	var best: float = INF
+	var middle: Vector2 = Vector2.ZERO
+	for k in run.bricks:
+		if k.has("node") and (k["node"] as Node2D).visible:
+			middle += (k["rect"] as Rect2).get_center()
+	middle /= maxf(1.0, float(bricks_in))
+	for k in run.bricks:
+		if k.has("node") and (k["node"] as Node2D).visible and run._breaks(k) and Run.STILL_KINDS.has(k["kind"]):
+			var d: float = (k["rect"] as Rect2).get_center().distance_to(middle)
+			if d < best:
+				best = d
+				target = k
+	if target.is_empty():
+		check("a plain brick to break", false)
+		run.queue_free()
+		return
+	var rect: Rect2 = target["rect"]
+	run.brick_cache.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	target["hp"] = 0
+	run.sync_bricks()
+	var box: Rect2 = run._erase_box
+	var near: int = 0
+	var far_marked: int = 0
+	for k in run.bricks:
+		if not k.has("node"):
+			continue
+		var node: Node2D = k["node"]
+		var reaches: bool = Rect2(node.position, (k["rect"] as Rect2).size).grow(Run.DIRTY_MARGIN).intersects(box)
+		var marked: bool = (node.visibility_layer & Run.PATCH_LAYER) != 0
+		if reaches and node.visible and marked:
+			near += 1
+		elif marked and not reaches:
+			far_marked += 1
+	var target_marked: bool = ((target["node"] as Node2D).visibility_layer & Run.PATCH_LAYER) != 0
+	check("  a brick broken draws again only the box round it (%s), with the %d bricks that reach into it - not all %d"
+		% [str(box), int(run.patched_last), bricks_in],
+		run.brick_cache.render_target_update_mode == SubViewport.UPDATE_ONCE and box.encloses(rect)
+		and box.size.x <= rect.size.x + 2.0 * Run.DIRTY_MARGIN + 2.0 and box.size.y <= rect.size.y + 2.0 * Run.DIRTY_MARGIN + 2.0
+		and int(run.patched_last) == near and near >= 1 and int(run.patched_last) < bricks_in / 10 and far_marked == 0
+		and not target_marked and not (target["node"] as Node2D).visible
+		and run.brick_cache.canvas_cull_mask == Run.PATCH_LAYER and box.position == box.position.floor()
+		and box.end == box.end.floor(), [run.patched_last, near, far_marked, target_marked, run.brick_cache.canvas_cull_mask])
+	# Next time, last time's bricks are back to drawing with the rest.
+	var marked_before: Array = (run._patched as Array).duplicate()
+	var second: Dictionary = {}
+	for k in run.bricks:
+		if k != target and k.has("node") and (k["node"] as Node2D).visible and run._breaks(k) \
+				and (k["rect"] as Rect2).get_center().distance_to(rect.get_center()) > 200.0:
+			second = k
+			break
+	if not second.is_empty():
+		second["hp"] = 0
+		run.sync_bricks()
+		var back: bool = true
+		for node in marked_before:
+			if is_instance_valid(node) and not (run._patched as Array).has(node):
+				back = back and (node as Node2D).visibility_layer == 1
+		check("  and the next one: last time's bricks back with the rest, only the new box drawn",
+			back and (run._erase_box as Rect2).encloses(second["rect"]) and not (run._erase_box as Rect2).intersects(rect.grow(Run.DIRTY_MARGIN)))
+	# A new map is drawn whole again.
+	run.begin(1)
+	frames = 0
+	while (not run._unpainted.is_empty() or run._map_painting) and frames < 60:
+		run.sync_bricks()
+		frames += 1
+	run.sync_bricks()
+	check("  a new map's picture is drawn whole, every layer (%d bricks)" % run.brick_layer.get_child_count(),
+		int(run.patched_last) == run.brick_layer.get_child_count() and run.brick_cache.canvas_cull_mask == 0xFFFFFFFF
+		and run._erase_box == Rect2(Vector2.ZERO, Run.VIEW))
+	run.queue_free()
+	await get_tree().process_frame
+	print("  (crownfall draws only what changed: done)")
+
+
+# =============================================================================
+# THE STAND'S MARKS IN ONE CALL (0.176.0)
+# =============================================================================
+# The owner, of every minigame measured: "lets fix". The Mage's Stand drew
+# each crater, fall, trail and arrow as a call of its own - 78 of its 150
+# draws a frame in a wave. Now the ground's marks and the sky's trails are a
+# triangle list each (quadbatch.gd). (Drawn by xvfb in the sandbox,
+# zz/marksshot: 8 craters and 5 falls, 133 draws -> 3, the same marks.)
+func _test_the_stands_marks_in_one_call() -> void:
+	section("The Mage's Stand's marks in one call each - the craters, falls, trails and arrow (0.176.0)")
+	const Stand := preload("res://src/world/magestand/magestand.gd")
+	const Batch := preload("res://src/enemies/quadbatch.gd")
+	var fake := Node2D.new()
+	fake.set_script(_fake_stand_script())
+	for i in 4:
+		(fake.get("craters") as Array).append({"at": Vector2(i * 70, 20), "left": 1.0 + i * 0.3, "seed": float(i)})
+		(fake.get("falling") as Array).append({"at": Vector2(i * 70, 90), "left": 0.1 + i * 0.05})
+	add_child(fake)
+	var ground: Node2D = Stand.Marks.new()
+	ground.set("run", fake)
+	var sky: Node2D = Stand.Marks.new()
+	sky.set("run", fake)
+	sky.set("sky", true)
+	add_child(ground)
+	add_child(sky)
+	await get_tree().process_frame
+	var before: int = Batch.handed
+	ground.queue_redraw()
+	await get_tree().process_frame
+	var ground_triangles: int = Batch.handed - before
+	before = Batch.handed
+	sky.queue_redraw()
+	await get_tree().process_frame
+	var sky_triangles: int = Batch.handed - before
+	# Each crater: its three ovals and seven flames; each fall: its shadow and ring.
+	var small: int = Batch.SEGMENTS / 2
+	var want_ground: int = 4 * (Batch.SEGMENTS * 2 + small + 7 * 2) + 4 * (Batch.SEGMENTS + Batch.SEGMENTS * 2)
+	var src: String = _code_src("res://src/world/magestand/magestand.gd")
+	var marks: String = src.substr(src.find("class Marks extends Node2D:"))
+	marks = marks.substr(0, marks.find("func _draw_star_ground()"))
+	# What each list covers: the sky's up to the star's own shapes, the
+	# ground's from its begin() to the star's.
+	var sky_part: String = marks.substr(marks.find("if sky:"))
+	sky_part = sky_part.substr(0, sky_part.find("_draw_star_sky()"))
+	var ground_part: String = marks.substr(marks.rfind("_batch.begin()"))
+	var drawn_alone: int = 0
+	for part in [sky_part, ground_part]:
+		for call in ["draw_circle(", "draw_colored_polygon(", "draw_arc(", "draw_set_transform(", "draw_line("]:
+			drawn_alone += (part as String).count(call)
+	check("the ground's craters and falls are one triangle list (%d triangles, %d wanted), the sky's trails and arrow another (%d)"
+		% [ground_triangles, want_ground, sky_triangles],
+		ground_triangles == want_ground and sky_triangles > 0 and marks.count("_batch.end(self)") == 2
+		and drawn_alone == 0 and sky_part.contains("_batch.end(self)") and ground_part.contains("_batch.end(self)"),
+		[ground_triangles, want_ground, sky_triangles, drawn_alone])
+	ground.queue_free()
+	sky.queue_free()
+	fake.queue_free()
+	await get_tree().process_frame
+	print("  (the stand's marks in one call: done)")
+
+
+func _fake_stand_script() -> GDScript:
+	"""What the Stand's Marks read of a run, and nothing else."""
+	var script := GDScript.new()
+	script.source_code = """extends Node2D
+var craters: Array = []
+var falling: Array = []
+var star_state: String = ""
+var star_afterglow: float = 0.0
+var star_left: float = 1.0
+var next_x: float = 60.0
+var run_seconds: float = 1.3
+var showing_aim: bool = false
+var aim: Vector2 = Vector2.ZERO
+var players: int = 1
+var star_hits: int = 0
+var star_at: Vector2 = Vector2.ZERO
+func burn_reach() -> float:
+	return 30.0
+func blast_reach() -> float:
+	return 36.0
+func arrow_showing() -> bool:
+	return true
+"""
+	script.reload()
+	return script

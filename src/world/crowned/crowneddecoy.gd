@@ -12,6 +12,12 @@
 # respawns monsters sees it. Any blow breaks it (a ring of light, and gone);
 # so does its time running out. It never attacks.
 #
+# MADE AHEAD (0.176.0): crownedfight.gd makes each a frame apart in the second
+# before the eyes come and holds it (hold(): unseen, out of "enemies", nothing
+# of it running), then wakes it where it stands. All three made in the frame
+# they appeared were 2 to 4 ms in the container - most of it the copy of the
+# health bar.
+#
 # No class_name: preload it by path.
 extends Node2D
 
@@ -34,6 +40,8 @@ var _bar: Range = null
 var _offset: Vector2 = Vector2.ZERO
 # Where it may stand (the room's floor); empty, anywhere.
 var room: Rect2 = Rect2()
+# Made ahead and not yet seen (hold(), wake()).
+var held: bool = false
 
 
 func _init() -> void:
@@ -80,6 +88,27 @@ func dress(boss: Node2D, seconds: float) -> void:
 		_bar.name = "healthbar"
 		add_child(_bar)
 	modulate.a = 0.0
+
+
+func hold() -> void:
+	"""Made ahead, before it is added: unseen, out of "enemies" and nothing
+	of it running (its hurtbox out of the physics world with it) until
+	wake()."""
+	held = true
+	visible = false
+	remove_from_group(&"enemies")
+	process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func wake(seconds: float) -> void:
+	"""Seen from now, for `seconds`, fading in as a new one does."""
+	held = false
+	life = seconds
+	_age = 0.0
+	modulate.a = 0.0
+	visible = true
+	add_to_group(&"enemies")
+	process_mode = Node.PROCESS_MODE_INHERIT
 
 
 func place(at: Vector2) -> void:

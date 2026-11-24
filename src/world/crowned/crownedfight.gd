@@ -64,6 +64,9 @@ const DECOY_SECONDS := 9.0
 const DECOY_SHUFFLE := 3.0
 const DECOY_NEAR := 140.0
 const DECOY_FAR := 240.0
+# The eyes are made this long before they come, one a frame, and held
+# (crowneddecoy.gd hold()), so the frame they appear only wakes them.
+const DECOY_AHEAD := 1.0
 const LIGHT_DIM := 0.18
 const LIGHT_LIT := 1.5
 const LIGHT_DONE := 0.9
@@ -84,6 +87,8 @@ var fight_clock: float = 0.0
 var crown: int = -1
 var decoys: Array = []
 var decoys_made: int = 0
+# Made ahead and held for the next eyes (_make_one_ahead()).
+var decoys_ahead: Array = []
 var won: bool = false
 # The suite's player.
 var player_override: Node2D = null
@@ -226,6 +231,7 @@ func finish(fell: bool) -> void:
 		if is_instance_valid(decoy):
 			(decoy as Node).call("shatter")
 	decoys = []
+	_drop_ahead()
 	if fell:
 		say("The crowns are free")
 
@@ -325,6 +331,8 @@ func _step_decoys(delta: float) -> void:
 			shuffle()
 	_decoy_left -= delta
 	if _decoy_left > 0.0:
+		if _decoy_left <= DECOY_AHEAD:
+			_make_one_ahead()
 		return
 	_decoy_left = DECOY_EVERY
 	if not make_decoys(DECOY_COUNT).is_empty():
@@ -382,17 +390,56 @@ func make_decoys(count: int) -> Array:
 				break
 		if spot == Vector2.INF:
 			continue
-		var decoy: Node2D = DecoyScript.new()
-		decoy.name = "crowneddecoy"
-		decoy.set("room", room_rect.grow(-24.0))
-		decoy.call("dress", boss, DECOY_SECONDS)
-		holder.add_child(decoy)
+		var decoy: Node2D = _take_ahead(holder)
+		if decoy == null:
+			decoy = _new_decoy()
+			holder.add_child(decoy)
 		decoy.call("place", spot)
 		decoy.reset_physics_interpolation()
 		decoys.append(decoy)
 		made.append(decoy)
 		decoys_made += 1
 	return made
+
+
+func _new_decoy() -> Node2D:
+	var decoy: Node2D = DecoyScript.new()
+	decoy.name = "crowneddecoy"
+	decoy.set("room", room_rect.grow(-24.0))
+	decoy.call("dress", boss, DECOY_SECONDS)
+	return decoy
+
+
+func _make_one_ahead() -> void:
+	"""One more eye made and held for the next DECOY_COUNT, beside the boss."""
+	if decoys_ahead.size() >= DECOY_COUNT or boss == null or not is_instance_valid(boss) \
+			or boss.get_parent() == null:
+		return
+	var decoy: Node2D = _new_decoy()
+	decoy.call("hold")
+	boss.get_parent().add_child(decoy)
+	decoys_ahead.append(decoy)
+
+
+func _take_ahead(holder: Node) -> Node2D:
+	"""An eye made ahead, woken - one dressed as this boss and standing
+	where it does - or null; any other is let go."""
+	while not decoys_ahead.is_empty():
+		var decoy: Node2D = decoys_ahead.pop_back()
+		if not is_instance_valid(decoy):
+			continue
+		if decoy.get("source") == boss and decoy.get_parent() == holder:
+			decoy.call("wake", DECOY_SECONDS)
+			return decoy
+		decoy.queue_free()
+	return null
+
+
+func _drop_ahead() -> void:
+	for decoy in decoys_ahead:
+		if is_instance_valid(decoy):
+			(decoy as Node).queue_free()
+	decoys_ahead = []
 
 
 # =============================================================================

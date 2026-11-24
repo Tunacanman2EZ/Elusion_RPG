@@ -413,6 +413,12 @@ var _shown := PackedInt32Array()
 # more than this far from it (px; 0 is every tick). PHONE_STAND_SLACK on a
 # phone (endlessrun.gd), so a crowd standing round the player is left still.
 var stand_slack: float = 0.0
+# STAND-INS A FEW AT A TIME (0.176.0): 0 makes all PROXIES + FOCUS_PROXIES as
+# the swarm enters the tree; more, that many then, and that many more each
+# physics tick until all are made. The Crowned's Trap: 256 stand-ins made in
+# one frame were most of its worst frame (21.9 ms in the container) - its
+# horde comes in at 60 a second, so a few a tick are always enough.
+var proxies_a_tick: int = 0
 const PHONE_STAND_SLACK := 3.0
 var _rng := RandomNumberGenerator.new()
 # The party's other players this step, those on the arena's floor (`others`).
@@ -454,8 +460,7 @@ func _init() -> void:
 	_share.resize(MOST)
 	_share_seen.resize(MOST)
 	_share_list.resize(MOST)
-	_buffer.resize(MOST * 16)
-	_write_still_parts(_buffer)
+	_buffer = still_parts(MOST)
 
 
 func _ready() -> void:
@@ -463,13 +468,7 @@ func _ready() -> void:
 	_build_mesh()
 	if front_line > -INF:
 		_build_front()
-	for i in PROXIES + FOCUS_PROXIES:
-		var proxy: Node2D = SwarmProxy.new()
-		proxy.set("swarm", self)
-		add_child(proxy)
-		_proxies.append(proxy)
-	_shown.resize(_proxies.size())
-	_shown.fill(-1)
+	_add_proxies(PROXIES + FOCUS_PROXIES if proxies_a_tick <= 0 else proxies_a_tick)
 	set_arena(arena)
 	# The GM panel's "Slimes" lag test (lagtests.gd, 0.150.0).
 	add_to_group(LagTests.GROUP)
@@ -508,8 +507,7 @@ func _build_front() -> void:
 	# after the wall and before anybody standing south of it. _mesh is z -1,
 	# under all of it, as ever.
 	y_sort_enabled = true
-	_front_buffer.resize(MOST * 16)
-	_write_still_parts(_front_buffer)
+	_front_buffer = still_parts(MOST)
 	_front = _make_mesh("drawnfront")
 	_front.position = Vector2(0.0, _front_y)
 	add_child(_front)
@@ -911,7 +909,21 @@ func touch_effect_on(player: Node, hit: int) -> bool:
 
 
 func _physics_process(_delta: float) -> void:
+	if _proxies.size() < PROXIES + FOCUS_PROXIES:
+		_add_proxies(proxies_a_tick)
 	_move_proxies()
+
+
+func _add_proxies(count: int) -> void:
+	"""`count` more stand-ins, up to PROXIES + FOCUS_PROXIES - the player's
+	pool first, then the attacks'."""
+	var made: int = mini(maxi(count, 0), PROXIES + FOCUS_PROXIES - _proxies.size())
+	for _k in made:
+		var proxy: Node2D = SwarmProxy.new()
+		proxy.set("swarm", self)
+		add_child(proxy)
+		_proxies.append(proxy)
+		_shown.append(-1)
 
 
 func _sway_msec() -> int:
@@ -1248,7 +1260,7 @@ func _write_buffer() -> void:
 	MultiMesh in one go: the transform (where it stands now), the colour
 	(flash, dying, shown) and the custom data (the step back, facing and
 	phase, hue). The rest of each instance never changes and was written once
-	(_write_still_parts())."""
+	(still_parts())."""
 	_sort_order()
 	var order: PackedInt32Array = _order
 	var n: int = order.size()
@@ -1319,14 +1331,18 @@ func _send(back: PackedFloat32Array, shown: int, front: PackedFloat32Array, in_f
 		_front_ring.send(front, in_front)
 
 
-func _write_still_parts(buf: PackedFloat32Array) -> void:
-	"""What never changes in an instance, whichever slime it draws: the
-	transform's turn and scale (1, 0 / 0, 1) and the colour's alpha (1). The
-	rest of those twelve numbers are 0, as resize() left them."""
-	for at in range(0, buf.size(), 16):
-		buf[at] = 1.0
-		buf[at + 5] = 1.0
-		buf[at + 11] = 1.0
+static func still_parts(count: int) -> PackedFloat32Array:
+	"""`count` instances' worth of what never changes in one, whichever slime
+	it draws: the transform's turn and scale (1, 0 / 0, 1) and the colour's
+	alpha (1), the rest 0. Made by doubling one instance - the engine copies
+	(0.176.0): a loop of MOST in GDScript, twice, was a millisecond and more
+	of a swarm's first frame."""
+	var buf := PackedFloat32Array([1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+	var want: int = maxi(count, 1) * 16
+	while buf.size() < want:
+		buf.append_array(buf)
+	buf.resize(want)
+	return buf
 
 
 func _sort_order() -> void:
@@ -1444,17 +1460,20 @@ func _place_proxies() -> void:
 				_band_next[last] = i
 			_band_tail[band] = i
 		var p: int = 0
+		# While the stand-ins are still being made (proxies_a_tick), only
+		# those made so far.
+		var pool: int = mini(PROXIES, held_n)
 		for band in BANDS:
 			var i: int = _band_head[band]
 			while i >= 0:
-				while p < PROXIES and _held[p] >= 0:
+				while p < pool and _held[p] >= 0:
 					p += 1
-				if p >= PROXIES:
+				if p >= pool:
 					break
 				_held[p] = i
 				_taken[i] = mark
 				i = _band_next[i]
-			if p >= PROXIES:
+			if p >= pool:
 				break
 	if empty_focus > 0 and foci_n > 0:
 		# Nearest the middle of an attack first, by thirds of its reach - found
