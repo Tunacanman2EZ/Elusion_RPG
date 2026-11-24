@@ -3531,6 +3531,13 @@ func _test_every_boss_attack() -> void:
 		hosted_here and first_up == "Boss: prism volley" and a_second == 2
 		and is_equal_approx(rate_now, 2.0) and not is_instance_valid(hosted) and bench_node.get("host") == null,
 		[first_up, a_second, rate_now])
+	# The run puts its swarm and floor wash beside itself (testrunner_9's
+	# fall and chest): left, its 256 stand-ins stayed in "enemies" for the
+	# rest of the run - FAR ENEMIES SLEEP counted 257, and the stress
+	# crowd's Off never found the world empty of copies.
+	for left_beside in [run.get("swarm"), run.get("floor_wash")]:
+		if left_beside != null and is_instance_valid(left_beside):
+			(left_beside as Node).queue_free()
 	run.queue_free()
 	standing.queue_free()
 	await get_tree().process_frame
@@ -4524,3 +4531,93 @@ func _test_the_crownfall_bars_in_one_call() -> void:
 		and words_at > ended_at and paint.find("_cv = panel_node") > ended_at and paint.find("_cv = panel_node") < words_at
 		and Run.get_script_constant_map().has("CanvasBatch"))
 	print("  (crownfall's bars in one call: done)")
+
+
+func _test_the_big_field_walls_flattened() -> void:
+	section("THE BIG FIELD'S WALLS FLATTENED - a picture each, a body a chunk (0.176.1)")
+	# The owner's "yes" to the plan: 4,555 wall pieces were 18,846 nodes, 55
+	# ms of the arrival and 96 of leaving (zz/bfbranches).
+	const WallChunk := preload("res://src/world/wallchunk.gd")
+	var plan: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tools/maps/bigfield_build.json"))
+	var area: Node = (load("res://scene/bigfield.tscn") as PackedScene).instantiate()
+	var walls: Node = area.get_node("ysortworld/props/crypt/walls")
+	var nodes: int = 0
+	var pictures: Array = []
+	var boxes: int = 0
+	var not_chunks: Array = []
+	for chunk in walls.get_children():
+		if chunk.get_script() != WallChunk:
+			not_chunks.append(chunk.name)
+			continue
+		boxes += (chunk.get("boxes") as PackedFloat32Array).size() / 4
+		for piece in chunk.get_children():
+			nodes += 1 + piece.get_child_count()
+			pictures.append(piece)
+	# What each piece was, from its own crypt scene.
+	var wanted_boxes: int = 0
+	var models: Dictionary = {}
+	var wrong: Array = []
+	var at_plan: Dictionary = {}
+	for row in plan["walls"]:
+		var kind: String = str(row[0])
+		if not models.has(kind):
+			models[kind] = (load("res://scene/crypt/%s.tscn" % kind) as PackedScene).instantiate()
+		wanted_boxes += (models[kind] as Node).get_node("body").get_child_count()
+		at_plan["%s@%s" % [kind, Vector2(float(row[1]), float(row[2]))]] = true
+	for piece in pictures:
+		var kind: String = str(piece.get_meta(&"piece", ""))
+		var model: Node = models.get(kind)
+		var art: Sprite2D = model.get_node("sprite") as Sprite2D if model != null else null
+		var sprite := piece as Sprite2D
+		# The scene keeps its own copy of each piece's AtlasTexture: the same
+		# sheet and region.
+		var mine := sprite.texture as AtlasTexture if sprite != null else null
+		var theirs := art.texture as AtlasTexture if art != null else null
+		if mine == null or theirs == null or mine.region != theirs.region or mine.atlas != theirs.atlas \
+				or sprite.offset != art.offset \
+				or not at_plan.has("%s@%s" % [kind, sprite.position]) or piece.get_child_count() != 0:
+			wrong.append(piece.name)
+	check("every wall chunk a WallChunk; every piece its crypt piece's picture alone, at the plan's spot (%d in %d nodes)"
+		% [pictures.size(), nodes], not_chunks.is_empty() and wrong.is_empty() and pictures.size() == (plan["walls"] as Array).size()
+		and nodes == pictures.size(), [not_chunks.slice(0, 3), wrong.slice(0, 3)])
+	check("  and every one of the pieces' %d boxes kept on its chunk" % wanted_boxes, boxes == wanted_boxes, [boxes, wanted_boxes])
+	for model in models.values():
+		(model as Node).free()
+	# In the world: one body, on the pieces' layer, a shape a box, out of the
+	# way of its pictures.
+	var chunk: Node2D = null
+	for c in walls.get_children():
+		if (c.get("boxes") as PackedFloat32Array).size() >= 8:
+			chunk = c
+			break
+	var holder := Node2D.new()
+	add_child(holder)
+	chunk.get_parent().remove_child(chunk)
+	chunk.owner = null
+	holder.add_child(chunk)
+	var body: StaticBody2D = chunk.get_node_or_null("body") as StaticBody2D
+	var piece_body := StaticBody2D.new()
+	var shapes: int = 0
+	if body != null:
+		for id in body.get_shape_owners():
+			shapes += body.shape_owner_get_shape_count(id)
+	check("  in the world a chunk is one StaticBody2D on the pieces' own layer and mask, a shape a box, not among its pictures",
+		body != null and body.collision_layer == piece_body.collision_layer and body.collision_mask == piece_body.collision_mask
+		and shapes * 4 == (chunk.get("boxes") as PackedFloat32Array).size() and not chunk.get_children().has(body), shapes)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var first: Rect2 = (chunk.call("box_rects") as Array)[0]
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = chunk.global_position + first.get_center()
+	query.collision_mask = 1
+	var hit: bool = false
+	for h in get_viewport().world_2d.direct_space_state.intersect_point(query, 8):
+		hit = hit or h.get("collider") == body
+	check("  and it blocks where the piece's box was", hit)
+	piece_body.free()
+	holder.queue_free()
+	area.free()
+	var src: String = _code_src("res://src/tools/buildbigfield.gd")
+	check("  the builder flattens only walls in chunks (the Field's builder, chunk_size 0, places its pieces as before)",
+		_func_body(src, "func build(").contains("if chunk_size > 0:\n\t\t\t_flat_wall("))
+	print("  (the big field's walls flattened: done)")

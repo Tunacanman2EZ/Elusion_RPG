@@ -84,6 +84,7 @@ extends Node2D
 const Targets := preload("res://src/shared/targets.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
 const HitSource := preload("res://src/shared/hitsource.gd")
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 
 const GROUP: StringName = &"bulletzone"
 const WALL_CELL: float = 8.0
@@ -365,13 +366,14 @@ func _process(delta: float) -> void:
 
 func _floor_rect() -> Rect2:
 	# The area's floor - the "ground" TileMapLayer's painted cells - plus a
-	# margin. No floor (a test world) means nowhere is off the edge.
+	# margin. No floor (a test world) means nowhere is off the edge. Asked of
+	# groundchunks.gd: the Big Field's floor is kept once, off the layer.
 	var ground: TileMapLayer = null
 	if get_parent() != null:
 		ground = get_parent().get_node_or_null(^"ground") as TileMapLayer
 	if ground == null or ground.tile_set == null:
 		return Rect2(-1.0e6, -1.0e6, 2.0e6, 2.0e6)
-	var used: Rect2i = ground.get_used_rect()
+	var used: Rect2i = GroundChunks.used_rect(ground)
 	var tile: Vector2 = Vector2(ground.tile_set.tile_size)
 	var top_left: Vector2 = ground.to_global(Vector2(used.position) * tile)
 	return Rect2(top_left, Vector2(used.size) * tile).grow(16.0)

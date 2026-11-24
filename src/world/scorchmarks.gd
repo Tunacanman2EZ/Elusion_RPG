@@ -27,6 +27,7 @@
 class_name ScorchMarks
 extends Node2D
 
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 
 # How long a patch lasts: dark for HOLD seconds, then fading to nothing by LIFE.
 const HOLD := 1.4
@@ -86,7 +87,8 @@ func has_floor(at_global: Vector2) -> bool:
 	var layer: TileMapLayer = get_parent() as TileMapLayer
 	if layer == null:
 		return true
-	return layer.get_cell_source_id(layer.local_to_map(layer.to_local(at_global))) != -1
+	# Asked of groundchunks.gd: the Big Field's floor is kept once, off the layer.
+	return GroundChunks.source_at(layer, layer.local_to_map(layer.to_local(at_global))) != -1
 
 
 func burn(at_global: Vector2) -> bool:

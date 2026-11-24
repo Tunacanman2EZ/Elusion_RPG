@@ -1461,7 +1461,9 @@ node types and properties **without instantiating** (reading `elusion.tscn`
 should not build the world), and `TileSet.get_source(id)` returns the real
 `TileSetAtlasSource` and its real texture, so the id-to-texture mapping is the
 engine's own. Only `tile_map_data` is hand-decoded, because there is no API for
-it: a 2-byte header then 12 bytes per cell, with the source id at offset 4.
+it: a 2-byte header then 12 bytes per cell, with the source id at offset 4. A
+floor kept once (the Big Field's, 0.176.2, groundchunks.gd) holds its cells in
+`metadata/chunk_cells` instead, in the same bytes, and the audit counts both.
 
 That choice paid immediately — a text-parsing version of the same audit reported
 zero painted cells for `barrels.png`, `redflower.png` and `bush.png`. All three
@@ -3704,7 +3706,23 @@ TileMapLayer's 135,926 cells, built all at once at the end of that frame.
 - `_test_the_floor_comes_in_chunks()` - in **testrunner_11.gd**, a new
   part (testrunner_10 passed 250 KB).
 - **Left:** the 4,500 wall pieces, about 95 ms of the load in the
-  container.
+  container. (Flattened in 0.176.1: wallchunk.gd.)
+- **Kept once (0.176.2)** - the owner: "fix floor". The ground's own
+  copy of the cells, never drawn, was 27-33 ms of the load and 40-50 of
+  leaving, and the world map's picture of it 21-24 ms of the arrival.
+  buildbigfield.gd now bakes the map's picture onto the root (worldmap.gd
+  `BUILT_MAP`, a PNG) and moves the cells into the ground's meta
+  (`GroundChunks.keep_once()`: `chunk_cells`, `chunk_used`), so the ground
+  holds none. What reads the floor asks groundchunks.gd - `source_at()`,
+  `used_rect()`, `cells_of()`, `whole()` - not the layer: the scorch
+  marks, the GM's spawns, BulletZone's edge, the map and backdrop when
+  nothing was baked, the suite (`_whole_floor()`, and the walk). The
+  ground wears floorpreview.gd so the editor still draws it; atlasaudit.gd
+  counts the meta. Measured (container): instantiate 79-91 -> 51-59 ms,
+  the dressing 23-31 -> 14, the first frame 117-148 -> 71-81, freeing on
+  leaving 166-177 -> 93-127; the floor the same to the pixel at five
+  spots, and the map. `_test_the_big_field_floor_kept_once()`
+  (testrunner_14.gd, a new part).
 
 ### A monster's health number built as its bar first shows (0.135.5)
 

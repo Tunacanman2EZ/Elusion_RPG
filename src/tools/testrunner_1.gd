@@ -5137,7 +5137,7 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 	spikes in all, and the `behind` lands (by `lands`) closed off with the
 	doors shut."""
 	section(title)
-	var area: Node = (load(scene_path) as PackedScene).instantiate()
+	var area: Node = _whole_floor((load(scene_path) as PackedScene).instantiate())
 	var ground: TileMapLayer = area.get_node("ground") as TileMapLayer
 	var crypt: Node2D = area.get_node_or_null("ysortworld/props/crypt") as Node2D
 	check("the props have a home of their own: ysortworld/props/crypt - its walls, doors and decor",
@@ -5160,7 +5160,7 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 				unsorted.append("%s/%s" % [group.name, chunk.name])
 		for prop in _crypt_pieces(group):
 			props.append(prop)
-			if not str(prop.scene_file_path).begins_with("res://scene/crypt/"):
+			if not _piece_path(prop).begins_with("res://scene/crypt/"):
 				foreign.append("%s/%s" % [group.name, prop.name])
 	check("%d props, every one a scene/crypt/ piece - the sheet's art at its own size" % props.size(),
 		props.size() >= int(want["pieces"]) and foreign.is_empty(), foreign.slice(0, 4))
@@ -5178,6 +5178,15 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 	var plugs: Node = area.get_node_or_null("ysortworld/props/pillarplugs")
 	if plugs != null:
 		bodies.append([plugs, Vector2.ZERO, plugs])
+	# Flattened walls (0.176.1): each chunk's boxes, its one body in the game.
+	for chunk in crypt.get_node("walls").get_children():
+		if chunk.has_method("box_rects"):
+			var origin: Vector2 = _area_xform(chunk, area).origin
+			var k: int = 0
+			for box in chunk.call("box_rects"):
+				solids.append({"rect": Rect2(origin + (box as Rect2).position, (box as Rect2).size),
+					"name": "walls/%s/box%d" % [chunk.name, k], "layer": 1, "door": false})
+				k += 1
 	for entry in bodies:
 		var body: StaticBody2D = entry[0]
 		var prop: Node = entry[2]
@@ -5188,7 +5197,7 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 			var size: Vector2 = (cs.shape as RectangleShape2D).size
 			var centre: Vector2 = (entry[1] as Vector2) + cs.position
 			solids.append({"rect": Rect2(centre - size / 2.0, size), "name": "%s/%s" % [prop.get_parent().name, prop.name],
-				"layer": body.collision_layer, "door": str(prop.scene_file_path) == "res://scene/crypt/door.tscn"})
+				"layer": body.collision_layer, "door": _piece_path(prop) == "res://scene/crypt/door.tscn"})
 	var off_layer: Array = solids.filter(func(s): return int(s.layer) != 1).map(func(s): return s.name)
 	check("the walls, doors, pillars and big pieces are solid, on the walls' own layer: %d blockers" % solids.size(),
 		solids.size() >= int(want["pieces"]) and off_layer.is_empty(), off_layer.slice(0, 4))
@@ -5196,7 +5205,7 @@ func _check_dressed_map(scene_path: String, title: String, want: Dictionary) -> 
 	# ---- every wall's picture, and none over another -----------------------------
 	var pictures: Array = []
 	for prop in _crypt_pieces(crypt.get_node("walls")):
-		var spr: Sprite2D = prop.get_node_or_null("sprite") as Sprite2D
+		var spr: Sprite2D = _piece_sprite(prop)
 		if spr == null:
 			continue
 		var size: Vector2 = (spr.texture as AtlasTexture).region.size

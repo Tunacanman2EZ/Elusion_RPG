@@ -31,7 +31,7 @@
 # a test may call only a test in its own part or an earlier one. One file of
 # 2 MB was costly to copy and to edit; a run of a few tests now only edits
 # _run_all() here. _is_suite_script() is how a scan leaves the suite out.
-extends "res://src/tools/testrunner_13.gd"
+extends "res://src/tools/testrunner_14.gd"
 
 
 func _ready() -> void:
@@ -334,6 +334,8 @@ func _run_all() -> void:
 	await _test_the_shop_keeps_its_lists()
 	await _test_an_old_copy_refreshes_itself()
 	_test_the_crownfall_bars_in_one_call()
+	await _test_the_big_field_walls_flattened()
+	_test_the_big_field_floor_kept_once()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

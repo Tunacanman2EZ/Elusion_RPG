@@ -310,6 +310,15 @@ func _collect_scenes(dir_path: String, out: Array[String]) -> void:
 	dir.list_dir_end()
 
 
+static func _cells_after_header(so_far: PackedByteArray, more: Variant) -> PackedByteArray:
+	"""`more`'s bytes to add to `so_far`: whole while nothing has been read,
+	its cells alone (no second header) after."""
+	var bytes: PackedByteArray = more as PackedByteArray if more is PackedByteArray else PackedByteArray()
+	if so_far.is_empty() or bytes.size() < HEADER_BYTES:
+		return bytes
+	return bytes.slice(HEADER_BYTES)
+
+
 func _audit_scene(path: String, totals: Dictionary, where: Dictionary,
 		atlas_textures: Dictionary) -> void:
 	var packed := load(path) as PackedScene
@@ -332,7 +341,11 @@ func _audit_scene(path: String, totals: Dictionary, where: Dictionary,
 				"tile_set":
 					tile_set = state.get_node_property_value(n, p) as TileSet
 				"tile_map_data":
-					data = state.get_node_property_value(n, p) as PackedByteArray
+					data.append_array(_cells_after_header(data, state.get_node_property_value(n, p)))
+				# A floor kept once (groundchunks.gd, 0.176.2) keeps its
+				# cells in this meta and few or none on the layer: both count.
+				"metadata/chunk_cells":
+					data.append_array(_cells_after_header(data, state.get_node_property_value(n, p)))
 		if tile_set == null:
 			continue
 

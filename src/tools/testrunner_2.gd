@@ -1300,7 +1300,7 @@ func _test_the_big_field() -> void:
 	check("it loads", packed != null)
 	if packed == null:
 		return
-	var area: Node = packed.instantiate()
+	var area: Node = _whole_floor(packed.instantiate())
 	var ground: TileMapLayer = area.get_node_or_null("ground") as TileMapLayer
 	var arrival: Node2D = area.get_node_or_null("ysortworld/interactables/fieldteleport/arrivalmarker") as Node2D
 	var enemies: Array = area.get_node("ysortworld/enemies").get_children() if area.has_node("ysortworld/enemies") else []

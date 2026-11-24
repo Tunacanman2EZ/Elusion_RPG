@@ -20,6 +20,8 @@ extends Node2D
 ## TileMapLayers when the area opens, so a new area or a repainted one is
 ## covered the moment it is saved.
 
+const GroundChunks := preload("res://src/world/groundchunks.gd")
+
 # The engine's default clear colour, which is what the tiles were painted over.
 const GAPS := Color(0.3, 0.3, 0.3, 1.0)
 # Past the edge of the map.
@@ -125,13 +127,18 @@ static func cover(area: Node) -> Array[Rect2]:
 		if layer.has_meta(&"ground_chunk"):
 			continue
 		var to_area: Transform2D = _transform_to(layer, area)
+		# A floor kept once (groundchunks.gd, 0.176.2) is read whole from its
+		# meta - only where the cover was not worked out when it was built.
+		var cells: TileMapLayer = GroundChunks.whole(layer) if GroundChunks.kept_once(layer) else layer
 		var drawn: Dictionary = {}
-		for cell in layer.get_used_cells():
-			var shape: Rect2 = to_area * _drawn_rect(layer, cell, drawn)
+		for cell in cells.get_used_cells():
+			var shape: Rect2 = to_area * _drawn_rect(cells, cell, drawn)
 			var band := Vector2(shape.position.y, shape.size.y)
 			if not bands.has(band):
 				bands[band] = []
 			bands[band].append([shape.position.x, shape.size.x])
+		if cells != layer:
+			cells.free()
 
 	var out: Array[Rect2] = []
 	for band: Vector2 in bands:

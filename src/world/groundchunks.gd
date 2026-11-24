@@ -28,7 +28,8 @@
 # they draw where it drew, under what it had on top (scorch marks). Edge
 # tiles collide from their chunk. The ground keeps every cell for what reads
 # it - the world map, BulletZone, the scorch marks, the tests - and the
-# editor still shows it whole.
+# editor still shows it whole. (Not the Big Field's, since 0.176.2: KEPT
+# ONCE, below.)
 #
 # THE TOWN TOO, AND ITS WATER (0.137.3). The owner: "chunking its important
 # everything is fast so it works on low end phones". Any of LAYERS at a
@@ -58,6 +59,17 @@
 # VIEW_MARGIN of the view first, then the rest nearest the arrival. Arriving
 # at the Forge made 12 of its 60 floor chunks and 6 of its 25 lava chunks
 # (9 ms) where the view and VIEW_MARGIN reached; now about half that.
+#
+# THE BIG FIELD'S FLOOR KEPT ONCE (0.176.2). The owner: "fix floor". Its
+# 135,926 cells were kept twice - by the chunks, and by the ground for what
+# reads it - and the ground's copy was built as the area loaded (27-33 ms)
+# and taken apart as it was left (40-50 ms), never drawn. Now its builder
+# keeps them once (keep_once()): the ground holds none, and its cells are
+# the bytes in CELLS_META, their rectangle USED_META. What reads the floor
+# asks here - source_at(), used_rect(), cells_of() - not the layer; the
+# world map's picture is baked with it (worldmap.gd BUILT_MAP), and the
+# editor draws it from floorpreview.gd. A cell the game sets on such a
+# floor (put()) is kept on the layer and its chunk as before.
 extends Node
 
 const NODE_NAME := "groundchunks"
@@ -69,6 +81,14 @@ const LAYERS: Array[StringName] = [&"ground", &"water", &"lava"]
 # On the ground, from the builder: the side used, and the ranges.
 const SIZE_META := &"chunk_size"
 const RANGES_META := &"chunk_ranges"
+# On a floor KEPT ONCE (keep_once()): its cells, as tile_map_data's bytes in
+# chunk order, and the rectangle they cover.
+const CELLS_META := &"chunk_cells"
+const USED_META := &"chunk_used"
+# tile_map_data: a 2-byte header, then 12 bytes a cell - x, y (int16), then
+# its source, atlas x, atlas y and alternative.
+const HEADER_BYTES := 2
+const CELL_BYTES := 12
 # On each chunk layer: its chunk.
 const CHUNK_META := &"ground_chunk"
 # On a layer in chunks: its helper (put(), erase()).
@@ -130,7 +150,7 @@ static func put(layer: TileMapLayer, cell: Vector2i, source: int, atlas: Vector2
 	if layer == null:
 		return
 	layer.set_cell(cell, source, atlas, alternative)
-	var helper: Object = layer.get_meta(HELPER_META, null)
+	var helper: Object = layer.get_meta(HELPER_META) if layer.has_meta(HELPER_META) else null
 	if helper != null and is_instance_valid(helper):
 		helper.call("edit", cell, source, atlas, alternative)
 
@@ -178,6 +198,89 @@ static func order_by_chunks(layer: TileMapLayer, size: int = CHUNK_CELLS) -> voi
 	layer.set_meta(RANGES_META, ranges)
 
 
+static func keep_once(layer: TileMapLayer) -> void:
+	"""For the builders, after order_by_chunks(): `layer`'s cells moved into
+	CELLS_META and their rectangle into USED_META, the layer left with none
+	(THE BIG FIELD'S FLOOR KEPT ONCE, above)."""
+	layer.set_meta(USED_META, layer.get_used_rect())
+	layer.set_meta(CELLS_META, layer.tile_map_data)
+	layer.clear()
+	layer.update_internals()
+
+
+static func kept_once(layer: TileMapLayer) -> bool:
+	return layer != null and layer.has_meta(CELLS_META)
+
+
+static func restore(layer: TileMapLayer) -> void:
+	"""A floor kept once given its cells back, the layer whole as it was
+	before keep_once() (its chunk ranges kept): the suite's, and the game's
+	when its ranges do not fit."""
+	if not kept_once(layer):
+		return
+	layer.tile_map_data = layer.get_meta(CELLS_META)
+	layer.remove_meta(CELLS_META)
+	layer.remove_meta(USED_META)
+
+
+static func cells_of(layer: TileMapLayer) -> PackedByteArray:
+	"""`layer`'s cells as tile_map_data's bytes: those it was built with when
+	kept once, its own otherwise."""
+	if kept_once(layer):
+		return layer.get_meta(CELLS_META)
+	return layer.tile_map_data if layer != null else PackedByteArray()
+
+
+static func whole(layer: TileMapLayer) -> TileMapLayer:
+	"""A layer holding `layer`'s cells (cells_of()), with its tile set: a floor
+	kept once read whole where nothing was baked from it (the map's picture,
+	the backdrop). Not in the tree; the caller frees it."""
+	var copy := TileMapLayer.new()
+	copy.tile_set = layer.tile_set
+	copy.tile_map_data = cells_of(layer)
+	return copy
+
+
+static func used_rect(layer: TileMapLayer) -> Rect2i:
+	"""get_used_rect() for a floor that may be kept once: the rectangle its
+	builder kept, with any cell the game has put on it since."""
+	if not kept_once(layer):
+		return layer.get_used_rect()
+	var kept: Rect2i = layer.get_meta(USED_META, Rect2i())
+	var own: Rect2i = layer.get_used_rect()
+	if not own.has_area():
+		return kept
+	return own if not kept.has_area() else kept.merge(own)
+
+
+static func source_at(layer: TileMapLayer, cell: Vector2i) -> int:
+	"""get_cell_source_id() for a floor that may be kept once: -1 for none.
+	Asked of its helper (the chunk that draws it) once it has one, of the
+	kept bytes before."""
+	if not kept_once(layer):
+		return layer.get_cell_source_id(cell)
+	var helper: Object = layer.get_meta(HELPER_META) if layer.has_meta(HELPER_META) else null
+	if helper != null and is_instance_valid(helper):
+		return int(helper.call("source_of", cell))
+	if layer.get_cell_source_id(cell) != -1:
+		return layer.get_cell_source_id(cell)
+	return _source_in(layer.get_meta(CELLS_META), layer.get_meta(RANGES_META, PackedInt32Array()),
+		int(layer.get_meta(SIZE_META, CHUNK_CELLS)), cell)
+
+
+static func _source_in(data: PackedByteArray, ranges: PackedInt32Array, size: int, cell: Vector2i) -> int:
+	"""`cell`'s source in tile_map_data's bytes, read from its chunk's range."""
+	var key: Vector2i = chunk_of(cell, size)
+	for i in range(0, ranges.size() - 3, 4):
+		if ranges[i] != key.x or ranges[i + 1] != key.y:
+			continue
+		for at in range(ranges[i + 2], mini(ranges[i + 3], data.size() - CELL_BYTES + 1), CELL_BYTES):
+			if data.decode_s16(at) == cell.x and data.decode_s16(at + 2) == cell.y:
+				return data.decode_s16(at + 4)
+		return -1
+	return -1
+
+
 static func _row_order(a: Array, b: Array) -> bool:
 	var ca: Vector2i = a[0]
 	var cb: Vector2i = b[0]
@@ -202,13 +305,16 @@ func take(layer: TileMapLayer) -> bool:
 	"""Switch `layer` off and make the chunks the arrival can see. False, and
 	nothing changed, when its ranges do not fit its data."""
 	var ranges: PackedInt32Array = layer.get_meta(RANGES_META)
-	var data: PackedByteArray = layer.tile_map_data
+	var once: bool = kept_once(layer)
+	var data: PackedByteArray = cells_of(layer)
 	if not ranges_fit(ranges, data.size()):
 		push_warning("GroundChunks: %s's chunk ranges do not fit its cells - rebuild the map." % layer.get_path())
+		# Kept once, it has no floor of its own to draw: given it back.
+		restore(layer)
 		return false
 	ground = layer
 	_data = data
-	_header = data.slice(0, 2)
+	_header = data.slice(0, HEADER_BYTES)
 	_size = int(layer.get_meta(SIZE_META, CHUNK_CELLS))
 	for i in range(0, ranges.size(), 4):
 		_ranges[Vector2i(ranges[i], ranges[i + 1])] = [ranges[i + 2], ranges[i + 3]]
@@ -219,6 +325,12 @@ func take(layer: TileMapLayer) -> bool:
 	var middle := Vector2(_world_to_chunks(Rect2(arrival, Vector2.ZERO)).position)
 	keys.sort_custom(_nearer.bind(middle))
 	_queue.assign(keys)
+	# Kept once, the layer holds only cells put on it since it was built (by
+	# hand, in the editor): drawn by their chunks too.
+	if once:
+		for cell in layer.get_used_cells():
+			edit(cell, layer.get_cell_source_id(cell), layer.get_cell_atlas_coords(cell),
+				layer.get_cell_alternative_tile(cell))
 	var at_arrival := Rect2(arrival - _view_size() * 0.5, _view_size())
 	make_in(at_arrival.grow(SEEN_MARGIN))
 	return true
@@ -262,6 +374,19 @@ func edit(cell: Vector2i, source: int, atlas: Vector2i, alternative: int) -> voi
 	(_edits[key] as Dictionary)[cell] = [source, atlas, alternative]
 	if _data.is_empty():
 		_make(key)
+
+
+func source_of(cell: Vector2i) -> int:
+	"""`cell`'s source on the floor (source_at()): from the chunk that draws
+	it - made now if it is not yet, since it is wanted."""
+	var key: Vector2i = chunk_of(cell, _size)
+	var chunk: TileMapLayer = _made.get(key) as TileMapLayer
+	if chunk == null or not is_instance_valid(chunk):
+		if not _ranges.has(key):
+			return -1
+		_make(key)
+		chunk = _made.get(key) as TileMapLayer
+	return chunk.get_cell_source_id(cell) if chunk != null else -1
 
 
 func _process(_delta: float) -> void:
@@ -394,7 +519,7 @@ func _arrival() -> Vector2:
 	var camera: Camera2D = ground.get_viewport().get_camera_2d() if ground.is_inside_tree() else null
 	if camera != null:
 		return camera.global_position
-	var used: Rect2i = ground.get_used_rect()
+	var used: Rect2i = used_rect(ground)
 	var tile := Vector2(ground.tile_set.tile_size)
 	return ground.to_global((Vector2(used.position) + Vector2(used.size) * 0.5) * tile)
 

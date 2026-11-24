@@ -1068,8 +1068,10 @@ func _test_other_players_attacks_are_pictures() -> void:
 	them.place(o + Vector2(0, 30), 1000)
 	Remote.clock_override = 20.6
 	them.hear_attacks([["stalag", 1500, o.x, o.y + 30.0, o.x + 40.0, o.y, 0, 0],
-		["laser", 1500, 0.0, 0.0, 0.0, 0.0, 0, 0], ["meteor", 1500]])
+		["howl", 1500, 0.0, 0.0, 0.0, 0.0, 0, 0], ["meteor", 1500]])
 	them._process(1.0 / 60.0)
+	# A kind nobody knows: "howl" (it was "laser", until the Gold Staff's
+	# beam became one - RemoteAttacks.KINDS).
 	check("an attack waits until the playback of them reaches the moment they made it",
 		them.attacks_waiting() == 1, them.attacks_waiting())
 	var circle_script: Script = load("res://src/projectiles/spelltargetcircle.gd")

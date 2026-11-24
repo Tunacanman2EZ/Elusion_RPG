@@ -3487,7 +3487,7 @@ func _test_the_endless_run() -> void:
 			health_rises = false
 	check("a stage is a minute; the crowd starts at 60, grows every stage and never passes 5,000 (3,000 before 0.148.0)",
 		is_equal_approx(Run.STAGE_SECONDS, 60.0) and Run.stage_crowd(1) == 60 and crowd_rises
-		and Run.stage_crowd(40) == SwarmScript.MOST and SwarmScript.MOST == 5000, [Run.stage_crowd(1), Run.stage_crowd(18)])
+		and Run.stage_crowd(40) == SwarmScript.RUN_MOST and SwarmScript.RUN_MOST == 5000, [Run.stage_crowd(1), Run.stage_crowd(18)])
 	check("  and every swarmling is tougher than the stage before's, past the cap too", health_rises
 		and Run.stage_health(1) == 24.0 and Run.stage_health(40) > Run.stage_health(30))
 	check("the lands come in the bands' order, light first and dark last, then round again",
@@ -4032,7 +4032,7 @@ func _test_the_party_run() -> void:
 		Run.party_crowd(1) == 1.0 and Run.party_crowd(4) == 2.5 and is_equal_approx(Run.party_health(2), 1.2)
 		and Run.party_elites(1) == 0 and Run.party_elites(4) == 3 and is_equal_approx(Run.party_boss(4), 3.25)
 		and Run.crowd_for(1, 1) == Run.stage_crowd(1) and Run.crowd_for(1, 2) == 90
-		and Run.crowd_for(30, 4) == SwarmScript.MOST)
+		and Run.crowd_for(30, 4) == SwarmScript.RUN_MOST)
 
 	var LinkScript: GDScript = _party_link_script()
 	var la: Node = LinkScript.new()

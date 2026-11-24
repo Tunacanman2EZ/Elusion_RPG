@@ -22,6 +22,7 @@ extends RefCounted
 # not inside a wall (on_floor()).
 
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
+const GroundChunks := preload("res://src/world/groundchunks.gd")
 const FOLDER := "res://scene/enemy/"
 const GROUP := &"gm_spawned"
 # At most this many a press.
@@ -177,12 +178,13 @@ static func floor_layers(scene: Node) -> Array:
 
 
 static func on_floor(spot: Vector2, tiles: Array, space: PhysicsDirectSpaceState2D) -> bool:
-	"""On a ground tile, not a water one, and not inside a wall."""
+	"""On a ground tile, not a water one, and not inside a wall. The tiles
+	asked of groundchunks.gd: the Big Field's floor is kept once, off the layer."""
 	var ground: TileMapLayer = tiles[0]
-	if ground.get_cell_source_id(ground.local_to_map(ground.to_local(spot))) == -1:
+	if GroundChunks.source_at(ground, ground.local_to_map(ground.to_local(spot))) == -1:
 		return false
 	var water: TileMapLayer = tiles[1] if tiles.size() > 1 else null
-	if water != null and water.get_cell_source_id(water.local_to_map(water.to_local(spot))) != -1:
+	if water != null and GroundChunks.source_at(water, water.local_to_map(water.to_local(spot))) != -1:
 		return false
 	if space != null:
 		var probe := PhysicsPointQueryParameters2D.new()

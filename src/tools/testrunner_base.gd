@@ -1635,6 +1635,38 @@ const DRESSED_LIGHT_BUDGET := 40
 # drawn on a tie: since the prop chunks (propchunks.gd) the Big Field's walls
 # and decor sit one level down, in chunks (the group "propchunk"); the Field's
 # and the doors do not.
+# A crypt piece's scene - a flattened wall's (wallchunk.gd, buildbigfield.gd
+# THE WALLS FLATTENED, 0.176.1) from its meta "piece".
+func _piece_path(piece: Node) -> String:
+	if str(piece.scene_file_path) != "":
+		return str(piece.scene_file_path)
+	if piece.has_meta(&"piece"):
+		return "res://scene/crypt/%s.tscn" % str(piece.get_meta(&"piece"))
+	return ""
+
+
+# THE BIG FIELD'S FLOOR KEPT ONCE (groundchunks.gd, 0.176.2): its ground holds
+# no cells, they are in its meta. A check that reads an area's floor off its
+# layers, as the scene held it before, gives the floor its cells back first.
+const FloorChunks := preload("res://src/world/groundchunks.gd")
+
+
+func _whole_floor(area: Node) -> Node:
+	"""`area` (instanced, not entered) with every root layer kept once given
+	its cells back. Returns it."""
+	for child in area.get_children():
+		if child is TileMapLayer:
+			FloorChunks.restore(child as TileMapLayer)
+	return area
+
+
+# A crypt piece's picture: its "sprite", or a flattened wall itself.
+func _piece_sprite(piece: Node) -> Sprite2D:
+	if piece is Sprite2D:
+		return piece as Sprite2D
+	return piece.get_node_or_null("sprite") as Sprite2D
+
+
 func _crypt_pieces(group: Node) -> Array:
 	var out: Array = []
 	for child in group.get_children():
@@ -1896,11 +1928,13 @@ func _walk_area(area: Node, probe: CharacterBody2D, feet_offset: Vector2, radius
 	var layers: Array = []
 	for node in area.find_children("*", "TileMapLayer", true, false):
 		var layer: TileMapLayer = node
-		if layer.tile_map_data.size() <= 2:
+		# A floor kept once (groundchunks.gd) holds its cells in its meta.
+		var cells: PackedByteArray = FloorChunks.cells_of(layer)
+		if cells.size() <= 2:
 			continue
 		var copy := TileMapLayer.new()
 		copy.tile_set = layer.tile_set
-		copy.tile_map_data = layer.tile_map_data
+		copy.tile_map_data = cells
 		copy.collision_enabled = layer.collision_enabled
 		copy.enabled = layer.enabled
 		copy.transform = _area_xform(layer, area)
@@ -1918,6 +1952,21 @@ func _walk_area(area: Node, probe: CharacterBody2D, feet_offset: Vector2, radius
 			if child is CollisionShape2D or child is CollisionPolygon2D:
 				copy.add_child(child.duplicate())
 		holder.add_child(copy)
+	# A chunk of flattened walls (wallchunk.gd, 0.176.1) makes its body as it
+	# enters the world, and this area never does: its boxes, as that body.
+	for node in area.find_children("*", "Node2D", true, false):
+		if not node.has_method("box_rects"):
+			continue
+		var walls := StaticBody2D.new()
+		walls.transform = _area_xform(node, area)
+		for box: Rect2 in node.call("box_rects"):
+			var shape := CollisionShape2D.new()
+			var rect := RectangleShape2D.new()
+			rect.size = box.size
+			shape.shape = rect
+			shape.position = box.get_center()
+			walls.add_child(shape)
+		holder.add_child(walls)
 	holder.add_child(probe)
 	await get_tree().physics_frame
 	await get_tree().physics_frame

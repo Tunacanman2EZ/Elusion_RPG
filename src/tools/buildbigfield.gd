@@ -42,16 +42,35 @@
 # door's path is its name on the wire. 0 for chunk_size puts nothing in
 # chunks (the Field's builder, for now).
 #
+# THE WALLS FLATTENED (0.176.1). In chunks, a wall piece is not its crypt
+# scene but its picture - a Sprite2D at its foot, straight in its chunk, with
+# the piece's name in its meta "piece" - and its boxes are kept on the chunk
+# (src/world/wallchunk.gd `boxes`), which makes them one body as it enters
+# the world: 18,846 nodes were 55 ms of the Big Field's arrival and 96 ms of
+# leaving it. The decor and doors are scenes as before; with chunk_size 0
+# (the Field's builder) the walls are too.
+#
 # AND THE BACKDROP IS WORKED OUT HERE. MapBackdrop.cover() - the grey under
 # every painted cell, a few hundred rectangles - took 110 ms on the first
 # visit each session; it is worked out once, here, and kept on the root as
 # the meta MapBackdrop.BUILT_COVER, which add_to() takes as it is. The suite
 # holds it equal to what cover() works out from the scene.
+#
+# AND THE FLOOR KEPT ONCE (0.176.2, the owner: "fix floor"). With the cover
+# worked out, the world map's picture is baked too (worldmap.gd BUILT_MAP),
+# and then the ground's cells go into its meta (GroundChunks.keep_once()):
+# the chunks draw them and nothing builds them twice - see groundchunks.gd.
+# The ground wears floorpreview.gd so the editor still shows them.
 extends Node
 
 const PropChunks := preload("res://src/world/propchunks.gd")
 const GroundChunks := preload("res://src/world/groundchunks.gd")
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+const WallChunk := preload("res://src/world/wallchunk.gd")
+const WorldMap := preload("res://src/systems/worldmap.gd")
+const FloorPreview := preload("res://src/world/floorpreview.gd")
+# A flattened wall's meta: which crypt piece it is.
+const PIECE := &"piece"
 
 const OUT := "res://scene/bigfield.tscn"
 const BUILD := "res://tools/maps/bigfield_build.json"
@@ -65,12 +84,18 @@ const LEASH := 250.0
 
 var _root: Node2D = null
 var _cache: Dictionary = {}
+# A piece of each kind, made once to read its picture and boxes from.
+var _models: Dictionary = {}
+# A wall chunk's boxes, by chunk: x, y, width, height each.
+var _boxes: Dictionary = {}
 # The scene's root node's name (buildfield.gd, which extends this, says "field").
 var root_name: String = "bigfield"
 # How big a chunk of walls or decor is, in px; 0, none (see the header).
 var chunk_size: int = PropChunks.CHUNK
 # Whether the backdrop's cover is worked out here and kept on the root.
 var bake_backdrop: bool = true
+# Whether the world map's picture is baked and the floor kept once (above).
+var keep_floor_once: bool = true
 
 
 func build(build_path: String = BUILD, out_path: String = OUT) -> int:
@@ -125,10 +150,14 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 	var plugs: Array[Vector2] = []
 	for piece in plan["walls"]:
 		var at := Vector2(float(piece[1]), float(piece[2]))
-		_place(CRYPT % str(piece[0]), _chunk_of(walls, at), at)
+		if chunk_size > 0:
+			_flat_wall(str(piece[0]), _chunk_of(walls, at), at)
+		else:
+			_place(CRYPT % str(piece[0]), _chunk_of(walls, at), at)
 		if str(piece[0]) == "pillar":
 			plugs.append(at)
 	_seal_chunks(walls)
+	_give_walls_bodies(walls)
 	_plug_pillars(props, plugs)
 	var doors := _container("doors", crypt)
 	for door in plan["doors"]:
@@ -168,6 +197,11 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 	_place("res://scene/world/enemyrespawner.tscn", _root, Vector2.ZERO, "enemyrespawner")
 	if bake_backdrop:
 		_root.set_meta(MapBackdrop.BUILT_COVER, MapBackdrop.cover(_root))
+	# Both read the ground's cells, so before they leave it.
+	if keep_floor_once:
+		WorldMap.bake(_root, root_name)
+		GroundChunks.keep_once(ground)
+		ground.set_script(FloorPreview)
 
 	var packed := PackedScene.new()
 	var packing: int = packed.pack(_root)
@@ -175,6 +209,10 @@ func build(build_path: String = BUILD, out_path: String = OUT) -> int:
 		return packing
 	var result: int = ResourceSaver.save(packed, out_path)
 	_root.free()
+	for model in _models.values():
+		(model as Node).free()
+	_models.clear()
+	_boxes.clear()
 	return result
 
 
@@ -375,6 +413,54 @@ func _container(node_name: String, parent: Node, group: String = "") -> Node2D:
 	if group != "":
 		holder.add_to_group(StringName(group), true)
 	return holder
+
+
+func _flat_wall(kind: String, chunk: Node2D, at: Vector2) -> void:
+	"""A wall piece flattened (THE WALLS FLATTENED): its picture in `chunk`
+	at `at`, its boxes kept for the chunk's body."""
+	var path: String = CRYPT % kind
+	if not _models.has(path):
+		if not _cache.has(path):
+			_cache[path] = load(path)
+		_models[path] = (_cache[path] as PackedScene).instantiate()
+	var model: Node = _models[path]
+	var art: Sprite2D = model.get_node("sprite") as Sprite2D
+	var picture := Sprite2D.new()
+	picture.name = kind
+	picture.texture = art.texture
+	picture.centered = art.centered
+	picture.offset = art.offset
+	picture.flip_h = art.flip_h
+	picture.flip_v = art.flip_v
+	picture.region_enabled = art.region_enabled
+	picture.region_rect = art.region_rect
+	picture.position = at + art.position
+	picture.set_meta(PIECE, kind)
+	chunk.add_child(picture, true)
+	picture.owner = _root
+	var body: Node2D = model.get_node_or_null("body") as Node2D
+	if body == null:
+		return
+	# A packed array is a value: taken out, added to, put back.
+	var kept: PackedFloat32Array = _boxes.get(chunk, PackedFloat32Array())
+	for shape in body.get_children():
+		var cs := shape as CollisionShape2D
+		if cs == null or not (cs.shape is RectangleShape2D):
+			push_error("buildbigfield: %s has a shape that is not a box" % path)
+			continue
+		var size: Vector2 = (cs.shape as RectangleShape2D).size
+		var corner: Vector2 = at + body.position + cs.position - size / 2.0
+		kept.append_array(PackedFloat32Array([corner.x, corner.y, size.x, size.y]))
+	_boxes[chunk] = kept
+
+
+func _give_walls_bodies(walls: Node2D) -> void:
+	"""Each wall chunk made a WallChunk with its boxes (THE WALLS FLATTENED)."""
+	for chunk in walls.get_children():
+		if not _boxes.has(chunk):
+			continue
+		chunk.set_script(WallChunk)
+		chunk.set("boxes", _boxes[chunk])
 
 
 func _place(path: String, parent: Node, at: Vector2, node_name: String = "") -> Node:

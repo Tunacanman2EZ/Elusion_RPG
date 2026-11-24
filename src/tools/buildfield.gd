@@ -34,6 +34,7 @@ func _init() -> void:
 	# measure when the Field needs them.
 	chunk_size = 0
 	bake_backdrop = false
+	keep_floor_once = false
 
 
 func build_field(build_path: String = FIELD_PLAN, out_path: String = FIELD_SCENE) -> int:

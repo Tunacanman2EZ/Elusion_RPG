@@ -495,8 +495,8 @@ func _test_the_big_field_draws_only_near_the_view() -> void:
 					if not Chunks.reach_of(p).intersects(Chunks.reach_of(q)):
 						continue
 					ties += 1
-					var pk: String = "%s@%s" % [str(p.scene_file_path).get_file().get_basename(), p.position]
-					var qk: String = "%s@%s" % [str(q.scene_file_path).get_file().get_basename(), q.position]
+					var pk: String = "%s@%s" % [_piece_path(p).get_file().get_basename(), p.position]
+					var qk: String = "%s@%s" % [_piece_path(q).get_file().get_basename(), q.position]
 					if int(plan_at.get(pk, -1)) > int(plan_at.get(qk, -1)):
 						flipped.append("%s / %s" % [pk, qk])
 	check("pieces at one y drawn over each other (%d pairs) keep the plan's order: a tie draws as before" % ties,
@@ -597,23 +597,28 @@ func _test_the_big_field_draws_only_near_the_view() -> void:
 		[wrong_wide.slice(0, 4), touching_arrival, _chunks_touching(helper)])
 
 	# ---- a hidden wall is still a wall -------------------------------------------
+	# The walls flattened (0.176.1): a wall chunk's pictures, and its one body
+	# (wallchunk.gd) made of its boxes.
 	var hidden_wall: Node2D = null
+	var body: StaticBody2D = null
+	var box_at: Vector2 = Vector2.INF
 	for chunk in chunks:
 		if is_instance_valid(chunk) and not (chunk as CanvasItem).visible and chunk.get_parent().name == &"walls":
 			hidden_wall = chunk.get_child(0) as Node2D
+			body = chunk.get_node_or_null("body") as StaticBody2D
+			var boxes: Array = chunk.call("box_rects") if chunk.has_method("box_rects") else []
+			if not boxes.is_empty():
+				box_at = (chunk as Node2D).global_position + (boxes[0] as Rect2).get_center()
 			break
 	var blocked: bool = false
-	if hidden_wall != null:
+	if hidden_wall != null and body != null and box_at != Vector2.INF:
 		await get_tree().physics_frame
 		await get_tree().physics_frame
-		var body: StaticBody2D = hidden_wall.get_node_or_null("body") as StaticBody2D
-		var shape: CollisionShape2D = body.get_child(0) as CollisionShape2D if body != null else null
-		if shape != null:
-			var query := PhysicsPointQueryParameters2D.new()
-			query.position = shape.global_position
-			query.collision_mask = 1
-			for hit in get_viewport().world_2d.direct_space_state.intersect_point(query, 8):
-				blocked = blocked or hit.get("collider") == body
+		var query := PhysicsPointQueryParameters2D.new()
+		query.position = box_at
+		query.collision_mask = 1
+		for hit in get_viewport().world_2d.direct_space_state.intersect_point(query, 8):
+			blocked = blocked or hit.get("collider") == body
 	check("a wall in a hidden chunk still blocks: its body is in the physics world where it stands",
 		hidden_wall != null and not hidden_wall.is_visible_in_tree() and blocked, [hidden_wall, blocked])
 

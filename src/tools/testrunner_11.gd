@@ -46,8 +46,12 @@ func _test_the_floor_comes_in_chunks() -> void:
 	var ground: TileMapLayer = area.get_node("ground")
 	var ranges: PackedInt32Array = ground.get_meta(Ground.RANGES_META, PackedInt32Array())
 	var size: int = int(ground.get_meta(Ground.SIZE_META, 0))
-	var data: PackedByteArray = ground.tile_map_data
-	var cells_total: int = ground.get_used_cells().size()
+	# Its cells kept once, in its meta (0.176.2): read as the scene has them.
+	var data: PackedByteArray = Ground.cells_of(ground)
+	var whole := TileMapLayer.new()
+	whole.tile_set = ground.tile_set
+	whole.tile_map_data = data
+	var cells_total: int = whole.get_used_cells().size()
 	@warning_ignore("integer_division")
 	check("the Big Field's ground keeps its chunks' ranges (%d chunks of %d cells), and they fit its %d cells"
 		% [ranges.size() / 4, size, cells_total], size == Ground.CHUNK_CELLS and Ground.ranges_fit(ranges, data.size()))
@@ -72,6 +76,7 @@ func _test_the_floor_comes_in_chunks() -> void:
 	var helper: Node = Ground.add_to(world)
 	if helper == null:
 		check("a scene whose ground has chunks gets the helper", false)
+		whole.free()
 		world.free()
 		get_viewport().canvas_transform = kept_canvas
 		Settings.set_value("camera_zoom", zoom_was)
@@ -119,15 +124,15 @@ func _test_the_floor_comes_in_chunks() -> void:
 	for layer: TileMapLayer in helper.call("chunk_layers"):
 		for cell in layer.get_used_cells():
 			counted += 1
-			if layer.get_cell_atlas_coords(cell) != ground.get_cell_atlas_coords(cell) \
-					or layer.get_cell_source_id(cell) != ground.get_cell_source_id(cell):
+			if layer.get_cell_atlas_coords(cell) != whole.get_cell_atlas_coords(cell) \
+					or layer.get_cell_source_id(cell) != whole.get_cell_source_id(cell):
 				differ += 1
-	check("  the chunks hold the ground's cells exactly - %d of %d, each the same tile - and the ground keeps all of its own"
+	check("  the chunks hold the ground's cells exactly - %d of %d, each the same tile - and the ground none of its own (kept once, 0.176.2)"
 		% [counted, cells_total], counted == cells_total and differ == 0
-		and ground.get_used_cells().size() == cells_total, [counted, differ])
+		and ground.get_used_cells().is_empty(), [counted, differ])
 	# An edge tile still stops feet, from its chunk.
 	var edge: Vector2i = Vector2i(-1, -1)
-	for cell in ground.get_used_cells_by_id(1, Vector2i(1, 0)):
+	for cell in whole.get_used_cells_by_id(1, Vector2i(1, 0)):
 		edge = cell
 		break
 	var solid: bool = false
@@ -142,6 +147,7 @@ func _test_the_floor_comes_in_chunks() -> void:
 			solid = solid or (by is TileMapLayer and by != ground and (by as Node).get_parent() == ground)
 	check("  an edge tile still stops feet - its chunk's, the ground's switched off", edge != Vector2i(-1, -1) and solid,
 		[edge, solid])
+	whole.free()
 	camera.free()
 	world.free()
 	get_viewport().canvas_transform = kept_canvas

@@ -230,14 +230,114 @@ func ensure_built(area: String = "") -> bool:
 	return _build(area)
 
 
+# BAKED WITH THE MAP (0.176.2). The Big Field's floor is kept once, off its
+# layer (groundchunks.gd), so there are no cells on it to paint - and its
+# picture took 21-24 ms of the arrival. buildbigfield.gd bakes it with
+# picture_of() and keeps it on the scene's root in this meta: origin, size
+# and tile, and the image as PNG (3.5 KB, read back in a millisecond). The
+# suite holds it equal to one painted from the floor's cells.
+const BUILT_MAP := &"world_map_picture"
+const GroundChunks := preload("res://src/world/groundchunks.gd")
+
+
 func _build(area: String) -> bool:
 	var scene: Node = get_tree().current_scene if get_tree() != null else null
 	if scene == null:
 		return false
 
+	var picture: Dictionary = baked_picture(scene)
+	if picture.is_empty():
+		picture = picture_of(scene, area)
+	if picture.is_empty():
+		return false
+	var bounds := Rect2i(picture["origin"], picture["size"])
+	var image: Image = picture["image"]
+	var tile: Vector2i = picture["tile"]
+
+	# THE STUB'S SIZE IS READ BEFORE IT IS OVERWRITTEN. from_save() recorded
+	# what shape the world was when the bits were written; _ensure_seen() below
+	# compares that against the shape it is now, and it cannot do that after
+	# this assignment has replaced it.
+	var previous = _terrain.get(area, null)
+	var previous_size: Vector2i = Vector2i.ZERO
+	if previous != null:
+		previous_size = previous.get("size", Vector2i.ZERO)
+
+	_terrain[area] = {
+		"image": image,
+		"origin": bounds.position,
+		"size": bounds.size,
+		"tile": tile,
+	}
+
+	if previous_size != Vector2i.ZERO and previous_size != bounds.size:
+		push_warning("WorldMap: '%s' is %dx%d now and was %dx%d when its map was "
+			% [area, bounds.size.x, bounds.size.y, previous_size.x, previous_size.y]
+			+ "saved. Its exploration starts again.")
+		_seen.erase(area)
+		_save_dirty = true
+
+	# The bitmask has to match the bounds it indexes into. An area whose scene
+	# gained tiles since the save was written arrives here a different size,
+	# and _resize_seen() is what stops the old bits being read as the new
+	# coordinates.
+	_ensure_seen(area, bounds.size)
+	return true
+
+
+static func baked_picture(scene: Node) -> Dictionary:
+	"""The picture kept on `scene`'s root (BUILT_MAP) - image, origin, size,
+	tile - or {} when it has none, or it will not read."""
+	var kept: Variant = scene.get_meta(BUILT_MAP) if scene != null and scene.has_meta(BUILT_MAP) else null
+	if not (kept is Dictionary):
+		return {}
+	var image := Image.new()
+	if image.load_png_from_buffer((kept as Dictionary).get("png", PackedByteArray())) != OK:
+		return {}
+	if image.get_format() != Image.FORMAT_RGBA8:
+		image.convert(Image.FORMAT_RGBA8)
+	var size: Vector2i = (kept as Dictionary).get("size", Vector2i.ZERO)
+	if image.get_size() != size:
+		return {}
+	return {"image": image, "origin": (kept as Dictionary).get("origin", Vector2i.ZERO), "size": size,
+		"tile": (kept as Dictionary).get("tile", Vector2i(16, 16))}
+
+
+static func bake(scene: Node, area: String) -> bool:
+	"""For the builders: `scene`'s picture painted now and kept on its root
+	(BUILT_MAP). False, nothing kept, when it has none."""
+	var picture: Dictionary = picture_of(scene, area)
+	if picture.is_empty():
+		return false
+	scene.set_meta(BUILT_MAP, {"origin": picture["origin"], "size": picture["size"],
+		"tile": picture["tile"], "png": (picture["image"] as Image).save_png_to_buffer()})
+	return true
+
+
+static func picture_of(scene: Node, area: String) -> Dictionary:
+	"""`scene`'s map painted from its root layers' cells - image, origin,
+	size, tile - or {} when there is nothing to paint."""
 	var layers: Array = _root_layers(scene)
 	if layers.is_empty():
-		return false
+		return {}
+	# A floor kept once (groundchunks.gd) is read whole from its meta - only
+	# where nothing was baked, since that costs what keeping it once saves.
+	var copies: Array = []
+	for index in layers.size():
+		var layer: TileMapLayer = layers[index]
+		if GroundChunks.kept_once(layer):
+			var copy: TileMapLayer = GroundChunks.whole(layer)
+			copy.name = layer.name
+			copies.append(copy)
+			layers[index] = copy
+	var picture: Dictionary = _paint(layers, area)
+	for copy in copies:
+		(copy as Node).free()
+	return picture
+
+
+static func _paint(layers: Array, area: String) -> Dictionary:
+	"""picture_of() for these layers."""
 
 	# =========================================================================
 	# A TILE IS NOT ALWAYS ONE CELL, AND ASSUMING IT IS DRAWS A DOTTED MAP
@@ -306,12 +406,12 @@ func _build(area: String) -> bool:
 				first = false
 		plan.append([used, spans])
 	if first:
-		return false
+		return {}
 	if bounds.size.x * bounds.size.y > MAX_AREA_TILES:
 		push_error("WorldMap: '%s' covers %d x %d tiles, past the %d ceiling — "
 			% [area, bounds.size.x, bounds.size.y, MAX_AREA_TILES]
 			+ "a stray tile at an extreme coordinate will do this. Not mapped.")
-		return false
+		return {}
 	var image: Image = Image.create_empty(
 		bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
@@ -343,39 +443,10 @@ func _build(area: String) -> bool:
 		if layer.tile_set != null and layer.tile_set.tile_size.x > 0:
 			tile = layer.tile_set.tile_size
 			break
-
-	# THE STUB'S SIZE IS READ BEFORE IT IS OVERWRITTEN. from_save() recorded
-	# what shape the world was when the bits were written; _ensure_seen() below
-	# compares that against the shape it is now, and it cannot do that after
-	# this assignment has replaced it.
-	var previous = _terrain.get(area, null)
-	var previous_size: Vector2i = Vector2i.ZERO
-	if previous != null:
-		previous_size = previous.get("size", Vector2i.ZERO)
-
-	_terrain[area] = {
-		"image": image,
-		"origin": bounds.position,
-		"size": bounds.size,
-		"tile": tile,
-	}
-
-	if previous_size != Vector2i.ZERO and previous_size != bounds.size:
-		push_warning("WorldMap: '%s' is %dx%d now and was %dx%d when its map was "
-			% [area, bounds.size.x, bounds.size.y, previous_size.x, previous_size.y]
-			+ "saved. Its exploration starts again.")
-		_seen.erase(area)
-		_save_dirty = true
-
-	# The bitmask has to match the bounds it indexes into. An area whose scene
-	# gained tiles since the save was written arrives here a different size,
-	# and _resize_seen() is what stops the old bits being read as the new
-	# coordinates.
-	_ensure_seen(area, bounds.size)
-	return true
+	return {"image": image, "origin": bounds.position, "size": bounds.size, "tile": tile}
 
 
-func _root_layers(scene: Node) -> Array:
+static func _root_layers(scene: Node) -> Array:
 	# DIRECT CHILDREN OF THE SCENE ROOT ONLY.
 	#
 	# There are TileMapLayer nodes inside instanced props too — bush.tscn,
