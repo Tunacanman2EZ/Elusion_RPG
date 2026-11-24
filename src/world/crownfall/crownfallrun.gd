@@ -38,6 +38,7 @@ extends Node2D
 
 const Maps := preload("res://src/world/crownfall/crownfallmaps.gd")
 const Boss := preload("res://src/world/crownfall/crownfallboss.gd")
+const CanvasBatch := preload("res://src/shared/canvasbatch.gd")
 
 signal map_cleared(index: int)
 signal life_lost
@@ -544,7 +545,9 @@ var ch: float = CH
 var gap: float = ROW_GAP
 var _jolt := Vector2.ZERO
 var _jolt_rng := RandomNumberGenerator.new()
-var _cv: CanvasItem = null
+# What the drawing functions draw on: this node, a picture's node, or - for
+# the bars - a CanvasBatch standing in for it (THE BARS IN ONE CALL).
+var _cv = null
 var floor_layer: Node2D = null
 # THE BARS ARE A PICTURE (0.168.8, the owner: "my pc is running hard here
 # too"): the top bar and the two side panels were half of every frame's draws
@@ -554,11 +557,17 @@ var floor_layer: Node2D = null
 # most PANEL_HZ a second by the clock - their pulses and glints still move,
 # at that pace - with their words written together (_hold_words). The stars
 # behind the arena likewise, at STARS_HZ: 70 of them twinkle over seconds.
+# THE BARS IN ONE CALL (0.176.1, the owner: "work on this"). Painted, they
+# were still 204 draws: every circle, polygon, arc and outline its own
+# (zz/batchprobe), 182 of them. Their shapes now go through a CanvasBatch
+# (src/shared/canvasbatch.gd) and reach the picture in one call, the words
+# after them as before: 204 -> 23 draws a repaint (zz/cfpanels).
 const PANEL_HZ := 20.0
 const STARS_HZ := 10.0
 var panel_cache: SubViewport = null
 var panel_node: Node2D = null
 var panel_pic: Sprite2D = null
+var _panel_batch = CanvasBatch.new()
 var stars_cache: SubViewport = null
 var stars_node: Node2D = null
 var stars_pic: Sprite2D = null
@@ -4250,11 +4259,14 @@ func _paint_panels() -> void:
 	"""The top bar and the side panels, into their picture."""
 	if state == State.KINGDOMS:
 		return
-	_cv = panel_node
+	_cv = _panel_batch
+	_panel_batch.begin()
 	_hold_words = true
 	_draw_hud()
 	_draw_left_panel()
 	_draw_right_panel()
+	_panel_batch.end(panel_node)
+	_cv = panel_node
 	_write_held_words()
 	_cv = self
 

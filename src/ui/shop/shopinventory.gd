@@ -93,6 +93,23 @@ var _mode_buttons: Dictionary = {}
 var inventory_override: Node = null
 var _redraw_queued: bool = false
 
+# THE TWO LISTS KEPT (0.176.1). The owner: "shop spikes when i trade also".
+# Measured in town (zz/shoptrade, headless): Buy built all 123 shelf rows
+# again on every switch - 40 to 58 ms, and 17 to 23 the frame after - and a
+# sale on the Sell list redrew it twice, its own redraw and the bag's,
+# 10 to 15 ms and 13 to 20 after. Most of a row's cost is putting it in the
+# tree, not making it. So the shelf is built once a catalogue and kept
+# (hidden while selling, and while the panel is shut: the next visit's
+# answer, if the same, shows it again), and the Sell list keeps a row a cell
+# and makes only the cells that changed. stock_list is the list on show; the
+# shelf's is the scene's %stocklist, the Sell list's a sibling made in code.
+var _shelf_box: VBoxContainer = null
+var _sell_box: VBoxContainer = null
+# The catalogue the shelf was built for (shelf_key()), 0 for none.
+var _shelf_key: int = 0
+# Cell index -> its row on the Sell list, and what it was built from.
+var _sell_rows: Dictionary = {}
+
 # Drag by the header, resize from any edge, and come back where it was left.
 # One component for all sixteen panels - see src/shared/panelwindow.gd for why
 # this is not thirty lines copied into each of them.
@@ -191,7 +208,9 @@ func close_shop() -> void:
 	visible = false
 	shop_id = ""
 	_player = null
-	_clear_rows()
+	# THE ROWS ARE KEPT (THE TWO LISTS KEPT): the next visit's catalogue, if
+	# the same, shows this shelf again instead of building it.
+	_hide_lists()
 
 	# Tell the vendor so it can go back to idle and accept another interact.
 	# Same handshake bankchest.gd uses — without it the world node still thinks
@@ -206,7 +225,7 @@ func close_shop() -> void:
 # =============================================================================
 
 func _load_catalogue() -> void:
-	_clear_rows()
+	_hide_lists()
 	_set_notice("Loading…", false)
 
 	var res: Dictionary = await Api.get_json("/api/shop/%s" % shop_id, REQUEST_TIMEOUT)
@@ -218,6 +237,7 @@ func _load_catalogue() -> void:
 		return
 
 	if not res.get("ok", false):
+		_clear_rows()
 		_set_notice(_refusal_text(res, "Could not reach the shop."), true)
 		return
 
@@ -257,11 +277,12 @@ func show_catalogue(data: Dictionary) -> void:
 
 
 func _show_stock(data: Dictionary) -> void:
-	_clear_rows()
+	_show_list(true)
 	header_label.text = str(data.get("display_name", "Shop"))
 
 	var stock: Array = data.get("stock", []) if data.get("stock", []) is Array else []
 	if stock.is_empty():
+		_clear_shelf()
 		_set_notice("This vendor has nothing for sale.", false)
 		return
 
@@ -269,6 +290,12 @@ func _show_stock(data: Dictionary) -> void:
 	# and when the owner has moved them this says by how much.
 	_set_notice(prices_note(float(data.get("price_multiplier", EconomyRules.number("shop_price_multiplier"))),
 		float(EconomyRules.usual().get("shop_price_multiplier", 1.0))) if shop_id == ECONOMY_SHOP else "", false)
+	# Built for this catalogue already: shown as it is.
+	var key: int = shelf_key(data)
+	if key == _shelf_key and _shelf_box.get_child_count() > 0:
+		return
+	_clear_shelf()
+	_shelf_key = key
 	var shelf: String = ""
 	for entry in stock:
 		if not (entry is Dictionary):
@@ -278,6 +305,14 @@ func _show_stock(data: Dictionary) -> void:
 			shelf = this_shelf
 			stock_list.add_child(_build_heading(entry))
 		stock_list.add_child(_build_row(entry))
+
+
+static func shelf_key(data: Dictionary) -> int:
+	"""What a shelf is built from: its rows (the server's, prices and all) and
+	the markup a row without a price is priced at. Never 0."""
+	var key: int = [data.get("shop_id", ""), data.get("stock", []), data.get("price_multiplier", 0.0),
+		EconomyRules.number("shop_price_multiplier")].hash()
+	return key if key != 0 else 1
 
 
 # The pond's bait. fishingspot.gd's bait_item_id defaults to the same id.
@@ -546,11 +581,62 @@ func _requirement_suffix(entry: Dictionary) -> String:
 
 
 func _clear_rows() -> void:
+	"""Both lists emptied."""
+	_clear_shelf()
+	_clear_sell()
+
+
+func _clear_shelf() -> void:
+	_lists()
+	_empty(_shelf_box)
+	_shelf_key = 0
+
+
+func _clear_sell() -> void:
+	_lists()
+	_empty(_sell_box)
+	_sell_rows.clear()
+
+
+static func _empty(box: Node) -> void:
 	# Out of the list now, freed later: a redraw in the same frame must not
 	# find last time's rows still in it.
-	for child in stock_list.get_children():
-		stock_list.remove_child(child)
+	if box == null:
+		return
+	for child in box.get_children():
+		box.remove_child(child)
 		child.queue_free()
+
+
+func _lists() -> void:
+	"""The shelf's list (the scene's %stocklist) and the Sell list beside it
+	in the scroll, made once (THE TWO LISTS KEPT)."""
+	if _shelf_box != null and is_instance_valid(_shelf_box):
+		return
+	_shelf_box = stock_list
+	_sell_box = VBoxContainer.new()
+	_sell_box.name = "selllist"
+	_sell_box.size_flags_horizontal = _shelf_box.size_flags_horizontal
+	_sell_box.size_flags_vertical = _shelf_box.size_flags_vertical
+	if _shelf_box.has_theme_constant_override("separation"):
+		_sell_box.add_theme_constant_override("separation", _shelf_box.get_theme_constant("separation"))
+	_sell_box.visible = false
+	var scroll: Node = _shelf_box.get_parent()
+	(scroll if scroll != null else self).add_child(_sell_box)
+
+
+func _show_list(shelf: bool) -> void:
+	"""One list on show, the other hidden; stock_list is the one shown."""
+	_lists()
+	(_sell_box if shelf else _shelf_box).visible = false
+	stock_list = _shelf_box if shelf else _sell_box
+	stock_list.visible = true
+
+
+func _hide_lists() -> void:
+	_lists()
+	_shelf_box.visible = false
+	_sell_box.visible = false
 
 
 # =============================================================================
@@ -682,13 +768,14 @@ func show_sell_list() -> void:
 	# A redraw forgets an armed row: the Sure? it showed is gone, so the next
 	# click must ask again.
 	_armed = ""
-	_clear_rows()
+	_show_list(false)
 	header_label.text = str(_catalogue.get("display_name", "Shop"))
 	var container: Node = _player_inventory_container()
 	if container == null:
+		_clear_sell()
 		_set_notice("Your backpack is not ready yet.", true)
 		return
-	var rows: int = 0
+	var wanted: Array = []
 	var capacity: int = int(container.get("capacity"))
 	for index in range(capacity):
 		var stack: ItemStack = container.get_stack_at(index)
@@ -705,9 +792,9 @@ func show_sell_list() -> void:
 		# at the price above.
 		if free_ids.has(stack.data.item_id):
 			continue
-		stock_list.add_child(_build_sell_row(index, stack, price))
-		rows += 1
-	if rows == 0:
+		wanted.append([index, stack, price])
+	_sync_sell_rows(wanted)
+	if wanted.is_empty():
 		_set_notice("Nothing in your backpack that the shop will buy.", false)
 		return
 	# THE SHARE IN FORCE: the answer's, which is the owner's where set; for an
@@ -715,6 +802,41 @@ func show_sell_list() -> void:
 	var share: float = float(_catalogue.get("sell_multiplier", EconomyRules.number("shop_sell_multiplier")))
 	_set_notice(("The shop pays %s of what things are worth. " % EconomyRulesScript.percent_text(share)
 		if share > 0.0 else "") + DOUBLE_CLICK_HINT, false)
+
+
+func _sync_sell_rows(wanted: Array) -> void:
+	"""The Sell list made to hold `wanted` ([cell, stack, price] each), in
+	cell order: a row whose cell holds what it was built for is kept (its
+	button no longer armed - a redraw forgets an armed row); only the rest
+	are made (THE TWO LISTS KEPT)."""
+	var kept: Dictionary = {}
+	for at in wanted.size():
+		var index: int = int(wanted[at][0])
+		var stack: ItemStack = wanted[at][1]
+		var price: int = int(wanted[at][2])
+		var sells: String = "%s:%d:%d" % [stack.data.item_id, stack.quantity, price]
+		var had: Variant = _sell_rows.get(index)
+		var row: Control = had as Control if is_instance_valid(had) else null
+		if row != null and str(row.get_meta(&"sells", "")) == sells:
+			for button in [row.get_node_or_null(^"sellone"), row.get_node_or_null(^"sellall")]:
+				if button is Button and button.has_meta(&"label"):
+					(button as Button).text = str(button.get_meta(&"label"))
+		else:
+			if row != null:
+				_sell_box.remove_child(row)
+				row.queue_free()
+			row = _build_sell_row(index, stack, price)
+			row.set_meta(&"sells", sells)
+			_sell_box.add_child(row)
+		if row.get_index() != at:
+			_sell_box.move_child(row, at)
+		kept[index] = row
+	for index in _sell_rows:
+		var gone: Variant = _sell_rows[index]
+		if not kept.has(index) and is_instance_valid(gone):
+			_sell_box.remove_child(gone)
+			(gone as Node).queue_free()
+	_sell_rows = kept
 
 
 # THE LIST FOLLOWS THE BAG. Drag a stack, drink a potion or pick something
@@ -858,6 +980,7 @@ func _sell_button(node_name: String, label: String, index: int, item_id: String,
 	button.custom_minimum_size = Vector2(52, 26)
 	button.add_theme_font_size_override("font_size", 12)
 	button.focus_mode = Control.FOCUS_NONE
+	button.set_meta(&"label", label)
 	button.pressed.connect(_on_sell_pressed.bind(index, item_id, quantity, button))
 	return button
 

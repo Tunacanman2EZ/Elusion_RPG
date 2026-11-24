@@ -142,6 +142,12 @@ func _ready() -> void:
 	add_to_group(GROUP)
 	add_to_group(LagTests.GROUP)
 	add_to_group(LightArena.FLOOR_GROUP)
+	# SORTED WITH THE WORLD (0.176.1), as the other five arenas are. Without
+	# it the whole arena sorted as one at its own y, 0: in the Boss Arena,
+	# whose room's top half is above 0, the lava was drawn over everybody
+	# standing there (the owner: "the lava area spawns above player on
+	# boss").
+	y_sort_enabled = true
 	_room = LightArena.room_of(self)
 	if not _room.has_area():
 		_room = Rect2(boss.global_position - Vector2(300, 300), Vector2(600, 600))

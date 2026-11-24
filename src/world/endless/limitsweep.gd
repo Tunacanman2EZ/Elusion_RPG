@@ -38,11 +38,17 @@ extends Node
 # ("per": out, in the air, a second).
 # EVERY BOSS ATTACK AND THE CROWNED'S PHASES (0.176.0): the Crowned's attacks
 # one by one, and its fight part by part, from bossbench.gd, which says how.
+# EVERY ARENA EFFECT (0.176.1): each elemental boss's arena whole, and each of
+# its effects alone, from arenabench.gd.
 
 const GmSpawner := preload("res://src/world/gmspawner.gd")
 const PlaceMeasure := preload("res://src/systems/placemeasure.gd")
 const StressKinds := preload("res://src/world/endless/stresskinds.gd")
 const BossBench := preload("res://src/world/endless/bossbench.gd")
+# THE ARENAS IN THE TESTING GROUND (0.176.1): every elemental boss's arena,
+# whole and effect by effect (arenabench.gd) - swept as the boss's attacks
+# are, its entries carrying "boss" too.
+const ArenaBench := preload("res://src/world/endless/arenabench.gd")
 const WorkBar := preload("res://src/world/endless/workbar.gd")
 const HORDE := "Horde slimes"
 const EVERY_KIND := "every kind"
@@ -51,6 +57,7 @@ const EVERY_SHOT := "every shot"
 const EVERY_EFFECT := "every effect"
 const EVERY_BOSS := "every boss attack"
 const BOSS_PHASES := "the crowned's phases"
+const EVERY_ARENA := "every arena effect"
 const STEP := 10
 const BOSS_STEP := 1
 const HORDE_STEP := 250
@@ -201,6 +208,8 @@ static func targets_for(choice: String, chosen: int) -> Array:
 		return BossBench.attacks()
 	if choice == BOSS_PHASES:
 		return BossBench.phases()
+	if choice == EVERY_ARENA:
+		return ArenaBench.arenas()
 	if choice == EVERY_KIND or choice == EVERY_MONSTER:
 		var kinds_seen: Dictionary = {}
 		for entry in GmSpawner.catalogue():
@@ -283,9 +292,14 @@ func _next() -> void:
 	if _bench != null:
 		_bench.call("end")
 	if BossBench.is_boss(target):
+		# The Crowned's bench, or the arenas': the one this target wants.
+		var bench_script: Script = ArenaBench if ArenaBench.is_arena(target) else BossBench
+		if _bench != null and _bench.get_script() != bench_script:
+			_bench.queue_free()
+			_bench = null
 		if _bench == null:
-			_bench = BossBench.new()
-			_bench.name = "bossbench"
+			_bench = bench_script.new()
+			_bench.name = "arenabench" if bench_script == ArenaBench else "bossbench"
 			add_child(_bench)
 		var host_run: Node = _run()
 		_bench.call("begin", target, host_run.call("_player") if host_run != null and host_run.has_method("_player") else null,
@@ -693,7 +707,7 @@ func build(into: VBoxContainer, width: float) -> void:
 	head.add_theme_color_override("font_color", COLOUR)
 	head.add_theme_font_size_override("font_size", 12)
 	head.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too.\nEvery shot and Every effect do the same with shots in the air and effects a second;\nEvery boss attack the Crowned's attacks one by one, and The Crowned's phases its fight part by part." \
+	head.tooltip_text = "Brings more and more of one monster round you (in God mode, in the middle) until the work reaches %d%% of the budget:\nwhat one costs, and how many fit. Stand still - or fight, to count your attacks too.\nEvery shot and Every effect do the same with shots in the air and effects a second;\nEvery boss attack the Crowned's attacks one by one, and The Crowned's phases its fight part by part;\nEvery arena effect each elemental boss's arena, whole and effect by effect." \
 		% roundi(LIMIT_AT * 100.0)
 	into.add_child(head)
 	var row := HBoxContainer.new()
@@ -716,6 +730,7 @@ func build(into: VBoxContainer, width: float) -> void:
 	_add_pick("Every effect (%d)" % StressKinds.effects().size(), EVERY_EFFECT)
 	_add_pick("Every boss attack (%d)" % BossBench.attacks().size(), EVERY_BOSS)
 	_add_pick("The Crowned's phases (%d)" % BossBench.phases().size(), BOSS_PHASES)
+	_add_pick("Every arena effect (%d)" % ArenaBench.arenas().size(), EVERY_ARENA)
 	for entry in listed:
 		_add_pick(str(entry["label"]), str(entry["path"]))
 	_picker.item_selected.connect(_on_picked)

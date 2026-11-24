@@ -4065,3 +4065,462 @@ func arrow_showing() -> bool:
 """
 	script.reload()
 	return script
+
+
+# =============================================================================
+# EVERY ARENA EFFECT (0.176.1)
+# =============================================================================
+# The owner: "we need to add every effect into testing area from cown and all
+# minigames and measure and optimize them all and the effects outside of
+# final boss also", and of the Earth boss's box: "faults crack had a hitch
+# drop". Find the limit sweeps each elemental boss's arena whole, and each of
+# its effects alone, made through the arena's own hear() - the way a
+# follower's game makes it (arenabench.gd).
+func _test_every_arena_effect() -> void:
+	section("EVERY ARENA EFFECT (0.176.1): Find the limit sweeps each elemental boss's arena, whole and effect by effect")
+	const Bench := preload("res://src/world/endless/arenabench.gd")
+	const Sweep := preload("res://src/world/endless/limitsweep.gd")
+	const Light := preload("res://src/enemies/lightarena.gd")
+	var entries: Array = Bench.arenas()
+	var labels: Dictionary = {}
+	var wholes: int = 0
+	var heard: bool = true
+	for entry in entries:
+		labels[str(entry["label"])] = true
+		if str(entry["boss"]) == "arena":
+			wholes += 1
+		else:
+			var land: String = str(entry["what"]).get_slice(":", 0)
+			var kind: String = str(entry["what"]).get_slice(":", 1)
+			var hear: String = _func_body(_code_src("res://src/enemies/%sarena.gd" % land), "func hear(")
+			heard = heard and hear.contains("\"%s\"" % kind)
+	var all_arena: bool = true
+	for entry in entries:
+		all_arena = all_arena and Bench.is_arena(entry)
+	var lands_known: bool = Bench.LANDS.size() == BossEnemy.ARENAS.size()
+	for land in Bench.LANDS:
+		lands_known = lands_known and BossEnemy.ARENAS.has(StringName(land)) \
+			and ResourceLoader.exists("res://scene/enemy/%sboss.tscn" % land)
+	check("every arena whole (6) and each of its effects alone (%d), each named once, each an event its arena hears"
+		% (entries.size() - wholes), labels.size() == entries.size() and wholes == 6 and entries.size() == 17
+		and lands_known and heard and all_arena,
+		[entries.size(), wholes, heard, lands_known])
+	var box := VBoxContainer.new()
+	add_child(box)
+	var picking: Node = Sweep.new()
+	picking.set("save_path", "")
+	add_child(picking)
+	picking.call("build", box, 460.0)
+	var picker: OptionButton = box.find_child("sweeppick", true, false) as OptionButton
+	var names: Array = []
+	for k in picker.item_count:
+		names.append(picker.get_item_text(k))
+	check("  Find the limit offers them (Every arena effect (17)), counted on or a second, swept as the boss's attacks are",
+		names.has("Every arena effect (17)") and Sweep.targets_for(Sweep.EVERY_ARENA, 10) == entries
+		and Sweep.counted_as(entries[0]) == "on" and Sweep.counted_as(entries[6]) == "a second"
+		and Sweep.BossBench.is_boss(entries[0]) and Sweep.BossBench.is_rate(entries[6]) and not Sweep.BossBench.is_rate(entries[0]))
+	picking.queue_free()
+	box.queue_free()
+	# ---- each land's boss, its arena made and fed ------------------------------------------
+	var origin := Vector2(-60000, -40000)
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var ground := Node2D.new()
+	ground.y_sort_enabled = true
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	zone.field.bounds = Rect2(origin - Vector2(400, 300), Vector2(800, 600))
+	var me: CharacterBody2D = ArenaDummy.new()
+	world.add_child(me)
+	me.global_position = origin
+	Light.everywhere = true
+	var whole_ok: Dictionary = {}
+	var fed: Dictionary = {}
+	var list_of := {"box": "faults", "rock": "rocks", "pit": "pits", "frost": "frost", "wall": "walls",
+		"hail": "hail", "flare": "flares", "gust": "gusts", "ember": "embers", "sweep": "turns"}
+	for entry in entries:
+		var bench: Node = Bench.new()
+		add_child(bench)
+		bench.set("target", entry)
+		bench.set("me", me)
+		var land: String = str(entry["what"]).get_slice(":", 0)
+		var boss: Node2D = (load("res://scene/enemy/%sboss.tscn" % land) as PackedScene).instantiate()
+		boss.position = origin + Vector2(0, -Bench.BOSS_ABOVE)
+		boss.set("net_mirror", str(entry["boss"]) == "arena_event")
+		world.add_child(boss)
+		# Held where it stands (with no floor to keep to, a boss walks home):
+		# its arena is made by the bench, as in the sweep.
+		boss.process_mode = Node.PROCESS_MODE_DISABLED
+		bench.set("boss", boss)
+		await get_tree().process_frame
+		var made: int = int(bench.call("make", 1))
+		var arena: Node2D = boss.call("arena")
+		var right_one: bool = arena != null and arena.get_script() == BossEnemy.ARENAS[StringName(land)]
+		if str(entry["boss"]) == "arena":
+			whole_ok[land] = right_one and made == 1 and int(bench.call("count")) == 1 \
+				and not boss.is_physics_processing() and not bool(boss.get("net_mirror"))
+		else:
+			var kind: String = str(entry["what"]).get_slice(":", 1)
+			bench.call("set_rate", 4.0)
+			var before: Variant = arena.get(list_of.get(kind, "rain_left")) if right_one else null
+			var size_before: int = (before as Array).size() if before is Array else 0
+			bench.call("_physics_process", 1.0)
+			var after: Variant = arena.get(list_of.get(kind, "rain_left")) if right_one else null
+			var grew: bool = (after as Array).size() > size_before if after is Array else float(after) > 0.0
+			fed[str(entry["label"])] = right_one and grew and int(bench.call("count")) == 4
+		bench.call("end")
+		bench.queue_free()
+		await get_tree().process_frame
+	var all_whole: bool = whole_ok.size() == 6 and whole_ok.values().all(func(v: bool) -> bool: return v)
+	check("  each arena whole: its land's boss makes it at once, then stands, its brain stopped, while the arena leads",
+		all_whole, whole_ok)
+	var all_fed: bool = fed.size() == 11 and fed.values().all(func(v: bool) -> bool: return v)
+	check("  each effect alone: the boss a follower's copy, its arena fed the leader's event so many a second, and it comes",
+		all_fed, fed)
+	Light.everywhere = false
+	world.queue_free()
+	await get_tree().process_frame
+	print("  (every arena effect: done)")
+
+
+func _test_the_readout_not_while_away() -> void:
+	section("THE READOUT NOT WHILE AWAY - a frame the browser never drew is no spike (0.176.1)")
+	# The owner's readout: "547872 ms 10 s - waiting 547868.5 ms", and "i was
+	# on a separate screen". A browser draws nothing for a page out of sight.
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(true)
+	var clock: Array = [100000]
+	for k in 120:
+		_readout_frame(clock, 16.0, 2.0, 60.0)
+	# Away nine minutes: one frame, nearly all of it waiting.
+	_readout_frame(clock, 547872.0, 3.5, 60.0)
+	for k in 150:
+		_readout_frame(clock, 16.0, 2.0, 0.1 if k < 60 else 60.0)
+	PerfOverlay.flush_samples()
+	check("the frame you come back in is no spike, no worst frame, no worst fps",
+		PerfOverlay._hitches == 0 and PerfOverlay._worst_frame_ms < 25.0
+		and is_equal_approx(PerfOverlay._worst_fps, 60.0),
+		[PerfOverlay._hitches, PerfOverlay._worst_frame_ms, PerfOverlay._worst_fps])
+	# A long frame the game spent working is a spike, however long.
+	_readout_frame(clock, 2500.0, 2400.0, 50.0)
+	# And a slow frame that is waiting, under the stop's length, still counts.
+	_readout_frame(clock, 900.0, 3.0, 50.0)
+	for k in 6:
+		_readout_frame(clock, 16.0, 2.0, 60.0)
+	PerfOverlay.flush_samples()
+	check("  but a long frame of work, and a slow frame of waiting, still count",
+		PerfOverlay._hitches == 2 and PerfOverlay._worst_frame_ms > 2000.0,
+		[PerfOverlay._hitches, PerfOverlay._worst_frame_ms])
+	check("  judged before the frame is counted",
+		_func_body(_code_src("res://src/systems/perfoverlay.gd"), "func _count_sample(").contains("was_stopped(sample)"))
+	PerfOverlay.set_shown(false)
+	if shown_before:
+		PerfOverlay.set_shown(true)
+	print("  (the readout not while away: done)")
+
+
+func _readout_frame(clock: Array, ms: float, scripts: float, fps: float) -> void:
+	clock[0] += int(ms)
+	var at: int = int(clock[0])
+	PerfOverlay.push_sample({"ms": ms, "held": PerfOverlay.held_for_frame(false, at), "fps": fps,
+		"physics": 0.5, "worst_tick": 0.5, "ticks": 1, "scripts": scripts, "drawing": 0.5,
+		"nodes": 0, "area": "elusion", "at": at})
+
+
+func _test_every_arena_sorts_with_the_world() -> void:
+	section("EVERY ARENA SORTS WITH THE WORLD - its floor under you, wherever you stand (0.176.1)")
+	# The owner: "the lava area spawns above player on boss". The Fire boss's
+	# arena was the one of six without it, so it sorted as one at y 0, and in
+	# the Boss Arena's top half its lava was drawn over everybody.
+	var missing: Array = []
+	for land in ["light", "wind", "water", "ice", "earth", "fire"]:
+		var path: String = "res://src/enemies/%sarena.gd" % land
+		if not _func_body(_code_src(path), "func _ready(").contains("y_sort_enabled = true"):
+			missing.append(land)
+	check("each of the six arenas sorts its floor and what stands with the world", missing.is_empty(), missing)
+	print("  (every arena sorts with the world: done)")
+
+
+func _test_the_shop_menu_only_at_the_counter() -> void:
+	section("THE SHOP'S MENU ONLY AT THE COUNTER - not out in the street (0.176.1)")
+	# The owner: "the menu is not supposed to pop up outside of shop". It
+	# waited for the greeting, and a hero who walked out meanwhile was asked
+	# where they stood.
+	const Talk := preload("res://src/shared/talk.gd")
+	const Bubble := preload("res://src/shared/speechbubble.gd")
+	var others: Array = get_tree().get_nodes_in_group("player")
+	for other in others:
+		other.remove_from_group("player")
+	var holder := Node2D.new()
+	holder.position = Vector2(60000, 60000)
+	add_child(holder)
+	var house: Node2D = (load("res://scene/walls/shophouse.tscn") as PackedScene).instantiate()
+	holder.add_child(house)
+	var counter: Area2D = house.get_node("interiorfurniture/shopvendor") as Area2D
+	var keeper: Node = counter.get_node("animatedsprite2d")
+	keeper.set("class_override", "healer")
+	var hero := CharacterBody2D.new()
+	hero.name = "Player"
+	hero.collision_layer = 4
+	hero.collision_mask = 0
+	var body_shape := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 6.0
+	body_shape.shape = circle
+	hero.add_child(body_shape)
+	hero.add_to_group("player")
+	var at_counter: Vector2 = (counter.get_node("collisionshape2d") as Node2D).global_position
+	holder.add_child(hero)
+	hero.global_position = at_counter
+	hero.reset_physics_interpolation()
+	# Met before, so a visit is a greeting and then the menu.
+	Bubble.note_said(Talk.seen_key("meet_shopkeeper"))
+	keeper.set("_last_greeting", -1000.0)
+	for i in 3:
+		await get_tree().physics_frame
+	var greeting: Node = keeper.get("bubble")
+	check("walking up to the counter, the shopkeeper greets the hero",
+		greeting != null and greeting.get_script() == Bubble and counter.overlaps_body(hero))
+	# Out of the shop while he is still talking.
+	hero.global_position = at_counter + Vector2(0, 400)
+	hero.reset_physics_interpolation()
+	for i in 3:
+		await get_tree().physics_frame
+	_end_bubble(greeting)
+	await get_tree().process_frame
+	check("  the hero walked out before he finished: no menu out there",
+		hero.get_node_or_null("choicebox") == null and keeper.get("bubble") == null)
+	# Back again soon: the menu at once.
+	hero.global_position = at_counter
+	hero.reset_physics_interpolation()
+	for i in 3:
+		await get_tree().physics_frame
+	var menu: Node = keeper.get("bubble")
+	var asked: Node2D = menu.get("bubble") as Node2D if menu != null else null
+	if asked != null:
+		_end_bubble(asked)
+	await get_tree().process_frame
+	check("  back at the counter soon after, the menu at once, under the hero",
+		menu != null and menu.get_script() == Talk and hero.get_node_or_null("choicebox") != null)
+	if menu != null and is_instance_valid(menu):
+		menu.queue_free()
+	var box: Node = hero.get_node_or_null("choicebox")
+	if box != null:
+		box.queue_free()
+	await get_tree().process_frame
+	# Staying for the whole greeting: the menu after it, as before.
+	keeper.set("bubble", null)
+	keeper.set("_last_greeting", -1000.0)
+	keeper.call("greet")
+	var again: Node = keeper.get("bubble")
+	_end_bubble(again)
+	await get_tree().process_frame
+	check("  and a hero who stays for the greeting is offered the menu after it, as before",
+		keeper.get("bubble") != null and (keeper.get("bubble") as Node).get_script() == Talk)
+	# OUT OF THE SHOP, THE TALK ENDS: "after pressing talk on shop keeper and
+	# walking out of building chat pops up".
+	var chat: Node = keeper.get("bubble")
+	if chat != null and is_instance_valid(chat):
+		chat.free()
+	await get_tree().process_frame
+	var lines: Array = Talk.read_script("hero: What do you sell?\nshopkeeper: Gear, mostly.\nhero: And?\n")
+	var talking: Node = Talk.play(keeper, lines, {"shopkeeper": keeper, "hero": hero}, "")
+	keeper.set("bubble", talking)
+	await get_tree().process_frame
+	var said_before: bool = false
+	for c in hero.get_children():
+		said_before = said_before or c.get_script() == Bubble
+	hero.global_position = at_counter + Vector2(0, 400)
+	hero.reset_physics_interpolation()
+	for i in 3:
+		await get_tree().physics_frame
+	await get_tree().process_frame
+	var still_said: bool = false
+	for c in hero.get_children():
+		still_said = still_said or (c.get_script() == Bubble and not c.is_queued_for_deletion())
+	check("  talking, the hero walks out of the shop: the talk ends there, nothing more said in the street",
+		said_before and not still_said and keeper.get("bubble") == null
+		and (not is_instance_valid(talking) or talking.is_queued_for_deletion()), [said_before, still_said])
+	holder.queue_free()
+	await get_tree().process_frame
+	for other in others:
+		if is_instance_valid(other):
+			other.add_to_group("player")
+	print("  (the shop's menu only at the counter: done)")
+
+
+func _end_bubble(said: Variant) -> void:
+	"""A speech bubble said to its end: every line shown, then faded. A
+	Variant: one already gone (walked out of the shop) is passed too."""
+	if not is_instance_valid(said):
+		return
+	for i in 24:
+		said.call("hurry")
+	said.call("_process", 1.0)
+
+
+func _test_the_shop_keeps_its_lists() -> void:
+	section("THE SHOP KEEPS ITS LISTS - Buy not built again, a sale makes one row (0.176.1)")
+	# The owner: "shop spikes when i trade also". Buy built all its rows on
+	# every switch (40-58 ms in town) and a sale redrew the Sell list twice.
+	const T := ItemData.Type
+	var potion: ItemData = _menu_item("zz_keep_potion", T.CONSUMABLE, 0, 20)
+	var sword: ItemData = _menu_item("zz_keep_sword", T.WEAPON, ItemData.EquipSlot.WEAPON)
+	for item in [potion, sword]:
+		item.tier = 1
+		ItemRegistry._items[item.item_id] = item
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.visible = true
+	var bag := InventoryContainer.new()
+	bag.is_carry = true
+	add_child(bag)
+	bag.load_save_array([{"item_id": "zz_keep_potion", "quantity": 5}, {"item_id": "zz_keep_sword", "quantity": 1},
+		null, {"item_id": "zz_keep_potion", "quantity": 2}])
+	panel.inventory_override = bag
+	var stock: Array = [
+		{"item_id": "zz_keep_potion", "display_name": "Potion", "price": 40, "tier": 1, "type_name": "CONSUMABLE"},
+		{"item_id": "zz_keep_sword", "display_name": "Sword", "price": 400, "tier": 1, "type_name": "WEAPON"}]
+	var answer: Dictionary = {"shop_id": "generalstore", "display_name": "Kingdom Supplies", "stock": stock,
+		"sell_multiplier": 0.05, "sell_prices": {"zz_keep_potion": 2, "zz_keep_sword": 20}}
+	panel.show_catalogue(answer)
+	var shelf: Array = panel.stock_list.get_children()
+	panel.set_mode("sell")
+	var selling: Array = panel.stock_list.get_children()
+	var sell_names: Array = selling.map(func(r: Node) -> String: return str(r.name))
+	check("Sell shows its own list, the shelf kept out of sight; Buy the same shelf again, nothing made",
+		sell_names == ["sell_0", "sell_1", "sell_3"] and not shelf.is_empty()
+		and shelf.all(func(r: Node) -> bool: return is_instance_valid(r) and not r.is_visible_in_tree()), sell_names)
+	panel.set_mode("buy")
+	check("  back on Buy, the very same rows",
+		panel.stock_list.get_children() == shelf and shelf.all(func(r: Node) -> bool: return r.is_visible_in_tree()))
+	# A sale: the sword's cell empties, the rest are the rows they were.
+	panel.set_mode("sell")
+	var potion_row: Node = panel.stock_list.get_node("sell_0")
+	var arm: Button = panel.stock_list.get_node("sell_3").find_child("sellall", true, false)
+	arm.text = "Sure?"
+	bag.load_save_array([{"item_id": "zz_keep_potion", "quantity": 5}, null, null, {"item_id": "zz_keep_potion", "quantity": 2}])
+	panel.show_sell_list()
+	await get_tree().process_frame
+	var after: Array = panel.stock_list.get_children().map(func(r: Node) -> String: return str(r.name))
+	check("  a sale: the sold cell's row gone, the others the same rows, an armed one disarmed",
+		after == ["sell_0", "sell_3"] and panel.stock_list.get_node("sell_0") == potion_row
+		and is_instance_valid(arm) and arm.text == "Sell all", after)
+	bag.load_save_array([{"item_id": "zz_keep_potion", "quantity": 4}, null, {"item_id": "zz_keep_sword", "quantity": 1},
+		{"item_id": "zz_keep_potion", "quantity": 2}])
+	panel.show_sell_list()
+	await get_tree().process_frame
+	var redrawn: Array = panel.stock_list.get_children().map(func(r: Node) -> String: return str(r.name))
+	var count_label: Label = panel.stock_list.get_node("sell_0").find_child("itemname", true, false)
+	check("  one fewer in a stack is a new row for that cell, a new cell takes its place in order",
+		redrawn == ["sell_0", "sell_2", "sell_3"] and panel.stock_list.get_node("sell_0") != potion_row
+		and count_label.text.ends_with("×4"), [redrawn, count_label.text])
+	# Shut and opened again on the same answer: the shelf as it was.
+	panel.set_mode("buy")
+	panel.close_shop()
+	panel.visible = true
+	panel.show_catalogue(answer)
+	check("  shut and opened on the same catalogue, the shelf is not made again",
+		panel.stock_list.get_children() == shelf)
+	var dearer: Dictionary = answer.duplicate(true)
+	dearer["stock"][0]["price"] = 60
+	panel.show_catalogue(dearer)
+	check("  a new price is a new shelf", panel.stock_list.get_child_count() == shelf.size()
+		and not is_instance_valid(shelf[0]) or (shelf[0] as Node).is_queued_for_deletion())
+	panel.queue_free()
+	bag.queue_free()
+	ItemRegistry._items.erase("zz_keep_potion")
+	ItemRegistry._items.erase("zz_keep_sword")
+	await get_tree().process_frame
+	print("  (the shop keeps its lists: done)")
+
+
+func _test_an_old_copy_refreshes_itself() -> void:
+	section("AN OLD COPY REFRESHES ITSELF - at the sign-in screen, once a version (0.176.1)")
+	# The owner's game pane ran 0.175.0 for a day after 0.176.0 went live:
+	# put back from the browser's cache, and nothing reloaded it.
+	const Check := preload("res://src/systems/versioncheck.gd")
+	const ApiScript := preload("res://src/systems/api.gd")
+	var was: String = ApiScript.newer_web_version
+	var reloads: Array = []
+	var door: Array = [true]
+	# A local const is not seen inside a lambda; a local var is.
+	var check_script: GDScript = Check
+	var make := func(said: String) -> Node:
+		var checker: Node = check_script.new()
+		checker.set("url", "https://example.invalid/version.txt")
+		checker.set("fetch", func(_where: String) -> String: return said)
+		checker.set("reload", func(version: String) -> bool:
+			reloads.append(version)
+			return true)
+		checker.set("at_door", func() -> bool: return door[0])
+		add_child(checker)
+		return checker
+	check("the first ask is at once, not a while into the game", Check.FIRST_SECONDS <= 1.0, Check.FIRST_SECONDS)
+	var at_door: Node = make.call("99.5.0")
+	await at_door.call("check")
+	check("  a newer version on the first ask, at the sign-in screen: the page reloads for it",
+		reloads == ["99.5.0"], reloads)
+	at_door.set("fetch", func(_where: String) -> String: return "99.6.0")
+	await at_door.call("check")
+	check("  a later ask only says it (someone may be typing their password)", reloads == ["99.5.0"]
+		and str(at_door.get("newest")) == "99.6.0", reloads)
+	door[0] = false
+	var in_world: Node = make.call("99.7.0")
+	await in_world.call("check")
+	check("  in the world, nothing reloads: the strip says it, as before",
+		reloads == ["99.5.0"] and str(in_world.get("newest")) == "99.7.0", reloads)
+	door[0] = true
+	var same: Node = make.call(ApiScript.DISPLAY_VERSION)
+	await same.call("check")
+	check("  this version itself: no reload", reloads == ["99.5.0"], reloads)
+	var src: String = _code_src("res://src/systems/versioncheck.gd")
+	var body: String = _func_body(src, "func refresh_at_the_door(")
+	check("  in a browser, once a version a tab (sessionStorage), and never when it cannot be kept",
+		body.contains("sessionStorage.getItem") and body.contains("sessionStorage.setItem")
+		and body.contains("catch (e) { return false; }") and body.contains("window.location.reload()")
+		and Check.AT_THE_DOOR == ProjectSettings.get_setting("application/run/main_scene"))
+	for node in [at_door, in_world, same]:
+		node.queue_free()
+	ApiScript.newer_web_version = was
+	print("  (an old copy refreshes itself: done)")
+
+
+func _test_the_crownfall_bars_in_one_call() -> void:
+	section("CROWNFALL'S BARS IN ONE CALL - their shapes as the engine makes them, handed over together (0.176.1)")
+	# The owner: "work on this", of the bars' 214 draws a repaint: every
+	# circle, polygon, arc and outline was a draw call of its own.
+	const Batch := preload("res://src/shared/canvasbatch.gd")
+	var batch = Batch.new()
+	batch.begin()
+	batch.draw_circle(Vector2(10, 10), 5.0, Color.RED)
+	batch.draw_arc(Vector2(10, 10), 8.0, 0.0, TAU, 20, Color.WHITE, 1.5)
+	batch.draw_rect(Rect2(0, 0, 10, 10), Color.GREEN, false, 2.0)
+	batch.draw_polyline(PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10)]), Color.WHITE, 1.0)
+	batch.draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(5, 10)]), Color.BLUE)
+	batch.draw_line(Vector2(0, 0), Vector2(10, 10), Color.WHITE, 2.0)
+	batch.draw_rect(Rect2(0, 0, 4, 4), Color.GREEN)
+	var holder := Node2D.new()
+	add_child(holder)
+	batch.end(holder)
+	# The engine's own counts (zz/primprobe): a circle 64, a 20-point arc 38,
+	# an outline 8, a two-segment polyline 4, a triangle 1, a line 2, a rect 2.
+	check("each shape the triangles the engine would make: 64 + 38 + 8 + 4 + 1 + 2 + 2",
+		int(batch.last_triangles) == 119, batch.last_triangles)
+	holder.queue_free()
+	var Run: GDScript = load("res://src/world/crownfall/crownfallrun.gd") as GDScript
+	var src: String = _code_src("res://src/world/crownfall/crownfallrun.gd")
+	var paint: String = _func_body(src, "func _paint_panels(")
+	var shapes_at: int = paint.find("_cv = _panel_batch")
+	var ended_at: int = paint.find("_panel_batch.end(panel_node)")
+	var words_at: int = paint.find("_write_held_words()")
+	check("  the bars are drawn into the batch, handed to their picture, then their words written on it",
+		shapes_at >= 0 and shapes_at < paint.find("_draw_hud()") and ended_at > paint.find("_draw_right_panel()")
+		and words_at > ended_at and paint.find("_cv = panel_node") > ended_at and paint.find("_cv = panel_node") < words_at
+		and Run.get_script_constant_map().has("CanvasBatch"))
+	print("  (crownfall's bars in one call: done)")

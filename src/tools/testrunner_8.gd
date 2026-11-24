@@ -4412,11 +4412,13 @@ func _test_minigames() -> void:
 		went.append([area_id, spawn_id])
 	card.area_now = func() -> String:
 		return area[0]
-	var status: Label = card.get("status")
-	var go: Button = card.get("go_button")
-
+	# Its tiles are made the first time it is opened (0.176.1).
+	var unmade: bool = card.get("status") == null and not bool(card.get("built"))
 	button.pressed.emit()
 	await get_tree().process_frame
+	var status: Label = card.get("status")
+	var go: Button = card.get("go_button")
+	check("  its tiles made as it first opens, not with the HUD", unmade and status != null and go != null)
 	var drawn: Rect2 = (card as Control).get_global_rect()
 	var under: Rect2 = button.get_global_rect()
 	check("the button opens it, asks the server, and it says Ready beside Go",

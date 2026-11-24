@@ -332,7 +332,7 @@ func _ready() -> void:
 	# AND THE BAR FOLDED INTO MENU while the touch screen is in use (0.91.0).
 	touch_menu = TouchMenu.attach(self)
 	trade_prompt = TradePrompt.attach(self)
-	minigames_card = MinigamesCard.attach(self)
+	minigames_card = MinigamesCard.attach(self, true)
 	# THE WAY TO THE FIRST FIGHT (0.92.0, guide.gd), under every window: just
 	# after the pad, which is the HUD's first child.
 	guide = GuideScript.new()

@@ -324,12 +324,26 @@ var scroller: ScrollContainer = null
 var grid: GridContainer = null
 
 
-static func attach(on_hud: Node) -> Control:
+static func attach(on_hud: Node, later: bool = false) -> Control:
+	"""The card on `on_hud`, shut. `later` (the HUD's): its tiles made the
+	first time it is painted or opened, not as the HUD arrives (TILES WHEN
+	WANTED)."""
 	var card: Control = (load("res://src/ui/minigames/minigamescard.gd") as GDScript).new()
 	card.name = "minigamescard"
 	card.set("hud", on_hud)
+	card.set("tiles_later", later)
 	on_hud.add_child(card)
 	return card
+
+
+# TILES WHEN WANTED (0.176.1, the owner: "we must refine deeper into my
+# game"). The HUD is made again in every area, and its card's nine tiles -
+# a portrait, words, tags and a button each - were 9 ms of every arrival
+# (zz/hudcost: 22 ms the HUD's whole add), for a card most arrivals never
+# open. The HUD's card makes them the first time it is painted or opened
+# (_build_tiles()); paint_news() - the bar's dot - needs none of them.
+var tiles_later: bool = false
+var built: bool = false
 
 
 func _init() -> void:
@@ -363,6 +377,13 @@ func _init() -> void:
 	grid.add_theme_constant_override("v_separation", 6)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroller.add_child(grid)
+
+
+func _build_tiles() -> void:
+	"""Each minigame's tile, once (TILES WHEN WANTED)."""
+	if built:
+		return
+	built = true
 	var endless: Array = _tile(grid, "endless", "The Endless", BLURB, [TAG_DAILY])
 	endless_box = endless[0]
 	game_name = endless[1]
@@ -634,6 +655,8 @@ func _label(id: String, text: String, font_px: int, colour: Color) -> Label:
 
 
 func _ready() -> void:
+	if not tiles_later:
+		_build_tiles()
 	# THE BAR'S LOOK: its theme and panel, as the trade card takes them.
 	var nav: Control = hud.get_node_or_null("%navframe") as Control if hud != null else null
 	if nav != null:
@@ -854,6 +877,7 @@ static func wait_text(seconds: int) -> String:
 
 func paint() -> void:
 	"""The status line and the button, from what is known now."""
+	_build_tiles()
 	_paint_healer()
 	_paint_stand()
 	_paint_descent()

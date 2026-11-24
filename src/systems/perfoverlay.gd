@@ -175,6 +175,14 @@ var _last_load_msec: int = -100000
 # twice after the game comes back.
 const HOLD_SETTLE_MSEC := 2100
 var _held_before: bool = false
+# AWAY, NOT SLOW (0.176.1). The owner's readout: "547872 ms 10 s - waiting
+# 547868.5 ms", and "i was on a separate screen". A browser draws no frames
+# for a page nobody can see (another screen, another tab, the pane hidden),
+# and the game never hears it went - so the frame it comes back in is as long
+# as you were away. A frame of STOPPED_MS or more that is nearly all waiting
+# (STOPPED_SHARE) is the game stopped, not slow: held, like the background's.
+const STOPPED_MS := 2000.0
+const STOPPED_SHARE := 0.9
 # A KEY OR CLICK IN THE FRAME (0.137.4). What a key or a click does - a window
 # opening - runs before the frame's own clocked parts, so it was filed under
 # waiting, "not the game's code": the owner's 44 ms spike was the GM panel
@@ -896,6 +904,10 @@ func _count_sample(sample: Dictionary) -> void:
 		return
 	_in_load = false
 	var held: bool = bool(sample.get("held", false))
+	if not held and was_stopped(sample):
+		# Its fps monitor reads the stop for a second after, as a background's.
+		held = true
+		_unheld_msec = at
 	var fps: float = float(sample.get("fps", 0.0))
 	if not held and fps > 0.0 and at - _last_load_msec > FPS_SETTLE_MSEC \
 			and at - _unheld_msec > HOLD_SETTLE_MSEC \
@@ -953,6 +965,17 @@ func _note_frame(delta: float, held: bool = false, sample: Dictionary = {}) -> v
 			_spikes.resize(SPIKES_SHOWN)
 	_worst_physics_ms = maxf(_worst_physics_ms, worst_tick)
 	_worst_process_ms = maxf(_worst_process_ms, scripts + drawing)
+
+
+static func was_stopped(sample: Dictionary) -> bool:
+	"""Whether a frame is the game stopped, not slow (AWAY, NOT SLOW above):
+	STOPPED_MS or longer, and at least STOPPED_SHARE of it waiting."""
+	var ms: float = float(sample.get("ms", 0.0))
+	if ms < STOPPED_MS:
+		return false
+	var work: float = float(sample.get("physics", 0.0)) + float(sample.get("scripts", 0.0)) \
+		+ float(sample.get("drawing", 0.0))
+	return ms - work >= ms * STOPPED_SHARE
 
 
 static func spike_cause(spike: Dictionary) -> Dictionary:

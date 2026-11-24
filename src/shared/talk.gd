@@ -452,6 +452,15 @@ func _say_or_skip() -> void:
 	_finish()
 
 
+func stop() -> void:
+	"""Ended where it stands - its bubble and its answers gone now (the hero
+	walked out of the shop, 0.176.1)."""
+	if bubble != null and is_instance_valid(bubble):
+		bubble.queue_free()
+	bubble = null
+	_finish()
+
+
 func _finish() -> void:
 	if choice_box != null and is_instance_valid(choice_box):
 		choice_box.queue_free()

@@ -129,6 +129,26 @@ func _ready() -> void:
 		push_warning("shopkeeperanim: parent is not an Area2D — nothing to wave at")
 
 
+# OUT OF THE SHOP, THE TALK ENDS (0.176.1). The owner: "after pressing talk
+# on shop keeper and walking out of building chat pops up if player leaves
+# building thats it". The hero's lines went on in the street. The room and
+# all in it - this sprite too - are hidden as the hero walks out (shop.gd),
+# so that is when: the greeting, a conversation, the menu, all ended.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and not is_visible_in_tree():
+		walked_out()
+
+
+func walked_out() -> void:
+	"""Whatever he or the hero is saying, ended."""
+	if bubble != null and is_instance_valid(bubble):
+		if bubble.has_method(&"stop"):
+			bubble.call(&"stop")
+		else:
+			bubble.queue_free()
+	bubble = null
+
+
 func _on_body_entered(body: Node) -> void:
 	# ONE GREETING PER ARRIVAL. play() from the top restarts the wave even if one
 	# is already running, which is right: walking out and straight back in is a
@@ -166,6 +186,16 @@ func _offer_menu() -> void:
 	bubble = null
 	var hero: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
 	if not (hero is Node2D):
+		return
+	# ONLY AT THE COUNTER (0.176.1). The owner: "the menu is not supposed to
+	# pop up outside of shop". The menu waits for the greeting, which takes a
+	# few seconds, and a hero who walked out meanwhile was asked out in the
+	# street. Gone from the counter by then: no menu (back again, it is
+	# offered at once - REGREET_SECONDS). Asked of the counter's own area, not
+	# vendor.gd's player_at_counter(): back again, this runs from the area's
+	# body_entered, before vendor.gd's has heard of the hero.
+	var counter: Area2D = get_parent() as Area2D
+	if counter != null and hero is PhysicsBody2D and not counter.overlaps_body(hero):
 		return
 	var hero_class: String = class_override if class_override != "" else str(CharacterData.active_class_id())
 	bubble = Talk.visit(self, VISIT, hero_class, {"shopkeeper": self, "hero": hero})

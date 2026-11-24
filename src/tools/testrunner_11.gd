@@ -3597,8 +3597,8 @@ func _test_find_the_limit() -> void:
 	sweep.call("_on_picked", 2)
 	var horde_box: int = int(step_box.value)
 	sweep.call("_on_picked", 0)
-	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde, every shot, every effect, every boss attack, the Crowned's phases and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
-		pick.item_count == Spawner.catalogue().size() + 7 and str(pick.get_item_metadata(2)) == Sweep.HORDE
+	check("the panel: FIND THE LIMIT under the horde - every kind, every monster, the horde, every shot, every effect, every boss attack, the Crowned's phases, every arena effect and each monster to pick, +N, Find the limit, Copy; a boss picked is +1, the horde +250",
+		pick.item_count == Spawner.catalogue().size() + 8 and str(pick.get_item_metadata(2)) == Sweep.HORDE
 		and ground.find_child("sweepgo", true, false) is Button and ground.find_child("sweepcopy", true, false) is Button
 		and boss_box == 1 and horde_box == 250 and int(step_box.value) == 10, [pick.item_count, boss_box, horde_box])
 	var budget: float = PerfOverlay.budget_ms()
