@@ -1891,7 +1891,8 @@ func _on_node_added(node: Node) -> void:
 			# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
 			# builds a new player with a new camera carrying the 3.0 its .tscn
 			# was saved with, so without this the zoom would reset itself at
-			# every doorway.
+			# every doorway. And kept, for the next change of zoom (_cameras).
+			_note_camera(node as Camera2D)
 			_apply_camera_zoom_to(node as Camera2D, float(get_value("camera_zoom")))
 		elif (_projectiles_touched or _projectile_dim) and is_projectile(node):
 			# A PROJECTILE, dimmed once it is ready (_dim_projectile()).
@@ -2026,12 +2027,41 @@ func _on_root_resized() -> void:
 		reapply_camera_zoom.call_deferred()
 
 
+# THE CAMERAS, KNOWN AS THEY ARRIVE (0.176.3). The owner: "zooming in and out
+# takes a large cost". Every notch of the wheel walked the whole tree for its
+# cameras (find_children) - 10-17 ms of the notch in the Big Field's 16,700
+# nodes, to find one camera (zz/zoomcost.gd, sandbox only). _on_node_added()
+# sees every camera arrive, from before the first scene: each is kept here by
+# its id, and a zoom goes to those still alive and in the tree.
+var _cameras: Dictionary = {}
+
+
+func _note_camera(camera: Camera2D) -> void:
+	if _cameras.size() >= 16:
+		_forget_freed_cameras()
+	_cameras[camera.get_instance_id()] = true
+
+
+func _forget_freed_cameras() -> void:
+	for id: int in _cameras.keys():
+		if not (instance_from_id(id) is Camera2D):
+			_cameras.erase(id)
+
+
+func cameras() -> Array[Camera2D]:
+	"""Every camera in the tree (_cameras): what a change of zoom reaches."""
+	_forget_freed_cameras()
+	var out: Array[Camera2D] = []
+	for id: int in _cameras:
+		var camera: Camera2D = instance_from_id(id) as Camera2D
+		if camera != null and camera.is_inside_tree():
+			out.append(camera)
+	return out
+
+
 func _apply_camera_zoom_everywhere(zoom: float) -> void:
-	var tree := get_tree()
-	if tree == null or tree.root == null:
-		return
-	for node in tree.root.find_children("*", "Camera2D", true, false):
-		_apply_camera_zoom_to(node as Camera2D, zoom)
+	for camera in cameras():
+		_apply_camera_zoom_to(camera, zoom)
 
 
 func step_camera_zoom(steps: int) -> float:

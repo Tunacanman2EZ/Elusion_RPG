@@ -336,6 +336,7 @@ func _run_all() -> void:
 	_test_the_crownfall_bars_in_one_call()
 	await _test_the_big_field_walls_flattened()
 	_test_the_big_field_floor_kept_once()
+	_test_zooming_walks_no_tree()
 	await _test_the_beholders_table()
 	_test_every_minigame_has_a_picture()
 	_test_the_table_never_traps_a_ball()

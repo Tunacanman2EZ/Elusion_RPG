@@ -1,5 +1,6 @@
 # testrunner_14.gd - part 14 of the suite (testrunner.gd says how it is
-# split; part 13 passed 255 KB): _test_the_big_field_floor_kept_once.
+# split; part 13 passed 255 KB): _test_the_big_field_floor_kept_once,
+# _test_zooming_walks_no_tree.
 extends "res://src/tools/testrunner_13.gd"
 
 
@@ -163,6 +164,51 @@ func _test_the_big_field_floor_kept_once() -> void:
 		and Audit._cells_after_header(PackedByteArray(), one) == one
 		and Audit._cells_after_header(header, one).size() == 12)
 	print("  (the big field's floor kept once: done)")
+
+
+# =============================================================================
+# ZOOMING WALKS NO TREE (0.176.3)
+# =============================================================================
+# The owner: "zooming in and out takes a large cost". Each notch walked the
+# whole tree for its cameras - 10-17 ms in the Big Field (zz/zoomcost.gd).
+# Settings keeps every camera as it arrives instead.
+func _test_zooming_walks_no_tree() -> void:
+	section("ZOOMING WALKS NO TREE - the cameras kept as they arrive, a notch reaches each (0.176.3)")
+	var was: float = float(Settings.get_value("camera_zoom"))
+	var sharp_was: bool = bool(Settings.get_value("sharp_pixels"))
+	Settings.set_value("sharp_pixels", false)
+	Settings.set_value("camera_zoom", 3.0)
+	var holder := Node2D.new()
+	add_child(holder)
+	var camera := Camera2D.new()
+	holder.add_child(camera)
+	var inner := SubViewport.new()
+	holder.add_child(inner)
+	var deep := Camera2D.new()
+	inner.add_child(deep)
+	var kept: Array[Camera2D] = Settings.cameras()
+	check("a camera arriving anywhere - in a viewport of its own too - is known, and takes the zoom as it comes",
+		kept.has(camera) and kept.has(deep) and is_equal_approx(camera.zoom.x, 3.0) and is_equal_approx(deep.zoom.x, 3.0))
+	Settings.set_value("camera_zoom", 2.0)
+	var moved: bool = is_equal_approx(camera.zoom.x, 2.0) and is_equal_approx(deep.zoom.x, 2.0)
+	var out := Camera2D.new()
+	holder.add_child(out)
+	holder.remove_child(out)
+	Settings.set_value("camera_zoom", 1.5)
+	var gone_id: int = deep.get_instance_id()
+	inner.free()
+	Settings.set_value("camera_zoom", 2.5)
+	check("  a notch reaches every camera in the tree; one taken out is left alone; one freed is forgotten",
+		moved and is_equal_approx(camera.zoom.x, 2.5) and is_equal_approx(out.zoom.x, 2.0)
+		and not Settings.cameras().has(out) and not Settings._cameras.has(gone_id), [camera.zoom.x, out.zoom.x])
+	out.free()
+	holder.free()
+	Settings.set_value("camera_zoom", was)
+	Settings.set_value("sharp_pixels", sharp_was)
+	check("  and no notch walks the tree for them (find_children cost 10-17 ms in the Big Field)",
+		not _func_body(_code_src("res://src/systems/settings.gd"), "func _apply_camera_zoom_everywhere(").contains("find_children")
+		and not _func_body(_code_src("res://src/systems/settings.gd"), "func cameras(").contains("find_children"))
+	print("  (zooming walks no tree: done)")
 
 
 func _chunk_has(helper: Node, cell: Vector2i) -> bool:
